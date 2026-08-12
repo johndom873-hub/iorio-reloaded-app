@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Iorio Reloaded</title>
+    <script>
+      // Applied before React mounts, so there's no flash of the wrong theme
+      // on load — kept in sync with ThemeContext.tsx's storage key/logic.
+      (function () {
+        var theme = localStorage.getItem("iorio-theme") || "light";
+        document.documentElement.setAttribute("data-bs-theme", theme);
+      })();
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
