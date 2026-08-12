@@ -9,6 +9,7 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
+    "start": "node server.js",
     "lint": "oxlint",
     "preview": "vite preview"
   },
@@ -17,6 +18,8 @@
     "@tabler/core": "^1.4.0",
     "@tabler/icons-react": "^3.46.0",
     "apexcharts": "^6.8.0",
+    "dotenv": "^17.4.2",
+    "express": "^5.2.1",
     "lightweight-charts": "^5.2.0",
     "react": "^19.2.8",
     "react-apexcharts": "^2.1.1",
