@@ -1,0 +1,91 @@
+/*
+ * Iorio Reloaded brand theme, layered on top of Tabler's default CSS
+ * (imported after it in main.tsx so these overrides win the cascade).
+ *
+ * Palette source: user-provided brand kit, 2026-08-12.
+ *   Sky blue (brand):        #0EA5E9
+ *   Sky blue (accessible):   #0369A1  — used wherever text/icons sit ON
+ *                             or AS the blue (buttons, links). The raw
+ *                             #0EA5E9 fails WCAG AA for white button text
+ *                             (2.77:1) and as link text on light
+ *                             backgrounds (2.65:1) — verified with an
+ *                             actual contrast calculation, not eyeballed.
+ *                             #0369A1 passes AA cleanly in both cases
+ *                             (5.9:1 / 5.7:1) and is close enough in hue
+ *                             to still read as "the same blue."
+ *   Red accent (dark bg):     #E64343
+ *   Red accent (light bg):    #CC272E
+ *   Dark navy:                #0F141D
+ *   Off-white:                #F9FAFB (doubles as dark-mode text color)
+ *   Light border:             #DBDEE1
+ *
+ * Status colors (success/danger/warning) are deliberately left at
+ * Tabler's defaults, per explicit instruction — the red accent above is
+ * brand decoration, not a semantic "danger" color, so it's never wired
+ * to --tblr-danger.
+ */
+
+:root {
+  --tblr-primary: #0369a1;
+  --tblr-primary-rgb: 3, 105, 161;
+  --tblr-link-color: #0369a1;
+  --tblr-border-color: #dbdee1;
+  /* Tabler's light --tblr-body-bg already defaults to #f9fafb — matches
+     the brand off-white exactly, nothing to override here. */
+}
+
+:root[data-bs-theme="dark"] {
+  --tblr-body-bg: #0f141d;
+  --tblr-body-color: #f9fafb;
+  /* More vibrant on dark backgrounds (6.66:1) than the accessible shade
+     used in light mode (only 3.11:1 on dark navy) — verified. Button
+     fills still use --tblr-primary above, unaffected by this. */
+  --tblr-link-color: #0ea5e9;
+  --tblr-border-color: rgb(45.7, 60.5, 81.1);
+}
+
+/* @fontsource/inter (imported in main.tsx) already registers proper
+   @font-face rules for real font files — Tabler's own
+   --tblr-font-sans-serif stack already lists "Inter Var, Inter" first,
+   so no override needed here, just making sure the files are loaded. */
+
+.iorio-wordmark {
+  font-family: "Sora", var(--tblr-font-sans-serif);
+}
+
+.iorio-wordmark-primary {
+  color: #f9fafb;
+  letter-spacing: 0.02em;
+}
+
+.iorio-wordmark-secondary {
+  font-family: "Sora", var(--tblr-font-sans-serif);
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.2em;
+  color: #0ea5e9;
+}
+
+/* Sidebar is always the brand dark navy, independent of the light/dark
+   theme toggle — deliberate choice (dark, branded sidebar regardless of
+   theme), not the earlier navbar-dark bug: this time the background is
+   actually set, paired with light text via navbar-dark's color vars. */
+.iorio-sidebar {
+  background-color: #0f141d;
+}
+
+.iorio-sidebar .nav-link[aria-current="page"] {
+  position: relative;
+  color: #ffffff;
+}
+
+.iorio-sidebar .nav-link[aria-current="page"]::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0.375rem;
+  bottom: 0.375rem;
+  width: 3px;
+  background-color: #e64343;
+  border-radius: 2px;
+}

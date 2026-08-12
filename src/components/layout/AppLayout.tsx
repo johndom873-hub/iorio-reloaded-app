@@ -30,10 +30,14 @@ export function AppLayout() {
 
   return (
     <div className="page">
-      <aside className="navbar navbar-vertical navbar-expand-lg">
+      <aside className="navbar navbar-vertical navbar-expand-lg navbar-dark iorio-sidebar">
         <div className="container-fluid">
-          <h1 className="navbar-brand navbar-brand-autodark">
-            <span className="navbar-brand-text">Iorio Reloaded</span>
+          <h1 className="navbar-brand">
+            <img src="/icon-mark.svg" alt="" width="32" height="19" className="me-2" />
+            <span className="d-flex flex-column lh-1">
+              <span className="iorio-wordmark iorio-wordmark-primary fw-bold fs-3">IORIO</span>
+              <span className="iorio-wordmark-secondary">RELOADED</span>
+            </span>
           </h1>
           <button
             type="button"
