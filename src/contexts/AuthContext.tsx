@@ -4,7 +4,7 @@ import { type AuthenticatedUser, fetchCurrentSession, login as loginRequest, log
 interface AuthContextValue {
   currentUser: AuthenticatedUser | null;
   isCheckingSession: boolean;
-  login: (email: string, password: string) => Promise<void>;
+  login: (username: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
 }
 
@@ -21,8 +21,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       .finally(() => setIsCheckingSession(false));
   }, []);
 
-  const login = useCallback(async (email: string, password: string) => {
-    const user = await loginRequest(email, password);
+  const login = useCallback(async (username: string, password: string) => {
+    const user = await loginRequest(username, password);
     setCurrentUser(user);
   }, []);
 

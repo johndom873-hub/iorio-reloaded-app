@@ -32,6 +32,12 @@
   --tblr-border-color: #dbdee1;
   /* Tabler's light --tblr-body-bg already defaults to #f9fafb — matches
      the brand off-white exactly, nothing to override here. */
+  /* Fixed rather than JS-measured like the sidebar widths: the topbar's
+     content (logo lockup, two icon buttons) is static and never grows
+     with data, so there's nothing that needs runtime measurement. Sized
+     with a few px of headroom above the logo's natural content height
+     so the wordmark doesn't crowd the bar's top/bottom edges. */
+  --iorio-topbar-height: 4rem;
 }
 
 :root[data-bs-theme="dark"] {
@@ -48,23 +54,6 @@
    @font-face rules for real font files — Tabler's own
    --tblr-font-sans-serif stack already lists "Inter Var, Inter" first,
    so no override needed here, just making sure the files are loaded. */
-
-.iorio-wordmark {
-  font-family: "Sora", var(--tblr-font-sans-serif);
-}
-
-.iorio-wordmark-primary {
-  color: #f9fafb;
-  letter-spacing: 0.02em;
-}
-
-.iorio-wordmark-secondary {
-  font-family: "Sora", var(--tblr-font-sans-serif);
-  font-size: 0.7rem;
-  font-weight: 600;
-  letter-spacing: 0.2em;
-  color: #0ea5e9;
-}
 
 /* Sidebar is always the brand dark navy, independent of the light/dark
    theme toggle — deliberate choice (dark, branded sidebar regardless of
@@ -88,4 +77,200 @@
   width: 3px;
   background-color: #e64343;
   border-radius: 2px;
+}
+
+/* Tabler's default nav-link hover color reads as a dull, low-contrast
+   grey on the dark sidebar. Use the same raw brand blue already used
+   for dark-mode links/the "RELOADED" wordmark (#0ea5e9, vetted at
+   6.66:1 on this navy — see the palette note at the top of this file). */
+.iorio-sidebar .nav-link:hover {
+  color: #0ea5e9;
+}
+
+/* Desktop top bar (header, spans full width above the sidebar) is
+   always the brand dark navy too, independent of the light/dark theme
+   toggle — same treatment as .iorio-sidebar, for one consistent
+   always-dark chrome. box-shadow cancels Tabler's default .navbar
+   bottom border (a light-gray inset shadow meant to separate the
+   header from a light page background below it) — here the sidebar
+   sits directly below in the same dark navy, so that border rendered
+   as a stray light line at the seam between them. */
+.iorio-topbar {
+  background-color: #0f141d;
+  box-shadow: none;
+}
+
+/* Every page renders <PageHeader> as the first child inside .page-body
+   (not as Tabler's intended sibling .page-header region outside
+   .page-body), so Tabler's own spacing rules double up in the wrong
+   place: .page-body's margin-top AND .page-header's margin-top both
+   apply above the title (excess space above "Dashboard"), while
+   .page-header has no margin-bottom at all, since Tabler expects the
+   gap below it to come from the *next* region's own top padding, which
+   doesn't exist here (content sits flush against the subtitle). */
+.page-body .page-header {
+  margin-top: 0;
+  margin-bottom: var(--tblr-page-padding-y);
+}
+
+/* Standing design rule (2026-08-12): Tabler's default 1.5rem top-of-page
+   gap reads as too much empty space above the title on every screen.
+   Tightened to 1rem globally — this is the standard for all screens,
+   not a one-off Dashboard fix. */
+.page-body {
+  margin-top: 1rem;
+}
+
+/* Icon-only buttons (theme toggle, logout) use the plain, non-variant
+   .btn class, which never defines --tblr-btn-hover-color. Since `color`
+   is inherited, an unresolved var() on an inherited property computes
+   as if `inherit` were used — so on hover these buttons silently pick
+   up their *ancestor's* text color instead of keeping their own. Inside
+   the dark sidebar that ancestor color is near-white, landing on the
+   button's own near-white icon-on-white-square background and making
+   the icon disappear. Fix: pin hover color to the button's own resting
+   color (never changes) and give hover a background shift instead.
+   --tblr-bg-surface-secondary (gray-50) was tried first but is only 6
+   RGB units off white — imperceptible; gray-200/gray-700 is a clearly
+   visible "standard grey" step in both themes. */
+.iorio-icon-btn {
+  --tblr-btn-hover-color: var(--tblr-btn-color);
+  --tblr-btn-hover-bg: var(--tblr-gray-200);
+}
+
+:root[data-bs-theme="dark"] .iorio-icon-btn {
+  --tblr-btn-hover-bg: var(--tblr-gray-700);
+}
+
+/* The brand row (logo) only renders inside .iorio-sidebar on mobile —
+   d-lg-none in the markup hides it at desktop widths, where the logo
+   lives in .iorio-topbar instead (see AppLayout.tsx). The logo is not
+   part of the nav rail or its width calculation at all: the rail's
+   collapsed/expanded widths below are driven purely by the nav icons
+   and labels.
+
+   Unlike the desktop top bar, .iorio-sidebar doubles as the mobile
+   header and has no fixed-height container of its own — every padding
+   source inside it (the aside's own Tabler .navbar padding, PLUS
+   .navbar-brand's own padding-y) just adds up with nothing capping the
+   total, unlike .iorio-topbar on desktop where an explicit height
+   absorbs all of that regardless of what's inside it.
+
+   Rather than override .navbar-brand's padding-top/padding-bottom
+   directly (tried, and lost to something outside this stylesheet in at
+   least one real browser despite this having higher specificity than
+   Tabler's own rule — nothing else in Tabler's CSS sets padding-top on
+   .navbar-brand, so there's no legitimate cascade explanation for that
+   loss), redefine the CSS custom property Tabler's own rule reads its
+   value from (--tblr-navbar-brand-padding-y). There is exactly one
+   declaration anywhere that consumes this variable, so there's no
+   competing rule left to lose to. height (not min-height) is a second,
+   independent guarantee: even if some third factor inflates the
+   content beyond what the padding var predicts, the row still can't
+   render taller than .iorio-topbar's own height. */
+.iorio-sidebar-brand-row {
+  --tblr-navbar-brand-padding-y: 6px;
+  height: var(--iorio-topbar-height);
+}
+
+/* Cancels Tabler's own .navbar padding (0.25rem top/bottom) on the
+   aside itself — that padding sits outside the row above and would
+   otherwise stack on top of its fixed height, growing the header
+   again. Scoped to mobile widths only: on desktop .iorio-sidebar is a
+   different element (the icon rail, not the header), where this
+   padding is harmless vertical breathing room above/below the nav
+   icons and shouldn't be touched. */
+@media (max-width: 991.98px) {
+  .iorio-sidebar {
+    padding-top: 0;
+    padding-bottom: 0;
+  }
+}
+
+/* Desktop sidebar: a pure icon-only nav rail, collapsed by default,
+   expanding on hover to reveal labels. Both widths are measured in JS
+   (AppLayout.tsx) from the actual rendered nav label text — "collapsed"
+   is just wide enough for the icon column, "expanded" is just wide
+   enough for the widest label — so this stays correct if a label ever
+   changes, rather than guessing a fixed px value. The rail is
+   position:fixed already (Tabler's own vertical-navbar behavior), so
+   widening it on hover simply overlays the page content —
+   .page-wrapper/.header's margin-left stays pinned to the collapsed
+   width the whole time, so the page itself never reflows while
+   hovering. */
+@media (min-width: 992px) {
+  /* Top bar spans the full viewport width, above the sidebar rather
+     than beside it — Tabler's own navbar-vertical default (position:
+     fixed, top:0) puts the sidebar behind/beside the header instead;
+     pinning the header to the very top and starting the sidebar below
+     it (via its own top offset, below) is the layout actually wanted
+     here. */
+  .iorio-topbar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: var(--iorio-topbar-height);
+    z-index: 1040;
+  }
+
+  /* Cancels Tabler's own default margin-left on a vertical sidebar's
+     sibling .navbar (15rem — meant for the "header beside sidebar"
+     layout, where the header stays indented past the rail). The header
+     is full-width here instead. Written as the same sibling-combinator
+     shape Tabler uses (.navbar-expand-lg.navbar-vertical ~ .navbar,
+     specificity 3 classes) so a plain `.iorio-topbar { margin-left: 0 }`
+     doesn't silently lose the cascade to it. */
+  .navbar-vertical.navbar-expand-lg.iorio-sidebar ~ .iorio-topbar {
+    margin-left: 0;
+  }
+
+  /* Matches Tabler's own .navbar-vertical.navbar-expand-lg specificity
+     (2 classes) — a bare .iorio-sidebar rule loses to it silently. */
+  .navbar-vertical.navbar-expand-lg.iorio-sidebar {
+    width: var(--iorio-sidebar-collapsed-width, 4.5rem);
+    top: var(--iorio-topbar-height);
+    overflow: hidden;
+    transition: width 150ms ease, transform 0.3s;
+    z-index: 1035;
+  }
+
+  .navbar-vertical.navbar-expand-lg.iorio-sidebar:hover {
+    width: var(--iorio-sidebar-expanded-width, 13rem);
+  }
+
+  .navbar-vertical.navbar-expand-lg.iorio-sidebar ~ .page-wrapper {
+    margin-left: var(--iorio-sidebar-collapsed-width, 4.5rem);
+    margin-top: var(--iorio-topbar-height);
+  }
+
+  /* No max-width step here on purpose: the outer aside's own width
+     transition + overflow:hidden already does the clipping/revealing,
+     sized dynamically to fit — opacity just adds a quick fade on top. */
+  .iorio-sidebar .nav-link-title {
+    white-space: nowrap;
+    opacity: 0;
+    width: 0;
+    overflow: hidden;
+    transition: opacity 100ms ease;
+  }
+
+  .iorio-sidebar:hover .nav-link-title {
+    opacity: 1;
+    width: auto;
+  }
+
+  /* Collapsed rail: the icon is the only content in the row, so the
+     16px left/right nav-link padding centers it on its own. The
+     icon-to-label gap only makes sense once a label exists — reserving
+     it while collapsed (nav-link-title above at width:0) would leave
+     the icon 8px off-center, which is the bug this fixes. */
+  .iorio-sidebar .nav-link-icon {
+    margin-right: 0;
+    transition: margin-right 100ms ease;
+  }
+
+  .iorio-sidebar:hover .nav-link-icon {
+    margin-right: 0.5rem;
+  }
 }

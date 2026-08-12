@@ -1,11 +1,13 @@
 import { useState, type FormEvent } from "react";
 import { Navigate } from "react-router-dom";
 import { useAuth } from "../contexts/AuthContext";
+import { useTheme } from "../contexts/ThemeContext";
 import { ApiError } from "../api/client";
 
 export function LoginPage() {
   const { currentUser, login } = useAuth();
-  const [email, setEmail] = useState("");
+  const { theme } = useTheme();
+  const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -19,7 +21,7 @@ export function LoginPage() {
     setErrorMessage(null);
     setIsSubmitting(true);
     try {
-      await login(email, password);
+      await login(username, password);
     } catch (error) {
       setErrorMessage(error instanceof ApiError ? error.message : "Something went wrong. Please try again.");
     } finally {
@@ -31,23 +33,28 @@ export function LoginPage() {
     <div className="page page-center">
       <div className="container container-tight py-4">
         <div className="text-center mb-4">
-          <h1 className="navbar-brand-text">Iorio Reloaded</h1>
+          <img
+            src={theme === "dark" ? "/brand/iorio-lockup-dark.png" : "/brand/iorio-lockup-light.png"}
+            alt="Iorio Reloaded"
+            className="img-fluid"
+            style={{ maxWidth: "320px" }}
+          />
         </div>
         <div className="card card-md">
           <div className="card-body">
             <h2 className="h2 text-center mb-4">Login to your account</h2>
             <form onSubmit={handleSubmit}>
               <div className="mb-3">
-                <label className="form-label" htmlFor="email">
-                  Email address
+                <label className="form-label" htmlFor="username">
+                  Username
                 </label>
                 <input
-                  id="email"
-                  type="email"
+                  id="username"
+                  type="text"
                   className="form-control"
-                  value={email}
-                  onChange={(event) => setEmail(event.target.value)}
-                  autoComplete="email"
+                  value={username}
+                  onChange={(event) => setUsername(event.target.value)}
+                  autoComplete="username"
                   required
                 />
               </div>

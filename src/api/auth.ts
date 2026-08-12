@@ -2,14 +2,14 @@ import { apiRequest } from "./client";
 
 export interface AuthenticatedUser {
   id: string;
-  email: string;
+  username: string;
   displayName: string;
 }
 
-export function login(email: string, password: string): Promise<AuthenticatedUser> {
+export function login(username: string, password: string): Promise<AuthenticatedUser> {
   return apiRequest<AuthenticatedUser>("/auth/login", {
     method: "POST",
-    body: JSON.stringify({ email, password }),
+    body: JSON.stringify({ username, password }),
   });
 }
 
