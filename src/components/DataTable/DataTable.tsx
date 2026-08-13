@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import { useColumnVisibility } from "./useColumnVisibility";
 import { ColumnVisibilityPopover } from "./ColumnVisibilityPopover";
+import { Spinner } from "../Spinner";
 
 export interface DataTableColumn<TRow> {
   key: string;
@@ -17,9 +18,18 @@ interface DataTableProps<TRow> {
   rows: TRow[];
   rowKey: (row: TRow) => string;
   emptyMessage?: string;
+  /** Data is being fetched — shows the standardized spinner instead of emptyMessage or stale rows. */
+  loading?: boolean;
 }
 
-export function DataTable<TRow>({ tableId, columns, rows, rowKey, emptyMessage = "No data" }: DataTableProps<TRow>) {
+export function DataTable<TRow>({
+  tableId,
+  columns,
+  rows,
+  rowKey,
+  emptyMessage = "No data",
+  loading = false,
+}: DataTableProps<TRow>) {
   const { isColumnVisible, toggleColumn } = useColumnVisibility(
     tableId,
     columns.map((column) => column.key),
@@ -43,7 +53,13 @@ export function DataTable<TRow>({ tableId, columns, rows, rowKey, emptyMessage =
             </tr>
           </thead>
           <tbody>
-            {rows.length === 0 ? (
+            {loading ? (
+              <tr>
+                <td colSpan={visibleColumns.length} className="text-center py-4">
+                  <Spinner size="sm" label="Loading" />
+                </td>
+              </tr>
+            ) : rows.length === 0 ? (
               <tr>
                 <td colSpan={visibleColumns.length} className="text-center text-muted py-4">
                   {emptyMessage}

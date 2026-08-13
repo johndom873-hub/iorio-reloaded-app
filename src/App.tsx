@@ -7,7 +7,7 @@ import { LoginPage } from "./pages/LoginPage";
 import { DashboardPage } from "./pages/DashboardPage";
 import { PositionsPage } from "./pages/PositionsPage";
 import { TradeAlertsPage } from "./pages/TradeAlertsPage";
-import { ScreenerShortlistPage } from "./pages/ScreenerShortlistPage";
+import { ScreenerPage } from "./pages/ScreenerPage";
 import { TradeBlotterPage } from "./pages/TradeBlotterPage";
 import { RiskLimitsPage } from "./pages/RiskLimitsPage";
 import { SystemHealthPage } from "./pages/SystemHealthPage";
@@ -24,7 +24,7 @@ function App() {
                 <Route path="/" element={<DashboardPage />} />
                 <Route path="/positions" element={<PositionsPage />} />
                 <Route path="/trade-alerts" element={<TradeAlertsPage />} />
-                <Route path="/screener-shortlist" element={<ScreenerShortlistPage />} />
+                <Route path="/screener" element={<ScreenerPage />} />
                 <Route path="/trade-blotter" element={<TradeBlotterPage />} />
                 <Route path="/risk-limits" element={<RiskLimitsPage />} />
                 <Route path="/system-health" element={<SystemHealthPage />} />

@@ -278,3 +278,34 @@
     margin-right: 0.5rem;
   }
 }
+
+/* Global UI/UX standard: all badges use 0.72rem regardless of context. */
+.badge {
+  font-size: 0.72rem;
+}
+
+/* Tabler's default success/warning are too light for white text (computed
+   WCAG contrast: success #2fb344 = 2.74:1, warning #f59f00 = 2.13:1, both
+   fail the 4.5:1 minimum for small text). Danger #d63939 already passes
+   (4.66:1) and is left as-is. These darker same-hue shades pass comfortably
+   (green 5.40:1, amber 5.87:1) while still reading clearly as green/amber.
+   Covers both the solid and -lt (light tint) variants, since -lt badges
+   with dark text have the opposite problem in dark mode: illegibly low
+   contrast against the dark background. */
+.badge.bg-success,
+.badge.bg-success-lt {
+  background-color: #1e7a33;
+  color: #fff;
+}
+
+.badge.bg-danger,
+.badge.bg-danger-lt {
+  background-color: var(--tblr-danger);
+  color: #fff;
+}
+
+.badge.bg-warning,
+.badge.bg-warning-lt {
+  background-color: #8c5a00;
+  color: #fff;
+}

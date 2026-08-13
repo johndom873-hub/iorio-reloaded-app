@@ -19,7 +19,7 @@ const navigationItems = [
   { to: "/", label: "Dashboard", icon: IconLayoutDashboard, end: true },
   { to: "/positions", label: "Positions", icon: IconChartCandle },
   { to: "/trade-alerts", label: "Trade Alerts", icon: IconClipboardList },
-  { to: "/screener-shortlist", label: "Screener & Shortlist", icon: IconSearch },
+  { to: "/screener", label: "Screener", icon: IconSearch },
   { to: "/trade-blotter", label: "Trade Blotter", icon: IconReceipt2 },
   { to: "/risk-limits", label: "Risk & Limits", icon: IconShieldCheck },
   { to: "/system-health", label: "System Health", icon: IconHeartRateMonitor },

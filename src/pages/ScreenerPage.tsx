@@ -1,0 +1,235 @@
+import { useCallback, useEffect, useRef, useState } from "react";
+import { PageHeader } from "../components/layout/PageHeader";
+import { DataTable, type DataTableColumn } from "../components/DataTable/DataTable";
+import { Spinner } from "../components/Spinner";
+import { ApiError } from "../api/client";
+import {
+  addToScreener,
+  fetchScreener,
+  removeFromScreener,
+  searchTickers,
+  type ScreenerRow,
+  type StrategyKey,
+  type TickerSearchResult,
+} from "../api/screener";
+import { formatDate, formatNumber, formatPercentage } from "../lib/formatters";
+
+const searchDebounceMs = 400;
+
+const strategyTabs: { key: StrategyKey; label: string }[] = [
+  { key: "covered_call", label: "Covered Calls" },
+  { key: "cash_secured_put", label: "Cash-Secured Puts" },
+];
+
+export function ScreenerPage() {
+  const [strategy, setStrategy] = useState<StrategyKey>("covered_call");
+  const [rows, setRows] = useState<ScreenerRow[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [newSymbol, setNewSymbol] = useState("");
+  const [pendingSymbol, setPendingSymbol] = useState<string | null>(null);
+  const [removingId, setRemovingId] = useState<string | null>(null);
+  const [searchResults, setSearchResults] = useState<TickerSearchResult[]>([]);
+  const [isSearching, setIsSearching] = useState(false);
+  const [showDropdown, setShowDropdown] = useState(false);
+  const searchDebounceRef = useRef<number | null>(null);
+
+  const loadRows = useCallback(async () => {
+    try {
+      setError(null);
+      const result = await fetchScreener(strategy);
+      setRows(result);
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Failed to load the screener.");
+    }
+  }, [strategy]);
+
+  useEffect(() => {
+    setLoading(true);
+    loadRows().finally(() => setLoading(false));
+  }, [loadRows]);
+
+  // Live IBKR search-as-you-type, debounced. Matches symbol or company name,
+  // US-listed optionable stocks only (filtered server-side).
+  useEffect(() => {
+    if (searchDebounceRef.current !== null) window.clearTimeout(searchDebounceRef.current);
+
+    const trimmed = newSymbol.trim();
+    if (!trimmed) {
+      setSearchResults([]);
+      setIsSearching(false);
+      return;
+    }
+
+    setIsSearching(true);
+    searchDebounceRef.current = window.setTimeout(async () => {
+      try {
+        const results = await searchTickers(trimmed);
+        setSearchResults(results);
+      } catch {
+        setSearchResults([]);
+      } finally {
+        setIsSearching(false);
+      }
+    }, searchDebounceMs);
+
+    return () => {
+      if (searchDebounceRef.current !== null) window.clearTimeout(searchDebounceRef.current);
+    };
+  }, [newSymbol]);
+
+  async function handleAdd(symbol: string) {
+    setShowDropdown(false);
+    setPendingSymbol(symbol);
+    try {
+      setError(null);
+      await addToScreener(symbol, strategy);
+      await loadRows();
+      setNewSymbol("");
+      setSearchResults([]);
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Failed to add ticker.");
+    } finally {
+      setPendingSymbol(null);
+    }
+  }
+
+  async function handleRemove(entryId: string) {
+    setRemovingId(entryId);
+    try {
+      setError(null);
+      await removeFromScreener(entryId);
+      await loadRows();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Failed to remove ticker.");
+    } finally {
+      setRemovingId(null);
+    }
+  }
+
+  const columns: DataTableColumn<ScreenerRow>[] = [
+    { key: "symbol", header: "Symbol", render: (row) => <strong>{row.symbol}</strong> },
+    { key: "companyName", header: "Company", render: (row) => row.companyName ?? "—" },
+    { key: "sector", header: "Sector", render: (row) => row.sector ?? "—" },
+    {
+      key: "impliedVolatility",
+      header: "Implied Vol",
+      align: "right",
+      render: (row) => formatPercentage(row.impliedVolatility === null ? null : Number(row.impliedVolatility)),
+    },
+    {
+      key: "avgOptionVolume",
+      header: "Avg Option Volume",
+      align: "right",
+      render: (row) => formatNumber(row.avgOptionVolume),
+    },
+    { key: "snapshotDate", header: "Last Refreshed", render: (row) => formatDate(row.snapshotDate) },
+    { key: "notes", header: "Notes", render: (row) => row.notes ?? "—" },
+    {
+      key: "actions",
+      header: "",
+      align: "right",
+      render: (row) => (
+        <button
+          type="button"
+          className="btn btn-sm btn-outline-danger d-inline-flex align-items-center gap-1"
+          disabled={removingId === row.id}
+          onClick={() => handleRemove(row.id)}
+        >
+          {removingId === row.id && <Spinner size="sm" />}
+          Remove
+        </button>
+      ),
+    },
+  ];
+
+  return (
+    <>
+      <PageHeader title="Screener" subtitle="Monitor tickers for trading opportunities" />
+
+      {error && <div className="alert alert-danger">{error}</div>}
+
+      <ul className="nav nav-tabs mb-3">
+        {strategyTabs.map((tabOption) => (
+          <li className="nav-item" key={tabOption.key}>
+            <button
+              type="button"
+              className={`nav-link ${strategy === tabOption.key ? "active" : ""}`}
+              onClick={() => setStrategy(tabOption.key)}
+            >
+              {tabOption.label}
+            </button>
+          </li>
+        ))}
+      </ul>
+
+      <div className="card mb-3">
+        <div className="card-body d-flex flex-column flex-sm-row gap-2">
+          <div className="position-relative flex-fill">
+            <input
+              type="text"
+              className="form-control"
+              placeholder="Search by ticker or company name (e.g. AAPL, Apple)"
+              value={newSymbol}
+              onChange={(event) => setNewSymbol(event.target.value)}
+              onFocus={() => setShowDropdown(true)}
+              onBlur={() => window.setTimeout(() => setShowDropdown(false), 150)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter" && newSymbol.trim()) handleAdd(newSymbol.trim());
+                if (event.key === "Escape") setShowDropdown(false);
+              }}
+            />
+            {showDropdown && newSymbol.trim() && (
+              <div
+                className="card position-absolute w-100 mt-1 shadow-sm"
+                style={{ zIndex: 20, maxHeight: "16rem", overflowY: "auto" }}
+              >
+                {isSearching ? (
+                  <div className="p-3 text-center">
+                    <Spinner size="sm" label="Searching" />
+                  </div>
+                ) : searchResults.length === 0 ? (
+                  <div className="p-3 text-muted small">No optionable US tickers match "{newSymbol.trim()}".</div>
+                ) : (
+                  <ul className="list-group list-group-flush">
+                    {searchResults.map((result) => (
+                      <li key={result.symbol} className="list-group-item p-0">
+                        <button
+                          type="button"
+                          className="btn btn-link text-decoration-none text-body d-flex justify-content-between align-items-center w-100 px-3 py-2"
+                          onMouseDown={(event) => event.preventDefault()}
+                          onClick={() => handleAdd(result.symbol)}
+                        >
+                          <strong>{result.symbol}</strong>
+                          <span className="text-muted small text-truncate ms-2">{result.companyName ?? "—"}</span>
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            )}
+          </div>
+          <button
+            type="button"
+            className="btn btn-primary text-nowrap d-inline-flex align-items-center justify-content-center gap-1"
+            disabled={pendingSymbol !== null || !newSymbol.trim()}
+            onClick={() => handleAdd(newSymbol.trim())}
+          >
+            {pendingSymbol !== null && <Spinner size="sm" />}
+            + Add Ticker
+          </button>
+        </div>
+      </div>
+
+      <DataTable
+        tableId="screener"
+        columns={columns}
+        rows={rows}
+        rowKey={(row) => row.id}
+        loading={loading}
+        emptyMessage="No tickers being monitored for this strategy yet."
+      />
+    </>
+  );
+}

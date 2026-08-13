@@ -1,5 +1,6 @@
 import { Navigate, Outlet } from "react-router-dom";
 import { useAuth } from "../../contexts/AuthContext";
+import { Spinner } from "../Spinner";
 
 export function ProtectedRoute() {
   const { currentUser, isCheckingSession } = useAuth();
@@ -7,7 +8,7 @@ export function ProtectedRoute() {
   if (isCheckingSession) {
     return (
       <div className="page page-center">
-        <div className="spinner-border text-primary" role="status" />
+        <Spinner label="Loading" className="text-primary" />
       </div>
     );
   }

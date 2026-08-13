@@ -34,6 +34,13 @@ export function formatDateTime(dateInput: string | Date | null | undefined): str
   }).format(date);
 }
 
+export function formatNumber(value: number | string | null | undefined, maximumFractionDigits = 0): string {
+  if (value === null || value === undefined) return "—";
+  const numericValue = typeof value === "string" ? Number(value) : value;
+  if (Number.isNaN(numericValue)) return "—";
+  return new Intl.NumberFormat("en-US", { maximumFractionDigits }).format(numericValue);
+}
+
 export function formatSignedPnl(amountInDollars: number | null | undefined): string {
   if (amountInDollars === null || amountInDollars === undefined) return "—";
   const formatted = formatCurrency(Math.abs(amountInDollars));
