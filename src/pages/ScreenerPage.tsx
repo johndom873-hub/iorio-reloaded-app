@@ -8,6 +8,7 @@ import {
   fetchScreener,
   removeFromScreener,
   searchTickers,
+  updateScreenerNotes,
   type ScreenerRow,
   type StrategyKey,
   type TickerSearchResult,
@@ -20,6 +21,77 @@ const strategyTabs: { key: StrategyKey; label: string }[] = [
   { key: "covered_call", label: "Covered Calls" },
   { key: "cash_secured_put", label: "Cash-Secured Puts" },
 ];
+
+interface NotesCellProps {
+  row: ScreenerRow;
+  onSave: (entryId: string, notes: string) => Promise<void>;
+}
+
+// Click-to-edit: click the notes text to turn it into an input, blur/Enter
+// saves, Escape cancels. Reverts the draft if the save request fails.
+function NotesCell({ row, onSave }: NotesCellProps) {
+  const [isEditing, setIsEditing] = useState(false);
+  const [draft, setDraft] = useState(row.notes ?? "");
+  const [isSaving, setIsSaving] = useState(false);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (!isEditing) setDraft(row.notes ?? "");
+  }, [row.notes, isEditing]);
+
+  useEffect(() => {
+    if (isEditing) inputRef.current?.focus();
+  }, [isEditing]);
+
+  async function commit() {
+    const trimmed = draft.trim();
+    setIsEditing(false);
+    if (trimmed === (row.notes ?? "").trim()) return;
+
+    setIsSaving(true);
+    try {
+      await onSave(row.id, trimmed);
+    } catch {
+      setDraft(row.notes ?? "");
+    } finally {
+      setIsSaving(false);
+    }
+  }
+
+  if (isSaving) {
+    return <Spinner size="sm" label="Saving" />;
+  }
+
+  if (isEditing) {
+    return (
+      <input
+        ref={inputRef}
+        type="text"
+        className="form-control form-control-sm"
+        value={draft}
+        onChange={(event) => setDraft(event.target.value)}
+        onBlur={commit}
+        onKeyDown={(event) => {
+          if (event.key === "Enter") commit();
+          if (event.key === "Escape") {
+            setDraft(row.notes ?? "");
+            setIsEditing(false);
+          }
+        }}
+      />
+    );
+  }
+
+  return (
+    <button
+      type="button"
+      className="btn btn-link text-body text-decoration-none d-block w-100 text-start px-2 py-2"
+      onClick={() => setIsEditing(true)}
+    >
+      {row.notes ?? "—"}
+    </button>
+  );
+}
 
 export function ScreenerPage() {
   const [strategy, setStrategy] = useState<StrategyKey>("covered_call");
@@ -94,6 +166,17 @@ export function ScreenerPage() {
     }
   }
 
+  async function handleUpdateNotes(entryId: string, notes: string) {
+    try {
+      setError(null);
+      const result = await updateScreenerNotes(entryId, notes);
+      setRows((prev) => prev.map((row) => (row.id === entryId ? { ...row, notes: result.notes } : row)));
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Failed to update notes.");
+      throw err;
+    }
+  }
+
   async function handleRemove(entryId: string) {
     setRemovingId(entryId);
     try {
@@ -124,7 +207,7 @@ export function ScreenerPage() {
       render: (row) => formatNumber(row.avgOptionVolume),
     },
     { key: "snapshotDate", header: "Last Refreshed", render: (row) => formatDate(row.snapshotDate) },
-    { key: "notes", header: "Notes", render: (row) => row.notes ?? "—" },
+    { key: "notes", header: "Notes", render: (row) => <NotesCell row={row} onSave={handleUpdateNotes} /> },
     {
       key: "actions",
       header: "",

@@ -32,6 +32,13 @@ export function removeFromScreener(entryId: string): Promise<void> {
   return apiRequest<void>(`/screener/${entryId}`, { method: "DELETE" });
 }
 
+export function updateScreenerNotes(entryId: string, notes: string): Promise<{ notes: string | null }> {
+  return apiRequest<{ notes: string | null }>(`/screener/${entryId}`, {
+    method: "PATCH",
+    body: JSON.stringify({ notes: notes.trim() || null }),
+  });
+}
+
 export interface TickerSearchResult {
   symbol: string;
   companyName: string | null;
