@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { PageHeader } from "../components/layout/PageHeader";
 import { DataTable, type DataTableColumn } from "../components/DataTable/DataTable";
 import { Spinner } from "../components/Spinner";
+import { TickerDetailModal } from "../components/TickerDetailModal";
 import { ApiError } from "../api/client";
 import {
   addToScreener,
@@ -104,6 +105,7 @@ export function ScreenerPage() {
   const [searchResults, setSearchResults] = useState<TickerSearchResult[]>([]);
   const [isSearching, setIsSearching] = useState(false);
   const [showDropdown, setShowDropdown] = useState(false);
+  const [detailSymbol, setDetailSymbol] = useState<string | null>(null);
   const searchDebounceRef = useRef<number | null>(null);
 
   const loadRows = useCallback(async () => {
@@ -191,7 +193,19 @@ export function ScreenerPage() {
   }
 
   const columns: DataTableColumn<ScreenerRow>[] = [
-    { key: "symbol", header: "Symbol", render: (row) => <strong>{row.symbol}</strong> },
+    {
+      key: "symbol",
+      header: "Symbol",
+      render: (row) => (
+        <button
+          type="button"
+          className="btn btn-link p-0 text-decoration-none fw-bold"
+          onClick={() => setDetailSymbol(row.symbol)}
+        >
+          {row.symbol}
+        </button>
+      ),
+    },
     { key: "companyName", header: "Company", render: (row) => row.companyName ?? "—" },
     { key: "sector", header: "Sector", render: (row) => row.sector ?? "—" },
     {
@@ -313,6 +327,8 @@ export function ScreenerPage() {
         loading={loading}
         emptyMessage="No tickers being monitored for this strategy yet."
       />
+
+      {detailSymbol && <TickerDetailModal symbol={detailSymbol} onClose={() => setDetailSymbol(null)} />}
     </>
   );
 }
