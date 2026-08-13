@@ -7,7 +7,7 @@ export function ProtectedRoute() {
 
   if (isCheckingSession) {
     return (
-      <div className="page page-center">
+      <div className="d-flex align-items-center justify-content-center" style={{ minHeight: "100vh" }}>
         <Spinner label="Loading" className="text-primary" />
       </div>
     );
