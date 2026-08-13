@@ -13,18 +13,19 @@ import {
   type UTCTimestamp,
 } from "lightweight-charts";
 import { Spinner } from "../Spinner";
+import { useTheme } from "../../contexts/ThemeContext";
 import { ApiError } from "../../api/client";
 import { fetchTickerChart, type ChartRange, type PriceBar } from "../../api/tickerDetail";
 
-// Ported from menaris-admin-app's LwChart.js — same visual polish (OHLC/volume
-// hover header, custom calendar-boundary grid lines, dashed last-price line)
-// but stripped of Saxo-specific plumbing (auth flow, instrument mapping) and
-// rewired to our own IBKR-backed /tickers/:symbol/chart endpoint. Ranges are
-// daily bars only (no 1D/5D intraday) — this platform is EOD/daily-check-in
-// focused, not an intraday trading tool.
+// Ported from menaris-admin-app's LwChart.js — same range set, bar
+// granularity, tick formatting, and hover header, stripped of Saxo-specific
+// plumbing (auth flow, instrument mapping) and rewired to our own
+// IBKR-backed /tickers/:symbol/chart endpoint (see fetchTickerOverview.ts
+// for the per-range bar-size mapping, matched to menaris's RANGE_CONFIG).
 
-const ranges: ChartRange[] = ["1M", "3M", "6M", "1Y", "All"];
-const chartHeight = 360;
+const ranges: ChartRange[] = ["1D", "5D", "1M", "3M", "6M", "1Y", "5Y", "All"];
+const dailyRanges = new Set<ChartRange>(["1Y", "5Y", "All"]);
+const chartHeight = 460;
 
 function fmt(v: number | null | undefined, decimals = 2): string {
   if (v == null) return "—";
@@ -39,13 +40,21 @@ function fmtVol(v: number | null | undefined): string {
   return String(v);
 }
 
-function toSec(dateStr: string): UTCTimestamp {
-  return (new Date(`${dateStr}T00:00:00Z`).getTime() / 1000) as UTCTimestamp;
-}
-
 function fmtLocal(utcSec: number, type: TickMarkType): string {
   const d = new Date(utcSec * 1000);
   switch (type) {
+    case TickMarkType.Time: {
+      d.setUTCMinutes(Math.floor(d.getUTCMinutes() / 5) * 5, 0, 0);
+      return d.toLocaleTimeString("en", { hour: "2-digit", minute: "2-digit", hour12: false, timeZone: "UTC" });
+    }
+    case TickMarkType.TimeWithSeconds:
+      return d.toLocaleTimeString("en", {
+        hour: "2-digit",
+        minute: "2-digit",
+        second: "2-digit",
+        hour12: false,
+        timeZone: "UTC",
+      });
     case TickMarkType.DayOfMonth:
       return String(d.getUTCDate());
     case TickMarkType.Month:
@@ -57,8 +66,40 @@ function fmtLocal(utcSec: number, type: TickMarkType): string {
   }
 }
 
-function tickMarkFormatter(time: Time, type: TickMarkType): string {
-  return fmtLocal(time as number, type);
+function makeTickMarkFormatter(range: ChartRange): (time: Time, type: TickMarkType) => string {
+  if (range === "5D") {
+    return (time, type) =>
+      type === TickMarkType.Time || type === TickMarkType.TimeWithSeconds ? "" : fmtLocal(time as number, type);
+  }
+  if (range === "3M" || range === "6M" || dailyRanges.has(range)) {
+    return (time, type) =>
+      type === TickMarkType.DayOfMonth || type === TickMarkType.Time || type === TickMarkType.TimeWithSeconds
+        ? ""
+        : fmtLocal(time as number, type);
+  }
+  return (time, type) => fmtLocal(time as number, type);
+}
+
+function tickCharLen(range: ChartRange): number {
+  if (range === "5D") return 12;
+  if (range === "3M") return 15;
+  if (range === "6M") return 10;
+  if (dailyRanges.has(range)) return 8;
+  return 5;
+}
+
+function makeTimeFormatter(range: ChartRange): (utcSec: number) => string {
+  return (utcSec) => {
+    const d = new Date(utcSec * 1000);
+    const day = d.getUTCDate();
+    const mon = d.toLocaleString("en", { month: "short", timeZone: "UTC" });
+    const yr = String(d.getUTCFullYear()).slice(2);
+    const datePart = `${day} ${mon} '${yr}`;
+    if (dailyRanges.has(range)) return datePart;
+    const hh = String(d.getUTCHours()).padStart(2, "0");
+    const mm = String(d.getUTCMinutes()).padStart(2, "0");
+    return `${datePart} ${hh}:${mm}`;
+  };
 }
 
 // LW Charts v5 draws a vertical grid line at every tick-mark position
@@ -69,7 +110,19 @@ function getGridBoundaries(fromSec: number, toSec: number, range: ChartRange): n
   const fromDate = new Date(fromSec * 1000);
   const toDate = new Date(toSec * 1000);
 
-  if (range === "1M") {
+  if (range === "1D") {
+    const d = new Date(Date.UTC(fromDate.getUTCFullYear(), fromDate.getUTCMonth(), fromDate.getUTCDate(), fromDate.getUTCHours()));
+    while (d.getTime() / 1000 <= toDate.getTime() / 1000) {
+      boundaries.push(d.getTime() / 1000);
+      d.setUTCHours(d.getUTCHours() + 1);
+    }
+  } else if (range === "5D") {
+    const d = new Date(Date.UTC(fromDate.getUTCFullYear(), fromDate.getUTCMonth(), fromDate.getUTCDate()));
+    while (d.getTime() / 1000 <= toDate.getTime() / 1000) {
+      boundaries.push(d.getTime() / 1000);
+      d.setUTCDate(d.getUTCDate() + 1);
+    }
+  } else if (range === "1M") {
     const d = new Date(Date.UTC(fromDate.getUTCFullYear(), fromDate.getUTCMonth(), fromDate.getUTCDate()));
     const day = d.getUTCDay();
     d.setUTCDate(d.getUTCDate() - (day === 0 ? 6 : day - 1));
@@ -95,26 +148,31 @@ function getGridBoundaries(fromSec: number, toSec: number, range: ChartRange): n
 
 class GridLineRenderer {
   private lines: number[] = [];
+  private color: string;
+  constructor(color: string) {
+    this.color = color;
+  }
   setLines(lines: number[]) {
     this.lines = lines;
   }
-  draw(target: Parameters<NonNullable<IPanePrimitive["paneViews"]>>[0] extends never ? never : any) {
+  setColor(color: string) {
+    this.color = color;
+  }
+  draw(target: any) {
     if (!this.lines.length) return;
-    target.useBitmapCoordinateSpace(
-      ({ context: ctx, bitmapSize, horizontalPixelRatio }: any) => {
-        ctx.save();
-        ctx.strokeStyle = "rgba(150,150,150,0.25)";
-        ctx.lineWidth = Math.max(1, Math.floor(horizontalPixelRatio));
-        ctx.beginPath();
-        for (const x of this.lines) {
-          const bx = Math.round(x * horizontalPixelRatio);
-          ctx.moveTo(bx, 0);
-          ctx.lineTo(bx, bitmapSize.height);
-        }
-        ctx.stroke();
-        ctx.restore();
-      },
-    );
+    target.useBitmapCoordinateSpace(({ context: ctx, bitmapSize, horizontalPixelRatio }: any) => {
+      ctx.save();
+      ctx.strokeStyle = this.color;
+      ctx.lineWidth = Math.max(1, Math.floor(horizontalPixelRatio));
+      ctx.beginPath();
+      for (const x of this.lines) {
+        const bx = Math.round(x * horizontalPixelRatio);
+        ctx.moveTo(bx, 0);
+        ctx.lineTo(bx, bitmapSize.height);
+      }
+      ctx.stroke();
+      ctx.restore();
+    });
   }
 }
 
@@ -122,15 +180,21 @@ class GridLinePrimitive {
   private chart: IChartApi | null = null;
   private requestUpdate: (() => void) | null = null;
   private range: ChartRange;
-  private renderer = new GridLineRenderer();
+  private renderer: GridLineRenderer;
   private onVisibleRangeChange = () => this.requestUpdate?.();
 
-  constructor(initialRange: ChartRange) {
+  constructor(initialRange: ChartRange, color: string) {
     this.range = initialRange;
+    this.renderer = new GridLineRenderer(color);
   }
 
   setRange(range: ChartRange) {
     this.range = range;
+    this.requestUpdate?.();
+  }
+
+  setColor(color: string) {
+    this.renderer.setColor(color);
     this.requestUpdate?.();
   }
 
@@ -186,7 +250,14 @@ interface TickerPriceChartProps {
   symbol: string;
 }
 
+// White in dark mode, near-black in light mode — matches the app's own
+// theme rather than the hardcoded #000000 the original menaris chart used
+// (which only ever ran in a light-themed admin panel).
+const textColorByTheme = { light: "#1d273b", dark: "#f9fafb" } as const;
+const gridColorByTheme = { light: "rgba(0,0,0,0.08)", dark: "rgba(255,255,255,0.12)" } as const;
+
 export function TickerPriceChart({ symbol }: TickerPriceChartProps) {
+  const { theme } = useTheme();
   const containerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
   const candleRef = useRef<ISeriesApi<"Candlestick"> | null>(null);
@@ -223,17 +294,33 @@ export function TickerPriceChart({ symbol }: TickerPriceChartProps) {
   useEffect(() => {
     if (!containerRef.current) return;
 
+    const isMobile = () => (containerRef.current?.clientWidth ?? 0) < 768;
+    const touchOpts = (mobile: boolean) => ({
+      handleScale: { mouseWheel: false, pinchZoom: !mobile },
+      handleScroll: { mouseWheel: false, pressedMouseMove: false, horzTouchDrag: !mobile, vertTouchDrag: !mobile },
+    });
+
     const chart = createChart(containerRef.current, {
       width: containerRef.current.clientWidth,
       height: chartHeight,
       autoSize: false,
-      layout: { fontFamily: "inherit", background: { color: "transparent" } },
-      rightPriceScale: { borderVisible: false, scaleMargins: { top: 0.05, bottom: 0.05 } },
+      layout: {
+        fontFamily: "inherit",
+        background: { color: "transparent" },
+        textColor: textColorByTheme[theme],
+        attributionLogo: false,
+      },
+      rightPriceScale: { borderVisible: false, scaleMargins: { top: 0.02, bottom: 0.05 } },
       leftPriceScale: { visible: false },
+      localization: { timeFormatter: makeTimeFormatter(range) },
       timeScale: {
         borderVisible: false,
-        tickMarkFormatter,
+        timeVisible: true,
+        secondsVisible: false,
+        tickMarkFormatter: makeTickMarkFormatter(range),
+        tickMarkMaxCharacterLength: tickCharLen(range),
       },
+      ...touchOpts(isMobile()),
       crosshair: {
         mode: CrosshairMode.Normal,
         vertLine: { color: "rgba(150,150,150,0.5)", style: LineStyle.Dashed, width: 1 },
@@ -241,7 +328,7 @@ export function TickerPriceChart({ symbol }: TickerPriceChartProps) {
       },
       grid: {
         vertLines: { visible: false },
-        horzLines: { color: "rgba(150,150,150,0.15)" },
+        horzLines: { color: gridColorByTheme[theme] },
       },
     });
 
@@ -275,11 +362,11 @@ export function TickerPriceChart({ symbol }: TickerPriceChartProps) {
 
     const resizeObserver = new ResizeObserver((entries) => {
       const width = entries[0]?.contentRect.width;
-      if (width) chart.applyOptions({ width });
+      if (width) chart.applyOptions({ width, ...touchOpts(width < 768) });
     });
     resizeObserver.observe(containerRef.current);
 
-    const gridPrimitive = new GridLinePrimitive(range);
+    const gridPrimitive = new GridLinePrimitive(range, gridColorByTheme[theme]);
     chart.panes()[0].attachPrimitive(gridPrimitive as unknown as IPanePrimitive);
 
     chartRef.current = chart;
@@ -295,22 +382,36 @@ export function TickerPriceChart({ symbol }: TickerPriceChartProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Range changed: retarget tick formatting, char length, time formatter, and grid boundaries.
   useEffect(() => {
+    chartRef.current?.applyOptions({
+      localization: { timeFormatter: makeTimeFormatter(range) },
+      timeScale: { tickMarkFormatter: makeTickMarkFormatter(range), tickMarkMaxCharacterLength: tickCharLen(range) },
+    });
     gridPrimitiveRef.current?.setRange(range);
   }, [range]);
+
+  // Theme changed: retint text/grid without rebuilding the chart instance.
+  useEffect(() => {
+    chartRef.current?.applyOptions({
+      layout: { textColor: textColorByTheme[theme] },
+      grid: { horzLines: { color: gridColorByTheme[theme] } },
+    });
+    gridPrimitiveRef.current?.setColor(gridColorByTheme[theme]);
+  }, [theme]);
 
   useEffect(() => {
     if (!bars?.length || !candleRef.current || !volumeRef.current) return;
 
     const candleData = bars.map((bar) => ({
-      time: toSec(bar.date),
+      time: bar.time as UTCTimestamp,
       open: bar.open,
       high: bar.high,
       low: bar.low,
       close: bar.close,
     }));
     const volumeData = bars.map((bar) => ({
-      time: toSec(bar.date),
+      time: bar.time as UTCTimestamp,
       value: bar.volume,
       color: bar.close >= bar.open ? "rgba(47,179,68,0.3)" : "rgba(214,57,57,0.3)",
     }));
@@ -355,16 +456,16 @@ export function TickerPriceChart({ symbol }: TickerPriceChartProps) {
           {displayBar ? (
             <>
               <span>
-                <strong>O</strong> <span className="text-dark">{fmt(displayBar.o)}</span>
+                <strong>O</strong> <span >{fmt(displayBar.o)}</span>
               </span>
               <span>
-                <strong>H</strong> <span className="text-dark">{fmt(displayBar.h)}</span>
+                <strong>H</strong> <span >{fmt(displayBar.h)}</span>
               </span>
               <span>
-                <strong>L</strong> <span className="text-dark">{fmt(displayBar.l)}</span>
+                <strong>L</strong> <span >{fmt(displayBar.l)}</span>
               </span>
               <span>
-                <strong>C</strong> <span className="text-dark">{fmt(displayBar.c)}</span>
+                <strong>C</strong> <span >{fmt(displayBar.c)}</span>
               </span>
               {change != null && (
                 <strong className={change > 0 ? "text-success" : change < 0 ? "text-danger" : "text-muted"}>
@@ -374,20 +475,20 @@ export function TickerPriceChart({ symbol }: TickerPriceChartProps) {
                 </strong>
               )}
               <span>
-                <strong>Vol</strong> <span className="text-dark">{fmtVol(displayBar.v)}</span>
+                <strong>Vol</strong> <span >{fmtVol(displayBar.v)}</span>
               </span>
             </>
           ) : (
             <span className="text-muted">—</span>
           )}
         </div>
-        <div className="d-flex gap-1 flex-shrink-0">
+        <div className="d-flex gap-1 flex-wrap flex-shrink-0">
           {ranges.map((r) => (
             <button
               key={r}
               type="button"
-              className={`btn py-1 px-2 ${range === r ? "btn-primary" : "btn-outline-secondary"}`}
-              style={{ fontSize: "0.72rem", minWidth: 36 }}
+              className={`btn py-1 px-2 ${range === r ? "btn-primary" : "btn-ghost-secondary"}`}
+              style={{ fontSize: "0.72rem", minWidth: 32 }}
               disabled={status === "loading"}
               onClick={() => setRange(r)}
             >
