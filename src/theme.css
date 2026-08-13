@@ -41,7 +41,11 @@
 }
 
 :root[data-bs-theme="dark"] {
-  --tblr-body-bg: #0f141d;
+  /* Deliberately NOT the same #0f141d as .iorio-sidebar/.iorio-topbar —
+     Tabler's own gray-800 token, distinct enough from the navy chrome
+     that the page body reads as a separate region instead of blending
+     into the header/sidebar. */
+  --tblr-body-bg: #1f2937;
   --tblr-body-color: #f9fafb;
   /* More vibrant on dark backgrounds (6.66:1) than the accessible shade
      used in light mode (only 3.11:1 on dark navy) — verified. Button
