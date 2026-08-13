@@ -18,8 +18,10 @@ const app = express();
 
 app.use(express.static(distDirectory));
 
-// SPA fallback — react-router-dom handles routing client-side.
-app.get("*", (_request, response) => {
+// SPA fallback — react-router-dom handles routing client-side. Deliberately
+// path-less middleware, not app.get("*", ...): Express 5's path-to-regexp
+// no longer accepts a bare "*" wildcard and throws at startup.
+app.use((_request, response) => {
   response.sendFile(path.join(distDirectory, "index.html"));
 });
 
