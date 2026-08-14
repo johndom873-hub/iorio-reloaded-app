@@ -1,8 +1,12 @@
 import { useEffect, useMemo, useState } from "react";
 import { Spinner } from "./Spinner";
 import { TickerPriceChart } from "./charts/TickerPriceChart";
-import { ApiError } from "../api/client";
-import { fetchTickerDetail, type OptionQuote, type TickerDetail } from "../api/tickerDetail";
+import {
+  openTickerDetailStream,
+  type OptionQuote,
+  type PriceBar,
+  type TickerOverview,
+} from "../api/tickerDetail";
 import { formatCurrency, formatNumber, formatPercentage } from "../lib/formatters";
 
 interface TickerDetailModalProps {
@@ -66,27 +70,54 @@ function OptionSideCells({ quote }: { quote: OptionQuote | null }) {
 }
 
 export function TickerDetailModal({ symbol, onClose }: TickerDetailModalProps) {
-  const [detail, setDetail] = useState<TickerDetail | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [overview, setOverview] = useState<TickerOverview | null>(null);
+  const [overviewError, setOverviewError] = useState<string | null>(null);
+
+  const [chartBars, setChartBars] = useState<PriceBar[] | null>(null);
+  const [chartError, setChartError] = useState<string | null>(null);
+
+  const [optionChain, setOptionChain] = useState<OptionQuote[] | null>(null);
+  const [optionChainError, setOptionChainError] = useState<string | null>(null);
+
+  // Whole-connection failure (e.g. the IBKR Gateway connection itself never
+  // opened) — distinct from a single section's error, since nothing else
+  // will arrive either in that case.
+  const [streamError, setStreamError] = useState<string | null>(null);
 
   useEffect(() => {
-    let cancelled = false;
-    setLoading(true);
-    setError(null);
-    fetchTickerDetail(symbol)
-      .then((result) => {
-        if (!cancelled) setDetail(result);
-      })
-      .catch((err) => {
-        if (!cancelled) setError(err instanceof ApiError ? err.message : "Failed to load ticker detail.");
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
-    return () => {
-      cancelled = true;
-    };
+    setOverview(null);
+    setOverviewError(null);
+    setChartBars(null);
+    setChartError(null);
+    setOptionChain(null);
+    setOptionChainError(null);
+    setStreamError(null);
+
+    const close = openTickerDetailStream(symbol, (event) => {
+      switch (event.type) {
+        case "overview":
+          setOverview(event.data);
+          break;
+        case "chart":
+          setChartBars(event.data);
+          break;
+        case "optionChain":
+          setOptionChain(event.data);
+          break;
+        case "error":
+          if (event.section === "overview") setOverviewError(event.message);
+          else if (event.section === "chart") setChartError(event.message);
+          else setOptionChainError(event.message);
+          break;
+        case "streamError":
+          setStreamError(event.message);
+          break;
+        case "done":
+          break;
+      }
+    });
+
+    return close;
   }, [symbol]);
 
   // Informational modal, no action required — closable via ESC or backdrop click.
@@ -98,9 +129,9 @@ export function TickerDetailModal({ symbol, onClose }: TickerDetailModalProps) {
     return () => document.removeEventListener("keydown", onKeyDown);
   }, [onClose]);
 
-  const expiryGroups = useMemo(() => groupOptionChain(detail?.optionChain ?? []), [detail]);
+  const expiryGroups = useMemo(() => groupOptionChain(optionChain ?? []), [optionChain]);
 
-  const pricing = detail?.pricing;
+  const pricing = overview?.pricing;
   const change = pricing?.last != null && pricing?.previousClose != null ? pricing.last - pricing.previousClose : null;
   const changePercent = change != null && pricing?.previousClose ? change / pricing.previousClose : null;
 
@@ -119,50 +150,65 @@ export function TickerDetailModal({ symbol, onClose }: TickerDetailModalProps) {
             <div className="modal-header">
               <h5 className="modal-title">
                 {symbol}
-                {detail?.companyName && <span className="text-muted fw-normal"> — {detail.companyName}</span>}
+                {overview?.companyName && <span className="text-muted fw-normal"> — {overview.companyName}</span>}
               </h5>
               <button type="button" className="btn-close" aria-label="Close" onClick={onClose} />
             </div>
             <div className="modal-body">
-              {loading && (
-                <div className="d-flex justify-content-center py-5">
-                  <Spinner label="Loading ticker detail" />
-                </div>
-              )}
-              {error && <div className="alert alert-danger">{error}</div>}
+              {streamError && <div className="alert alert-danger">{streamError}</div>}
 
-              {detail && !loading && (
+              {!streamError && (
                 <>
-                  <div className="d-flex flex-wrap align-items-baseline gap-3 mb-3" style={{ fontVariantNumeric: "tabular-nums" }}>
-                    <span className="h2 mb-0">{formatCurrency(pricing?.last ?? null)}</span>
-                    {change != null && (
-                      <strong className={change >= 0 ? "text-success" : "text-danger"}>
-                        {change >= 0 ? "+" : ""}
-                        {formatCurrency(change)} ({change >= 0 ? "+" : ""}
-                        {formatPercentage(changePercent, 2)})
-                      </strong>
-                    )}
-                    <span className="text-muted small">
-                      Bid {formatCurrency(pricing?.bid ?? null)} &middot; Ask {formatCurrency(pricing?.ask ?? null)}
-                    </span>
-                    <span className="text-muted small">
-                      Day range {formatCurrency(pricing?.low ?? null)} – {formatCurrency(pricing?.high ?? null)}
-                    </span>
-                    <span className="text-muted small">Volume {formatNumber(pricing?.volume ?? null)}</span>
-                    {detail.sector && <span className="badge bg-secondary-lt text-dark">{detail.sector}</span>}
-                  </div>
+                  {overviewError && <div className="alert alert-danger">{overviewError}</div>}
+                  {!overviewError && !overview && (
+                    <div className="d-flex justify-content-center py-3">
+                      <Spinner label="Loading pricing" />
+                    </div>
+                  )}
+                  {overview && (
+                    <div className="d-flex flex-wrap align-items-baseline gap-3 mb-3" style={{ fontVariantNumeric: "tabular-nums" }}>
+                      <span className="h2 mb-0">{formatCurrency(pricing?.last ?? null)}</span>
+                      {change != null && (
+                        <strong className={change >= 0 ? "text-success" : "text-danger"}>
+                          {change >= 0 ? "+" : ""}
+                          {formatCurrency(change)} ({change >= 0 ? "+" : ""}
+                          {formatPercentage(changePercent, 2)})
+                        </strong>
+                      )}
+                      <span className="text-muted small">
+                        Bid {formatCurrency(pricing?.bid ?? null)} &middot; Ask {formatCurrency(pricing?.ask ?? null)}
+                      </span>
+                      <span className="text-muted small">
+                        Day range {formatCurrency(pricing?.low ?? null)} – {formatCurrency(pricing?.high ?? null)}
+                      </span>
+                      <span className="text-muted small">Volume {formatNumber(pricing?.volume ?? null)}</span>
+                      {overview.sector && <span className="badge bg-secondary-lt text-dark">{overview.sector}</span>}
+                    </div>
+                  )}
 
                   <div className="mb-4">
-                    <TickerPriceChart symbol={symbol} />
+                    {chartError && <div className="alert alert-danger">{chartError}</div>}
+                    {!chartError && !chartBars && (
+                      <div className="d-flex justify-content-center py-3">
+                        <Spinner label="Loading chart" />
+                      </div>
+                    )}
+                    {chartBars && <TickerPriceChart symbol={symbol} initialBars={chartBars} />}
                   </div>
 
                   <h4 className="mb-2">Option Chain</h4>
                   <p className="text-muted small mb-3">
-                    Near-the-money strikes for the next {expiryGroups.length || "few"} expiries in the 15-60 day
-                    range typically used for covered calls and cash-secured puts.
+                    Near-the-money strikes for the next few expiries in the 15-60 day range typically used for
+                    covered calls and cash-secured puts.
                   </p>
 
-                  {expiryGroups.length === 0 && <p className="text-muted">No option chain data available.</p>}
+                  {optionChainError && <div className="alert alert-danger">{optionChainError}</div>}
+                  {!optionChainError && !optionChain && (
+                    <div className="d-flex justify-content-center py-3">
+                      <Spinner label="Loading option chain" />
+                    </div>
+                  )}
+                  {optionChain && expiryGroups.length === 0 && <p className="text-muted">No option chain data available.</p>}
 
                   {expiryGroups.map((group) => (
                     <div key={group.expiry} className="mb-4">

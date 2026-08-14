@@ -1,6 +1,6 @@
-import { apiRequest } from "./client";
+import { apiRequest, apiBaseUrl } from "./client";
 
-export type ChartRange = "1M" | "3M" | "6M" | "1Y" | "All";
+export type ChartRange = "1D" | "5D" | "1M" | "3M" | "6M" | "1Y" | "5Y" | "All";
 
 export interface TickerPricing {
   last: number | null;
@@ -27,16 +27,14 @@ export interface OptionQuote {
   theta: number | null;
 }
 
-export interface TickerDetail {
-  symbol: string;
+export interface TickerOverview {
   companyName: string | null;
   sector: string | null;
   pricing: TickerPricing;
-  optionChain: OptionQuote[];
 }
 
 export interface PriceBar {
-  date: string; // YYYY-MM-DD
+  time: number; // Unix epoch seconds
   open: number;
   high: number;
   low: number;
@@ -44,8 +42,53 @@ export interface PriceBar {
   volume: number;
 }
 
-export function fetchTickerDetail(symbol: string): Promise<TickerDetail> {
-  return apiRequest<TickerDetail>(`/tickers/${encodeURIComponent(symbol)}/detail`);
+export type TickerDetailSection = "overview" | "chart" | "optionChain";
+
+// Mirrors the backend's TickerDetailStreamEvent (streamTickerDetail.ts) plus
+// the two stream-lifecycle events the route itself sends (done/streamError).
+export type TickerDetailStreamEvent =
+  | { type: "overview"; data: TickerOverview }
+  | { type: "chart"; data: PriceBar[] }
+  | { type: "optionChain"; data: OptionQuote[] }
+  | { type: "error"; section: TickerDetailSection; message: string }
+  | { type: "streamError"; message: string }
+  | { type: "done" };
+
+/**
+ * Opens the Ticker Detail SSE stream and forwards each parsed event. See
+ * streamTickerDetail.ts on the backend for why this is a stream rather than
+ * one blocking request: pricing/chart/optionChain arrive independently
+ * instead of the modal blocking on the slowest of the three (the option
+ * chain, ~15-25s).
+ *
+ * Closes itself on "done"/"streamError" (terminal events) rather than
+ * relying on EventSource's default auto-reconnect behavior, which would
+ * otherwise silently re-open a fresh, expensive IBKR connection after a
+ * clean server-side close. Returns a cleanup function for the caller to
+ * invoke on unmount/symbol change.
+ */
+export function openTickerDetailStream(symbol: string, onEvent: (event: TickerDetailStreamEvent) => void): () => void {
+  const source = new EventSource(`${apiBaseUrl}/tickers/${encodeURIComponent(symbol)}/detail/stream`, {
+    withCredentials: true,
+  });
+
+  source.onmessage = (message) => {
+    let event: TickerDetailStreamEvent;
+    try {
+      event = JSON.parse(message.data);
+    } catch {
+      return;
+    }
+    onEvent(event);
+    if (event.type === "done" || event.type === "streamError") source.close();
+  };
+
+  source.onerror = () => {
+    onEvent({ type: "streamError", message: "Connection to the server was lost." });
+    source.close();
+  };
+
+  return () => source.close();
 }
 
 export function fetchTickerChart(symbol: string, range: ChartRange): Promise<PriceBar[]> {

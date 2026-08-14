@@ -9,6 +9,7 @@ import {
   type IChartApi,
   type ISeriesApi,
   type IPanePrimitive,
+  type Logical,
   type Time,
   type UTCTimestamp,
 } from "lightweight-charts";
@@ -227,7 +228,7 @@ class GridLinePrimitive {
     for (const t of boundaries) {
       const idx = ts.timeToIndex(t as Time, true);
       if (idx === null) continue;
-      const x = ts.logicalToCoordinate(idx);
+      const x = ts.logicalToCoordinate(idx as unknown as Logical);
       if (x !== null) lines.push(x);
     }
     this.renderer.setLines(lines);
@@ -248,6 +249,11 @@ interface HoveredBar {
 
 interface TickerPriceChartProps {
   symbol: string;
+  // Seeds the default 3M range from the parent's SSE stream (see
+  // TickerDetailModal) so this component's own first fetch — otherwise a
+  // redundant duplicate of data the stream already delivered — is skipped.
+  // Only consulted on mount; switching ranges afterward always fetches.
+  initialBars?: PriceBar[];
 }
 
 // White in dark mode, near-black in light mode — matches the app's own
@@ -256,7 +262,7 @@ interface TickerPriceChartProps {
 const textColorByTheme = { light: "#1d273b", dark: "#f9fafb" } as const;
 const gridColorByTheme = { light: "rgba(0,0,0,0.08)", dark: "rgba(255,255,255,0.12)" } as const;
 
-export function TickerPriceChart({ symbol }: TickerPriceChartProps) {
+export function TickerPriceChart({ symbol, initialBars }: TickerPriceChartProps) {
   const { theme } = useTheme();
   const containerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
@@ -266,9 +272,15 @@ export function TickerPriceChart({ symbol }: TickerPriceChartProps) {
   const gridPrimitiveRef = useRef<GridLinePrimitive | null>(null);
 
   const [range, setRange] = useState<ChartRange>("3M");
-  const [bars, setBars] = useState<PriceBar[] | null>(null);
-  const [status, setStatus] = useState<"loading" | "ok" | "error" | "empty">("loading");
+  const [bars, setBars] = useState<PriceBar[] | null>(initialBars ?? null);
+  const [status, setStatus] = useState<"loading" | "ok" | "error" | "empty">(
+    initialBars ? (initialBars.length ? "ok" : "empty") : "loading",
+  );
   const [hoveredBar, setHoveredBar] = useState<HoveredBar | null>(null);
+
+  // Only the very first range effect run should be skipped when seeded —
+  // every later run (a real range switch) must fetch normally.
+  const skipNextLoadRef = useRef(initialBars != null);
 
   const loadChart = useCallback(async (r: ChartRange) => {
     setStatus("loading");
@@ -287,6 +299,10 @@ export function TickerPriceChart({ symbol }: TickerPriceChartProps) {
   }, [symbol]);
 
   useEffect(() => {
+    if (skipNextLoadRef.current) {
+      skipNextLoadRef.current = false;
+      return;
+    }
     loadChart(range);
   }, [loadChart, range]);
 
