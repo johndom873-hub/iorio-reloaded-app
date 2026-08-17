@@ -129,6 +129,16 @@ export function TickerDetailModal({ symbol, onClose }: TickerDetailModalProps) {
     return () => document.removeEventListener("keydown", onKeyDown);
   }, [onClose]);
 
+  // This modal is rendered manually rather than via Bootstrap's JS Modal
+  // instance, so nothing else locks background scroll — do it ourselves.
+  useEffect(() => {
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = previousOverflow;
+    };
+  }, []);
+
   const expiryGroups = useMemo(() => groupOptionChain(optionChain ?? []), [optionChain]);
 
   const pricing = overview?.pricing;
