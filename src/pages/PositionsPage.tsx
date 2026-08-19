@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { PageHeader } from "../components/layout/PageHeader";
 import { DataTable, type DataTableColumn } from "../components/DataTable/DataTable";
 import { Spinner } from "../components/Spinner";
@@ -71,6 +72,7 @@ function initialFormState(): NewPositionFormState {
 }
 
 export function PositionsPage() {
+  const [searchParams, setSearchParams] = useSearchParams();
   const [strategy, setStrategy] = useState<StrategyKey | "all">("all");
   const [status, setStatus] = useState<PositionStatus>("open");
   const [positions, setPositions] = useState<Position[]>([]);
@@ -102,6 +104,22 @@ export function PositionsPage() {
     setLoading(true);
     loadPositions().finally(() => setLoading(false));
   }, [loadPositions]);
+
+  // Arriving from Screener's "Trade" button (?symbol=X&strategy=Y&new=1) —
+  // pre-fill and open the New Position form, then clear the params so a
+  // page refresh doesn't reopen it.
+  useEffect(() => {
+    if (searchParams.get("new") !== "1") return;
+    const paramSymbol = searchParams.get("symbol");
+    const paramStrategy = searchParams.get("strategy");
+    setForm((prev) => ({
+      ...prev,
+      symbol: paramSymbol ?? prev.symbol,
+      strategyKey: paramStrategy === "cash_secured_put" ? "cash_secured_put" : "covered_call",
+    }));
+    setShowForm(true);
+    setSearchParams({}, { replace: true });
+  }, [searchParams, setSearchParams]);
 
   useEffect(() => {
     const optionLegIds = positions

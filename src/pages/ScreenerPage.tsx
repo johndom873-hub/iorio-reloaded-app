@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { PageHeader } from "../components/layout/PageHeader";
 import { DataTable, type DataTableColumn } from "../components/DataTable/DataTable";
 import { Spinner } from "../components/Spinner";
@@ -95,6 +96,7 @@ function NotesCell({ row, onSave }: NotesCellProps) {
 }
 
 export function ScreenerPage() {
+  const navigate = useNavigate();
   const [strategy, setStrategy] = useState<StrategyKey>("covered_call");
   const [rows, setRows] = useState<ScreenerRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -227,15 +229,24 @@ export function ScreenerPage() {
       header: "",
       align: "right",
       render: (row) => (
-        <button
-          type="button"
-          className="btn btn-sm btn-outline-danger d-inline-flex align-items-center gap-1"
-          disabled={removingId === row.id}
-          onClick={() => handleRemove(row.id)}
-        >
-          {removingId === row.id && <Spinner size="sm" />}
-          Remove
-        </button>
+        <div className="d-inline-flex gap-2">
+          <button
+            type="button"
+            className="btn btn-sm btn-primary"
+            onClick={() => navigate(`/positions?symbol=${row.symbol}&strategy=${strategy}&new=1`)}
+          >
+            Trade
+          </button>
+          <button
+            type="button"
+            className="btn btn-sm btn-outline-danger d-inline-flex align-items-center gap-1"
+            disabled={removingId === row.id}
+            onClick={() => handleRemove(row.id)}
+          >
+            {removingId === row.id && <Spinner size="sm" />}
+            Remove
+          </button>
+        </div>
       ),
     },
   ];
