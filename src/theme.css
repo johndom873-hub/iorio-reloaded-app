@@ -309,3 +309,27 @@
   background-color: #8c5a00;
   color: #fff;
 }
+
+/* Price/change badges (e.g. Trade Blotter P&L) — global UI/UX standard.
+   Reuses the same darkened green already used for bg-success above
+   (5.40:1 contrast, verified). Negative uses a muted red rather than the
+   brighter alert-style bg-danger red, to read as a value rather than an
+   error state; #8c3a3a is dark enough to comfortably pass 4.5:1 with white,
+   same reasoning as the darkened warning amber above. */
+.badge-change-pos {
+  background-color: #1e7a33;
+  color: #fff;
+  font-weight: 700;
+}
+
+.badge-change-neg {
+  background-color: #8c3a3a;
+  color: #fff;
+  font-weight: 700;
+}
+
+.badge-change-flat {
+  background-color: #ced4da;
+  color: #000;
+  font-weight: 700;
+}
