@@ -208,8 +208,8 @@ export function TickerDetailModal({ symbol, onClose }: TickerDetailModalProps) {
 
                   <h4 className="mb-2">Option Chain</h4>
                   <p className="text-muted small mb-3">
-                    Near-the-money strikes for the next few expiries in the 15-60 day range typically used for
-                    covered calls and cash-secured puts.
+                    Near-the-money strikes for the nearest expiries out to 60 days, covering weeklies through the
+                    monthly range typically used for covered calls and cash-secured puts.
                   </p>
 
                   {optionChainError && <div className="alert alert-danger">{optionChainError}</div>}
