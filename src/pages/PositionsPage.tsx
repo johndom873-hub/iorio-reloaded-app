@@ -83,6 +83,7 @@ export function PositionsPage() {
 
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState<NewPositionFormState>(initialFormState());
+  const [sourceAlertId, setSourceAlertId] = useState<string | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [searchResults, setSearchResults] = useState<TickerSearchResult[]>([]);
@@ -105,18 +106,32 @@ export function PositionsPage() {
     loadPositions().finally(() => setLoading(false));
   }, [loadPositions]);
 
-  // Arriving from Screener's "Trade" button (?symbol=X&strategy=Y&new=1) —
-  // pre-fill and open the New Position form, then clear the params so a
-  // page refresh doesn't reopen it.
+  // Arriving from Screener's "Trade" button (?symbol=X&strategy=Y&new=1) or
+  // Trade Alerts' "Trade" button (same, plus &strike=&expiry=&premium=&alertId=)
+  // — pre-fill and open the New Position form, then clear the params so a
+  // page refresh doesn't reopen it. A Trade Alert always suggests a single
+  // short option leg (the strategy's own convention — sell a covered call
+  // or a cash-secured put), so only optionQuantity defaults to 1, matching
+  // the suggestion; the user still fills in stock entry price themselves
+  // for a covered call, same as any other new position, since the alert's
+  // spotPrice was only ever a scan-time estimate, not a real fill.
   useEffect(() => {
     if (searchParams.get("new") !== "1") return;
     const paramSymbol = searchParams.get("symbol");
     const paramStrategy = searchParams.get("strategy");
+    const paramStrike = searchParams.get("strike");
+    const paramExpiry = searchParams.get("expiry");
+    const paramPremium = searchParams.get("premium");
+    const paramAlertId = searchParams.get("alertId");
     setForm((prev) => ({
       ...prev,
       symbol: paramSymbol ?? prev.symbol,
       strategyKey: paramStrategy === "cash_secured_put" ? "cash_secured_put" : "covered_call",
+      optionStrike: paramStrike ?? prev.optionStrike,
+      optionExpiry: paramExpiry ?? prev.optionExpiry,
+      optionPremium: paramPremium ?? prev.optionPremium,
     }));
+    if (paramAlertId) setSourceAlertId(paramAlertId);
     setShowForm(true);
     setSearchParams({}, { replace: true });
   }, [searchParams, setSearchParams]);
@@ -212,9 +227,11 @@ export function PositionsPage() {
         notes: form.notes.trim() || undefined,
         priceTarget: form.priceTarget ? Number(form.priceTarget) : undefined,
         legs,
+        sourceAlertId: sourceAlertId ?? undefined,
       });
       await loadPositions();
       setForm(initialFormState());
+      setSourceAlertId(null);
       setShowForm(false);
     } catch (err) {
       setFormError(err instanceof ApiError ? err.message : "Failed to create position.");
@@ -273,7 +290,14 @@ export function PositionsPage() {
         title="Positions"
         subtitle="Open and closed positions across all strategies"
         actions={
-          <button type="button" className="btn btn-primary" onClick={() => setShowForm((prev) => !prev)}>
+          <button
+            type="button"
+            className="btn btn-primary"
+            onClick={() => {
+              setShowForm((prev) => !prev);
+              setSourceAlertId(null);
+            }}
+          >
             + New Position
           </button>
         }

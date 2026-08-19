@@ -71,6 +71,8 @@ export interface CreatePositionInput {
   notes?: string;
   priceTarget?: number;
   legs: LegInput[];
+  /** Links this position back to the Trade Alert it was created from, if any — see tradeAlerts.ts. */
+  sourceAlertId?: string;
 }
 
 export function createPosition(input: CreatePositionInput): Promise<Position> {
