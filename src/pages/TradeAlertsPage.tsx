@@ -1,10 +1,10 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { PageHeader } from "../components/layout/PageHeader";
 import { Spinner } from "../components/Spinner";
 import { TickerDetailModal } from "../components/TickerDetailModal";
 import { ApiError } from "../api/client";
-import { fetchTradeAlerts, rejectTradeAlert, type TradeAlert } from "../api/tradeAlerts";
+import { fetchTradeAlerts, openTradeAlertRunStream, rejectTradeAlert, type TradeAlert } from "../api/tradeAlerts";
 import type { StrategyKey } from "../api/screener";
 import type { PositionLeg } from "../api/positions";
 import { computePayoff } from "../lib/payoff";
@@ -68,6 +68,9 @@ export function TradeAlertsPage() {
   const [error, setError] = useState<string | null>(null);
   const [rejectingId, setRejectingId] = useState<string | null>(null);
   const [detailSymbol, setDetailSymbol] = useState<string | null>(null);
+  const [running, setRunning] = useState(false);
+  const [runProgress, setRunProgress] = useState<string | null>(null);
+  const [runError, setRunError] = useState<string | null>(null);
 
   const loadAlerts = useCallback(async () => {
     try {
@@ -83,6 +86,34 @@ export function TradeAlertsPage() {
     setLoading(true);
     loadAlerts().finally(() => setLoading(false));
   }, [loadAlerts]);
+
+  const closeRunStreamRef = useRef<(() => void) | null>(null);
+  useEffect(() => () => closeRunStreamRef.current?.(), []);
+
+  function handleRunAlerts() {
+    setRunning(true);
+    setRunError(null);
+    setRunProgress("Starting scan...");
+
+    closeRunStreamRef.current = openTradeAlertRunStream((event) => {
+      if (event.type === "strategyStart") {
+        const label = event.strategyKey === "covered_call" ? "Covered Calls" : "Cash-Secured Puts";
+        setRunProgress(`Scanning ${event.tickerCount} shortlisted ticker(s) for ${label}...`);
+      } else if (event.type === "ticker") {
+        setRunProgress(`${event.symbol}: ${event.candidateCount} candidate(s) found.`);
+      } else if (event.type === "tickerError") {
+        setRunProgress(`${event.symbol}: scan failed — ${event.message}`);
+      } else if (event.type === "streamError") {
+        setRunError(event.message);
+        setRunning(false);
+        setRunProgress(null);
+      } else if (event.type === "done") {
+        setRunning(false);
+        setRunProgress(null);
+        loadAlerts();
+      }
+    });
+  }
 
   async function handleReject(id: string) {
     setRejectingId(id);
@@ -119,9 +150,25 @@ export function TradeAlertsPage() {
 
   return (
     <>
-      <PageHeader title="Trade Alerts" subtitle="Suggested trades awaiting your review" />
+      <PageHeader
+        title="Trade Alerts"
+        subtitle="Suggested trades awaiting your review"
+        actions={
+          <button
+            type="button"
+            className="btn btn-outline-primary d-inline-flex align-items-center gap-1"
+            disabled={running}
+            onClick={handleRunAlerts}
+          >
+            {running && <Spinner size="sm" />}
+            Run Alerts Now
+          </button>
+        }
+      />
 
       {error && <div className="alert alert-danger">{error}</div>}
+      {runError && <div className="alert alert-danger">{runError}</div>}
+      {running && runProgress && <div className="alert alert-info">{runProgress}</div>}
 
       <ul className="nav nav-pills mb-3">
         {strategyTabs.map((tab) => (
@@ -144,7 +191,7 @@ export function TradeAlertsPage() {
       )}
 
       {!loading && groupedByTicker.size === 0 && (
-        <div className="alert alert-info">No pending trade alerts. Run the daily trade-alert generation job to scan the shortlist.</div>
+        <div className="alert alert-info">No pending trade alerts. Click "Run Alerts Now" above to scan the shortlist.</div>
       )}
 
       {!loading &&
