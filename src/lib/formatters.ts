@@ -16,6 +16,12 @@ export function formatPercentage(fractionOrNull: number | null | undefined, deci
   return `${(fractionOrNull * 100).toFixed(decimalPlaces)}%`;
 }
 
+// IBKR returns option expiries as "YYYYMMDD" (see OptionQuote.expiry); the
+// rest of the app stores/sends dates as ISO "YYYY-MM-DD".
+export function ibkrExpiryToIsoDate(expiryYyyymmdd: string): string {
+  return `${expiryYyyymmdd.slice(0, 4)}-${expiryYyyymmdd.slice(4, 6)}-${expiryYyyymmdd.slice(6, 8)}`;
+}
+
 export function formatDate(dateInput: string | Date | null | undefined): string {
   if (!dateInput) return "—";
   const date = typeof dateInput === "string" ? new Date(dateInput) : dateInput;

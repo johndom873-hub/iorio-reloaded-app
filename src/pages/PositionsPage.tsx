@@ -15,7 +15,8 @@ import {
   type PositionStatus,
 } from "../api/positions";
 import { searchTickers, type StrategyKey, type TickerSearchResult } from "../api/screener";
-import { formatCurrency, formatDate, formatNumber } from "../lib/formatters";
+import { openPositionQuoteStream, type OptionQuote, type TickerPricing } from "../api/tickerDetail";
+import { formatCurrency, formatDate, formatNumber, ibkrExpiryToIsoDate } from "../lib/formatters";
 
 const searchDebounceMs = 400;
 
@@ -91,6 +92,19 @@ export function PositionsPage() {
   const [showDropdown, setShowDropdown] = useState(false);
   const searchDebounceRef = useRef<number | null>(null);
 
+  // Live quote lookup, driven off a confirmed symbol pick (from the search
+  // dropdown, not free-typed — restricted to tickers already in the tickers
+  // table so there's always a real IBKR contract behind it). Populates
+  // Stock Entry Price, and turns Expiry/Strike/Premium into data-driven
+  // pickers instead of free-text fields the user could mistype into an
+  // expiry or strike that doesn't exist.
+  const [symbolConfirmed, setSymbolConfirmed] = useState(false);
+  const [quoteLoading, setQuoteLoading] = useState(false);
+  const [quoteError, setQuoteError] = useState<string | null>(null);
+  const [pricing, setPricing] = useState<TickerPricing | null>(null);
+  const [optionChain, setOptionChain] = useState<OptionQuote[]>([]);
+  const closeQuoteStreamRef = useRef<(() => void) | null>(null);
+
   const loadPositions = useCallback(async () => {
     try {
       setError(null);
@@ -106,6 +120,34 @@ export function PositionsPage() {
     loadPositions().finally(() => setLoading(false));
   }, [loadPositions]);
 
+  const startQuoteStream = useCallback((symbol: string) => {
+    closeQuoteStreamRef.current?.();
+    setPricing(null);
+    setOptionChain([]);
+    setQuoteError(null);
+    setQuoteLoading(true);
+    closeQuoteStreamRef.current = openPositionQuoteStream(symbol, (event) => {
+      if (event.type === "overview") {
+        setPricing(event.data.pricing);
+        const livePrice = event.data.pricing.last ?? event.data.pricing.previousClose;
+        if (livePrice) {
+          setForm((prev) => (prev.stockEntryPrice ? prev : { ...prev, stockEntryPrice: String(livePrice) }));
+        }
+      } else if (event.type === "optionChain") {
+        setOptionChain(event.data);
+      } else if (event.type === "error") {
+        setQuoteError(`Couldn't load ${event.section === "overview" ? "live price" : "option chain"}: ${event.message}`);
+      } else if (event.type === "streamError") {
+        setQuoteError(event.message);
+        setQuoteLoading(false);
+      } else if (event.type === "done") {
+        setQuoteLoading(false);
+      }
+    });
+  }, []);
+
+  useEffect(() => () => closeQuoteStreamRef.current?.(), []);
+
   // Arriving from Screener's "Trade" button (?symbol=X&strategy=Y&new=1) or
   // Trade Alerts' "Trade" button (same, plus &strike=&expiry=&premium=&alertId=)
   // — pre-fill and open the New Position form, then clear the params so a
@@ -114,7 +156,14 @@ export function PositionsPage() {
   // or a cash-secured put), so only optionQuantity defaults to 1, matching
   // the suggestion; the user still fills in stock entry price themselves
   // for a covered call, same as any other new position, since the alert's
-  // spotPrice was only ever a scan-time estimate, not a real fill.
+  // spotPrice was only ever a scan-time estimate, not a real fill — the
+  // live quote stream started below will prefill a fresher one, still
+  // editable to match the actual fill. Also starts the same live-quote
+  // lookup a manual symbol pick does, so Strike/Expiry render as pickers
+  // backed by the live chain (with the alert's suggested strike/expiry
+  // injected as a selectable option even if it falls just outside the
+  // chain's near-the-money window, so the pre-fill is never stranded on a
+  // value the picker can't show).
   useEffect(() => {
     if (searchParams.get("new") !== "1") return;
     const paramSymbol = searchParams.get("symbol");
@@ -132,9 +181,13 @@ export function PositionsPage() {
       optionPremium: paramPremium ?? prev.optionPremium,
     }));
     if (paramAlertId) setSourceAlertId(paramAlertId);
+    if (paramSymbol) {
+      setSymbolConfirmed(true);
+      startQuoteStream(paramSymbol);
+    }
     setShowForm(true);
     setSearchParams({}, { replace: true });
-  }, [searchParams, setSearchParams]);
+  }, [searchParams, setSearchParams, startQuoteStream]);
 
   useEffect(() => {
     const optionLegIds = positions
@@ -182,6 +235,10 @@ export function PositionsPage() {
 
     if (!form.symbol.trim()) {
       setFormError("Symbol is required.");
+      return;
+    }
+    if (!symbolConfirmed) {
+      setFormError("Pick a symbol from the dropdown list — free-typed symbols aren't allowed.");
       return;
     }
 
@@ -233,6 +290,11 @@ export function PositionsPage() {
       setForm(initialFormState());
       setSourceAlertId(null);
       setShowForm(false);
+      closeQuoteStreamRef.current?.();
+      setSymbolConfirmed(false);
+      setPricing(null);
+      setOptionChain([]);
+      setQuoteError(null);
     } catch (err) {
       setFormError(err instanceof ApiError ? err.message : "Failed to create position.");
     } finally {
@@ -284,6 +346,40 @@ export function PositionsPage() {
     { key: "notes", header: "Notes", render: (row) => row.notes ?? "—" },
   ];
 
+  // Option chain scoped to the leg the current Strategy actually trades
+  // (calls for covered calls, puts for CSPs) — quoteOptionChain fetches
+  // both rights per strike/expiry up front so switching Strategy doesn't
+  // need a refetch, just a re-filter.
+  const optionRight = form.strategyKey === "covered_call" ? "C" : "P";
+  const chainForRight = optionChain.filter((quote) => quote.right === optionRight);
+  const expiryOptions = Array.from(new Set(chainForRight.map((quote) => ibkrExpiryToIsoDate(quote.expiry)))).sort();
+  if (form.optionExpiry && !expiryOptions.includes(form.optionExpiry)) expiryOptions.push(form.optionExpiry);
+
+  const strikeQuotesForExpiry = chainForRight
+    .filter((quote) => ibkrExpiryToIsoDate(quote.expiry) === form.optionExpiry)
+    .sort((a, b) => a.strike - b.strike);
+  const strikeOptions = strikeQuotesForExpiry.map((quote) => quote.strike);
+  const selectedStrikeNumber = form.optionStrike ? Number(form.optionStrike) : null;
+  if (selectedStrikeNumber !== null && !strikeOptions.includes(selectedStrikeNumber)) strikeOptions.push(selectedStrikeNumber);
+  strikeOptions.sort((a, b) => a - b);
+
+  function selectOptionExpiry(expiry: string) {
+    setForm((prev) => ({ ...prev, optionExpiry: expiry, optionStrike: "", optionPremium: "" }));
+  }
+
+  function selectOptionStrike(strike: string) {
+    const matchingQuote = strikeQuotesForExpiry.find((quote) => quote.strike === Number(strike));
+    const midPremium =
+      matchingQuote?.bid != null && matchingQuote?.ask != null
+        ? (matchingQuote.bid + matchingQuote.ask) / 2
+        : matchingQuote?.last ?? null;
+    setForm((prev) => ({
+      ...prev,
+      optionStrike: strike,
+      optionPremium: midPremium !== null ? midPremium.toFixed(2) : prev.optionPremium,
+    }));
+  }
+
   return (
     <>
       <PageHeader
@@ -296,6 +392,11 @@ export function PositionsPage() {
             onClick={() => {
               setShowForm((prev) => !prev);
               setSourceAlertId(null);
+              closeQuoteStreamRef.current?.();
+              setSymbolConfirmed(false);
+              setPricing(null);
+              setOptionChain([]);
+              setQuoteError(null);
             }}
           >
             + New Position
@@ -309,6 +410,7 @@ export function PositionsPage() {
         <div className="card mb-3">
           <div className="card-body">
             {formError && <div className="alert alert-danger">{formError}</div>}
+            {quoteError && <div className="alert alert-warning">{quoteError}</div>}
 
             <div className="row g-3">
               <div className="col-12 col-sm-6 col-md-4">
@@ -318,7 +420,14 @@ export function PositionsPage() {
                 <select
                   className="form-select"
                   value={form.strategyKey}
-                  onChange={(event) => updateForm("strategyKey", event.target.value as StrategyKey)}
+                  onChange={(event) => {
+                    // Strikes/premiums differ between calls and puts even for the
+                    // same expiry, so a strategy switch invalidates whatever was
+                    // already picked — clear it rather than leaving a call's
+                    // strike/premium silently attached to a put leg.
+                    const strategyKey = event.target.value as StrategyKey;
+                    setForm((prev) => ({ ...prev, strategyKey, optionStrike: "", optionExpiry: "", optionPremium: "" }));
+                  }}
                 >
                   <option value="covered_call">Covered Call</option>
                   <option value="cash_secured_put">Cash-Secured Put</option>
@@ -334,10 +443,23 @@ export function PositionsPage() {
                   className="form-control"
                   placeholder="e.g. AAPL"
                   value={form.symbol}
-                  onChange={(event) => updateForm("symbol", event.target.value)}
+                  onChange={(event) => {
+                    updateForm("symbol", event.target.value);
+                    if (symbolConfirmed) {
+                      setSymbolConfirmed(false);
+                      closeQuoteStreamRef.current?.();
+                      setPricing(null);
+                      setOptionChain([]);
+                      setQuoteError(null);
+                      setForm((prev) => ({ ...prev, optionStrike: "", optionExpiry: "", optionPremium: "" }));
+                    }
+                  }}
                   onFocus={() => setShowDropdown(true)}
                   onBlur={() => window.setTimeout(() => setShowDropdown(false), 150)}
                 />
+                {form.symbol.trim() && !symbolConfirmed && !showDropdown && (
+                  <div className="form-text text-warning">Pick a symbol from the list below.</div>
+                )}
                 {showDropdown && form.symbol.trim() && (
                   <div
                     className="card position-absolute w-100 mt-1 shadow-sm"
@@ -360,6 +482,8 @@ export function PositionsPage() {
                               onClick={() => {
                                 updateForm("symbol", result.symbol);
                                 setShowDropdown(false);
+                                setSymbolConfirmed(true);
+                                startQuoteStream(result.symbol);
                               }}
                             >
                               <strong>{result.symbol}</strong>
@@ -398,6 +522,14 @@ export function PositionsPage() {
                       value={form.stockEntryPrice}
                       onChange={(event) => updateForm("stockEntryPrice", event.target.value)}
                     />
+                    {symbolConfirmed && quoteLoading && !pricing && (
+                      <div className="form-text">
+                        <Spinner size="sm" label="Fetching live price" />
+                      </div>
+                    )}
+                    {pricing?.last != null && (
+                      <div className="form-text text-muted">Live: {formatCurrency(pricing.last)} (editable — confirm your fill)</div>
+                    )}
                   </div>
                   <div className="col-12 col-sm-6 col-md-3">
                     <label className="form-label" style={{ fontSize: "0.8rem" }}>
@@ -415,26 +547,41 @@ export function PositionsPage() {
 
               <div className="col-12 col-sm-6 col-md-3">
                 <label className="form-label" style={{ fontSize: "0.8rem" }}>
-                  {form.strategyKey === "covered_call" ? "Call Strike" : "Put Strike"}
+                  Expiry
                 </label>
-                <input
-                  type="number"
-                  step="0.01"
-                  className="form-control"
-                  value={form.optionStrike}
-                  onChange={(event) => updateForm("optionStrike", event.target.value)}
-                />
+                <select
+                  className="form-select"
+                  value={form.optionExpiry}
+                  disabled={!symbolConfirmed || expiryOptions.length === 0}
+                  onChange={(event) => selectOptionExpiry(event.target.value)}
+                >
+                  <option value="">
+                    {!symbolConfirmed ? "Pick a symbol first" : expiryOptions.length === 0 ? "Loading expiries…" : "Select expiry"}
+                  </option>
+                  {expiryOptions.map((expiry) => (
+                    <option key={expiry} value={expiry}>
+                      {formatDate(expiry)}
+                    </option>
+                  ))}
+                </select>
               </div>
               <div className="col-12 col-sm-6 col-md-3">
                 <label className="form-label" style={{ fontSize: "0.8rem" }}>
-                  Expiry
+                  {form.strategyKey === "covered_call" ? "Call Strike" : "Put Strike"}
                 </label>
-                <input
-                  type="date"
-                  className="form-control"
-                  value={form.optionExpiry}
-                  onChange={(event) => updateForm("optionExpiry", event.target.value)}
-                />
+                <select
+                  className="form-select"
+                  value={form.optionStrike}
+                  disabled={!form.optionExpiry || strikeOptions.length === 0}
+                  onChange={(event) => selectOptionStrike(event.target.value)}
+                >
+                  <option value="">{!form.optionExpiry ? "Pick an expiry first" : "Select strike"}</option>
+                  {strikeOptions.map((strike) => (
+                    <option key={strike} value={strike}>
+                      {formatCurrency(strike)}
+                    </option>
+                  ))}
+                </select>
               </div>
               <div className="col-12 col-sm-6 col-md-3">
                 <label className="form-label" style={{ fontSize: "0.8rem" }}>

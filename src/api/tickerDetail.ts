@@ -94,3 +94,40 @@ export function openTickerDetailStream(symbol: string, onEvent: (event: TickerDe
 export function fetchTickerChart(symbol: string, range: ChartRange): Promise<PriceBar[]> {
   return apiRequest<PriceBar[]>(`/tickers/${encodeURIComponent(symbol)}/chart?range=${range}`);
 }
+
+export type PositionQuoteStreamEvent =
+  | { type: "overview"; data: { pricing: TickerPricing } }
+  | { type: "optionChain"; data: OptionQuote[] }
+  | { type: "error"; section: "overview" | "optionChain"; message: string }
+  | { type: "streamError"; message: string }
+  | { type: "done" };
+
+/**
+ * New Position form's live-quote lookup — pricing + option chain only, no
+ * chart. See the backend's streamPositionQuote.ts for why this is a
+ * separate, lighter stream than openTickerDetailStream rather than that one
+ * with the chart event ignored.
+ */
+export function openPositionQuoteStream(symbol: string, onEvent: (event: PositionQuoteStreamEvent) => void): () => void {
+  const source = new EventSource(`${apiBaseUrl}/tickers/${encodeURIComponent(symbol)}/position-quote/stream`, {
+    withCredentials: true,
+  });
+
+  source.onmessage = (message) => {
+    let event: PositionQuoteStreamEvent;
+    try {
+      event = JSON.parse(message.data);
+    } catch {
+      return;
+    }
+    onEvent(event);
+    if (event.type === "done" || event.type === "streamError") source.close();
+  };
+
+  source.onerror = () => {
+    onEvent({ type: "streamError", message: "Connection to the server was lost." });
+    source.close();
+  };
+
+  return () => source.close();
+}
