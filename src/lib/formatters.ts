@@ -41,6 +41,22 @@ export function formatNumber(value: number | string | null | undefined, maximumF
   return new Intl.NumberFormat("en-US", { maximumFractionDigits }).format(numericValue);
 }
 
+export function formatDuration(
+  startedAt: string | Date | null | undefined,
+  finishedAt: string | Date | null | undefined,
+): string {
+  if (!startedAt) return "—";
+  if (!finishedAt) return "running…";
+
+  const start = typeof startedAt === "string" ? new Date(startedAt) : startedAt;
+  const end = typeof finishedAt === "string" ? new Date(finishedAt) : finishedAt;
+  const totalSeconds = Math.max(0, Math.round((end.getTime() - start.getTime()) / 1000));
+
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  return minutes > 0 ? `${minutes}m ${seconds}s` : `${seconds}s`;
+}
+
 export function formatSignedPnl(amountInDollars: number | null | undefined): string {
   if (amountInDollars === null || amountInDollars === undefined) return "—";
   const formatted = formatCurrency(Math.abs(amountInDollars));
