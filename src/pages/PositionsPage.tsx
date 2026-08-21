@@ -9,6 +9,7 @@ import {
   createPosition,
   fetchGreeks,
   fetchPositions,
+  fetchUnrealizedPnl,
   type Greeks,
   type LegInput,
   type Position,
@@ -16,7 +17,15 @@ import {
 } from "../api/positions";
 import { searchTickers, type StrategyKey, type TickerSearchResult } from "../api/screener";
 import { openPositionQuoteStream, type OptionQuote, type TickerPricing } from "../api/tickerDetail";
-import { formatCurrency, formatDate, formatNumber, ibkrExpiryToIsoDate } from "../lib/formatters";
+import {
+  formatCurrency,
+  formatDate,
+  formatNumber,
+  formatPercentageValue,
+  formatSignedPnl,
+  ibkrExpiryToIsoDate,
+  pnlBadgeClass,
+} from "../lib/formatters";
 
 const searchDebounceMs = 400;
 
@@ -40,6 +49,21 @@ function structureSummary(position: Position): string {
 
 function todayIsoDate(): string {
   return new Date().toISOString().slice(0, 10);
+}
+
+// Total P&L for a position: realized-only for closed positions (no live
+// call needed, computed server-side from stored exit prices); realized (any
+// already-rolled-away leg) + live-priced unrealized for open ones. Returns
+// "loading" while the on-demand unrealized fetch for open positions hasn't
+// resolved yet, or null if a live price genuinely couldn't be fetched (e.g.
+// outside market hours) — see fetchUnrealizedPnl.
+function positionTotalPnl(row: Position, unrealizedByPositionId: Record<string, number | null>): number | null | "loading" {
+  const realized = Number(row.realizedPnl);
+  if (row.status === "closed") return realized;
+  if (!(row.id in unrealizedByPositionId)) return "loading";
+  const unrealized = unrealizedByPositionId[row.id];
+  if (unrealized === null) return null;
+  return realized + unrealized;
 }
 
 interface NewPositionFormState {
@@ -80,6 +104,7 @@ export function PositionsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [greeksByLegId, setGreeksByLegId] = useState<Record<string, Greeks>>({});
+  const [unrealizedPnlByPositionId, setUnrealizedPnlByPositionId] = useState<Record<string, number | null>>({});
   const [detailPositionId, setDetailPositionId] = useState<string | null>(null);
 
   const [showForm, setShowForm] = useState(false);
@@ -196,6 +221,14 @@ export function PositionsPage() {
     if (optionLegIds.length === 0) return;
     fetchGreeks(optionLegIds)
       .then(setGreeksByLegId)
+      .catch(() => {});
+  }, [positions]);
+
+  useEffect(() => {
+    const openPositionIds = positions.filter((position) => position.status === "open").map((position) => position.id);
+    if (openPositionIds.length === 0) return;
+    fetchUnrealizedPnl(openPositionIds)
+      .then(setUnrealizedPnlByPositionId)
       .catch(() => {});
   }, [positions]);
 
@@ -326,6 +359,35 @@ export function PositionsPage() {
       ),
     },
     { key: "structure", header: "Structure", render: (row) => structureSummary(row) },
+    {
+      key: "pnl",
+      header: "P&L $",
+      align: "right",
+      render: (row) => {
+        const pnl = positionTotalPnl(row, unrealizedPnlByPositionId);
+        if (pnl === "loading") return <Spinner size="sm" label="Loading P&L" />;
+        if (pnl === null) return "—";
+        return <span className={`badge ${pnlBadgeClass(pnl)}`}>{formatSignedPnl(pnl)}</span>;
+      },
+    },
+    {
+      key: "pnlPercent",
+      header: "P&L %",
+      align: "right",
+      render: (row) => {
+        const pnl = positionTotalPnl(row, unrealizedPnlByPositionId);
+        const capitalAtRisk = row.capitalAtRisk === null ? null : Number(row.capitalAtRisk);
+        if (pnl === "loading") return <Spinner size="sm" label="Loading P&L" />;
+        if (pnl === null || capitalAtRisk === null || capitalAtRisk === 0) return "—";
+        const pct = (pnl / capitalAtRisk) * 100;
+        return (
+          <span className={`badge ${pnlBadgeClass(pct)}`}>
+            {pct > 0 ? "+" : ""}
+            {formatPercentageValue(pct)}
+          </span>
+        );
+      },
+    },
     { key: "openedAt", header: "Opened", render: (row) => formatDate(row.openedAt) },
     {
       key: "delta",

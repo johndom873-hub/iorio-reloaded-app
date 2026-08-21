@@ -164,9 +164,16 @@ export function DashboardPage() {
                 },
               ]}
               options={{
-                xaxis: { type: "datetime" },
+                xaxis: {
+                  type: "datetime",
+                  tickAmount: Math.min(history.length - 1, 7),
+                  labels: { datetimeUTC: false, format: "dd MMM" },
+                },
                 yaxis: { labels: { formatter: (value: number) => formatCurrency(value) } },
-                tooltip: { y: { formatter: (value: number) => formatSignedPnl(value) } },
+                tooltip: {
+                  x: { format: "dd MMM yyyy" },
+                  y: { formatter: (value: number) => formatSignedPnl(value) },
+                },
                 dataLabels: { enabled: false },
                 stroke: { curve: "straight", width: 2 },
                 responsive: [{ breakpoint: 768, options: { legend: { position: "bottom" }, chart: { height: 220 } } }],

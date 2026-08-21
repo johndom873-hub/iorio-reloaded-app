@@ -36,6 +36,10 @@ export interface Position {
   companyName: string | null;
   sector: string | null;
   legs: PositionLeg[];
+  /** Sum of already-exited legs' locked-in gain — nonzero on an open position that's been rolled. */
+  realizedPnl: string;
+  /** Entry-time capital committed: stock cost for covered calls, strike collateral for CSPs. Null if unavailable. */
+  capitalAtRisk: string | null;
 }
 
 export interface PositionFilters {
@@ -130,4 +134,12 @@ export interface Greeks {
 export function fetchGreeks(legIds: string[]): Promise<Record<string, Greeks>> {
   if (legIds.length === 0) return Promise.resolve({});
   return apiRequest<Record<string, Greeks>>(`/positions/greeks?legIds=${legIds.join(",")}`);
+}
+
+// Unrealized P&L for open positions only, live-priced on demand — mirrors
+// fetchGreeks's shape. null means a live price couldn't be fetched for at
+// least one leg (e.g. outside market hours).
+export function fetchUnrealizedPnl(positionIds: string[]): Promise<Record<string, number | null>> {
+  if (positionIds.length === 0) return Promise.resolve({});
+  return apiRequest<Record<string, number | null>>(`/positions/pnl?positionIds=${positionIds.join(",")}`);
 }

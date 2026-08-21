@@ -77,3 +77,11 @@ export function formatSignedPnl(amountInDollars: number | null | undefined): str
   if (amountInDollars < 0) return `-${formatted}`;
   return formatted;
 }
+
+// Global UI/UX standard: badge-change-pos/neg/flat for any price/change
+// value, never inline colors — see Trade Blotter/Positions P&L columns.
+export function pnlBadgeClass(pnl: number): string {
+  if (pnl > 0) return "badge-change-pos";
+  if (pnl < 0) return "badge-change-neg";
+  return "badge-change-flat";
+}

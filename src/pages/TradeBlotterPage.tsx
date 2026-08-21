@@ -5,7 +5,7 @@ import { TickerDetailModal } from "../components/TickerDetailModal";
 import { ApiError } from "../api/client";
 import { fetchTrades, type Trade } from "../api/tradeBlotter";
 import type { StrategyKey } from "../api/screener";
-import { formatCurrency, formatDate, formatNumber, formatSignedPnl } from "../lib/formatters";
+import { formatCurrency, formatDate, formatNumber, formatSignedPnl, pnlBadgeClass } from "../lib/formatters";
 
 const strategyTabs: { key: StrategyKey | "all"; label: string }[] = [
   { key: "all", label: "All" },
@@ -18,12 +18,6 @@ function legSummary(trade: Trade): string {
   const strike = trade.strikePrice ? formatCurrency(Number(trade.strikePrice)) : "—";
   const rightLabel = trade.optionType === "call" ? "C" : "P";
   return `${strike}${rightLabel}`;
-}
-
-function pnlBadgeClass(pnl: number): string {
-  if (pnl > 0) return "badge-change-pos";
-  if (pnl < 0) return "badge-change-neg";
-  return "badge-change-flat";
 }
 
 export function TradeBlotterPage() {
