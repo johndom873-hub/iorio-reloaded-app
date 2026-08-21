@@ -327,6 +327,14 @@
   color: #fff !important;
 }
 
+/* Trade Alerts' "Expired" status badge — same -lt contrast bug. #6c757d is
+   Bootstrap's own $secondary, already verified >4.5:1 with white text. */
+.badge.bg-secondary,
+.badge.bg-secondary-lt {
+  background-color: #6c757d !important;
+  color: #fff !important;
+}
+
 /* Price/change badges (e.g. Trade Blotter P&L) — global UI/UX standard.
    Reuses the same darkened green already used for bg-success above
    (5.40:1 contrast, verified). Negative uses a muted red rather than the

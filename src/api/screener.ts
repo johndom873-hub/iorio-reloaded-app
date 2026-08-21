@@ -15,6 +15,8 @@ export interface ScreenerRow {
   impliedVolatility: string | null;
   avgOptionVolume: string | null;
   capturedAt: string | null;
+  ivRank: number | null;
+  ivRankWindowDays: number;
 }
 
 export function fetchScreener(strategyKey: StrategyKey): Promise<ScreenerRow[]> {

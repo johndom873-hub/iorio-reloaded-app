@@ -16,6 +16,13 @@ export function formatPercentage(fractionOrNull: number | null | undefined, deci
   return `${(fractionOrNull * 100).toFixed(decimalPlaces)}%`;
 }
 
+// For values already expressed on a 0-100 scale (e.g. IV Rank), unlike
+// formatPercentage above which expects a 0-1 fraction.
+export function formatPercentageValue(percentOrNull: number | null | undefined, decimalPlaces = 0): string {
+  if (percentOrNull === null || percentOrNull === undefined) return "—";
+  return `${percentOrNull.toFixed(decimalPlaces)}%`;
+}
+
 // IBKR returns option expiries as "YYYYMMDD" (see OptionQuote.expiry); the
 // rest of the app stores/sends dates as ISO "YYYY-MM-DD".
 export function ibkrExpiryToIsoDate(expiryYyyymmdd: string): string {

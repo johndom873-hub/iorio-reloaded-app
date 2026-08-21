@@ -12,17 +12,53 @@ import {
   rejectTradeAlert,
   type NewTradeCandidate,
   type TradeAlert,
+  type TradeAlertStatus,
 } from "../api/tradeAlerts";
 import type { StrategyKey } from "../api/screener";
 import type { PositionLeg } from "../api/positions";
 import { computePayoff } from "../lib/payoff";
-import { formatCurrency, formatDate, formatPercentage, formatSignedPnl } from "../lib/formatters";
+import { formatCurrency, formatDate, formatDateTime, formatPercentage, formatSignedPnl } from "../lib/formatters";
 
 const strategyTabs: { key: StrategyKey | "all"; label: string }[] = [
   { key: "all", label: "All" },
   { key: "covered_call", label: "Covered Calls" },
   { key: "cash_secured_put", label: "Cash-Secured Puts" },
 ];
+
+const statusOptions: { key: TradeAlertStatus; label: string }[] = [
+  { key: "pending", label: "Pending" },
+  { key: "approved", label: "Approved" },
+  { key: "rejected", label: "Rejected" },
+  { key: "modified", label: "Modified" },
+  { key: "expired", label: "Expired" },
+];
+
+const statusBadgeClass: Record<TradeAlertStatus, string> = {
+  pending: "bg-azure-lt text-dark",
+  approved: "bg-success-lt text-dark",
+  rejected: "bg-danger-lt text-dark",
+  modified: "bg-success-lt text-dark",
+  expired: "bg-secondary-lt text-dark",
+};
+
+const statusLabel: Record<TradeAlertStatus, string> = {
+  pending: "Pending",
+  approved: "Approved",
+  rejected: "Rejected",
+  modified: "Modified",
+  expired: "Expired",
+};
+
+// Pending alerts get action buttons (Trade/Roll/Reject); every other status
+// is a past decision, shown read-only with when it was reviewed.
+function ReviewedFooter({ alert }: { alert: TradeAlert }) {
+  return (
+    <div className="d-flex justify-content-between align-items-center mt-auto pt-2">
+      <span className={`badge ${statusBadgeClass[alert.status]}`}>{statusLabel[alert.status]}</span>
+      {alert.reviewedAt && <span className="text-secondary" style={{ fontSize: "0.75rem" }}>{formatDateTime(alert.reviewedAt)}</span>}
+    </div>
+  );
+}
 
 // Synthesizes the legs a payoff calculation needs from a suggestion, since
 // nothing has been entered into position_legs yet — this alert may never
@@ -71,6 +107,7 @@ function candidateToLegs(alert: TradeAlert & { suggestedStructure: NewTradeCandi
 export function TradeAlertsPage() {
   const navigate = useNavigate();
   const [strategy, setStrategy] = useState<StrategyKey | "all">("all");
+  const [status, setStatus] = useState<TradeAlertStatus>("pending");
   const [alerts, setAlerts] = useState<TradeAlert[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -84,12 +121,12 @@ export function TradeAlertsPage() {
   const loadAlerts = useCallback(async () => {
     try {
       setError(null);
-      const result = await fetchTradeAlerts({ status: "pending", strategyKey: strategy === "all" ? undefined : strategy });
+      const result = await fetchTradeAlerts({ status, strategyKey: strategy === "all" ? undefined : strategy });
       setAlerts(result);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Failed to load trade alerts.");
     }
-  }, [strategy]);
+  }, [strategy, status]);
 
   useEffect(() => {
     setLoading(true);
@@ -179,19 +216,33 @@ export function TradeAlertsPage() {
       {runError && <div className="alert alert-danger">{runError}</div>}
       {running && runProgress && <div className="alert alert-info">{runProgress}</div>}
 
-      <ul className="nav nav-pills mb-3">
-        {strategyTabs.map((tab) => (
-          <li className="nav-item" key={tab.key}>
-            <button
-              type="button"
-              className={`nav-link ${strategy === tab.key ? "active" : ""}`}
-              onClick={() => setStrategy(tab.key)}
-            >
-              {tab.label}
-            </button>
-          </li>
-        ))}
-      </ul>
+      <div className="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+        <ul className="nav nav-pills mb-0">
+          {strategyTabs.map((tab) => (
+            <li className="nav-item" key={tab.key}>
+              <button
+                type="button"
+                className={`nav-link ${strategy === tab.key ? "active" : ""}`}
+                onClick={() => setStrategy(tab.key)}
+              >
+                {tab.label}
+              </button>
+            </li>
+          ))}
+        </ul>
+        <select
+          className="form-select w-auto"
+          value={status}
+          onChange={(event) => setStatus(event.target.value as TradeAlertStatus)}
+          aria-label="Filter by status"
+        >
+          {statusOptions.map((option) => (
+            <option key={option.key} value={option.key}>
+              {option.label}
+            </option>
+          ))}
+        </select>
+      </div>
 
       {loading && (
         <div className="d-flex justify-content-center py-4">
@@ -200,7 +251,11 @@ export function TradeAlertsPage() {
       )}
 
       {!loading && groupedByTicker.size === 0 && (
-        <div className="alert alert-info">No pending trade alerts. Click "Run Alerts Now" above to scan the shortlist.</div>
+        <div className="alert alert-info">
+          {status === "pending"
+            ? 'No pending trade alerts. Click "Run Alerts Now" above to scan the shortlist.'
+            : `No ${status} trade alerts.`}
+        </div>
       )}
 
       {!loading &&
@@ -274,20 +329,24 @@ export function TradeAlertsPage() {
                                 {alert.rationale}
                               </p>
 
-                              <div className="d-flex gap-2 mt-auto pt-2">
-                                <button type="button" className="btn btn-primary flex-fill" onClick={() => setRollAlert(alert)}>
-                                  Roll
-                                </button>
-                                <button
-                                  type="button"
-                                  className="btn btn-outline-danger flex-fill d-inline-flex align-items-center justify-content-center gap-1"
-                                  disabled={rejectingId === alert.id}
-                                  onClick={() => handleReject(alert.id)}
-                                >
-                                  {rejectingId === alert.id && <Spinner size="sm" />}
-                                  Reject
-                                </button>
-                              </div>
+                              {alert.status === "pending" ? (
+                                <div className="d-flex gap-2 mt-auto pt-2">
+                                  <button type="button" className="btn btn-primary flex-fill" onClick={() => setRollAlert(alert)}>
+                                    Roll
+                                  </button>
+                                  <button
+                                    type="button"
+                                    className="btn btn-outline-danger flex-fill d-inline-flex align-items-center justify-content-center gap-1"
+                                    disabled={rejectingId === alert.id}
+                                    onClick={() => handleReject(alert.id)}
+                                  >
+                                    {rejectingId === alert.id && <Spinner size="sm" />}
+                                    Reject
+                                  </button>
+                                </div>
+                              ) : (
+                                <ReviewedFooter alert={alert} />
+                              )}
                             </div>
                           </div>
                         </div>
@@ -347,24 +406,28 @@ export function TradeAlertsPage() {
                               {alert.rationale}
                             </p>
 
-                            <div className="d-flex gap-2 mt-auto pt-2">
-                              <button
-                                type="button"
-                                className="btn btn-primary flex-fill"
-                                onClick={() => handleTradeNewAlert(newTradeAlert)}
-                              >
-                                Trade
-                              </button>
-                              <button
-                                type="button"
-                                className="btn btn-outline-danger flex-fill d-inline-flex align-items-center justify-content-center gap-1"
-                                disabled={rejectingId === alert.id}
-                                onClick={() => handleReject(alert.id)}
-                              >
-                                {rejectingId === alert.id && <Spinner size="sm" />}
-                                Reject
-                              </button>
-                            </div>
+                            {alert.status === "pending" ? (
+                              <div className="d-flex gap-2 mt-auto pt-2">
+                                <button
+                                  type="button"
+                                  className="btn btn-primary flex-fill"
+                                  onClick={() => handleTradeNewAlert(newTradeAlert)}
+                                >
+                                  Trade
+                                </button>
+                                <button
+                                  type="button"
+                                  className="btn btn-outline-danger flex-fill d-inline-flex align-items-center justify-content-center gap-1"
+                                  disabled={rejectingId === alert.id}
+                                  onClick={() => handleReject(alert.id)}
+                                >
+                                  {rejectingId === alert.id && <Spinner size="sm" />}
+                                  Reject
+                                </button>
+                              </div>
+                            ) : (
+                              <ReviewedFooter alert={alert} />
+                            )}
                           </div>
                         </div>
                       </div>

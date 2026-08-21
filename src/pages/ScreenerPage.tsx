@@ -15,7 +15,7 @@ import {
   type StrategyKey,
   type TickerSearchResult,
 } from "../api/screener";
-import { formatDate, formatNumber, formatPercentage } from "../lib/formatters";
+import { formatDate, formatNumber, formatPercentage, formatPercentageValue } from "../lib/formatters";
 
 const searchDebounceMs = 400;
 
@@ -215,6 +215,19 @@ export function ScreenerPage() {
       header: "Implied Vol",
       align: "right",
       render: (row) => formatPercentage(row.impliedVolatility === null ? null : Number(row.impliedVolatility)),
+    },
+    {
+      key: "ivRank",
+      header: "IV Rank",
+      align: "right",
+      render: (row) =>
+        row.ivRank === null ? (
+          "—"
+        ) : (
+          <span>
+            {formatPercentageValue(row.ivRank)} <span className="text-muted small">({row.ivRankWindowDays}d)</span>
+          </span>
+        ),
     },
     {
       key: "avgOptionVolume",
