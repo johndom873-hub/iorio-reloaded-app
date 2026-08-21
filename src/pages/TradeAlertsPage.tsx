@@ -334,7 +334,7 @@ export function TradeAlertsPage() {
                                 </div>
                                 <div className="col-4">
                                   <div className="text-secondary">Max Loss</div>
-                                  <div>{formatSignedPnl(payoff.maxLoss)}</div>
+                                  <div>{formatSignedPnl(-payoff.maxLoss)}</div>
                                 </div>
                                 <div className="col-4">
                                   <div className="text-secondary">Breakeven</div>
