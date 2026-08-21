@@ -99,6 +99,27 @@ export function closePosition(id: string, legs: LegExitInput[]): Promise<Positio
   return apiRequest<Position>(`/positions/${id}/close`, { method: "POST", body: JSON.stringify({ legs }) });
 }
 
+export interface RollLegInput {
+  strikePrice: number;
+  expiryDate: string;
+  quantity: number;
+  multiplier: number;
+  entryPrice: number;
+  entryAt: string;
+}
+
+export interface RollPositionInput {
+  sourceAlertId: string;
+  closeLegId: string;
+  exitPrice: number;
+  exitAt: string;
+  newLeg: RollLegInput;
+}
+
+export function rollPosition(id: string, input: RollPositionInput): Promise<Position> {
+  return apiRequest<Position>(`/positions/${id}/roll`, { method: "POST", body: JSON.stringify(input) });
+}
+
 export interface Greeks {
   delta: number | null;
   gamma: number | null;

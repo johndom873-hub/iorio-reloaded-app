@@ -3,7 +3,7 @@ import type { StrategyKey } from "./screener";
 
 export type TradeAlertStatus = "pending" | "approved" | "rejected" | "modified" | "expired";
 
-export interface SuggestedStructure {
+export interface NewTradeCandidate {
   expiry: string; // YYYY-MM-DD
   strike: number;
   right: "call" | "put";
@@ -14,12 +14,34 @@ export interface SuggestedStructure {
   spotPrice: number;
 }
 
+// Kept as an alias — most existing call sites refer to "SuggestedStructure"
+// meaning a new_trade candidate specifically.
+export type SuggestedStructure = NewTradeCandidate;
+
+export interface RollStructure {
+  closeLeg: {
+    legId: string;
+    strike: number;
+    expiry: string; // YYYY-MM-DD
+    right: "call" | "put";
+    entryPrice: number;
+    currentPrice: number;
+    quantity: number;
+    multiplier: number;
+  };
+  trigger: "decay" | "dte";
+  dte: number;
+  replacement: NewTradeCandidate;
+}
+
+export type TradeAlertType = "new_trade" | "roll";
+
 export interface TradeAlert {
   id: string;
   strategyKey: StrategyKey;
-  alertType: string;
+  alertType: TradeAlertType;
   relatedPositionId: string | null;
-  suggestedStructure: SuggestedStructure;
+  suggestedStructure: NewTradeCandidate | RollStructure;
   rationale: string | null;
   status: TradeAlertStatus;
   reviewedAt: string | null;
@@ -29,6 +51,10 @@ export interface TradeAlert {
   symbol: string;
   companyName: string | null;
   sector: string | null;
+}
+
+export function isRollAlert(alert: TradeAlert): alert is TradeAlert & { suggestedStructure: RollStructure } {
+  return alert.alertType === "roll";
 }
 
 export interface TradeAlertFilters {

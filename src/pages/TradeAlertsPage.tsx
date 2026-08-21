@@ -3,8 +3,16 @@ import { useNavigate } from "react-router-dom";
 import { PageHeader } from "../components/layout/PageHeader";
 import { Spinner } from "../components/Spinner";
 import { TickerDetailModal } from "../components/TickerDetailModal";
+import { RollPositionModal } from "../components/RollPositionModal";
 import { ApiError } from "../api/client";
-import { fetchTradeAlerts, openTradeAlertRunStream, rejectTradeAlert, type TradeAlert } from "../api/tradeAlerts";
+import {
+  fetchTradeAlerts,
+  isRollAlert,
+  openTradeAlertRunStream,
+  rejectTradeAlert,
+  type NewTradeCandidate,
+  type TradeAlert,
+} from "../api/tradeAlerts";
 import type { StrategyKey } from "../api/screener";
 import type { PositionLeg } from "../api/positions";
 import { computePayoff } from "../lib/payoff";
@@ -23,7 +31,7 @@ const strategyTabs: { key: StrategyKey | "all"; label: string }[] = [
 // same assumption the ranking formula's capitalAtRisk already makes) and
 // a standard 100-share lot; both are scan-time estimates for comparison
 // purposes only; make no claim about what an actual fill would be.
-function candidateToLegs(alert: TradeAlert): PositionLeg[] {
+function candidateToLegs(alert: TradeAlert & { suggestedStructure: NewTradeCandidate }): PositionLeg[] {
   const s = alert.suggestedStructure;
   const optionLeg: PositionLeg = {
     id: `alert-${alert.id}-option`,
@@ -68,6 +76,7 @@ export function TradeAlertsPage() {
   const [error, setError] = useState<string | null>(null);
   const [rejectingId, setRejectingId] = useState<string | null>(null);
   const [detailSymbol, setDetailSymbol] = useState<string | null>(null);
+  const [rollAlert, setRollAlert] = useState<TradeAlert | null>(null);
   const [running, setRunning] = useState(false);
   const [runProgress, setRunProgress] = useState<string | null>(null);
   const [runError, setRunError] = useState<string | null>(null);
@@ -128,7 +137,7 @@ export function TradeAlertsPage() {
     }
   }
 
-  function handleTrade(alert: TradeAlert) {
+  function handleTradeNewAlert(alert: TradeAlert & { suggestedStructure: NewTradeCandidate }) {
     const params = new URLSearchParams({
       symbol: alert.symbol,
       strategy: alert.strategyKey,
@@ -217,34 +226,103 @@ export function TradeAlertsPage() {
               <div className="card-body">
                 <div className="row g-3">
                   {tickerAlerts.map((alert) => {
-                    const payoff = computePayoff(alert.strategyKey, candidateToLegs(alert));
+                    if (isRollAlert(alert)) {
+                      const { closeLeg, replacement, trigger, dte } = alert.suggestedStructure;
+                      const rightLabel = closeLeg.right === "call" ? "C" : "P";
+                      const triggerLabel = trigger === "decay" ? "Decayed ≤50%" : `≤21 DTE (${dte}d)`;
+                      return (
+                        <div className="col-12 col-md-6 col-lg-4" key={alert.id}>
+                          <div className="card h-100">
+                            <div className="card-body d-flex flex-column gap-2">
+                              <div className="d-flex flex-wrap justify-content-between align-items-start gap-2">
+                                <div>
+                                  <div className="fw-bold">
+                                    Roll ${closeLeg.strike.toFixed(2)}
+                                    {rightLabel}
+                                  </div>
+                                  <div className="text-secondary" style={{ fontSize: "0.8rem" }}>
+                                    exp {formatDate(closeLeg.expiry)} → ${replacement.strike.toFixed(2)} exp{" "}
+                                    {formatDate(replacement.expiry)}
+                                  </div>
+                                </div>
+                                <span className="badge bg-yellow-lt text-dark text-nowrap">{triggerLabel}</span>
+                              </div>
+
+                              <div className="row g-2" style={{ fontSize: "0.85rem" }}>
+                                <div className="col-6">
+                                  <div className="text-secondary">Current price</div>
+                                  <div>{formatCurrency(closeLeg.currentPrice)}</div>
+                                </div>
+                                <div className="col-6">
+                                  <div className="text-secondary">Credit collected</div>
+                                  <div>{formatCurrency(closeLeg.entryPrice)}</div>
+                                </div>
+                              </div>
+
+                              <div className="row g-2" style={{ fontSize: "0.85rem" }}>
+                                <div className="col-6">
+                                  <div className="text-secondary">New premium</div>
+                                  <div>{formatCurrency(replacement.premium)}</div>
+                                </div>
+                                <div className="col-6">
+                                  <div className="text-secondary">New yield</div>
+                                  <div>{formatPercentage(replacement.annualizedYield)}</div>
+                                </div>
+                              </div>
+
+                              <p className="text-secondary mb-0" style={{ fontSize: "0.8rem" }}>
+                                {alert.rationale}
+                              </p>
+
+                              <div className="d-flex gap-2 mt-auto pt-2">
+                                <button type="button" className="btn btn-primary flex-fill" onClick={() => setRollAlert(alert)}>
+                                  Roll
+                                </button>
+                                <button
+                                  type="button"
+                                  className="btn btn-outline-danger flex-fill d-inline-flex align-items-center justify-content-center gap-1"
+                                  disabled={rejectingId === alert.id}
+                                  onClick={() => handleReject(alert.id)}
+                                >
+                                  {rejectingId === alert.id && <Spinner size="sm" />}
+                                  Reject
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    }
+
+                    const newTradeAlert = alert as TradeAlert & { suggestedStructure: NewTradeCandidate };
+                    const payoff = computePayoff(newTradeAlert.strategyKey, candidateToLegs(newTradeAlert));
                     return (
                       <div className="col-12 col-md-6 col-lg-4" key={alert.id}>
                         <div className="card h-100">
                           <div className="card-body d-flex flex-column gap-2">
-                            <div className="d-flex justify-content-between align-items-start">
+                            <div className="d-flex flex-wrap justify-content-between align-items-start gap-2">
                               <div>
                                 <div className="fw-bold">
-                                  ${alert.suggestedStructure.strike.toFixed(2)}
-                                  {alert.suggestedStructure.right === "call" ? "C" : "P"}
+                                  ${newTradeAlert.suggestedStructure.strike.toFixed(2)}
+                                  {newTradeAlert.suggestedStructure.right === "call" ? "C" : "P"}
                                 </div>
                                 <div className="text-secondary" style={{ fontSize: "0.8rem" }}>
-                                  exp {formatDate(alert.suggestedStructure.expiry)} ({alert.suggestedStructure.dte} DTE)
+                                  exp {formatDate(newTradeAlert.suggestedStructure.expiry)} ({newTradeAlert.suggestedStructure.dte} DTE)
                                 </div>
                               </div>
-                              <span className="badge badge-change-pos">
-                                {formatPercentage(alert.suggestedStructure.annualizedYield)} yield
+                              <span className="badge badge-change-pos text-nowrap">
+                                {formatPercentage(newTradeAlert.suggestedStructure.annualizedYield)} yield
                               </span>
                             </div>
 
                             <div className="row g-2" style={{ fontSize: "0.85rem" }}>
                               <div className="col-6">
                                 <div className="text-secondary">Delta</div>
-                                <div>{alert.suggestedStructure.delta.toFixed(2)}</div>
+                                <div>{newTradeAlert.suggestedStructure.delta.toFixed(2)}</div>
                               </div>
                               <div className="col-6">
                                 <div className="text-secondary">Premium</div>
-                                <div>{formatCurrency(alert.suggestedStructure.premium)}</div>
+                                <div>{formatCurrency(newTradeAlert.suggestedStructure.premium)}</div>
                               </div>
                             </div>
 
@@ -270,12 +348,16 @@ export function TradeAlertsPage() {
                             </p>
 
                             <div className="d-flex gap-2 mt-auto pt-2">
-                              <button type="button" className="btn btn-primary flex-fill" onClick={() => handleTrade(alert)}>
+                              <button
+                                type="button"
+                                className="btn btn-primary flex-fill"
+                                onClick={() => handleTradeNewAlert(newTradeAlert)}
+                              >
                                 Trade
                               </button>
                               <button
                                 type="button"
-                                className="btn btn-outline-danger d-inline-flex align-items-center justify-content-center gap-1"
+                                className="btn btn-outline-danger flex-fill d-inline-flex align-items-center justify-content-center gap-1"
                                 disabled={rejectingId === alert.id}
                                 onClick={() => handleReject(alert.id)}
                               >
@@ -295,6 +377,13 @@ export function TradeAlertsPage() {
         })}
 
       {detailSymbol && <TickerDetailModal symbol={detailSymbol} onClose={() => setDetailSymbol(null)} />}
+      {rollAlert && isRollAlert(rollAlert) && (
+        <RollPositionModal
+          alert={rollAlert}
+          onClose={() => setRollAlert(null)}
+          onRolled={() => setAlerts((prev) => prev.filter((a) => a.id !== rollAlert.id))}
+        />
+      )}
     </>
   );
 }

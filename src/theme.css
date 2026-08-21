@@ -292,22 +292,39 @@
    Covers both the solid and -lt (light tint) variants, since -lt badges
    with dark text have the opposite problem in dark mode: illegibly low
    contrast against the dark background. */
+/* !important required on every rule here — Tabler's own .bg-*-lt/.bg-*
+   utilities ship with !important in the compiled CSS (verified in
+   @tabler/core's tabler.min.css), so a plain override loses the cascade
+   regardless of source order or selector specificity. Without this, these
+   overrides silently do nothing — worth checking for if a future badge
+   color override here doesn't seem to take effect. */
 .badge.bg-success,
 .badge.bg-success-lt {
-  background-color: #1e7a33;
-  color: #fff;
+  background-color: #1e7a33 !important;
+  color: #fff !important;
 }
 
 .badge.bg-danger,
 .badge.bg-danger-lt {
-  background-color: var(--tblr-danger);
-  color: #fff;
+  background-color: var(--tblr-danger) !important;
+  color: #fff !important;
 }
 
 .badge.bg-warning,
-.badge.bg-warning-lt {
-  background-color: #8c5a00;
-  color: #fff;
+.badge.bg-warning-lt,
+.badge.bg-yellow,
+.badge.bg-yellow-lt {
+  background-color: #8c5a00 !important;
+  color: #fff !important;
+}
+
+/* Reuses the brand blue's already-verified accessible shade (#0369A1,
+   5.9:1 on white — see the brand theme note above) rather than computing a
+   separate one for azure specifically. */
+.badge.bg-azure,
+.badge.bg-azure-lt {
+  background-color: #0369a1 !important;
+  color: #fff !important;
 }
 
 /* Price/change badges (e.g. Trade Blotter P&L) — global UI/UX standard.
