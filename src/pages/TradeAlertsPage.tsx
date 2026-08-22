@@ -331,12 +331,12 @@ export function TradeAlertsPage() {
 
                               {alert.status === "pending" ? (
                                 <div className="d-flex gap-2 mt-auto pt-2">
-                                  <button type="button" className="btn btn-primary flex-fill" onClick={() => setRollAlert(alert)}>
+                                  <button type="button" className="btn btn-sm btn-primary flex-fill" onClick={() => setRollAlert(alert)}>
                                     Roll
                                   </button>
                                   <button
                                     type="button"
-                                    className="btn btn-outline-danger flex-fill d-inline-flex align-items-center justify-content-center gap-1"
+                                    className="btn btn-sm btn-outline-danger flex-fill d-inline-flex align-items-center justify-content-center gap-1"
                                     disabled={rejectingId === alert.id}
                                     onClick={() => handleReject(alert.id)}
                                   >
@@ -410,14 +410,14 @@ export function TradeAlertsPage() {
                               <div className="d-flex gap-2 mt-auto pt-2">
                                 <button
                                   type="button"
-                                  className="btn btn-primary flex-fill"
+                                  className="btn btn-sm btn-primary flex-fill"
                                   onClick={() => handleTradeNewAlert(newTradeAlert)}
                                 >
                                   Trade
                                 </button>
                                 <button
                                   type="button"
-                                  className="btn btn-outline-danger flex-fill d-inline-flex align-items-center justify-content-center gap-1"
+                                  className="btn btn-sm btn-outline-danger flex-fill d-inline-flex align-items-center justify-content-center gap-1"
                                   disabled={rejectingId === alert.id}
                                   onClick={() => handleReject(alert.id)}
                                 >

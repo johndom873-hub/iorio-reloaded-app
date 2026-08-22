@@ -7,13 +7,15 @@ import {
   closePosition,
   fetchGreeks,
   fetchPosition,
+  fetchUnrealizedPnl,
   updatePosition,
   type Greeks,
   type Position,
 } from "../api/positions";
 import { fetchTickerChart } from "../api/tickerDetail";
 import { computePayoff } from "../lib/payoff";
-import { formatCurrency, formatDate, formatNumber, formatSignedPnl } from "../lib/formatters";
+import { formatCurrency, formatDate, formatNumber, formatPercentageValue, formatSignedPnl, pnlBadgeClass } from "../lib/formatters";
+import { positionTotalPnl, positionTotalPnlPercent } from "../lib/positionPnl";
 
 interface PositionDetailModalProps {
   positionId: string;
@@ -36,6 +38,7 @@ export function PositionDetailModal({ positionId, onClose, onChanged }: Position
   const [loadError, setLoadError] = useState<string | null>(null);
   const [currentPrice, setCurrentPrice] = useState<number | null>(null);
   const [greeksByLegId, setGreeksByLegId] = useState<Record<string, Greeks>>({});
+  const [unrealizedPnlByPositionId, setUnrealizedPnlByPositionId] = useState<Record<string, number | null>>({});
 
   const [notesDraft, setNotesDraft] = useState("");
   const [priceTargetDraft, setPriceTargetDraft] = useState("");
@@ -67,6 +70,12 @@ export function PositionDetailModal({ positionId, onClose, onChanged }: Position
       if (optionLegIds.length > 0) {
         fetchGreeks(optionLegIds)
           .then(setGreeksByLegId)
+          .catch(() => {});
+      }
+
+      if (result.status === "open") {
+        fetchUnrealizedPnl([result.id])
+          .then(setUnrealizedPnlByPositionId)
           .catch(() => {});
       }
 
@@ -183,6 +192,25 @@ export function PositionDetailModal({ positionId, onClose, onChanged }: Position
                     >
                       {position.status === "open" ? "Open" : "Closed"}
                     </span>
+                    {(() => {
+                      const pnl = positionTotalPnl(position, unrealizedPnlByPositionId);
+                      if (pnl === "loading") return <Spinner size="sm" label="Loading P&L" />;
+                      if (pnl === null) return null;
+                      const pct = positionTotalPnlPercent(position, pnl);
+                      return (
+                        <>
+                          <span className={`badge ms-2 ${pnlBadgeClass(pnl)}`} style={{ fontSize: "0.72rem" }}>
+                            {formatSignedPnl(pnl)}
+                          </span>
+                          {pct !== null && (
+                            <span className={`badge ms-2 ${pnlBadgeClass(pct)}`} style={{ fontSize: "0.72rem" }}>
+                              {pct > 0 ? "+" : ""}
+                              {formatPercentageValue(pct)}
+                            </span>
+                          )}
+                        </>
+                      );
+                    })()}
                   </>
                 ) : (
                   "Position"

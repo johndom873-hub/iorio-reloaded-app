@@ -26,6 +26,7 @@ import {
   ibkrExpiryToIsoDate,
   pnlBadgeClass,
 } from "../lib/formatters";
+import { positionTotalPnl, positionTotalPnlPercent } from "../lib/positionPnl";
 
 const searchDebounceMs = 400;
 
@@ -49,21 +50,6 @@ function structureSummary(position: Position): string {
 
 function todayIsoDate(): string {
   return new Date().toISOString().slice(0, 10);
-}
-
-// Total P&L for a position: realized-only for closed positions (no live
-// call needed, computed server-side from stored exit prices); realized (any
-// already-rolled-away leg) + live-priced unrealized for open ones. Returns
-// "loading" while the on-demand unrealized fetch for open positions hasn't
-// resolved yet, or null if a live price genuinely couldn't be fetched (e.g.
-// outside market hours) — see fetchUnrealizedPnl.
-function positionTotalPnl(row: Position, unrealizedByPositionId: Record<string, number | null>): number | null | "loading" {
-  const realized = Number(row.realizedPnl);
-  if (row.status === "closed") return realized;
-  if (!(row.id in unrealizedByPositionId)) return "loading";
-  const unrealized = unrealizedByPositionId[row.id];
-  if (unrealized === null) return null;
-  return realized + unrealized;
 }
 
 interface NewPositionFormState {
@@ -376,10 +362,9 @@ export function PositionsPage() {
       align: "right",
       render: (row) => {
         const pnl = positionTotalPnl(row, unrealizedPnlByPositionId);
-        const capitalAtRisk = row.capitalAtRisk === null ? null : Number(row.capitalAtRisk);
         if (pnl === "loading") return <Spinner size="sm" label="Loading P&L" />;
-        if (pnl === null || capitalAtRisk === null || capitalAtRisk === 0) return "—";
-        const pct = (pnl / capitalAtRisk) * 100;
+        const pct = positionTotalPnlPercent(row, pnl);
+        if (pct === null) return "—";
         return (
           <span className={`badge ${pnlBadgeClass(pct)}`}>
             {pct > 0 ? "+" : ""}
