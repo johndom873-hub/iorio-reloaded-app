@@ -30,6 +30,8 @@ function statusLabel(status: OrderRequest["status"]): string {
       return "Confirmed — sending to IBKR...";
     case "submitted":
       return "Submitted to IBKR — awaiting fill";
+    case "cancel_requested":
+      return "Cancelling — awaiting IBKR confirmation";
     case "filled":
       return "Filled";
     case "partially_filled":
@@ -96,8 +98,15 @@ export function OrderReviewPanel({ order: initialOrder, onCancelled, onFilled }:
     setCancelling(true);
     setError(null);
     try {
-      await cancelOrder(order.id);
-      onCancelled();
+      const updated = await cancelOrder(order.id);
+      setOrder(updated);
+      if (updated.status === "cancelled") {
+        onCancelled();
+      } else {
+        // "cancel_requested" — order was already at IBKR, so cancellation
+        // isn't final until the worker's cancelOrder() call is confirmed.
+        schedulePoll(updated.id);
+      }
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Failed to cancel order.");
     } finally {
@@ -108,6 +117,8 @@ export function OrderReviewPanel({ order: initialOrder, onCancelled, onFilled }:
   const isPending = order.status === "pending_confirmation";
   const isTerminal = terminalStatuses.has(order.status);
   const isWaiting = order.status === "confirmed" || order.status === "submitted";
+  const canRequestCancel = order.status === "submitted" || order.status === "partially_filled";
+  const cancelRequested = order.status === "cancel_requested";
 
   return (
     <div className="border rounded p-3">
@@ -156,9 +167,15 @@ export function OrderReviewPanel({ order: initialOrder, onCancelled, onFilled }:
           </button>
         </div>
       )}
-      {!isPending && !isTerminal && (
+      {canRequestCancel && (
+        <button type="button" className="btn btn-outline-secondary" disabled={cancelling} onClick={handleCancel}>
+          {cancelling && <Spinner size="sm" />}
+          Cancel Order
+        </button>
+      )}
+      {cancelRequested && (
         <button type="button" className="btn btn-outline-secondary" disabled>
-          Cancelling isn't available once an order has been sent to IBKR — cancel it directly in TWS/IBKR if needed.
+          <Spinner size="sm" label="Waiting for IBKR to confirm the cancellation" />
         </button>
       )}
       {isTerminal && order.status !== "filled" && order.status !== "partially_filled" && (

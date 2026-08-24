@@ -77,6 +77,7 @@ export type OrderRequestStatus =
   | "pending_confirmation"
   | "confirmed"
   | "submitted"
+  | "cancel_requested"
   | "filled"
   | "partially_filled"
   | "cancelled"
