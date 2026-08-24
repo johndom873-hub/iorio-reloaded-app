@@ -195,7 +195,16 @@ export function PositionDetailModal({ positionId, onClose, onChanged }: Position
                     {(() => {
                       const pnl = positionTotalPnl(position, unrealizedPnlByPositionId);
                       if (pnl === "loading") return <Spinner size="sm" label="Loading P&L" />;
-                      if (pnl === null) return null;
+                      if (pnl === null)
+                        return (
+                          <span
+                            className="badge bg-secondary-lt text-dark ms-2"
+                            style={{ fontSize: "0.72rem" }}
+                            title="Live price unavailable — likely outside market hours"
+                          >
+                            P&L —
+                          </span>
+                        );
                       const pct = positionTotalPnlPercent(position, pnl);
                       return (
                         <>

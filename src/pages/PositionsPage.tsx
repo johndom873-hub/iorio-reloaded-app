@@ -352,7 +352,12 @@ export function PositionsPage() {
       render: (row) => {
         const pnl = positionTotalPnl(row, unrealizedPnlByPositionId);
         if (pnl === "loading") return <Spinner size="sm" label="Loading P&L" />;
-        if (pnl === null) return "—";
+        if (pnl === null)
+          return (
+            <span className="text-muted" title="Live price unavailable — likely outside market hours">
+              —
+            </span>
+          );
         return <span className={`badge ${pnlBadgeClass(pnl)}`}>{formatSignedPnl(pnl)}</span>;
       },
     },
@@ -364,7 +369,12 @@ export function PositionsPage() {
         const pnl = positionTotalPnl(row, unrealizedPnlByPositionId);
         if (pnl === "loading") return <Spinner size="sm" label="Loading P&L" />;
         const pct = positionTotalPnlPercent(row, pnl);
-        if (pct === null) return "—";
+        if (pct === null)
+          return (
+            <span className="text-muted" title="Live price unavailable — likely outside market hours">
+              —
+            </span>
+          );
         return (
           <span className={`badge ${pnlBadgeClass(pct)}`}>
             {pct > 0 ? "+" : ""}
