@@ -4,14 +4,15 @@ import { PageHeader } from "../components/layout/PageHeader";
 import { DataTable, type DataTableColumn } from "../components/DataTable/DataTable";
 import { Spinner } from "../components/Spinner";
 import { PositionDetailModal } from "../components/PositionDetailModal";
+import { OrderReviewPanel } from "../components/OrderReviewPanel";
 import { ApiError } from "../api/client";
 import {
-  createPosition,
+  buildOpenOrder,
   fetchGreeks,
   fetchPositions,
   fetchUnrealizedPnl,
   type Greeks,
-  type LegInput,
+  type OrderRequest,
   type Position,
   type PositionStatus,
   type UnrealizedPnlResult,
@@ -27,7 +28,7 @@ import {
   ibkrExpiryToIsoDate,
   pnlBadgeClass,
 } from "../lib/formatters";
-import { positionPnlAsOfDate, positionTotalPnl, positionTotalPnlPercent } from "../lib/positionPnl";
+import { positionPnlAsOfDate, positionTotalPnl, positionTotalPnlPercent, strategyBadgeClass, strategyLabel } from "../lib/positionPnl";
 
 const searchDebounceMs = 400;
 
@@ -49,21 +50,16 @@ function structureSummary(position: Position): string {
     .join(" / ");
 }
 
-function todayIsoDate(): string {
-  return new Date().toISOString().slice(0, 10);
-}
-
 interface NewPositionFormState {
   strategyKey: StrategyKey;
   symbol: string;
   notes: string;
   priceTarget: string;
-  entryDate: string;
-  stockEntryPrice: string;
+  stockLimitPrice: string;
   stockQuantity: string;
   optionStrike: string;
   optionExpiry: string;
-  optionPremium: string;
+  optionLimitPrice: string;
   optionQuantity: string;
 }
 
@@ -73,12 +69,11 @@ function initialFormState(): NewPositionFormState {
     symbol: "",
     notes: "",
     priceTarget: "",
-    entryDate: todayIsoDate(),
-    stockEntryPrice: "",
+    stockLimitPrice: "",
     stockQuantity: "100",
     optionStrike: "",
     optionExpiry: "",
-    optionPremium: "",
+    optionLimitPrice: "",
     optionQuantity: "1",
   };
 }
@@ -99,6 +94,7 @@ export function PositionsPage() {
   const [sourceAlertId, setSourceAlertId] = useState<string | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [pendingOrder, setPendingOrder] = useState<OrderRequest | null>(null);
   const [searchResults, setSearchResults] = useState<TickerSearchResult[]>([]);
   const [isSearching, setIsSearching] = useState(false);
   const [showDropdown, setShowDropdown] = useState(false);
@@ -143,7 +139,7 @@ export function PositionsPage() {
         setPricing(event.data.pricing);
         const livePrice = event.data.pricing.last ?? event.data.pricing.previousClose;
         if (livePrice) {
-          setForm((prev) => (prev.stockEntryPrice ? prev : { ...prev, stockEntryPrice: String(livePrice) }));
+          setForm((prev) => (prev.stockLimitPrice ? prev : { ...prev, stockLimitPrice: String(livePrice) }));
         }
       } else if (event.type === "optionChain") {
         setOptionChain(event.data);
@@ -190,7 +186,7 @@ export function PositionsPage() {
       strategyKey: paramStrategy === "cash_secured_put" ? "cash_secured_put" : "covered_call",
       optionStrike: paramStrike ?? prev.optionStrike,
       optionExpiry: paramExpiry ?? prev.optionExpiry,
-      optionPremium: paramPremium ?? prev.optionPremium,
+      optionLimitPrice: paramPremium ?? prev.optionLimitPrice,
     }));
     if (paramAlertId) setSourceAlertId(paramAlertId);
     if (paramSymbol) {
@@ -261,27 +257,12 @@ export function PositionsPage() {
       setFormError("Pick a symbol from the dropdown list — free-typed symbols aren't allowed.");
       return;
     }
-
-    const entryAt = new Date(`${form.entryDate}T00:00:00Z`).toISOString();
-    const legs: LegInput[] = [];
-
-    if (form.strategyKey === "covered_call") {
-      if (!form.stockEntryPrice || !form.stockQuantity) {
-        setFormError("Stock entry price and quantity are required.");
-        return;
-      }
-      legs.push({
-        legType: "stock",
-        side: "long",
-        quantity: Number(form.stockQuantity),
-        multiplier: 1,
-        entryPrice: Number(form.stockEntryPrice),
-        entryAt,
-      });
+    if (form.strategyKey === "covered_call" && (!form.stockLimitPrice || !form.stockQuantity)) {
+      setFormError("Stock limit price and quantity are required.");
+      return;
     }
-
-    if (!form.optionStrike || !form.optionExpiry || !form.optionPremium || !form.optionQuantity) {
-      setFormError("Strike, expiry, premium, and contract quantity are required.");
+    if (!form.optionStrike || !form.optionExpiry || !form.optionLimitPrice || !form.optionQuantity) {
+      setFormError("Strike, expiry, limit price, and contract quantity are required.");
       return;
     }
     const optionQuantity = Number(form.optionQuantity);
@@ -298,42 +279,44 @@ export function PositionsPage() {
         return;
       }
     }
-    legs.push({
-      legType: "option",
-      side: "short",
-      quantity: optionQuantity,
-      optionType: form.strategyKey === "covered_call" ? "call" : "put",
-      strikePrice: Number(form.optionStrike),
-      expiryDate: form.optionExpiry,
-      multiplier: 100,
-      entryPrice: Number(form.optionPremium),
-      entryAt,
-    });
 
     setSubmitting(true);
     try {
-      await createPosition({
+      const order = await buildOpenOrder({
         symbol: form.symbol.trim(),
         strategyKey: form.strategyKey,
+        stock:
+          form.strategyKey === "covered_call"
+            ? { quantity: Number(form.stockQuantity), limitPrice: Number(form.stockLimitPrice) }
+            : undefined,
+        option: {
+          quantity: optionQuantity,
+          limitPrice: Number(form.optionLimitPrice),
+          strikePrice: Number(form.optionStrike),
+          expiryDate: form.optionExpiry,
+        },
         notes: form.notes.trim() || undefined,
         priceTarget: form.priceTarget ? Number(form.priceTarget) : undefined,
-        legs,
         sourceAlertId: sourceAlertId ?? undefined,
       });
-      await loadPositions();
-      setForm(initialFormState());
-      setSourceAlertId(null);
-      setShowForm(false);
-      closeQuoteStreamRef.current?.();
-      setSymbolConfirmed(false);
-      setPricing(null);
-      setOptionChain([]);
-      setQuoteError(null);
+      setPendingOrder(order);
     } catch (err) {
-      setFormError(err instanceof ApiError ? err.message : "Failed to create position.");
+      setFormError(err instanceof ApiError ? err.message : "Failed to build order.");
     } finally {
       setSubmitting(false);
     }
+  }
+
+  function resetNewPositionForm() {
+    setPendingOrder(null);
+    setForm(initialFormState());
+    setSourceAlertId(null);
+    setShowForm(false);
+    closeQuoteStreamRef.current?.();
+    setSymbolConfirmed(false);
+    setPricing(null);
+    setOptionChain([]);
+    setQuoteError(null);
   }
 
   const columns: DataTableColumn<Position>[] = [
@@ -354,8 +337,8 @@ export function PositionsPage() {
       key: "strategy",
       header: "Strategy",
       render: (row) => (
-        <span className="badge bg-azure-lt text-dark" style={{ fontSize: "0.72rem" }}>
-          {row.strategyKey === "covered_call" ? "Covered Call" : "Cash-Secured Put"}
+        <span className={`badge ${strategyBadgeClass(row.strategyKey)}`} style={{ fontSize: "0.72rem" }}>
+          {strategyLabel(row.strategyKey)}
         </span>
       ),
     },
@@ -442,7 +425,7 @@ export function PositionsPage() {
   strikeOptions.sort((a, b) => a - b);
 
   function selectOptionExpiry(expiry: string) {
-    setForm((prev) => ({ ...prev, optionExpiry: expiry, optionStrike: "", optionPremium: "" }));
+    setForm((prev) => ({ ...prev, optionExpiry: expiry, optionStrike: "", optionLimitPrice: "" }));
   }
 
   function selectOptionStrike(strike: string) {
@@ -454,7 +437,7 @@ export function PositionsPage() {
     setForm((prev) => ({
       ...prev,
       optionStrike: strike,
-      optionPremium: midPremium !== null ? midPremium.toFixed(2) : prev.optionPremium,
+      optionLimitPrice: midPremium !== null ? midPremium.toFixed(2) : prev.optionLimitPrice,
     }));
   }
 
@@ -490,6 +473,18 @@ export function PositionsPage() {
             {formError && <div className="alert alert-danger">{formError}</div>}
             {quoteError && <div className="alert alert-warning">{quoteError}</div>}
 
+            {pendingOrder && (
+              <OrderReviewPanel
+                order={pendingOrder}
+                onCancelled={resetNewPositionForm}
+                onFilled={() => {
+                  resetNewPositionForm();
+                  loadPositions();
+                }}
+              />
+            )}
+
+            {!pendingOrder && (
             <div className="row g-3">
               <div className="col-12 col-sm-6 col-md-4">
                 <label className="form-label" style={{ fontSize: "0.8rem" }}>
@@ -504,7 +499,7 @@ export function PositionsPage() {
                     // already picked — clear it rather than leaving a call's
                     // strike/premium silently attached to a put leg.
                     const strategyKey = event.target.value as StrategyKey;
-                    setForm((prev) => ({ ...prev, strategyKey, optionStrike: "", optionExpiry: "", optionPremium: "" }));
+                    setForm((prev) => ({ ...prev, strategyKey, optionStrike: "", optionExpiry: "", optionLimitPrice: "" }));
                   }}
                 >
                   <option value="covered_call">Covered Call</option>
@@ -529,7 +524,7 @@ export function PositionsPage() {
                       setPricing(null);
                       setOptionChain([]);
                       setQuoteError(null);
-                      setForm((prev) => ({ ...prev, optionStrike: "", optionExpiry: "", optionPremium: "" }));
+                      setForm((prev) => ({ ...prev, optionStrike: "", optionExpiry: "", optionLimitPrice: "" }));
                     }
                   }}
                   onFocus={() => setShowDropdown(true)}
@@ -575,18 +570,6 @@ export function PositionsPage() {
                 )}
               </div>
 
-              <div className="col-12 col-sm-6 col-md-4">
-                <label className="form-label" style={{ fontSize: "0.8rem" }}>
-                  Opened On
-                </label>
-                <input
-                  type="date"
-                  className="form-control"
-                  value={form.entryDate}
-                  onChange={(event) => updateForm("entryDate", event.target.value)}
-                />
-              </div>
-
               {form.strategyKey === "covered_call" && (
                 <>
                   <div className="col-12 col-sm-6 col-md-3">
@@ -597,8 +580,8 @@ export function PositionsPage() {
                       type="number"
                       step="0.01"
                       className="form-control"
-                      value={form.stockEntryPrice}
-                      onChange={(event) => updateForm("stockEntryPrice", event.target.value)}
+                      value={form.stockLimitPrice}
+                      onChange={(event) => updateForm("stockLimitPrice", event.target.value)}
                     />
                     {symbolConfirmed && quoteLoading && !pricing && (
                       <div className="form-text">
@@ -669,8 +652,8 @@ export function PositionsPage() {
                   type="number"
                   step="0.01"
                   className="form-control"
-                  value={form.optionPremium}
-                  onChange={(event) => updateForm("optionPremium", event.target.value)}
+                  value={form.optionLimitPrice}
+                  onChange={(event) => updateForm("optionLimitPrice", event.target.value)}
                 />
               </div>
               <div className="col-12 col-sm-6 col-md-3">
@@ -709,16 +692,19 @@ export function PositionsPage() {
                 />
               </div>
             </div>
+            )}
 
-            <button
-              type="button"
-              className="btn btn-primary mt-3 d-inline-flex align-items-center gap-1"
-              disabled={submitting}
-              onClick={handleSubmit}
-            >
-              {submitting && <Spinner size="sm" />}
-              Create Position
-            </button>
+            {!pendingOrder && (
+              <button
+                type="button"
+                className="btn btn-primary mt-3 d-inline-flex align-items-center gap-1"
+                disabled={submitting}
+                onClick={handleSubmit}
+              >
+                {submitting && <Spinner size="sm" />}
+                Review Order
+              </button>
+            )}
           </div>
         </div>
       )}

@@ -1,18 +1,15 @@
 import { useEffect, useState } from "react";
 import { Spinner } from "./Spinner";
+import { OrderReviewPanel } from "./OrderReviewPanel";
 import { ApiError } from "../api/client";
-import { rollPosition, type Position } from "../api/positions";
+import { buildRollOrder, type OrderRequest } from "../api/positions";
 import type { RollStructure, TradeAlert } from "../api/tradeAlerts";
 import { formatCurrency, formatDate } from "../lib/formatters";
 
 interface RollPositionModalProps {
   alert: TradeAlert & { suggestedStructure: RollStructure };
   onClose: () => void;
-  onRolled: (position: Position) => void;
-}
-
-function todayIsoDate(): string {
-  return new Date().toISOString().slice(0, 10);
+  onRolled: () => void;
 }
 
 // Action modal (form submission, not just informational) — per the app's
@@ -22,12 +19,11 @@ function todayIsoDate(): string {
 export function RollPositionModal({ alert, onClose, onRolled }: RollPositionModalProps) {
   const { closeLeg, replacement, trigger, dte } = alert.suggestedStructure;
 
-  const [exitPriceDraft, setExitPriceDraft] = useState(closeLeg.currentPrice.toFixed(2));
-  const [exitAtDraft, setExitAtDraft] = useState(todayIsoDate());
-  const [entryPriceDraft, setEntryPriceDraft] = useState(replacement.premium.toFixed(2));
-  const [entryAtDraft, setEntryAtDraft] = useState(todayIsoDate());
+  const [closeLimitPriceDraft, setCloseLimitPriceDraft] = useState(closeLeg.currentPrice.toFixed(2));
+  const [newLegLimitPriceDraft, setNewLegLimitPriceDraft] = useState(replacement.premium.toFixed(2));
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [pendingOrder, setPendingOrder] = useState<OrderRequest | null>(null);
 
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent) {
@@ -50,24 +46,20 @@ export function RollPositionModal({ alert, onClose, onRolled }: RollPositionModa
     setSubmitting(true);
     setError(null);
     try {
-      const position = await rollPosition(alert.relatedPositionId, {
+      const order = await buildRollOrder(alert.relatedPositionId, {
         sourceAlertId: alert.id,
         closeLegId: closeLeg.legId,
-        exitPrice: Number(exitPriceDraft),
-        exitAt: exitAtDraft,
+        closeLimitPrice: Number(closeLimitPriceDraft),
         newLeg: {
           strikePrice: replacement.strike,
           expiryDate: replacement.expiry,
           quantity: closeLeg.quantity,
-          multiplier: closeLeg.multiplier,
-          entryPrice: Number(entryPriceDraft),
-          entryAt: entryAtDraft,
+          limitPrice: Number(newLegLimitPriceDraft),
         },
       });
-      onRolled(position);
-      onClose();
+      setPendingOrder(order);
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Failed to roll position.");
+      setError(err instanceof ApiError ? err.message : "Failed to build roll order.");
     } finally {
       setSubmitting(false);
     }
@@ -92,112 +84,100 @@ export function RollPositionModal({ alert, onClose, onRolled }: RollPositionModa
             <div className="modal-body">
               {error && <div className="alert alert-danger">{error}</div>}
 
-              <div className="text-secondary mb-3" style={{ fontSize: "0.8rem" }}>
-                Trigger: {triggerLabel}
-              </div>
+              {pendingOrder ? (
+                <OrderReviewPanel order={pendingOrder} onCancelled={onClose} onFilled={onRolled} />
+              ) : (
+                <>
+                  <div className="text-secondary mb-3" style={{ fontSize: "0.8rem" }}>
+                    Trigger: {triggerLabel}
+                  </div>
 
-              <h6 className="text-secondary text-uppercase" style={{ fontSize: "0.72rem" }}>
-                Close existing leg
-              </h6>
-              <div className="row g-2 mb-2">
-                <div className="col-6">
-                  <div className="text-secondary" style={{ fontSize: "0.8rem" }}>
-                    Contract
+                  <h6 className="text-secondary text-uppercase" style={{ fontSize: "0.72rem" }}>
+                    Close existing leg
+                  </h6>
+                  <div className="row g-2 mb-2">
+                    <div className="col-6">
+                      <div className="text-secondary" style={{ fontSize: "0.8rem" }}>
+                        Contract
+                      </div>
+                      <div>
+                        ${closeLeg.strike.toFixed(2)}
+                        {rightLabel} exp {formatDate(closeLeg.expiry)}
+                      </div>
+                    </div>
+                    <div className="col-6">
+                      <div className="text-secondary" style={{ fontSize: "0.8rem" }}>
+                        Credit collected
+                      </div>
+                      <div>{formatCurrency(closeLeg.entryPrice)}</div>
+                    </div>
                   </div>
-                  <div>
-                    ${closeLeg.strike.toFixed(2)}
-                    {rightLabel} exp {formatDate(closeLeg.expiry)}
+                  <div className="row g-2 mb-4">
+                    <div className="col-6">
+                      <label className="form-label">Buy-back limit price</label>
+                      <input
+                        type="number"
+                        step="0.01"
+                        className="form-control"
+                        value={closeLimitPriceDraft}
+                        onChange={(event) => setCloseLimitPriceDraft(event.target.value)}
+                        disabled={submitting}
+                      />
+                    </div>
                   </div>
-                </div>
-                <div className="col-6">
-                  <div className="text-secondary" style={{ fontSize: "0.8rem" }}>
-                    Credit collected
-                  </div>
-                  <div>{formatCurrency(closeLeg.entryPrice)}</div>
-                </div>
-              </div>
-              <div className="row g-2 mb-4">
-                <div className="col-6">
-                  <label className="form-label">Buy-back price</label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    className="form-control"
-                    value={exitPriceDraft}
-                    onChange={(event) => setExitPriceDraft(event.target.value)}
-                    disabled={submitting}
-                  />
-                </div>
-                <div className="col-6">
-                  <label className="form-label">Close date</label>
-                  <input
-                    type="date"
-                    className="form-control"
-                    value={exitAtDraft}
-                    onChange={(event) => setExitAtDraft(event.target.value)}
-                    disabled={submitting}
-                  />
-                </div>
-              </div>
 
-              <h6 className="text-secondary text-uppercase" style={{ fontSize: "0.72rem" }}>
-                Open replacement leg
-              </h6>
-              <div className="row g-2 mb-2">
-                <div className="col-6">
-                  <div className="text-secondary" style={{ fontSize: "0.8rem" }}>
-                    Contract
+                  <h6 className="text-secondary text-uppercase" style={{ fontSize: "0.72rem" }}>
+                    Open replacement leg
+                  </h6>
+                  <div className="row g-2 mb-2">
+                    <div className="col-6">
+                      <div className="text-secondary" style={{ fontSize: "0.8rem" }}>
+                        Contract
+                      </div>
+                      <div>
+                        ${replacement.strike.toFixed(2)}
+                        {rightLabel} exp {formatDate(replacement.expiry)} ({replacement.dte} DTE, Δ{replacement.delta.toFixed(2)})
+                      </div>
+                    </div>
+                    <div className="col-6">
+                      <div className="text-secondary" style={{ fontSize: "0.8rem" }}>
+                        Suggested premium
+                      </div>
+                      <div>{formatCurrency(replacement.premium)}</div>
+                    </div>
                   </div>
-                  <div>
-                    ${replacement.strike.toFixed(2)}
-                    {rightLabel} exp {formatDate(replacement.expiry)} ({replacement.dte} DTE, Δ{replacement.delta.toFixed(2)})
+                  <div className="row g-2">
+                    <div className="col-6">
+                      <label className="form-label">Sell limit price</label>
+                      <input
+                        type="number"
+                        step="0.01"
+                        className="form-control"
+                        value={newLegLimitPriceDraft}
+                        onChange={(event) => setNewLegLimitPriceDraft(event.target.value)}
+                        disabled={submitting}
+                      />
+                    </div>
                   </div>
-                </div>
-                <div className="col-6">
-                  <div className="text-secondary" style={{ fontSize: "0.8rem" }}>
-                    Suggested premium
-                  </div>
-                  <div>{formatCurrency(replacement.premium)}</div>
-                </div>
-              </div>
-              <div className="row g-2">
-                <div className="col-6">
-                  <label className="form-label">Fill price</label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    className="form-control"
-                    value={entryPriceDraft}
-                    onChange={(event) => setEntryPriceDraft(event.target.value)}
-                    disabled={submitting}
-                  />
-                </div>
-                <div className="col-6">
-                  <label className="form-label">Open date</label>
-                  <input
-                    type="date"
-                    className="form-control"
-                    value={entryAtDraft}
-                    onChange={(event) => setEntryAtDraft(event.target.value)}
-                    disabled={submitting}
-                  />
-                </div>
-              </div>
+                </>
+              )}
             </div>
-            <div className="modal-footer">
-              <button type="button" className="btn btn-link text-secondary" onClick={onClose} disabled={submitting}>
-                Cancel
-              </button>
-              <button
-                type="button"
-                className="btn btn-primary d-inline-flex align-items-center gap-1"
-                onClick={handleSubmit}
-                disabled={submitting}
-              >
-                {submitting && <Spinner size="sm" />}
-                Confirm Roll
-              </button>
-            </div>
+            {!pendingOrder && (
+              <div className="modal-footer">
+                <button type="button" className="btn btn-link text-secondary" onClick={onClose} disabled={submitting}>
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-primary d-inline-flex align-items-center gap-1"
+                  onClick={handleSubmit}
+                  disabled={submitting}
+                >
+                  {submitting && <Spinner size="sm" />}
+                  Review Roll Order
+                </button>
+              </div>
+            )}
           </div>
         </div>
       </div>

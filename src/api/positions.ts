@@ -22,9 +22,16 @@ export interface PositionLeg {
   exitAt: string | null;
 }
 
+// A synced-from-IBKR position that doesn't cleanly pair into a known
+// strategy shape (e.g. a short call with no matching long stock) is
+// surfaced as "unstructured" rather than hidden — see worker.ts's
+// reconcilePositionsFromIbkr and PROGRESS.md's "IBKR is the source of
+// truth" decision, 2026-08-24.
+export type PositionStrategyKey = StrategyKey | "unstructured";
+
 export interface Position {
   id: string;
-  strategyKey: StrategyKey;
+  strategyKey: PositionStrategyKey;
   status: PositionStatus;
   openedAt: string;
   closedAt: string | null;
@@ -57,30 +64,62 @@ export function fetchPosition(id: string): Promise<Position> {
   return apiRequest<Position>(`/positions/${id}`);
 }
 
-export interface LegInput {
-  legType: LegType;
-  side: LegSide;
+// Since 2026-08-24, iorio places real orders with IBKR instead of manually
+// recording fills — see PROGRESS.md's "IBKR is the source of truth"
+// decision. Every mutation below builds an OrderRequest (a preview of
+// exactly what will be sent to IBKR) rather than writing a position
+// directly; nothing transmits until confirmOrder() is called separately.
+// Positions/legs/trades themselves are only ever written by the worker
+// process, from IBKR's own fill data — these functions never return a
+// Position directly anymore.
+
+export type OrderRequestStatus =
+  | "pending_confirmation"
+  | "confirmed"
+  | "submitted"
+  | "filled"
+  | "partially_filled"
+  | "cancelled"
+  | "rejected"
+  | "error";
+
+export interface OrderLeg {
+  role: "stock" | "option";
+  action: "BUY" | "SELL";
+  symbol: string;
   quantity: number;
-  optionType?: OptionType;
-  strikePrice?: number;
-  expiryDate?: string;
-  multiplier: number;
-  entryPrice: number;
-  entryAt: string;
+  unitPrice: number;
+  strike?: number;
+  expiry?: string;
+  right?: "C" | "P";
 }
 
-export interface CreatePositionInput {
+export interface OrderRequest {
+  id: string;
+  requestType: string;
+  payload: { symbol: string; strategyKey: string; legs: OrderLeg[] };
+  relatedPositionId: string | null;
+  sourceAlertId: string | null;
+  status: OrderRequestStatus;
+  ibkrOrderId: number | null;
+  errorMessage: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface OpenOrderInput {
   symbol: string;
   strategyKey: StrategyKey;
+  stock?: { quantity: number; limitPrice: number };
+  option: { quantity: number; limitPrice: number; strikePrice: number; expiryDate: string };
   notes?: string;
   priceTarget?: number;
-  legs: LegInput[];
-  /** Links this position back to the Trade Alert it was created from, if any — see tradeAlerts.ts. */
+  /** Links this order back to the Trade Alert it was created from, if any — see tradeAlerts.ts. */
   sourceAlertId?: string;
 }
 
-export function createPosition(input: CreatePositionInput): Promise<Position> {
-  return apiRequest<Position>("/positions", { method: "POST", body: JSON.stringify(input) });
+export function buildOpenOrder(input: OpenOrderInput): Promise<OrderRequest> {
+  return apiRequest<OrderRequest>("/positions/orders", { method: "POST", body: JSON.stringify(input) });
 }
 
 export interface PositionPatch {
@@ -93,35 +132,43 @@ export function updatePosition(id: string, patch: PositionPatch): Promise<Positi
   return apiRequest<Position>(`/positions/${id}`, { method: "PATCH", body: JSON.stringify(patch) });
 }
 
-export interface LegExitInput {
+export interface LegCloseInput {
   legId: string;
-  exitPrice: number;
-  exitAt: string;
+  limitPrice: number;
 }
 
-export function closePosition(id: string, legs: LegExitInput[]): Promise<Position> {
-  return apiRequest<Position>(`/positions/${id}/close`, { method: "POST", body: JSON.stringify({ legs }) });
+export function buildCloseOrder(positionId: string, legs: LegCloseInput[]): Promise<OrderRequest> {
+  return apiRequest<OrderRequest>(`/positions/${positionId}/close`, { method: "POST", body: JSON.stringify({ legs }) });
 }
 
 export interface RollLegInput {
   strikePrice: number;
   expiryDate: string;
   quantity: number;
-  multiplier: number;
-  entryPrice: number;
-  entryAt: string;
+  limitPrice: number;
 }
 
-export interface RollPositionInput {
+export interface RollOrderInput {
   sourceAlertId: string;
   closeLegId: string;
-  exitPrice: number;
-  exitAt: string;
+  closeLimitPrice: number;
   newLeg: RollLegInput;
 }
 
-export function rollPosition(id: string, input: RollPositionInput): Promise<Position> {
-  return apiRequest<Position>(`/positions/${id}/roll`, { method: "POST", body: JSON.stringify(input) });
+export function buildRollOrder(positionId: string, input: RollOrderInput): Promise<OrderRequest> {
+  return apiRequest<OrderRequest>(`/positions/${positionId}/roll`, { method: "POST", body: JSON.stringify(input) });
+}
+
+export function confirmOrder(orderId: string): Promise<OrderRequest> {
+  return apiRequest<OrderRequest>(`/positions/orders/${orderId}/confirm`, { method: "POST" });
+}
+
+export function cancelOrder(orderId: string): Promise<OrderRequest> {
+  return apiRequest<OrderRequest>(`/positions/orders/${orderId}/cancel`, { method: "POST" });
+}
+
+export function fetchOrder(orderId: string): Promise<OrderRequest> {
+  return apiRequest<OrderRequest>(`/positions/orders/${orderId}`);
 }
 
 export interface Greeks {

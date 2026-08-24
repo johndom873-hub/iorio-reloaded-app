@@ -1,4 +1,18 @@
-import type { Position, UnrealizedPnlResult } from "../api/positions";
+import type { Position, PositionStrategyKey, UnrealizedPnlResult } from "../api/positions";
+
+// A position synced straight from IBKR that doesn't cleanly pair into a
+// known strategy shape shows up as "unstructured" (needs review) rather
+// than being force-fit into the wrong bucket or hidden — see
+// PositionStrategyKey's doc comment in api/positions.ts.
+export function strategyLabel(strategyKey: PositionStrategyKey): string {
+  if (strategyKey === "covered_call") return "Covered Call";
+  if (strategyKey === "cash_secured_put") return "Cash-Secured Put";
+  return "Needs Review";
+}
+
+export function strategyBadgeClass(strategyKey: PositionStrategyKey): string {
+  return strategyKey === "unstructured" ? "bg-warning-lt text-dark" : "bg-azure-lt text-dark";
+}
 
 // Total P&L for a position: realized-only for closed positions (no live
 // call needed, computed server-side from stored exit prices); realized (any

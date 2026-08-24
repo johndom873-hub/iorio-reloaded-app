@@ -1,22 +1,24 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Spinner } from "./Spinner";
+import { OrderReviewPanel } from "./OrderReviewPanel";
 import { ApexChart } from "./charts/ApexChart";
 import { TickerPriceChart } from "./charts/TickerPriceChart";
 import { ApiError } from "../api/client";
 import {
-  closePosition,
+  buildCloseOrder,
   fetchGreeks,
   fetchPosition,
   fetchUnrealizedPnl,
   updatePosition,
   type Greeks,
+  type OrderRequest,
   type Position,
   type UnrealizedPnlResult,
 } from "../api/positions";
 import { fetchTickerChart } from "../api/tickerDetail";
 import { computePayoff } from "../lib/payoff";
 import { formatCurrency, formatDate, formatNumber, formatPercentageValue, formatSignedPnl, pnlBadgeClass } from "../lib/formatters";
-import { positionPnlAsOfDate, positionTotalPnl, positionTotalPnlPercent } from "../lib/positionPnl";
+import { positionPnlAsOfDate, positionTotalPnl, positionTotalPnlPercent, strategyBadgeClass, strategyLabel } from "../lib/positionPnl";
 
 interface PositionDetailModalProps {
   positionId: string;
@@ -26,12 +28,7 @@ interface PositionDetailModalProps {
 
 interface CloseLegDraft {
   legId: string;
-  exitPrice: string;
-  exitAt: string;
-}
-
-function todayIsoDate(): string {
-  return new Date().toISOString().slice(0, 10);
+  limitPrice: string;
 }
 
 export function PositionDetailModal({ positionId, onClose, onChanged }: PositionDetailModalProps) {
@@ -51,6 +48,7 @@ export function PositionDetailModal({ positionId, onClose, onChanged }: Position
   const [closeLegs, setCloseLegs] = useState<CloseLegDraft[]>([]);
   const [closing, setClosing] = useState(false);
   const [closeError, setCloseError] = useState<string | null>(null);
+  const [pendingCloseOrder, setPendingCloseOrder] = useState<OrderRequest | null>(null);
 
   const hasSyncedFieldsRef = useRef(false);
 
@@ -112,7 +110,12 @@ export function PositionDetailModal({ positionId, onClose, onChanged }: Position
     };
   }, []);
 
-  const payoff = useMemo(() => (position ? computePayoff(position.strategyKey, position.legs) : null), [position]);
+  // No payoff shape is defined for an "unstructured" holding — it isn't a
+  // recognized strategy, just raw IBKR legs surfaced for review.
+  const payoff = useMemo(
+    () => (position && position.strategyKey !== "unstructured" ? computePayoff(position.strategyKey, position.legs) : null),
+    [position],
+  );
 
   async function handleSaveFields() {
     if (!position) return;
@@ -134,34 +137,29 @@ export function PositionDetailModal({ positionId, onClose, onChanged }: Position
 
   function openCloseForm() {
     if (!position) return;
-    setCloseLegs(position.legs.map((leg) => ({ legId: leg.id, exitPrice: "", exitAt: todayIsoDate() })));
+    setCloseLegs(position.legs.filter((leg) => !leg.exitAt).map((leg) => ({ legId: leg.id, limitPrice: "" })));
     setCloseError(null);
     setShowCloseForm(true);
   }
 
-  async function handleConfirmClose() {
+  async function handleBuildCloseOrder() {
     if (!position) return;
     for (const draft of closeLegs) {
-      if (!draft.exitPrice) {
-        setCloseError("Exit price is required for every leg.");
+      if (!draft.limitPrice) {
+        setCloseError("A limit price is required for every leg.");
         return;
       }
     }
     setClosing(true);
     setCloseError(null);
     try {
-      await closePosition(
+      const order = await buildCloseOrder(
         position.id,
-        closeLegs.map((draft) => ({
-          legId: draft.legId,
-          exitPrice: Number(draft.exitPrice),
-          exitAt: new Date(`${draft.exitAt}T00:00:00Z`).toISOString(),
-        })),
+        closeLegs.map((draft) => ({ legId: draft.legId, limitPrice: Number(draft.limitPrice) })),
       );
-      onChanged();
-      onClose();
+      setPendingCloseOrder(order);
     } catch (err) {
-      setCloseError(err instanceof ApiError ? err.message : "Failed to close position.");
+      setCloseError(err instanceof ApiError ? err.message : "Failed to build close order.");
     } finally {
       setClosing(false);
     }
@@ -184,8 +182,8 @@ export function PositionDetailModal({ positionId, onClose, onChanged }: Position
                 {position ? (
                   <>
                     {position.symbol}
-                    <span className="badge bg-azure-lt text-dark ms-2" style={{ fontSize: "0.72rem" }}>
-                      {position.strategyKey === "covered_call" ? "Covered Call" : "Cash-Secured Put"}
+                    <span className={`badge ms-2 ${strategyBadgeClass(position.strategyKey)}`} style={{ fontSize: "0.72rem" }}>
+                      {strategyLabel(position.strategyKey)}
                     </span>
                     <span
                       className={`badge ms-2 ${position.status === "open" ? "bg-success-lt" : "bg-secondary-lt"} text-dark`}
@@ -395,7 +393,20 @@ export function PositionDetailModal({ positionId, onClose, onChanged }: Position
 
                   {position.status === "open" && (
                     <div className="border-top pt-3">
-                      {!showCloseForm ? (
+                      {pendingCloseOrder ? (
+                        <OrderReviewPanel
+                          order={pendingCloseOrder}
+                          onCancelled={() => {
+                            setPendingCloseOrder(null);
+                            setShowCloseForm(false);
+                          }}
+                          onFilled={() => {
+                            setPendingCloseOrder(null);
+                            onChanged();
+                            onClose();
+                          }}
+                        />
+                      ) : !showCloseForm ? (
                         <button type="button" className="btn btn-outline-danger" onClick={openCloseForm}>
                           Close Position
                         </button>
@@ -412,33 +423,17 @@ export function PositionDetailModal({ positionId, onClose, onChanged }: Position
                                 <div className="col-12 col-sm-4">
                                   <label className="form-label" style={{ fontSize: "0.8rem" }}>
                                     {leg?.legType === "stock" ? "Stock" : leg?.optionType === "call" ? "Call" : "Put"}{" "}
-                                    Exit Price
+                                    Limit Price
                                   </label>
                                   <input
                                     type="number"
                                     step="0.01"
                                     className="form-control"
-                                    value={draft.exitPrice}
+                                    value={draft.limitPrice}
                                     onChange={(event) => {
                                       const value = event.target.value;
                                       setCloseLegs((prev) =>
-                                        prev.map((d, i) => (i === index ? { ...d, exitPrice: value } : d)),
-                                      );
-                                    }}
-                                  />
-                                </div>
-                                <div className="col-12 col-sm-4">
-                                  <label className="form-label" style={{ fontSize: "0.8rem" }}>
-                                    Exit Date
-                                  </label>
-                                  <input
-                                    type="date"
-                                    className="form-control"
-                                    value={draft.exitAt}
-                                    onChange={(event) => {
-                                      const value = event.target.value;
-                                      setCloseLegs((prev) =>
-                                        prev.map((d, i) => (i === index ? { ...d, exitAt: value } : d)),
+                                        prev.map((d, i) => (i === index ? { ...d, limitPrice: value } : d)),
                                       );
                                     }}
                                   />
@@ -451,10 +446,10 @@ export function PositionDetailModal({ positionId, onClose, onChanged }: Position
                               type="button"
                               className="btn btn-danger d-inline-flex align-items-center gap-1"
                               disabled={closing}
-                              onClick={handleConfirmClose}
+                              onClick={handleBuildCloseOrder}
                             >
                               {closing && <Spinner size="sm" />}
-                              Confirm Close
+                              Review Close Order
                             </button>
                             <button
                               type="button"
