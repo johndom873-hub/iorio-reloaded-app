@@ -3,9 +3,17 @@ import { PageHeader } from "../components/layout/PageHeader";
 import { DataTable, type DataTableColumn } from "../components/DataTable/DataTable";
 import { TickerDetailModal } from "../components/TickerDetailModal";
 import { ApiError } from "../api/client";
-import { fetchTrades, type Trade } from "../api/tradeBlotter";
+import { fetchTradeBlotter, type PendingOrder, type Trade } from "../api/tradeBlotter";
 import type { StrategyKey } from "../api/screener";
-import { formatCurrency, formatDate, formatNumber, formatSignedPnl, pnlBadgeClass } from "../lib/formatters";
+import {
+  formatCurrency,
+  formatDate,
+  formatNumber,
+  formatSignedPnl,
+  orderRequestStatusBadgeClass,
+  orderRequestStatusLabel,
+  pnlBadgeClass,
+} from "../lib/formatters";
 
 const strategyTabs: { key: StrategyKey | "all"; label: string }[] = [
   { key: "all", label: "All" },
@@ -13,11 +21,18 @@ const strategyTabs: { key: StrategyKey | "all"; label: string }[] = [
   { key: "cash_secured_put", label: "Cash-Secured Puts" },
 ];
 
-function legSummary(trade: Trade): string {
-  if (trade.legType === "stock") return "Stock";
-  const strike = trade.strikePrice ? formatCurrency(Number(trade.strikePrice)) : "—";
-  const rightLabel = trade.optionType === "call" ? "C" : "P";
-  return `${strike}${rightLabel}`;
+// A real fill (Trade) and a not-yet-filled order (PendingOrder) share every
+// column except P&L (an order hasn't realized anything) and IBKR State (a
+// Trade's state is trivially "Filled" — it only exists because IBKR filled
+// it — while an order's is its real, current order_requests.status).
+type BlotterRow = ({ kind: "trade" } & Trade) | ({ kind: "order" } & PendingOrder);
+
+function legSummary(row: BlotterRow): string {
+  const legType = row.kind === "trade" ? row.legType : row.legRole;
+  if (legType === "stock") return "Stock";
+  const strike = row.kind === "trade" ? row.strikePrice : row.strike;
+  const optionType = row.kind === "trade" ? (row.optionType === "call" ? "C" : "P") : row.optionType;
+  return `${strike ? formatCurrency(Number(strike)) : "—"}${optionType ?? ""}`;
 }
 
 export function TradeBlotterPage() {
@@ -25,7 +40,7 @@ export function TradeBlotterPage() {
   const [symbol, setSymbol] = useState("");
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
-  const [trades, setTrades] = useState<Trade[]>([]);
+  const [rows, setRows] = useState<BlotterRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [detailSymbol, setDetailSymbol] = useState<string | null>(null);
@@ -33,13 +48,24 @@ export function TradeBlotterPage() {
   const loadTrades = useCallback(async () => {
     try {
       setError(null);
-      const result = await fetchTrades({
+      const result = await fetchTradeBlotter({
         strategyKey: strategy === "all" ? undefined : strategy,
         symbol: symbol.trim() || undefined,
         from: from || undefined,
         to: to || undefined,
       });
-      setTrades(result);
+      const tradeRows: BlotterRow[] = result.trades.map((trade) => ({ kind: "trade", ...trade }));
+      const orderRows: BlotterRow[] = result.pendingOrders.map((order) => ({ kind: "order", ...order }));
+      // Newest first across both kinds — a pending order's createdAt and a
+      // trade's executedAt are both real timestamps of when something
+      // happened, so merging on that gives one coherent timeline.
+      setRows(
+        [...tradeRows, ...orderRows].sort((a, b) => {
+          const aTime = a.kind === "trade" ? a.executedAt : a.createdAt;
+          const bTime = b.kind === "trade" ? b.executedAt : b.createdAt;
+          return new Date(bTime).getTime() - new Date(aTime).getTime();
+        }),
+      );
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Failed to load trades.");
     }
@@ -50,11 +76,11 @@ export function TradeBlotterPage() {
     loadTrades().finally(() => setLoading(false));
   }, [loadTrades]);
 
-  const columns: DataTableColumn<Trade>[] = [
+  const columns: DataTableColumn<BlotterRow>[] = [
     {
-      key: "executedAt",
+      key: "date",
       header: "Date",
-      render: (row) => formatDate(row.executedAt),
+      render: (row) => formatDate(row.kind === "trade" ? row.executedAt : row.createdAt),
     },
     {
       key: "symbol",
@@ -82,27 +108,57 @@ export function TradeBlotterPage() {
     {
       key: "action",
       header: "Action",
-      render: (row) => (
-        <span className={`badge ${row.isClosingTrade ? "bg-secondary-lt" : "bg-azure-lt"} text-dark`}>
-          {row.isClosingTrade ? "Close" : "Open"}
-        </span>
-      ),
+      render: (row) => {
+        const isClose = row.kind === "trade" ? row.isClosingTrade : row.requestType === "close_position";
+        const label = row.kind === "trade" ? (isClose ? "Close" : "Open") : row.requestType === "roll_leg" ? "Roll" : isClose ? "Close" : "Open";
+        return <span className={`badge ${isClose ? "bg-secondary-lt" : "bg-azure-lt"} text-dark`}>{label}</span>;
+      },
     },
     {
       key: "side",
       header: "Side",
-      render: (row) => (row.side === "buy" ? "Buy" : "Sell"),
+      render: (row) => {
+        const side = row.kind === "trade" ? row.side : row.action.toLowerCase();
+        return side === "buy" ? "Buy" : "Sell";
+      },
     },
     { key: "quantity", header: "Qty", align: "right", render: (row) => formatNumber(row.quantity) },
-    { key: "price", header: "Price", align: "right", render: (row) => formatCurrency(Number(row.price)) },
+    {
+      key: "price",
+      header: "Price",
+      align: "right",
+      render: (row) => formatCurrency(Number(row.kind === "trade" ? row.price : row.unitPrice)),
+    },
     {
       key: "pnl",
       header: "P&L",
       align: "right",
       render: (row) => {
-        if (row.pnl === null) return "—";
+        if (row.kind === "order" || row.pnl === null) return "—";
         const pnl = Number(row.pnl);
         return <span className={`badge ${pnlBadgeClass(pnl)}`}>{formatSignedPnl(pnl)}</span>;
+      },
+    },
+    {
+      key: "ibkrState",
+      header: "IBKR State",
+      render: (row) => {
+        if (row.kind === "trade") return <span className="badge bg-success-lt text-dark">Filled</span>;
+        return (
+          <div>
+            <span className={`badge ${orderRequestStatusBadgeClass(row.status)}`}>{orderRequestStatusLabel(row.status)}</span>
+            {row.ibkrOrderId !== null && (
+              <div className="text-secondary" style={{ fontSize: "0.72rem" }}>
+                IBKR order #{row.ibkrOrderId}
+              </div>
+            )}
+            {row.errorMessage && (
+              <div className="text-danger" style={{ fontSize: "0.72rem" }}>
+                {row.errorMessage}
+              </div>
+            )}
+          </div>
+        );
       },
     },
   ];
@@ -160,10 +216,10 @@ export function TradeBlotterPage() {
       <DataTable
         tableId="trade-blotter"
         columns={columns}
-        rows={trades}
+        rows={rows}
         rowKey={(row) => row.id}
         loading={loading}
-        emptyMessage="No trades yet."
+        emptyMessage="No trades or orders yet."
       />
 
       {detailSymbol && <TickerDetailModal symbol={detailSymbol} onClose={() => setDetailSymbol(null)} />}

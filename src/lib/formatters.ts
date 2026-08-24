@@ -1,5 +1,38 @@
 // Shared formatting helpers. Any new formatting logic anywhere in the app
 // should be added here rather than inlined at the call site.
+import type { OrderRequestStatus } from "../api/positions";
+
+// Shared between OrderReviewPanel (the live confirm/submit flow) and the
+// Trade Blotter (showing every in-flight order's real IBKR state) — both
+// need the exact same order_requests.status -> human label mapping.
+export function orderRequestStatusLabel(status: OrderRequestStatus): string {
+  switch (status) {
+    case "pending_confirmation":
+      return "Awaiting confirmation";
+    case "confirmed":
+      return "Confirmed — sending to IBKR...";
+    case "submitted":
+      return "Submitted to IBKR";
+    case "cancel_requested":
+      return "Cancelling";
+    case "filled":
+      return "Filled";
+    case "partially_filled":
+      return "Partially filled";
+    case "cancelled":
+      return "Cancelled";
+    case "rejected":
+      return "Rejected by IBKR";
+    case "error":
+      return "Error";
+  }
+}
+
+export function orderRequestStatusBadgeClass(status: OrderRequestStatus): string {
+  if (status === "filled") return "bg-success-lt text-dark";
+  if (status === "rejected" || status === "error" || status === "cancelled") return "bg-danger-lt text-dark";
+  return "bg-azure-lt text-dark";
+}
 
 export function formatCurrency(amountInDollars: number | null | undefined): string {
   if (amountInDollars === null || amountInDollars === undefined) return "—";

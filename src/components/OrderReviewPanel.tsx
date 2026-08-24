@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { Spinner } from "./Spinner";
 import { ApiError } from "../api/client";
 import { cancelOrder, confirmOrder, fetchOrder, type OrderRequest } from "../api/positions";
-import { formatCurrency, formatDate } from "../lib/formatters";
+import { formatCurrency, formatDate, orderRequestStatusBadgeClass } from "../lib/formatters";
 
 interface OrderReviewPanelProps {
   order: OrderRequest;
@@ -134,16 +134,7 @@ export function OrderReviewPanel({ order: initialOrder, onCancelled, onFilled }:
         ))}
       </ul>
       <div className="d-flex align-items-center gap-2 mb-3">
-        <span
-          className={`badge ${
-            order.status === "filled"
-              ? "bg-success-lt text-dark"
-              : order.status === "rejected" || order.status === "error" || order.status === "cancelled"
-                ? "bg-danger-lt text-dark"
-                : "bg-azure-lt text-dark"
-          }`}
-          style={{ fontSize: "0.72rem" }}
-        >
+        <span className={`badge ${orderRequestStatusBadgeClass(order.status)}`} style={{ fontSize: "0.72rem" }}>
           {statusLabel(order.status)}
         </span>
         {isWaiting && <Spinner size="sm" label="Waiting for IBKR" />}

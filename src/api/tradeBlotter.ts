@@ -1,6 +1,6 @@
 import { apiRequest } from "./client";
 import type { StrategyKey } from "./screener";
-import type { LegSide, LegType, OptionType } from "./positions";
+import type { LegSide, LegType, OptionType, OrderRequestStatus } from "./positions";
 
 export interface Trade {
   id: string;
@@ -22,6 +22,30 @@ export interface Trade {
   symbol: string;
 }
 
+// An order_requests row that hasn't (yet, or ever will) produce a real fill
+// — still pending confirmation, confirmed and awaiting the worker,
+// submitted and awaiting a fill, cancelling, cancelled, rejected, or
+// errored. Expanded one row per payload leg, same granularity as Trade
+// above, so both can share one table. `status` is the real, current IBKR
+// state — never assumed from a stale local read.
+export interface PendingOrder {
+  id: string;
+  status: OrderRequestStatus;
+  ibkrOrderId: number | null;
+  errorMessage: string | null;
+  requestType: string;
+  createdAt: string;
+  symbol: string;
+  strategyKey: StrategyKey;
+  legRole: "stock" | "option";
+  action: "BUY" | "SELL";
+  quantity: number;
+  unitPrice: number;
+  strike: number | null;
+  expiry: string | null; // YYYY-MM-DD
+  optionType: "C" | "P" | null;
+}
+
 export interface TradeBlotterFilters {
   strategyKey?: StrategyKey;
   symbol?: string;
@@ -29,12 +53,17 @@ export interface TradeBlotterFilters {
   to?: string;
 }
 
-export function fetchTrades(filters: TradeBlotterFilters): Promise<Trade[]> {
+export interface TradeBlotterData {
+  trades: Trade[];
+  pendingOrders: PendingOrder[];
+}
+
+export function fetchTradeBlotter(filters: TradeBlotterFilters): Promise<TradeBlotterData> {
   const params = new URLSearchParams();
   if (filters.strategyKey) params.set("strategy", filters.strategyKey);
   if (filters.symbol) params.set("symbol", filters.symbol);
   if (filters.from) params.set("from", filters.from);
   if (filters.to) params.set("to", filters.to);
   const query = params.toString();
-  return apiRequest<Trade[]>(`/trade-blotter${query ? `?${query}` : ""}`);
+  return apiRequest<TradeBlotterData>(`/trade-blotter${query ? `?${query}` : ""}`);
 }
