@@ -14,6 +14,7 @@ import {
   type LegInput,
   type Position,
   type PositionStatus,
+  type UnrealizedPnlResult,
 } from "../api/positions";
 import { searchTickers, type StrategyKey, type TickerSearchResult } from "../api/screener";
 import { openPositionQuoteStream, type OptionQuote, type TickerPricing } from "../api/tickerDetail";
@@ -26,7 +27,7 @@ import {
   ibkrExpiryToIsoDate,
   pnlBadgeClass,
 } from "../lib/formatters";
-import { positionTotalPnl, positionTotalPnlPercent } from "../lib/positionPnl";
+import { positionPnlAsOfDate, positionTotalPnl, positionTotalPnlPercent } from "../lib/positionPnl";
 
 const searchDebounceMs = 400;
 
@@ -90,7 +91,7 @@ export function PositionsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [greeksByLegId, setGreeksByLegId] = useState<Record<string, Greeks>>({});
-  const [unrealizedPnlByPositionId, setUnrealizedPnlByPositionId] = useState<Record<string, number | null>>({});
+  const [unrealizedPnlByPositionId, setUnrealizedPnlByPositionId] = useState<Record<string, UnrealizedPnlResult>>({});
   const [detailPositionId, setDetailPositionId] = useState<string | null>(null);
 
   const [showForm, setShowForm] = useState(false);
@@ -354,11 +355,16 @@ export function PositionsPage() {
         if (pnl === "loading") return <Spinner size="sm" label="Loading P&L" />;
         if (pnl === null)
           return (
-            <span className="text-muted" title="Live price unavailable — likely outside market hours">
+            <span className="text-muted" title="No live price or recent snapshot available for this position">
               —
             </span>
           );
-        return <span className={`badge ${pnlBadgeClass(pnl)}`}>{formatSignedPnl(pnl)}</span>;
+        const asOfDate = positionPnlAsOfDate(row, unrealizedPnlByPositionId);
+        return (
+          <span className={`badge ${pnlBadgeClass(pnl)}`} title={asOfDate ? `As of ${formatDate(asOfDate)} close` : undefined}>
+            {formatSignedPnl(pnl)}
+          </span>
+        );
       },
     },
     {
@@ -371,12 +377,13 @@ export function PositionsPage() {
         const pct = positionTotalPnlPercent(row, pnl);
         if (pct === null)
           return (
-            <span className="text-muted" title="Live price unavailable — likely outside market hours">
+            <span className="text-muted" title="No live price or recent snapshot available for this position">
               —
             </span>
           );
+        const asOfDate = positionPnlAsOfDate(row, unrealizedPnlByPositionId);
         return (
-          <span className={`badge ${pnlBadgeClass(pct)}`}>
+          <span className={`badge ${pnlBadgeClass(pct)}`} title={asOfDate ? `As of ${formatDate(asOfDate)} close` : undefined}>
             {pct > 0 ? "+" : ""}
             {formatPercentageValue(pct)}
           </span>

@@ -11,11 +11,12 @@ import {
   updatePosition,
   type Greeks,
   type Position,
+  type UnrealizedPnlResult,
 } from "../api/positions";
 import { fetchTickerChart } from "../api/tickerDetail";
 import { computePayoff } from "../lib/payoff";
 import { formatCurrency, formatDate, formatNumber, formatPercentageValue, formatSignedPnl, pnlBadgeClass } from "../lib/formatters";
-import { positionTotalPnl, positionTotalPnlPercent } from "../lib/positionPnl";
+import { positionPnlAsOfDate, positionTotalPnl, positionTotalPnlPercent } from "../lib/positionPnl";
 
 interface PositionDetailModalProps {
   positionId: string;
@@ -38,7 +39,7 @@ export function PositionDetailModal({ positionId, onClose, onChanged }: Position
   const [loadError, setLoadError] = useState<string | null>(null);
   const [currentPrice, setCurrentPrice] = useState<number | null>(null);
   const [greeksByLegId, setGreeksByLegId] = useState<Record<string, Greeks>>({});
-  const [unrealizedPnlByPositionId, setUnrealizedPnlByPositionId] = useState<Record<string, number | null>>({});
+  const [unrealizedPnlByPositionId, setUnrealizedPnlByPositionId] = useState<Record<string, UnrealizedPnlResult>>({});
 
   const [notesDraft, setNotesDraft] = useState("");
   const [priceTargetDraft, setPriceTargetDraft] = useState("");
@@ -200,19 +201,21 @@ export function PositionDetailModal({ positionId, onClose, onChanged }: Position
                           <span
                             className="badge bg-secondary-lt text-dark ms-2"
                             style={{ fontSize: "0.72rem" }}
-                            title="Live price unavailable — likely outside market hours"
+                            title="No live price or recent snapshot available for this position"
                           >
                             P&L —
                           </span>
                         );
                       const pct = positionTotalPnlPercent(position, pnl);
+                      const asOfDate = positionPnlAsOfDate(position, unrealizedPnlByPositionId);
+                      const asOfTitle = asOfDate ? `As of ${formatDate(asOfDate)} close` : undefined;
                       return (
                         <>
-                          <span className={`badge ms-2 ${pnlBadgeClass(pnl)}`} style={{ fontSize: "0.72rem" }}>
+                          <span className={`badge ms-2 ${pnlBadgeClass(pnl)}`} style={{ fontSize: "0.72rem" }} title={asOfTitle}>
                             {formatSignedPnl(pnl)}
                           </span>
                           {pct !== null && (
-                            <span className={`badge ms-2 ${pnlBadgeClass(pct)}`} style={{ fontSize: "0.72rem" }}>
+                            <span className={`badge ms-2 ${pnlBadgeClass(pct)}`} style={{ fontSize: "0.72rem" }} title={asOfTitle}>
                               {pct > 0 ? "+" : ""}
                               {formatPercentageValue(pct)}
                             </span>

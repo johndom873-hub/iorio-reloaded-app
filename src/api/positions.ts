@@ -136,10 +136,21 @@ export function fetchGreeks(legIds: string[]): Promise<Record<string, Greeks>> {
   return apiRequest<Record<string, Greeks>>(`/positions/greeks?legIds=${legIds.join(",")}`);
 }
 
+export interface UnrealizedPnlResult {
+  unrealizedPnl: number | null;
+  // Set only when unrealizedPnl came from the last nightly snapshot instead
+  // of a live IBKR quote (outside market hours) — the date that snapshot
+  // was captured. null when unrealizedPnl is live, or when neither a live
+  // price nor a snapshot is available.
+  asOfDate: string | null;
+}
+
 // Unrealized P&L for open positions only, live-priced on demand — mirrors
-// fetchGreeks's shape. null means a live price couldn't be fetched for at
-// least one leg (e.g. outside market hours).
-export function fetchUnrealizedPnl(positionIds: string[]): Promise<Record<string, number | null>> {
+// fetchGreeks's shape. Falls back to the most recent daily P&L snapshot
+// (asOfDate set) when a live price couldn't be fetched for at least one leg
+// (e.g. outside market hours); unrealizedPnl is null when neither is
+// available (e.g. a position opened after that night's snapshot job ran).
+export function fetchUnrealizedPnl(positionIds: string[]): Promise<Record<string, UnrealizedPnlResult>> {
   if (positionIds.length === 0) return Promise.resolve({});
-  return apiRequest<Record<string, number | null>>(`/positions/pnl?positionIds=${positionIds.join(",")}`);
+  return apiRequest<Record<string, UnrealizedPnlResult>>(`/positions/pnl?positionIds=${positionIds.join(",")}`);
 }
