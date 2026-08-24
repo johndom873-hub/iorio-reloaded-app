@@ -217,7 +217,7 @@ export function TradeAlertsPage() {
       {running && runProgress && <div className="alert alert-info">{runProgress}</div>}
 
       <div className="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
-        <ul className="nav nav-pills mb-0">
+        <ul className="nav nav-tabs mb-0">
           {strategyTabs.map((tab) => (
             <li className="nav-item" key={tab.key}>
               <button

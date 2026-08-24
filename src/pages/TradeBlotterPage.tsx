@@ -113,7 +113,7 @@ export function TradeBlotterPage() {
 
       {error && <div className="alert alert-danger">{error}</div>}
 
-      <ul className="nav nav-pills mb-3">
+      <ul className="nav nav-tabs mb-3">
         {strategyTabs.map((tab) => (
           <li className="nav-item" key={tab.key}>
             <button
