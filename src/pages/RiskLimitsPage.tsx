@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { PageHeader } from "../components/layout/PageHeader";
 import { Spinner } from "../components/Spinner";
+import { HelpTooltip } from "../components/HelpTooltip";
 import { ApiError } from "../api/client";
 import {
   fetchExposure,
@@ -18,6 +19,13 @@ const strategyTabs: { key: StrategyKey; label: string }[] = [
   { key: "covered_call", label: "Covered Calls" },
   { key: "cash_secured_put", label: "Cash-Secured Puts" },
 ];
+
+const strategyDescriptions: Record<StrategyKey, string> = {
+  covered_call:
+    "A covered call sells a call option against shares you already own. If the option is assigned, those shares are sold at the strike price and you keep the premium collected; if not, the option expires and you keep both the shares and the premium. The delta and DTE settings below control which call strikes and expirations the screener looks for: a lower delta targets strikes further above the current price (less likely to be assigned, smaller premium), and the DTE range sets how many days out those expirations can be.",
+  cash_secured_put:
+    "A cash-secured put sells a put option while holding enough cash to buy the shares if assigned. If the option is assigned, those shares are bought at the strike price using the reserved cash; if not, the option expires and you keep the premium. The delta and DTE settings below control which put strikes and expirations the screener looks for: a lower delta targets strikes further below the current price (less likely to be assigned, smaller premium), and the DTE range sets how many days out those expirations can be.",
+};
 
 interface SettingsFormState {
   deltaTargetMin: string;
@@ -99,14 +107,16 @@ interface NumberFieldProps {
   label: string;
   value: string;
   step?: string;
+  help: string;
   onChange: (value: string) => void;
 }
 
-function NumberField({ label, value, step = "1", onChange }: NumberFieldProps) {
+function NumberField({ label, value, step = "1", help, onChange }: NumberFieldProps) {
   return (
     <div className="col-12 col-sm-6 col-md-3">
-      <label className="form-label" style={{ fontSize: "0.8rem" }}>
+      <label className="form-label d-inline-flex align-items-center" style={{ fontSize: "0.8rem" }}>
         {label}
+        <HelpTooltip text={help} />
       </label>
       <input
         type="number"
@@ -269,57 +279,70 @@ export function RiskLimitsPage() {
             <>
               {saveError && <div className="alert alert-danger">{saveError}</div>}
 
+              <p className="text-muted mb-3" style={{ fontSize: "0.85rem" }}>
+                {strategyDescriptions[strategy]}
+              </p>
+
               <div className="row g-3">
                 <NumberField
                   label="Delta target min"
                   value={formState.deltaTargetMin}
                   step="0.01"
+                  help="Lowest option delta (absolute value) the screener will consider when picking strikes. Lower = further out-of-the-money, lower assignment risk."
                   onChange={(value) => updateField("deltaTargetMin", value)}
                 />
                 <NumberField
                   label="Delta target max"
                   value={formState.deltaTargetMax}
                   step="0.01"
+                  help="Highest option delta (absolute value) the screener will consider. Higher = closer to the money, more premium, more assignment risk."
                   onChange={(value) => updateField("deltaTargetMax", value)}
                 />
                 <NumberField
                   label="DTE target min"
                   value={formState.dteTargetMin}
+                  help="Fewest days to expiration the screener will look at when generating trade alerts."
                   onChange={(value) => updateField("dteTargetMin", value)}
                 />
                 <NumberField
                   label="DTE target max"
                   value={formState.dteTargetMax}
+                  help="Most days to expiration the screener will look at when generating trade alerts."
                   onChange={(value) => updateField("dteTargetMax", value)}
                 />
                 <NumberField
                   label="Max position % of portfolio"
                   value={formState.maxPositionPctOfPortfolio}
                   step="0.1"
+                  help="Target ceiling on how large a single position can be, as % of total portfolio value. Not yet auto-enforced — reference only."
                   onChange={(value) => updateField("maxPositionPctOfPortfolio", value)}
                 />
                 <NumberField
                   label="Max aggregate collateral %"
                   value={formState.maxAggregateCollateralPct}
                   step="0.1"
+                  help="Target ceiling on total collateral tied up across all open positions in this strategy, as % of portfolio. Not yet auto-enforced."
                   onChange={(value) => updateField("maxAggregateCollateralPct", value)}
                 />
                 <NumberField
                   label="Max concentration per ticker %"
                   value={formState.maxConcentrationPerTickerPct}
                   step="0.1"
+                  help="Target ceiling on how much of the portfolio (by notional value) can sit in one ticker. Shown for reference against the Concentration by Ticker table above; not yet auto-enforced."
                   onChange={(value) => updateField("maxConcentrationPerTickerPct", value)}
                 />
                 <NumberField
                   label="Max concentration per sector %"
                   value={formState.maxConcentrationPerSectorPct}
                   step="0.1"
+                  help="Target ceiling on how much of the portfolio (by notional value) can sit in one sector. Shown for reference against the Concentration by Sector table above; not yet auto-enforced."
                   onChange={(value) => updateField("maxConcentrationPerSectorPct", value)}
                 />
                 <NumberField
                   label="Min cash reserve %"
                   value={formState.minCashReservePct}
                   step="0.1"
+                  help="Target floor on how much of the portfolio should stay as uncommitted cash. Not yet auto-enforced."
                   onChange={(value) => updateField("minCashReservePct", value)}
                 />
               </div>
