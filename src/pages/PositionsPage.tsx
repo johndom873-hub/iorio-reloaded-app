@@ -284,10 +284,24 @@ export function PositionsPage() {
       setFormError("Strike, expiry, premium, and contract quantity are required.");
       return;
     }
+    const optionQuantity = Number(form.optionQuantity);
+    // Mirrors the server-side guard in positions.ts (validateCoveredCallCoverage)
+    // — catches the mistake before a round-trip, but the server check is the
+    // real safety net since it can't be bypassed.
+    if (form.strategyKey === "covered_call") {
+      const shortCallCoveredShares = optionQuantity * 100;
+      const stockShares = Number(form.stockQuantity);
+      if (shortCallCoveredShares > stockShares) {
+        setFormError(
+          `${optionQuantity} contract${optionQuantity === 1 ? "" : "s"} covers ${shortCallCoveredShares} shares, but only ${stockShares} shares are held — this would leave the position naked.`,
+        );
+        return;
+      }
+    }
     legs.push({
       legType: "option",
       side: "short",
-      quantity: Number(form.optionQuantity),
+      quantity: optionQuantity,
       optionType: form.strategyKey === "covered_call" ? "call" : "put",
       strikePrice: Number(form.optionStrike),
       expiryDate: form.optionExpiry,
