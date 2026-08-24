@@ -9,6 +9,7 @@ import {
   fetchTradeAlerts,
   isRollAlert,
   openTradeAlertRunStream,
+  refreshTradeAlert,
   rejectTradeAlert,
   type NewTradeCandidate,
   type TradeAlert,
@@ -56,6 +57,19 @@ function ReviewedFooter({ alert }: { alert: TradeAlert }) {
     <div className="d-flex justify-content-between align-items-center mt-auto pt-2">
       <span className={`badge ${statusBadgeClass[alert.status]}`}>{statusLabel[alert.status]}</span>
       {alert.reviewedAt && <span className="text-secondary" style={{ fontSize: "0.75rem" }}>{formatDateTime(alert.reviewedAt)}</span>}
+    </div>
+  );
+}
+
+// Alerts generate at 10pm UTC overnight but get reviewed the next morning
+// (Juan's in an EU timezone) — showing both timestamps side by side is what
+// lets him tell "this is still last night's number" from "I already
+// validated this against the open" at a glance, instead of guessing.
+function AlertTimestamps({ alert }: { alert: TradeAlert }) {
+  return (
+    <div className="text-secondary" style={{ fontSize: "0.72rem" }}>
+      Generated {formatDateTime(alert.createdAt)}
+      {alert.lastRefreshedAt ? <> · Refreshed {formatDateTime(alert.lastRefreshedAt)}</> : <> · Not yet refreshed</>}
     </div>
   );
 }
@@ -112,6 +126,8 @@ export function TradeAlertsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [rejectingId, setRejectingId] = useState<string | null>(null);
+  const [refreshingId, setRefreshingId] = useState<string | null>(null);
+  const [refreshError, setRefreshError] = useState<string | null>(null);
   const [detailSymbol, setDetailSymbol] = useState<string | null>(null);
   const [rollAlert, setRollAlert] = useState<TradeAlert | null>(null);
   const [running, setRunning] = useState(false);
@@ -159,6 +175,19 @@ export function TradeAlertsPage() {
         loadAlerts();
       }
     });
+  }
+
+  async function handleRefresh(id: string) {
+    setRefreshingId(id);
+    setRefreshError(null);
+    try {
+      const updated = await refreshTradeAlert(id);
+      setAlerts((prev) => prev.map((alert) => (alert.id === id ? updated : alert)));
+    } catch (err) {
+      setRefreshError(err instanceof ApiError ? err.message : "Failed to refresh alert.");
+    } finally {
+      setRefreshingId(null);
+    }
   }
 
   async function handleReject(id: string) {
@@ -213,6 +242,7 @@ export function TradeAlertsPage() {
       />
 
       {error && <div className="alert alert-danger">{error}</div>}
+      {refreshError && <div className="alert alert-danger">{refreshError}</div>}
       {runError && <div className="alert alert-danger">{runError}</div>}
       {running && runProgress && <div className="alert alert-info">{runProgress}</div>}
 
@@ -282,7 +312,7 @@ export function TradeAlertsPage() {
                 <div className="row g-3">
                   {tickerAlerts.map((alert) => {
                     if (isRollAlert(alert)) {
-                      const { closeLeg, replacement, trigger, dte } = alert.suggestedStructure;
+                      const { closeLeg, replacement, trigger, dte, stillTriggered } = alert.suggestedStructure;
                       const rightLabel = closeLeg.right === "call" ? "C" : "P";
                       const triggerLabel = trigger === "decay" ? "Decayed ≤50%" : `≤21 DTE (${dte}d)`;
                       return (
@@ -300,8 +330,14 @@ export function TradeAlertsPage() {
                                     {formatDate(replacement.expiry)}
                                   </div>
                                 </div>
-                                <span className="badge bg-yellow-lt text-dark text-nowrap">{triggerLabel}</span>
+                                {stillTriggered === false ? (
+                                  <span className="badge bg-secondary-lt text-dark text-nowrap">No longer triggered</span>
+                                ) : (
+                                  <span className="badge bg-yellow-lt text-dark text-nowrap">{triggerLabel}</span>
+                                )}
                               </div>
+
+                              <AlertTimestamps alert={alert} />
 
                               <div className="row g-2" style={{ fontSize: "0.85rem" }}>
                                 <div className="col-6">
@@ -333,6 +369,16 @@ export function TradeAlertsPage() {
                                 <div className="d-flex gap-2 mt-auto pt-2">
                                   <button type="button" className="btn btn-sm btn-primary flex-fill" onClick={() => setRollAlert(alert)}>
                                     Roll
+                                  </button>
+                                  <button
+                                    type="button"
+                                    className="btn btn-sm btn-outline-secondary d-inline-flex align-items-center justify-content-center gap-1"
+                                    disabled={refreshingId === alert.id}
+                                    onClick={() => handleRefresh(alert.id)}
+                                    title="Re-quote this alert's contracts against live IBKR data"
+                                  >
+                                    {refreshingId === alert.id && <Spinner size="sm" />}
+                                    Refresh
                                   </button>
                                   <button
                                     type="button"
@@ -374,6 +420,8 @@ export function TradeAlertsPage() {
                               </span>
                             </div>
 
+                            <AlertTimestamps alert={alert} />
+
                             <div className="row g-2" style={{ fontSize: "0.85rem" }}>
                               <div className="col-6">
                                 <div className="text-secondary">Delta</div>
@@ -414,6 +462,16 @@ export function TradeAlertsPage() {
                                   onClick={() => handleTradeNewAlert(newTradeAlert)}
                                 >
                                   Trade
+                                </button>
+                                <button
+                                  type="button"
+                                  className="btn btn-sm btn-outline-secondary d-inline-flex align-items-center justify-content-center gap-1"
+                                  disabled={refreshingId === alert.id}
+                                  onClick={() => handleRefresh(alert.id)}
+                                  title="Re-quote this alert's contract against live IBKR data"
+                                >
+                                  {refreshingId === alert.id && <Spinner size="sm" />}
+                                  Refresh
                                 </button>
                                 <button
                                   type="button"

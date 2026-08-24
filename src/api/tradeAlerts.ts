@@ -32,6 +32,9 @@ export interface RollStructure {
   trigger: "decay" | "dte";
   dte: number;
   replacement: NewTradeCandidate;
+  // Only present after a refresh (see refreshTradeAlert) — false means the
+  // position no longer meets either roll trigger as of the refreshed data.
+  stillTriggered?: boolean;
 }
 
 export type TradeAlertType = "new_trade" | "roll";
@@ -47,6 +50,7 @@ export interface TradeAlert {
   reviewedAt: string | null;
   resultingPositionId: string | null;
   createdAt: string;
+  lastRefreshedAt: string | null;
   tickerId: string;
   symbol: string;
   companyName: string | null;
@@ -72,6 +76,10 @@ export function fetchTradeAlerts(filters: TradeAlertFilters = {}): Promise<Trade
 
 export function rejectTradeAlert(id: string): Promise<TradeAlert> {
   return apiRequest<TradeAlert>(`/trade-alerts/${id}`, { method: "PATCH", body: JSON.stringify({ status: "rejected" }) });
+}
+
+export function refreshTradeAlert(id: string): Promise<TradeAlert> {
+  return apiRequest<TradeAlert>(`/trade-alerts/${id}/refresh`, { method: "POST" });
 }
 
 // Mirrors the backend's TradeAlertGenerationEvent (runTradeAlertGeneration.ts)
