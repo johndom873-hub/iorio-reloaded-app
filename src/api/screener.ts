@@ -1,10 +1,11 @@
 import { apiRequest } from "./client";
 
+// Used across positions/trade-alerts/risk-limits — not tied to the
+// (now strategy-agnostic) screener shortlist itself.
 export type StrategyKey = "covered_call" | "cash_secured_put";
 
 export interface ScreenerRow {
   id: string;
-  strategyKey: StrategyKey;
   addedAt: string;
   notes: string | null;
   tickerId: string;
@@ -19,14 +20,14 @@ export interface ScreenerRow {
   ivRankWindowDays: number;
 }
 
-export function fetchScreener(strategyKey: StrategyKey): Promise<ScreenerRow[]> {
-  return apiRequest<ScreenerRow[]>(`/screener?strategy=${strategyKey}`);
+export function fetchScreener(): Promise<ScreenerRow[]> {
+  return apiRequest<ScreenerRow[]>("/screener");
 }
 
-export function addToScreener(symbol: string, strategyKey: StrategyKey, notes?: string): Promise<ScreenerRow> {
+export function addToScreener(symbol: string, notes?: string): Promise<ScreenerRow> {
   return apiRequest<ScreenerRow>("/screener", {
     method: "POST",
-    body: JSON.stringify({ symbol, strategyKey, notes }),
+    body: JSON.stringify({ symbol, notes }),
   });
 }
 

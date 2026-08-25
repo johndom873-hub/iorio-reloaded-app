@@ -156,8 +156,10 @@ export function PositionsPage() {
 
   useEffect(() => () => closeQuoteStreamRef.current?.(), []);
 
-  // Arriving from Screener's "Trade" button (?symbol=X&strategy=Y&new=1) or
-  // Trade Alerts' "Trade" button (same, plus &strike=&expiry=&premium=&alertId=)
+  // Arriving from Screener's "Trade" button (?symbol=X&new=1, defaults to
+  // covered_call — the screener isn't strategy-scoped, so the form's own
+  // strategy selector is how the user picks CC vs CSP) or Trade Alerts'
+  // "Trade" button (?symbol=X&strategy=Y&new=1&strike=&expiry=&premium=&alertId=)
   // — pre-fill and open the New Position form, then clear the params so a
   // page refresh doesn't reopen it. A Trade Alert always suggests a single
   // short option leg (the strategy's own convention — sell a covered call

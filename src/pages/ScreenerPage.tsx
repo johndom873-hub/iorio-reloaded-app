@@ -12,17 +12,11 @@ import {
   searchTickers,
   updateScreenerNotes,
   type ScreenerRow,
-  type StrategyKey,
   type TickerSearchResult,
 } from "../api/screener";
 import { formatDate, formatNumber, formatPercentage, formatPercentageValue } from "../lib/formatters";
 
 const searchDebounceMs = 400;
-
-const strategyTabs: { key: StrategyKey; label: string }[] = [
-  { key: "covered_call", label: "Covered Calls" },
-  { key: "cash_secured_put", label: "Cash-Secured Puts" },
-];
 
 interface NotesCellProps {
   row: ScreenerRow;
@@ -97,7 +91,6 @@ function NotesCell({ row, onSave }: NotesCellProps) {
 
 export function ScreenerPage() {
   const navigate = useNavigate();
-  const [strategy, setStrategy] = useState<StrategyKey>("covered_call");
   const [rows, setRows] = useState<ScreenerRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -113,12 +106,12 @@ export function ScreenerPage() {
   const loadRows = useCallback(async () => {
     try {
       setError(null);
-      const result = await fetchScreener(strategy);
+      const result = await fetchScreener();
       setRows(result);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Failed to load the screener.");
     }
-  }, [strategy]);
+  }, []);
 
   useEffect(() => {
     setLoading(true);
@@ -159,7 +152,7 @@ export function ScreenerPage() {
     setPendingSymbol(symbol);
     try {
       setError(null);
-      await addToScreener(symbol, strategy);
+      await addToScreener(symbol);
       await loadRows();
       setNewSymbol("");
       setSearchResults([]);
@@ -248,7 +241,7 @@ export function ScreenerPage() {
           <button
             type="button"
             className="btn btn-sm btn-primary"
-            onClick={() => navigate(`/positions?symbol=${row.symbol}&strategy=${strategy}&new=1`)}
+            onClick={() => navigate(`/positions?symbol=${row.symbol}&new=1`)}
           >
             Trade
           </button>
@@ -271,20 +264,6 @@ export function ScreenerPage() {
       <PageHeader title="Screener" subtitle="Monitor tickers for trading opportunities" />
 
       {error && <div className="alert alert-danger">{error}</div>}
-
-      <ul className="nav nav-tabs mb-3">
-        {strategyTabs.map((tabOption) => (
-          <li className="nav-item" key={tabOption.key}>
-            <button
-              type="button"
-              className={`nav-link ${strategy === tabOption.key ? "active" : ""}`}
-              onClick={() => setStrategy(tabOption.key)}
-            >
-              {tabOption.label}
-            </button>
-          </li>
-        ))}
-      </ul>
 
       <div className="card mb-3">
         <div className="card-body d-flex flex-column flex-sm-row gap-2">
@@ -351,7 +330,7 @@ export function ScreenerPage() {
         rows={rows}
         rowKey={(row) => row.id}
         loading={loading}
-        emptyMessage="No tickers being monitored for this strategy yet."
+        emptyMessage="No tickers being monitored yet."
       />
 
       {detailSymbol && <TickerDetailModal symbol={detailSymbol} onClose={() => setDetailSymbol(null)} />}
