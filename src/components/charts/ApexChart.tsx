@@ -3,7 +3,7 @@ import type { ApexOptions, ApexYAxis } from "apexcharts";
 import { useTheme } from "../../contexts/ThemeContext";
 
 interface ApexChartProps {
-  type: "line" | "bar" | "area" | "candlestick";
+  type: "line" | "bar" | "area" | "candlestick" | "donut";
   series: ApexOptions["series"];
   options?: ApexOptions;
   height?: number;

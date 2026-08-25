@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { PageHeader } from "../components/layout/PageHeader";
 import { Spinner } from "../components/Spinner";
 import { ApexChart } from "../components/charts/ApexChart";
+import { useTheme } from "../contexts/ThemeContext";
 import { ApiError } from "../api/client";
 import { fetchDashboardSummary, fetchPnlHistory, type DashboardSummary, type PnlHistoryPoint } from "../api/dashboard";
 import { fetchExposure, type ConcentrationRow, type ExposureData, type StrategyAllocationRow, type TopPositionRow } from "../api/riskLimits";
@@ -12,6 +13,17 @@ const strategyLabels: Record<string, string> = {
   cash_secured_put: "Cash-Secured Puts",
   unallocated: "Unallocated (cash)",
 };
+
+// Fixed-order categorical palette (blue, orange, aqua, yellow, magenta,
+// green, violet, red) — validated for adjacent-pair colorblind safety in
+// this exact order; assigned in sequence, never cycled or reordered per
+// chart. "Unallocated" isn't a real category (it's the absence of one) so
+// it never takes a slot — it always renders as the same neutral gray.
+const categoricalByTheme = {
+  light: ["#2a78d6", "#eb6834", "#1baf7a", "#eda100", "#e87ba4", "#008300", "#4a3aa7", "#e34948"],
+  dark: ["#3987e5", "#d95926", "#199e70", "#c98500", "#d55181", "#008300", "#9085e9", "#e66767"],
+} as const;
+const unallocatedGrayByTheme = { light: "#9099ab", dark: "#8b96a8" } as const;
 
 // Shared row shape for the three allocation lists below — a plain label
 // (ticker/sector/strategy) plus a $ value, rendered as $ + % of total
@@ -24,7 +36,52 @@ interface AllocationListProps {
   rows: { key: string; label: string; sublabel?: string; notionalValue: string; isUnallocated?: boolean }[];
 }
 
+// Assigns the fixed-order categorical palette to each real row (skipping
+// "Unallocated", which always gets the neutral gray) — computed once and
+// shared between the donut's slices and the list's swatches below it, so
+// identity is never color-alone: every slice has a same-colored dot next
+// to its label and $ value.
+function allocationColors(rows: AllocationListProps["rows"], theme: "light" | "dark"): string[] {
+  const categorical = categoricalByTheme[theme];
+  let nextSlot = 0;
+  return rows.map((row) => (row.isUnallocated ? unallocatedGrayByTheme[theme] : categorical[nextSlot++ % categorical.length]));
+}
+
+function AllocationDonut({ rows, colors }: { rows: AllocationListProps["rows"]; colors: string[] }) {
+  const series = rows.map((row) => Number(row.notionalValue));
+  const total = series.reduce((sum, value) => sum + value, 0);
+
+  return (
+    <ApexChart
+      type="donut"
+      height={200}
+      series={series}
+      options={{
+        labels: rows.map((row) => row.label),
+        colors,
+        stroke: { show: true, width: 2 }, // surface gap between slices
+        dataLabels: { enabled: rows.length <= 4, formatter: (val: number) => `${val.toFixed(0)}%` },
+        legend: { show: false }, // the list below doubles as the legend (label + swatch)
+        tooltip: { y: { formatter: (val: number) => formatCurrency(val) } },
+        plotOptions: {
+          pie: {
+            donut: {
+              size: "68%",
+              labels: {
+                show: true,
+                total: { show: true, label: "Total", formatter: () => formatCurrency(total) },
+              },
+            },
+          },
+        },
+      }}
+    />
+  );
+}
+
 function AllocationList({ title, emptyMessage, totalAccountValue, rows }: AllocationListProps) {
+  const { theme } = useTheme();
+  const colors = allocationColors(rows, theme);
   return (
     <div className="col-12 col-md-4">
       <h4 style={{ fontSize: "0.9rem" }}>{title}</h4>
@@ -33,23 +90,30 @@ function AllocationList({ title, emptyMessage, totalAccountValue, rows }: Alloca
           {emptyMessage}
         </div>
       ) : (
-        <ul className="list-group list-group-flush">
-          {rows.map((row) => {
-            const fraction = totalAccountValue ? Number(row.notionalValue) / totalAccountValue : null;
-            return (
-              <li key={row.key} className="list-group-item d-flex justify-content-between align-items-center px-0">
-                <span className={row.isUnallocated ? "text-muted" : ""}>
-                  {row.label}
-                  {row.sublabel && <span className="text-muted ms-1" style={{ fontSize: "0.72rem" }}>{row.sublabel}</span>}
-                </span>
-                <span className="text-muted text-nowrap" style={{ fontSize: "0.8rem" }}>
-                  {formatCurrency(Number(row.notionalValue))}
-                  {fraction !== null && ` (${formatPercentage(fraction)})`}
-                </span>
-              </li>
-            );
-          })}
-        </ul>
+        <>
+          <AllocationDonut rows={rows} colors={colors} />
+          <ul className="list-group list-group-flush">
+            {rows.map((row, index) => {
+              const fraction = totalAccountValue ? Number(row.notionalValue) / totalAccountValue : null;
+              return (
+                <li key={row.key} className="list-group-item d-flex justify-content-between align-items-center px-0">
+                  <span className={`d-inline-flex align-items-center gap-2 ${row.isUnallocated ? "text-muted" : ""}`}>
+                    <span
+                      aria-hidden="true"
+                      style={{ width: "0.6rem", height: "0.6rem", borderRadius: "50%", backgroundColor: colors[index], flexShrink: 0 }}
+                    />
+                    {row.label}
+                    {row.sublabel && <span className="text-muted ms-1" style={{ fontSize: "0.72rem" }}>{row.sublabel}</span>}
+                  </span>
+                  <span className="text-muted text-nowrap" style={{ fontSize: "0.8rem" }}>
+                    {formatCurrency(Number(row.notionalValue))}
+                    {fraction !== null && ` (${formatPercentage(fraction)})`}
+                  </span>
+                </li>
+              );
+            })}
+          </ul>
+        </>
       )}
     </div>
   );
