@@ -4,7 +4,7 @@ import { OrderReviewPanel } from "./OrderReviewPanel";
 import { ApiError } from "../api/client";
 import { buildRollOrder, type OrderRequest } from "../api/positions";
 import type { RollStructure, TradeAlert } from "../api/tradeAlerts";
-import { formatCurrency, formatDate } from "../lib/formatters";
+import { formatCurrency, formatDate, formatNumber } from "../lib/formatters";
 
 interface RollPositionModalProps {
   alert: TradeAlert & { suggestedStructure: RollStructure };
@@ -42,7 +42,10 @@ export function RollPositionModal({ alert, onClose, onRolled }: RollPositionModa
   }, []);
 
   async function handleSubmit() {
-    if (!alert.relatedPositionId) return;
+    if (!alert.relatedPositionId) {
+      setError("This alert isn't linked to a position.");
+      return;
+    }
     setSubmitting(true);
     setError(null);
     try {
@@ -76,7 +79,7 @@ export function RollPositionModal({ alert, onClose, onRolled }: RollPositionModa
           <div className="modal-content">
             <div className="modal-header">
               <h5 className="modal-title">
-                Roll {alert.symbol} ${closeLeg.strike.toFixed(2)}
+                Roll {alert.symbol} {formatCurrency(closeLeg.strike)}
                 {rightLabel}
               </h5>
               <button type="button" className="btn-close" aria-label="Close" onClick={onClose} disabled={submitting} />
@@ -95,13 +98,13 @@ export function RollPositionModal({ alert, onClose, onRolled }: RollPositionModa
                   <h6 className="text-secondary text-uppercase" style={{ fontSize: "0.72rem" }}>
                     Close existing leg
                   </h6>
-                  <div className="row g-2 mb-2">
+                  <div className="row g-3 mb-2">
                     <div className="col-6">
                       <div className="text-secondary" style={{ fontSize: "0.8rem" }}>
                         Contract
                       </div>
                       <div>
-                        ${closeLeg.strike.toFixed(2)}
+                        {formatCurrency(closeLeg.strike)}
                         {rightLabel} exp {formatDate(closeLeg.expiry)}
                       </div>
                     </div>
@@ -109,10 +112,10 @@ export function RollPositionModal({ alert, onClose, onRolled }: RollPositionModa
                       <div className="text-secondary" style={{ fontSize: "0.8rem" }}>
                         Credit collected
                       </div>
-                      <div>{formatCurrency(closeLeg.entryPrice)}</div>
+                      <div className="text-success">{formatCurrency(closeLeg.entryPrice)}</div>
                     </div>
                   </div>
-                  <div className="row g-2 mb-4">
+                  <div className="row g-3 mb-4">
                     <div className="col-6">
                       <label className="form-label">Buy-back limit price</label>
                       <input
@@ -129,24 +132,25 @@ export function RollPositionModal({ alert, onClose, onRolled }: RollPositionModa
                   <h6 className="text-secondary text-uppercase" style={{ fontSize: "0.72rem" }}>
                     Open replacement leg
                   </h6>
-                  <div className="row g-2 mb-2">
+                  <div className="row g-3 mb-2">
                     <div className="col-6">
                       <div className="text-secondary" style={{ fontSize: "0.8rem" }}>
                         Contract
                       </div>
                       <div>
-                        ${replacement.strike.toFixed(2)}
-                        {rightLabel} exp {formatDate(replacement.expiry)} ({replacement.dte} DTE, Δ{replacement.delta.toFixed(2)})
+                        {formatCurrency(replacement.strike)}
+                        {rightLabel} exp {formatDate(replacement.expiry)} ({replacement.dte} DTE, Δ
+                        {formatNumber(replacement.delta, 2)})
                       </div>
                     </div>
                     <div className="col-6">
                       <div className="text-secondary" style={{ fontSize: "0.8rem" }}>
                         Suggested premium
                       </div>
-                      <div>{formatCurrency(replacement.premium)}</div>
+                      <div className="text-success">{formatCurrency(replacement.premium)}</div>
                     </div>
                   </div>
-                  <div className="row g-2">
+                  <div className="row g-3">
                     <div className="col-6">
                       <label className="form-label">Sell limit price</label>
                       <input

@@ -54,6 +54,16 @@
   --tblr-border-color: rgb(45.7, 60.5, 81.1);
 }
 
+/* Tabler's default inactive .nav-tabs .nav-link color is a low-contrast
+   gray tuned for a light background — on the dark surface (#1f2937) it
+   drops well under WCAG AA. #adb5bd verified at 7.08:1 against #1f2937.
+   No !important needed here (unlike the badge overrides below): Tabler's
+   compiled nav-tabs rules don't ship !important on the inactive-link
+   color, so a same-specificity override further down the cascade wins. */
+:root[data-bs-theme="dark"] .nav-tabs .nav-link:not(.active) {
+  color: #adb5bd;
+}
+
 /* @fontsource/inter (imported in main.tsx) already registers proper
    @font-face rules for real font files — Tabler's own
    --tblr-font-sans-serif stack already lists "Inter Var, Inter" first,

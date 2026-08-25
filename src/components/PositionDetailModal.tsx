@@ -4,6 +4,7 @@ import { OrderReviewPanel } from "./OrderReviewPanel";
 import { ApexChart } from "./charts/ApexChart";
 import { TickerPriceChart } from "./charts/TickerPriceChart";
 import { ApiError } from "../api/client";
+import { useTheme } from "../contexts/ThemeContext";
 import {
   buildCloseOrder,
   fetchGreeks,
@@ -31,12 +32,27 @@ interface CloseLegDraft {
   limitPrice: string;
 }
 
+// Payoff chart annotation colors (breakeven, current-price, and zero-line
+// markers) — same theme-aware pattern as ApexChart's own
+// textColorByTheme/gridColorByTheme, since these are annotation-specific
+// and not covered by ApexChart's shared merge. The light-mode values are
+// unchanged from the original hardcoded colors; dark-mode gets brighter
+// variants so they still read clearly against the dark navy body background.
+const annotationColorsByTheme = {
+  light: { breakeven: "#f59f00", current: "#4263eb", zero: "#adb5bd" },
+  dark: { breakeven: "#f59f00", current: "#748ffc", zero: "#adb5bd" },
+} as const;
+
 export function PositionDetailModal({ positionId, onClose, onChanged }: PositionDetailModalProps) {
+  const { theme } = useTheme();
+  const annotationColors = annotationColorsByTheme[theme];
   const [position, setPosition] = useState<Position | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [currentPrice, setCurrentPrice] = useState<number | null>(null);
   const [greeksByLegId, setGreeksByLegId] = useState<Record<string, Greeks>>({});
+  const [greeksFetchFailed, setGreeksFetchFailed] = useState(false);
   const [unrealizedPnlByPositionId, setUnrealizedPnlByPositionId] = useState<Record<string, UnrealizedPnlResult>>({});
+  const [unrealizedPnlFetchFailed, setUnrealizedPnlFetchFailed] = useState(false);
 
   const [notesDraft, setNotesDraft] = useState("");
   const [priceTargetDraft, setPriceTargetDraft] = useState("");
@@ -67,15 +83,17 @@ export function PositionDetailModal({ positionId, onClose, onChanged }: Position
       const optionLegIds =
         result.status === "open" ? result.legs.filter((leg) => leg.legType === "option").map((leg) => leg.id) : [];
       if (optionLegIds.length > 0) {
+        setGreeksFetchFailed(false);
         fetchGreeks(optionLegIds)
           .then(setGreeksByLegId)
-          .catch(() => {});
+          .catch(() => setGreeksFetchFailed(true));
       }
 
       if (result.status === "open") {
+        setUnrealizedPnlFetchFailed(false);
         fetchUnrealizedPnl([result.id])
           .then(setUnrealizedPnlByPositionId)
-          .catch(() => {});
+          .catch(() => setUnrealizedPnlFetchFailed(true));
       }
 
       fetchTickerChart(result.symbol, "5D")
@@ -182,23 +200,31 @@ export function PositionDetailModal({ positionId, onClose, onChanged }: Position
                 {position ? (
                   <>
                     {position.symbol}
-                    <span className={`badge ms-2 ${strategyBadgeClass(position.strategyKey)}`} style={{ fontSize: "0.72rem" }}>
+                    <span className={`badge ms-2 ${strategyBadgeClass(position.strategyKey)}`}>
                       {strategyLabel(position.strategyKey)}
                     </span>
-                    <span
-                      className={`badge ms-2 ${position.status === "open" ? "bg-success-lt" : "bg-secondary-lt"} text-dark`}
-                      style={{ fontSize: "0.72rem" }}
-                    >
+                    <span className={`badge ms-2 ${position.status === "open" ? "bg-success-lt" : "bg-secondary-lt"}`}>
                       {position.status === "open" ? "Open" : "Closed"}
                     </span>
                     {(() => {
                       const pnl = positionTotalPnl(position, unrealizedPnlByPositionId);
-                      if (pnl === "loading") return <Spinner size="sm" label="Loading P&L" />;
+                      if (pnl === "loading") {
+                        if (unrealizedPnlFetchFailed) {
+                          return (
+                            <span
+                              className="badge bg-secondary-lt ms-2"
+                              title="Failed to load live P&L data"
+                            >
+                              P&L —
+                            </span>
+                          );
+                        }
+                        return <Spinner size="sm" label="Loading P&L" />;
+                      }
                       if (pnl === null)
                         return (
                           <span
-                            className="badge bg-secondary-lt text-dark ms-2"
-                            style={{ fontSize: "0.72rem" }}
+                            className="badge bg-secondary-lt ms-2"
                             title="No live price or recent snapshot available for this position"
                           >
                             P&L —
@@ -209,11 +235,11 @@ export function PositionDetailModal({ positionId, onClose, onChanged }: Position
                       const asOfTitle = asOfDate ? `As of ${formatDate(asOfDate)} close` : undefined;
                       return (
                         <>
-                          <span className={`badge ms-2 ${pnlBadgeClass(pnl)}`} style={{ fontSize: "0.72rem" }} title={asOfTitle}>
+                          <span className={`badge ms-2 ${pnlBadgeClass(pnl)}`} title={asOfTitle}>
                             {formatSignedPnl(pnl)}
                           </span>
                           {pct !== null && (
-                            <span className={`badge ms-2 ${pnlBadgeClass(pct)}`} style={{ fontSize: "0.72rem" }} title={asOfTitle}>
+                            <span className={`badge ms-2 ${pnlBadgeClass(pct)}`} title={asOfTitle}>
                               {pct > 0 ? "+" : ""}
                               {formatPercentageValue(pct, 2)}
                             </span>
@@ -262,9 +288,19 @@ export function PositionDetailModal({ positionId, onClose, onChanged }: Position
                             <td>{leg.expiryDate ? formatDate(leg.expiryDate) : "—"}</td>
                             <td className="text-end">{formatCurrency(Number(leg.entryPrice))}</td>
                             <td className="text-end">
-                              {leg.legType === "option"
-                                ? formatNumber(greeksByLegId[leg.id]?.delta ?? null, 2)
-                                : "—"}
+                              {leg.legType === "option" ? (
+                                leg.id in greeksByLegId ? (
+                                  formatNumber(greeksByLegId[leg.id].delta, 2)
+                                ) : greeksFetchFailed ? (
+                                  <span className="text-muted" title="Failed to load delta">
+                                    —
+                                  </span>
+                                ) : (
+                                  "—"
+                                )
+                              ) : (
+                                "—"
+                              )}
                             </td>
                             <td className="text-end">{leg.exitPrice ? formatCurrency(Number(leg.exitPrice)) : "—"}</td>
                           </tr>
@@ -320,20 +356,20 @@ export function PositionDetailModal({ positionId, onClose, onChanged }: Position
                             xaxis: [
                               {
                                 x: payoff.breakeven,
-                                borderColor: "#f59f00",
+                                borderColor: annotationColors.breakeven,
                                 label: { text: "Breakeven", style: { fontSize: "0.7rem" } },
                               },
                               ...(currentPrice !== null
                                 ? [
                                     {
                                       x: currentPrice,
-                                      borderColor: "#4263eb",
+                                      borderColor: annotationColors.current,
                                       label: { text: "Current", style: { fontSize: "0.7rem" } },
                                     },
                                   ]
                                 : []),
                             ],
-                            yaxis: [{ y: 0, borderColor: "#adb5bd", strokeDashArray: 4 }],
+                            yaxis: [{ y: 0, borderColor: annotationColors.zero, strokeDashArray: 4 }],
                           },
                           dataLabels: { enabled: false },
                           stroke: { curve: "straight", width: 2 },

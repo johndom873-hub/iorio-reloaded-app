@@ -1,6 +1,7 @@
 // Shared formatting helpers. Any new formatting logic anywhere in the app
 // should be added here rather than inlined at the call site.
 import type { OrderRequestStatus } from "../api/positions";
+import type { JobRunStatus } from "../api/systemHealth";
 
 // Shared between OrderReviewPanel (the live confirm/submit flow) and the
 // Trade Blotter (showing every in-flight order's real IBKR state) — both
@@ -34,8 +35,33 @@ export function orderRequestStatusBadgeClass(status: OrderRequestStatus): string
   return "bg-azure-lt text-dark";
 }
 
+// A job_run can report status "success" while its details still carry a
+// non-empty `problems` array (e.g. the watchdog job flagging a stuck run) —
+// that's a degraded run, not a clean one, and should not badge as plain green.
+function jobRunHasProblems(details: Record<string, unknown> | null | undefined): boolean {
+  if (!details) return false;
+  const problems = (details as { problems?: unknown }).problems;
+  return Array.isArray(problems) && problems.length > 0;
+}
+
+export function jobRunStatusBadgeClass(
+  status: JobRunStatus,
+  details?: Record<string, unknown> | null,
+): string {
+  if (status === "success" && jobRunHasProblems(details)) return "bg-warning-lt text-dark";
+  if (status === "success") return "bg-success-lt text-dark";
+  if (status === "failure") return "bg-danger-lt text-dark";
+  return "bg-azure-lt text-dark";
+}
+
+export function jobRunStatusLabel(status: JobRunStatus, details?: Record<string, unknown> | null): string {
+  if (status === "success" && jobRunHasProblems(details)) return "success — issues found";
+  return status;
+}
+
 export function formatCurrency(amountInDollars: number | null | undefined): string {
   if (amountInDollars === null || amountInDollars === undefined) return "—";
+  if (Number.isNaN(amountInDollars)) return "—";
   return new Intl.NumberFormat("en-US", {
     style: "currency",
     currency: "USD",
@@ -46,6 +72,7 @@ export function formatCurrency(amountInDollars: number | null | undefined): stri
 
 export function formatPercentage(fractionOrNull: number | null | undefined, decimalPlaces = 1): string {
   if (fractionOrNull === null || fractionOrNull === undefined) return "—";
+  if (Number.isNaN(fractionOrNull)) return "—";
   return `${(fractionOrNull * 100).toFixed(decimalPlaces)}%`;
 }
 
@@ -53,6 +80,7 @@ export function formatPercentage(fractionOrNull: number | null | undefined, deci
 // formatPercentage above which expects a 0-1 fraction.
 export function formatPercentageValue(percentOrNull: number | null | undefined, decimalPlaces = 0): string {
   if (percentOrNull === null || percentOrNull === undefined) return "—";
+  if (Number.isNaN(percentOrNull)) return "—";
   return `${percentOrNull.toFixed(decimalPlaces)}%`;
 }
 
@@ -65,12 +93,14 @@ export function ibkrExpiryToIsoDate(expiryYyyymmdd: string): string {
 export function formatDate(dateInput: string | Date | null | undefined): string {
   if (!dateInput) return "—";
   const date = typeof dateInput === "string" ? new Date(dateInput) : dateInput;
+  if (Number.isNaN(date.getTime())) return "—";
   return new Intl.DateTimeFormat("en-US", { year: "numeric", month: "short", day: "numeric" }).format(date);
 }
 
 export function formatDateTime(dateInput: string | Date | null | undefined): string {
   if (!dateInput) return "—";
   const date = typeof dateInput === "string" ? new Date(dateInput) : dateInput;
+  if (Number.isNaN(date.getTime())) return "—";
   return new Intl.DateTimeFormat("en-US", {
     year: "numeric",
     month: "short",
@@ -105,6 +135,7 @@ export function formatDuration(
 
 export function formatSignedPnl(amountInDollars: number | null | undefined): string {
   if (amountInDollars === null || amountInDollars === undefined) return "—";
+  if (Number.isNaN(amountInDollars)) return "—";
   const formatted = formatCurrency(Math.abs(amountInDollars));
   if (amountInDollars > 0) return `+${formatted}`;
   if (amountInDollars < 0) return `-${formatted}`;
@@ -117,4 +148,15 @@ export function pnlBadgeClass(pnl: number): string {
   if (pnl > 0) return "badge-change-pos";
   if (pnl < 0) return "badge-change-neg";
   return "badge-change-flat";
+}
+
+// Same pos/neg/flat convention as pnlBadgeClass, for signed dollar figures
+// rendered as plain text rather than a badge (e.g. Dashboard P&L, Trade
+// Alerts Max Gain/Max Loss) — null/undefined gets no color, matching an
+// unloaded/unknown value rather than a real zero.
+export function pnlTextClass(pnl: number | null | undefined): string {
+  if (pnl === null || pnl === undefined) return "";
+  if (pnl > 0) return "text-success";
+  if (pnl < 0) return "text-danger";
+  return "";
 }

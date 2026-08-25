@@ -56,7 +56,7 @@ export function PricePerformancePage() {
       header: "Last Close",
       headerTitle: "Most recent completed trading day's close",
       align: "right",
-      render: (row) => formatCurrency(Number(row.latestClose)),
+      render: (row) => formatCurrency(row.latestClose == null ? null : Number(row.latestClose)),
     },
     { key: "change24h", header: "24hr", headerTitle: "vs. 1 trading day back", align: "right", render: (row) => <ChangeBadge value={row.change24h} /> },
     { key: "change48h", header: "48hr", headerTitle: "vs. 2 trading days back", align: "right", render: (row) => <ChangeBadge value={row.change48h} /> },
@@ -68,21 +68,24 @@ export function PricePerformancePage() {
       header: "Daily Lo/Hi",
       headerTitle: "Daily Low / High",
       align: "right",
-      render: (row) => `${formatCurrency(Number(row.dailyLow))} / ${formatCurrency(Number(row.dailyHigh))}`,
+      render: (row) =>
+        `${formatCurrency(row.dailyLow == null ? null : Number(row.dailyLow))} / ${formatCurrency(row.dailyHigh == null ? null : Number(row.dailyHigh))}`,
     },
     {
       key: "weeklyRange",
       header: "Wkly Lo/Hi",
       headerTitle: "Weekly Low / High — rolling 7 calendar days",
       align: "right",
-      render: (row) => `${formatCurrency(Number(row.weeklyLow))} / ${formatCurrency(Number(row.weeklyHigh))}`,
+      render: (row) =>
+        `${formatCurrency(row.weeklyLow == null ? null : Number(row.weeklyLow))} / ${formatCurrency(row.weeklyHigh == null ? null : Number(row.weeklyHigh))}`,
     },
     {
       key: "monthlyRange",
       header: "Mthly Lo/Hi",
       headerTitle: "Monthly Low / High — rolling 30 calendar days",
       align: "right",
-      render: (row) => `${formatCurrency(Number(row.monthlyLow))} / ${formatCurrency(Number(row.monthlyHigh))}`,
+      render: (row) =>
+        `${formatCurrency(row.monthlyLow == null ? null : Number(row.monthlyLow))} / ${formatCurrency(row.monthlyHigh == null ? null : Number(row.monthlyHigh))}`,
     },
     { key: "latestDate", header: "As Of", render: (row) => formatDate(row.latestDate) },
   ];

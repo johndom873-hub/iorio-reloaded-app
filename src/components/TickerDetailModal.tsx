@@ -179,7 +179,7 @@ export function TickerDetailModal({ symbol, onClose }: TickerDetailModalProps) {
                     <div className="d-flex flex-wrap align-items-baseline gap-3 mb-3" style={{ fontVariantNumeric: "tabular-nums" }}>
                       <span className="h2 mb-0">{formatCurrency(pricing?.last ?? null)}</span>
                       {change != null && (
-                        <strong className={change >= 0 ? "text-success" : "text-danger"}>
+                        <strong className={change > 0 ? "text-success" : change < 0 ? "text-danger" : "text-muted"}>
                           {change >= 0 ? "+" : ""}
                           {formatCurrency(change)} ({change >= 0 ? "+" : ""}
                           {formatPercentage(changePercent, 2)})

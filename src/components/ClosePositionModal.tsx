@@ -103,7 +103,7 @@ export function ClosePositionModal({ position, onClose, onClosed }: ClosePositio
                 </div>
               ) : (
                 <>
-                  <div className="row g-2 mb-2">
+                  <div className="row g-3 mb-2">
                     <div className="col-6">
                       <div className="text-secondary" style={{ fontSize: "0.8rem" }}>
                         Contract
@@ -123,7 +123,7 @@ export function ClosePositionModal({ position, onClose, onClosed }: ClosePositio
                     )}
                   </div>
 
-                  <div className="row g-2 mb-2">
+                  <div className="row g-3 mb-2">
                     <div className="col-6">
                       <label className="form-label">Contracts to close</label>
                       <input
@@ -158,7 +158,7 @@ export function ClosePositionModal({ position, onClose, onClosed }: ClosePositio
                     </div>
                   )}
 
-                  <div className="row g-2 mb-2">
+                  <div className="row g-3 mb-2">
                     <div className="col-6">
                       <label className="form-label">Option buy-back limit price</label>
                       <input

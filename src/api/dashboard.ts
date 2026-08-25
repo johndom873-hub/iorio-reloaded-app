@@ -12,7 +12,6 @@ export interface StrategyPnlBreakdown {
   strategyKey: StrategyKey;
   realizedPnl: string | null;
   unrealizedPnl: string | null;
-  marketValue: string | null;
 }
 
 export interface DashboardSummary {
@@ -36,4 +35,16 @@ export interface PnlHistoryPoint {
 
 export function fetchPnlHistory(days = 90): Promise<PnlHistoryPoint[]> {
   return apiRequest<PnlHistoryPoint[]>(`/dashboard/history?days=${days}`);
+}
+
+export interface AccountValue {
+  netLiquidationValue: number | null;
+  asOf: string | null;
+}
+
+// Last night's snapshot, not live — see the route's own comment for why
+// (IBKR pacing makes a live call unsuitable for call sites that fetch
+// this often, e.g. every Positions table load or order-form keystroke).
+export function fetchAccountValue(): Promise<AccountValue> {
+  return apiRequest<AccountValue>("/dashboard/account-value");
 }

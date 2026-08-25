@@ -13,7 +13,7 @@ import {
   type StrategySettingsInput,
 } from "../api/riskLimits";
 import type { StrategyKey } from "../api/screener";
-import { formatCurrency, formatPercentage } from "../lib/formatters";
+import { formatCurrency, formatPercentage, formatPercentageValue } from "../lib/formatters";
 
 const strategyTabs: { key: StrategyKey; label: string }[] = [
   { key: "covered_call", label: "Covered Calls" },
@@ -71,11 +71,16 @@ interface ConcentrationListProps {
   title: string;
   rows: ConcentrationRow[];
   labelKey: "symbol" | "sector";
+  totalAccountValue: number | null;
+  // Currently-selected strategy tab's configured ceiling, as a 0-100
+  // percentage — the concentration figures themselves are account-wide
+  // (not per-strategy), but the limit setting is stored per-strategy, so
+  // the warning compares against whichever tab is active below.
+  limitPct: number | null;
+  unallocatedLabel: string;
 }
 
-function ConcentrationList({ title, rows, labelKey }: ConcentrationListProps) {
-  const total = rows.reduce((sum, row) => sum + Number(row.notionalValue), 0);
-
+function ConcentrationList({ title, rows, labelKey, totalAccountValue, limitPct, unallocatedLabel }: ConcentrationListProps) {
   return (
     <div className="col-12 col-md-6">
       <h4 style={{ fontSize: "0.9rem" }}>{title}</h4>
@@ -85,18 +90,28 @@ function ConcentrationList({ title, rows, labelKey }: ConcentrationListProps) {
         </div>
       ) : (
         <ul className="list-group list-group-flush">
-          {rows.map((row) => (
-            <li
-              key={row[labelKey]}
-              className="list-group-item d-flex justify-content-between align-items-center px-0"
-            >
-              <span>{row[labelKey]}</span>
-              <span className="text-muted" style={{ fontSize: "0.8rem" }}>
-                {formatCurrency(Number(row.notionalValue))}
-                {total > 0 && ` (${formatPercentage(Number(row.notionalValue) / total)})`}
-              </span>
-            </li>
-          ))}
+          {rows.map((row) => {
+            const label = row[labelKey] ?? "";
+            const isUnallocated = label === unallocatedLabel;
+            const fraction = totalAccountValue ? Number(row.notionalValue) / totalAccountValue : null;
+            const isOverLimit = !isUnallocated && fraction !== null && limitPct !== null && fraction * 100 > limitPct;
+            return (
+              <li key={label} className="list-group-item d-flex justify-content-between align-items-center px-0">
+                <span className={isUnallocated ? "text-muted" : ""}>{label}</span>
+                <span className="d-flex align-items-center gap-2">
+                  {isOverLimit && (
+                    <span className="badge bg-danger-lt text-dark text-nowrap" title={`Over the ${formatPercentageValue(limitPct)} limit for the selected strategy`}>
+                      over limit
+                    </span>
+                  )}
+                  <span className={isOverLimit ? "text-danger" : "text-muted"} style={{ fontSize: "0.8rem" }}>
+                    {formatCurrency(Number(row.notionalValue))}
+                    {fraction !== null && ` (${formatPercentage(fraction)})`}
+                  </span>
+                </span>
+              </li>
+            );
+          })}
         </ul>
       )}
     </div>
@@ -236,17 +251,26 @@ export function RiskLimitsPage() {
                 </div>
               </div>
 
-              <div className="row">
+              <div className="row g-3">
                 <ConcentrationList
                   title="Concentration by Ticker"
                   rows={exposure?.concentrationByTicker ?? []}
                   labelKey="symbol"
+                  totalAccountValue={exposure?.totalAccountValue ?? null}
+                  limitPct={formState ? Number(formState.maxConcentrationPerTickerPct) : null}
+                  unallocatedLabel="Unallocated"
                 />
                 <ConcentrationList
                   title="Concentration by Sector"
                   rows={exposure?.concentrationBySector ?? []}
                   labelKey="sector"
+                  totalAccountValue={exposure?.totalAccountValue ?? null}
+                  limitPct={formState ? Number(formState.maxConcentrationPerSectorPct) : null}
+                  unallocatedLabel="Unallocated"
                 />
+              </div>
+              <div className="text-muted mt-2" style={{ fontSize: "0.72rem" }}>
+                % of total account value (net liquidation value, including cash). "over limit" compares against the {strategyTabs.find((t) => t.key === strategy)?.label} tab's configured limit below.
               </div>
             </>
           )}

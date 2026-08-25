@@ -18,7 +18,15 @@ import {
 import type { StrategyKey } from "../api/screener";
 import type { PositionLeg } from "../api/positions";
 import { computePayoff } from "../lib/payoff";
-import { formatCurrency, formatDate, formatDateTime, formatPercentage, formatSignedPnl } from "../lib/formatters";
+import {
+  formatCurrency,
+  formatDate,
+  formatDateTime,
+  formatNumber,
+  formatPercentage,
+  formatSignedPnl,
+  pnlTextClass,
+} from "../lib/formatters";
 
 const strategyTabs: { key: StrategyKey | "all"; label: string }[] = [
   { key: "all", label: "All" },
@@ -35,11 +43,11 @@ const statusOptions: { key: TradeAlertStatus; label: string }[] = [
 ];
 
 const statusBadgeClass: Record<TradeAlertStatus, string> = {
-  pending: "bg-azure-lt text-dark",
-  approved: "bg-success-lt text-dark",
-  rejected: "bg-danger-lt text-dark",
-  modified: "bg-success-lt text-dark",
-  expired: "bg-secondary-lt text-dark",
+  pending: "bg-azure-lt",
+  approved: "bg-success-lt",
+  rejected: "bg-danger-lt",
+  modified: "bg-success-lt",
+  expired: "bg-secondary-lt",
 };
 
 const statusLabel: Record<TradeAlertStatus, string> = {
@@ -304,7 +312,7 @@ export function TradeAlertsPage() {
                   </button>
                   <span className="text-secondary ms-2">{first.companyName ?? "—"}</span>
                 </div>
-                <span className="badge bg-azure-lt text-dark" style={{ fontSize: "0.72rem" }}>
+                <span className="badge bg-azure-lt">
                   {first.strategyKey === "covered_call" ? "Covered Call" : "Cash-Secured Put"}
                 </span>
               </div>
@@ -322,18 +330,18 @@ export function TradeAlertsPage() {
                               <div className="d-flex flex-wrap justify-content-between align-items-start gap-2">
                                 <div>
                                   <div className="fw-bold">
-                                    Roll ${closeLeg.strike.toFixed(2)}
+                                    Roll {formatCurrency(closeLeg.strike)}
                                     {rightLabel}
                                   </div>
                                   <div className="text-secondary" style={{ fontSize: "0.8rem" }}>
-                                    exp {formatDate(closeLeg.expiry)} → ${replacement.strike.toFixed(2)} exp{" "}
+                                    exp {formatDate(closeLeg.expiry)} → {formatCurrency(replacement.strike)} exp{" "}
                                     {formatDate(replacement.expiry)}
                                   </div>
                                 </div>
                                 {stillTriggered === false ? (
-                                  <span className="badge bg-secondary-lt text-dark text-nowrap">No longer triggered</span>
+                                  <span className="badge bg-secondary-lt text-nowrap">No longer triggered</span>
                                 ) : (
-                                  <span className="badge bg-yellow-lt text-dark text-nowrap">{triggerLabel}</span>
+                                  <span className="badge bg-yellow-lt text-nowrap">{triggerLabel}</span>
                                 )}
                               </div>
 
@@ -346,18 +354,22 @@ export function TradeAlertsPage() {
                                 </div>
                                 <div className="col-6">
                                   <div className="text-secondary">Credit collected</div>
-                                  <div>{formatCurrency(closeLeg.entryPrice)}</div>
+                                  <div className="text-success">{formatCurrency(closeLeg.entryPrice)}</div>
                                 </div>
                               </div>
 
                               <div className="row g-2" style={{ fontSize: "0.85rem" }}>
                                 <div className="col-6">
                                   <div className="text-secondary">New premium</div>
-                                  <div>{formatCurrency(replacement.premium)}</div>
+                                  <div className="text-success">{formatCurrency(replacement.premium)}</div>
                                 </div>
                                 <div className="col-6">
                                   <div className="text-secondary">New yield</div>
-                                  <div>{formatPercentage(replacement.annualizedYield)}</div>
+                                  <div>
+                                    <span className="badge badge-change-pos">
+                                      {formatPercentage(replacement.annualizedYield)}
+                                    </span>
+                                  </div>
                                 </div>
                               </div>
 
@@ -408,7 +420,7 @@ export function TradeAlertsPage() {
                             <div className="d-flex flex-wrap justify-content-between align-items-start gap-2">
                               <div>
                                 <div className="fw-bold">
-                                  ${newTradeAlert.suggestedStructure.strike.toFixed(2)}
+                                  {formatCurrency(newTradeAlert.suggestedStructure.strike)}
                                   {newTradeAlert.suggestedStructure.right === "call" ? "C" : "P"}
                                 </div>
                                 <div className="text-secondary" style={{ fontSize: "0.8rem" }}>
@@ -425,11 +437,11 @@ export function TradeAlertsPage() {
                             <div className="row g-2" style={{ fontSize: "0.85rem" }}>
                               <div className="col-6">
                                 <div className="text-secondary">Delta</div>
-                                <div>{newTradeAlert.suggestedStructure.delta.toFixed(2)}</div>
+                                <div>{formatNumber(newTradeAlert.suggestedStructure.delta, 2)}</div>
                               </div>
                               <div className="col-6">
                                 <div className="text-secondary">Premium</div>
-                                <div>{formatCurrency(newTradeAlert.suggestedStructure.premium)}</div>
+                                <div className="text-success">{formatCurrency(newTradeAlert.suggestedStructure.premium)}</div>
                               </div>
                             </div>
 
@@ -437,11 +449,11 @@ export function TradeAlertsPage() {
                               <div className="row g-2" style={{ fontSize: "0.85rem" }}>
                                 <div className="col-4">
                                   <div className="text-secondary">Max Gain</div>
-                                  <div>{formatSignedPnl(payoff.maxGain)}</div>
+                                  <div className={pnlTextClass(payoff.maxGain)}>{formatSignedPnl(payoff.maxGain)}</div>
                                 </div>
                                 <div className="col-4">
                                   <div className="text-secondary">Max Loss</div>
-                                  <div>{formatSignedPnl(-payoff.maxLoss)}</div>
+                                  <div className={pnlTextClass(-payoff.maxLoss)}>{formatSignedPnl(-payoff.maxLoss)}</div>
                                 </div>
                                 <div className="col-4">
                                   <div className="text-secondary">Breakeven</div>

@@ -4,7 +4,7 @@ import { DataTable, type DataTableColumn } from "../components/DataTable/DataTab
 import { Spinner } from "../components/Spinner";
 import { ApiError } from "../api/client";
 import { fetchJobRuns, fetchJobStatuses, triggerIbkrHealthCheck, type JobRun, type JobRunStatus } from "../api/systemHealth";
-import { formatDateTime, formatDuration } from "../lib/formatters";
+import { formatDateTime, formatDuration, jobRunStatusBadgeClass, jobRunStatusLabel } from "../lib/formatters";
 
 const jobLabels: Record<string, string> = {
   daily_market_data_capture: "Daily Market Data Capture",
@@ -17,17 +17,9 @@ function jobLabel(jobName: string): string {
   return jobLabels[jobName] ?? jobName;
 }
 
-function statusBadgeClass(status: JobRunStatus): string {
-  if (status === "success") return "bg-success-lt";
-  if (status === "failure") return "bg-danger-lt";
-  return "bg-azure-lt";
-}
-
-function StatusBadge({ status }: { status: JobRunStatus }) {
+function StatusBadge({ status, details }: { status: JobRunStatus; details?: Record<string, unknown> | null }) {
   return (
-    <span className={`badge ${statusBadgeClass(status)} text-dark`} style={{ fontSize: "0.72rem" }}>
-      {status}
-    </span>
+    <span className={`badge ${jobRunStatusBadgeClass(status, details)}`}>{jobRunStatusLabel(status, details)}</span>
   );
 }
 
@@ -86,22 +78,33 @@ export function SystemHealthPage() {
 
   const columns: DataTableColumn<JobRun>[] = [
     { key: "job", header: "Job", render: (row) => jobLabel(row.jobName) },
-    { key: "status", header: "Status", render: (row) => <StatusBadge status={row.status} /> },
+    { key: "status", header: "Status", render: (row) => <StatusBadge status={row.status} details={row.details} /> },
     { key: "startedAt", header: "Started", render: (row) => formatDateTime(row.startedAt) },
     { key: "duration", header: "Duration", render: (row) => formatDuration(row.startedAt, row.finishedAt) },
     {
       key: "details",
       header: "Details",
-      render: (row) =>
-        row.status === "failure" ? (
-          <span className="text-danger" title={row.errorMessage ?? undefined}>
-            {row.errorMessage ?? "Failed"}
-          </span>
-        ) : row.details ? (
-          <span className="text-muted small">{JSON.stringify(row.details)}</span>
-        ) : (
-          "—"
-        ),
+      render: (row) => {
+        if (row.status === "failure") {
+          return (
+            <span className="text-danger" title={row.errorMessage ?? undefined}>
+              {row.errorMessage ?? "Failed"}
+            </span>
+          );
+        }
+        const problems = row.details?.problems;
+        if (Array.isArray(problems) && problems.length > 0) {
+          return (
+            <details>
+              <summary className="text-warning" style={{ cursor: "pointer" }}>
+                {problems.length} issue(s) found — see below
+              </summary>
+              <pre className="text-muted small mb-0 mt-1">{JSON.stringify(row.details, null, 2)}</pre>
+            </details>
+          );
+        }
+        return row.details ? <span className="text-muted small">{JSON.stringify(row.details)}</span> : "—";
+      },
     },
   ];
 
@@ -145,7 +148,7 @@ export function SystemHealthPage() {
                     <div className="text-muted mb-1" style={{ fontSize: "0.75rem" }}>
                       {jobLabel(job.jobName)}
                     </div>
-                    <StatusBadge status={job.status} />
+                    <StatusBadge status={job.status} details={job.details} />
                     <div className="text-muted mt-2" style={{ fontSize: "0.72rem" }}>
                       Last run {formatDateTime(job.startedAt)}
                     </div>

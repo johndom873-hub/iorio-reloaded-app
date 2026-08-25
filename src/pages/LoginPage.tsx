@@ -3,6 +3,7 @@ import { Navigate } from "react-router-dom";
 import { useAuth } from "../contexts/AuthContext";
 import { useTheme } from "../contexts/ThemeContext";
 import { ApiError } from "../api/client";
+import { Spinner } from "../components/Spinner";
 
 export function LoginPage() {
   const { currentUser, login } = useAuth();
@@ -37,7 +38,7 @@ export function LoginPage() {
             src={theme === "dark" ? "/brand/iorio-lockup-dark.png" : "/brand/iorio-lockup-light.png"}
             alt="Iorio Reloaded"
             className="img-fluid"
-            style={{ maxWidth: "320px" }}
+            style={{ maxWidth: "20rem" }}
           />
         </div>
         <div className="card card-md">
@@ -74,8 +75,13 @@ export function LoginPage() {
               </div>
               {errorMessage && <div className="alert alert-danger">{errorMessage}</div>}
               <div className="form-footer">
-                <button type="submit" className="btn btn-primary w-100" disabled={isSubmitting}>
-                  {isSubmitting ? "Signing in…" : "Sign in"}
+                <button
+                  type="submit"
+                  className="btn btn-primary w-100 d-inline-flex align-items-center justify-content-center gap-1"
+                  disabled={isSubmitting}
+                >
+                  {isSubmitting && <Spinner size="sm" />}
+                  Sign in
                 </button>
               </div>
             </form>

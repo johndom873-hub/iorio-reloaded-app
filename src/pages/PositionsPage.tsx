@@ -18,6 +18,7 @@ import {
   type PositionStatus,
   type UnrealizedPnlResult,
 } from "../api/positions";
+import { fetchAccountValue } from "../api/dashboard";
 import { searchTickers, type StrategyKey, type TickerSearchResult } from "../api/screener";
 import { openPositionQuoteStream, type OptionQuote, type TickerPricing } from "../api/tickerDetail";
 import {
@@ -87,7 +88,12 @@ export function PositionsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [greeksByLegId, setGreeksByLegId] = useState<Record<string, Greeks>>({});
+  // Last-known (not live) total account value — see fetchAccountValue's own
+  // comment for why EXP% doesn't use a live IBKR round trip here.
+  const [totalAccountValue, setTotalAccountValue] = useState<number | null>(null);
+  const [greeksFetchFailed, setGreeksFetchFailed] = useState(false);
   const [unrealizedPnlByPositionId, setUnrealizedPnlByPositionId] = useState<Record<string, UnrealizedPnlResult>>({});
+  const [unrealizedPnlFetchFailed, setUnrealizedPnlFetchFailed] = useState(false);
   const [detailPositionId, setDetailPositionId] = useState<string | null>(null);
   const [closePosition, setClosePosition] = useState<Position | null>(null);
 
@@ -129,6 +135,12 @@ export function PositionsPage() {
     setLoading(true);
     loadPositions().finally(() => setLoading(false));
   }, [loadPositions]);
+
+  useEffect(() => {
+    fetchAccountValue()
+      .then((result) => setTotalAccountValue(result.netLiquidationValue))
+      .catch(() => setTotalAccountValue(null));
+  }, []);
 
   const startQuoteStream = useCallback((symbol: string) => {
     closeQuoteStreamRef.current?.();
@@ -206,17 +218,19 @@ export function PositionsPage() {
       .filter((position) => position.status === "open")
       .flatMap((position) => position.legs.filter((leg) => leg.legType === "option").map((leg) => leg.id));
     if (optionLegIds.length === 0) return;
+    setGreeksFetchFailed(false);
     fetchGreeks(optionLegIds)
       .then(setGreeksByLegId)
-      .catch(() => {});
+      .catch(() => setGreeksFetchFailed(true));
   }, [positions]);
 
   useEffect(() => {
     const openPositionIds = positions.filter((position) => position.status === "open").map((position) => position.id);
     if (openPositionIds.length === 0) return;
+    setUnrealizedPnlFetchFailed(false);
     fetchUnrealizedPnl(openPositionIds)
       .then(setUnrealizedPnlByPositionId)
-      .catch(() => {});
+      .catch(() => setUnrealizedPnlFetchFailed(true));
   }, [positions]);
 
   useEffect(() => {
@@ -330,7 +344,7 @@ export function PositionsPage() {
       render: (row) => (
         <button
           type="button"
-          className="btn btn-link p-0 text-decoration-none fw-bold"
+          className="btn btn-link px-2 py-1 text-decoration-none fw-bold"
           onClick={() => setDetailPositionId(row.id)}
         >
           {row.symbol}
@@ -341,9 +355,7 @@ export function PositionsPage() {
       key: "strategy",
       header: "Strategy",
       render: (row) => (
-        <span className={`badge ${strategyBadgeClass(row.strategyKey)}`} style={{ fontSize: "0.72rem" }}>
-          {strategyLabel(row.strategyKey)}
-        </span>
+        <span className={`badge ${strategyBadgeClass(row.strategyKey)}`}>{strategyLabel(row.strategyKey)}</span>
       ),
     },
     { key: "structure", header: "Structure", render: (row) => structureSummary(row) },
@@ -353,7 +365,16 @@ export function PositionsPage() {
       align: "right",
       render: (row) => {
         const pnl = positionTotalPnl(row, unrealizedPnlByPositionId);
-        if (pnl === "loading") return <Spinner size="sm" label="Loading P&L" />;
+        if (pnl === "loading") {
+          if (unrealizedPnlFetchFailed) {
+            return (
+              <span className="text-muted" title="Failed to load live P&L data">
+                —
+              </span>
+            );
+          }
+          return <Spinner size="sm" label="Loading P&L" />;
+        }
         if (pnl === null)
           return (
             <span className="text-muted" title="No live price or recent snapshot available for this position">
@@ -374,7 +395,16 @@ export function PositionsPage() {
       align: "right",
       render: (row) => {
         const pnl = positionTotalPnl(row, unrealizedPnlByPositionId);
-        if (pnl === "loading") return <Spinner size="sm" label="Loading P&L" />;
+        if (pnl === "loading") {
+          if (unrealizedPnlFetchFailed) {
+            return (
+              <span className="text-muted" title="Failed to load live P&L data">
+                —
+              </span>
+            );
+          }
+          return <Spinner size="sm" label="Loading P&L" />;
+        }
         const pct = positionTotalPnlPercent(row, pnl);
         if (pct === null)
           return (
@@ -391,6 +421,23 @@ export function PositionsPage() {
         );
       },
     },
+    {
+      key: "exposureDollars",
+      header: "EXP $",
+      headerTitle: "Capital committed to this position — stock cost for covered calls, strike collateral for cash-secured puts",
+      align: "right",
+      render: (row) => (row.capitalAtRisk === null ? "—" : formatCurrency(Number(row.capitalAtRisk))),
+    },
+    {
+      key: "exposurePercent",
+      header: "EXP %",
+      headerTitle: "This position's capital as a share of total account value (positions + cash)",
+      align: "right",
+      render: (row) => {
+        if (row.capitalAtRisk === null || totalAccountValue === null) return "—";
+        return formatPercentageValue((Number(row.capitalAtRisk) / totalAccountValue) * 100, 1);
+      },
+    },
     { key: "openedAt", header: "Opened", render: (row) => formatDate(row.openedAt) },
     {
       key: "delta",
@@ -404,7 +451,16 @@ export function PositionsPage() {
         // market data to show), so don't show a spinner that will never resolve.
         if (row.status === "closed") return "—";
         const greeks = greeksByLegId[optionLeg.id];
-        if (!greeks) return <Spinner size="sm" label="Loading delta" />;
+        if (!greeks) {
+          if (greeksFetchFailed) {
+            return (
+              <span className="text-muted" title="Failed to load delta">
+                —
+              </span>
+            );
+          }
+          return <Spinner size="sm" label="Loading delta" />;
+        }
         return formatNumber(greeks.delta, 2);
       },
     },

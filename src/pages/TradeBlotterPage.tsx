@@ -99,7 +99,7 @@ export function TradeBlotterPage() {
       key: "strategy",
       header: "Strategy",
       render: (row) => (
-        <span className="badge bg-azure-lt text-dark" style={{ fontSize: "0.72rem" }}>
+        <span className="badge bg-azure-lt">
           {row.strategyKey === "covered_call" ? "Covered Call" : "Cash-Secured Put"}
         </span>
       ),
@@ -110,8 +110,10 @@ export function TradeBlotterPage() {
       header: "Action",
       render: (row) => {
         const isClose = row.kind === "trade" ? row.isClosingTrade : row.requestType === "close_position";
-        const label = row.kind === "trade" ? (isClose ? "Close" : "Open") : row.requestType === "roll_leg" ? "Roll" : isClose ? "Close" : "Open";
-        return <span className={`badge ${isClose ? "bg-secondary-lt" : "bg-azure-lt"} text-dark`}>{label}</span>;
+        const isRoll = row.kind === "order" && row.requestType === "roll_leg";
+        const label = isRoll ? "Roll" : isClose ? "Close" : "Open";
+        const actionBadgeClass = isRoll ? "bg-yellow-lt" : isClose ? "bg-secondary-lt" : "bg-azure-lt";
+        return <span className={`badge ${actionBadgeClass} text-dark`}>{label}</span>;
       },
     },
     {
@@ -127,7 +129,10 @@ export function TradeBlotterPage() {
       key: "price",
       header: "Price",
       align: "right",
-      render: (row) => formatCurrency(Number(row.kind === "trade" ? row.price : row.unitPrice)),
+      render: (row) => {
+        const rawPrice = row.kind === "trade" ? row.price : row.unitPrice;
+        return formatCurrency(rawPrice == null || rawPrice === "" ? null : Number(rawPrice));
+      },
     },
     {
       key: "pnl",
@@ -143,7 +148,7 @@ export function TradeBlotterPage() {
       key: "ibkrState",
       header: "IBKR State",
       render: (row) => {
-        if (row.kind === "trade") return <span className="badge bg-success-lt text-dark">Filled</span>;
+        if (row.kind === "trade") return <span className="badge bg-success-lt">Filled</span>;
         return (
           <div>
             <span className={`badge ${orderRequestStatusBadgeClass(row.status)}`}>{orderRequestStatusLabel(row.status)}</span>

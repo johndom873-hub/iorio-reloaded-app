@@ -160,7 +160,7 @@ export function AppLayout() {
 
       <div className="page-wrapper">
         <div className="page-body">
-          <div className="container-fluid px-3">
+          <div className="container-fluid">
             <Outlet />
           </div>
         </div>

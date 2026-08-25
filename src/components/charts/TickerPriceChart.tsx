@@ -26,7 +26,13 @@ import { fetchTickerChart, type ChartRange, type PriceBar } from "../../api/tick
 
 const ranges: ChartRange[] = ["1D", "5D", "1M", "3M", "6M", "1Y", "5Y", "All"];
 const dailyRanges = new Set<ChartRange>(["1Y", "5Y", "All"]);
-const chartHeight = 460;
+const desktopChartHeight = 460;
+const mobileChartHeight = 280;
+const mobileBreakpointPx = 768;
+
+function chartHeightForWidth(width: number): number {
+  return width < mobileBreakpointPx ? mobileChartHeight : desktopChartHeight;
+}
 
 function fmt(v: number | null | undefined, decimals = 2): string {
   if (v == null) return "—";
@@ -261,6 +267,10 @@ interface TickerPriceChartProps {
 // (which only ever ran in a light-themed admin panel).
 const textColorByTheme = { light: "#1d273b", dark: "#f9fafb" } as const;
 const gridColorByTheme = { light: "rgba(0,0,0,0.08)", dark: "rgba(255,255,255,0.12)" } as const;
+// Loading overlay wash — a light-on-light tint reads fine in light mode but
+// is invisible against the dark card background, so dark mode needs a
+// lighter-than-background tint instead of the same black wash.
+const loadingOverlayColorByTheme = { light: "rgba(0,0,0,0.05)", dark: "rgba(249,250,251,0.08)" } as const;
 
 export function TickerPriceChart({ symbol, initialBars }: TickerPriceChartProps) {
   const { theme } = useTheme();
@@ -277,6 +287,7 @@ export function TickerPriceChart({ symbol, initialBars }: TickerPriceChartProps)
     initialBars ? (initialBars.length ? "ok" : "empty") : "loading",
   );
   const [hoveredBar, setHoveredBar] = useState<HoveredBar | null>(null);
+  const [chartHeight, setChartHeight] = useState(desktopChartHeight);
 
   // Only the very first range effect run should be skipped when seeded —
   // every later run (a real range switch) must fetch normally.
@@ -310,15 +321,18 @@ export function TickerPriceChart({ symbol, initialBars }: TickerPriceChartProps)
   useEffect(() => {
     if (!containerRef.current) return;
 
-    const isMobile = () => (containerRef.current?.clientWidth ?? 0) < 768;
+    const isMobile = () => (containerRef.current?.clientWidth ?? 0) < mobileBreakpointPx;
     const touchOpts = (mobile: boolean) => ({
       handleScale: { mouseWheel: false, pinchZoom: !mobile },
       handleScroll: { mouseWheel: false, pressedMouseMove: false, horzTouchDrag: !mobile, vertTouchDrag: !mobile },
     });
 
+    const initialHeight = chartHeightForWidth(containerRef.current.clientWidth);
+    setChartHeight(initialHeight);
+
     const chart = createChart(containerRef.current, {
       width: containerRef.current.clientWidth,
-      height: chartHeight,
+      height: initialHeight,
       autoSize: false,
       layout: {
         fontFamily: "inherit",
@@ -378,7 +392,11 @@ export function TickerPriceChart({ symbol, initialBars }: TickerPriceChartProps)
 
     const resizeObserver = new ResizeObserver((entries) => {
       const width = entries[0]?.contentRect.width;
-      if (width) chart.applyOptions({ width, ...touchOpts(width < 768) });
+      if (width) {
+        const newHeight = chartHeightForWidth(width);
+        chart.applyOptions({ width, height: newHeight, ...touchOpts(width < mobileBreakpointPx) });
+        setChartHeight(newHeight);
+      }
     });
     resizeObserver.observe(containerRef.current);
 
@@ -503,7 +521,7 @@ export function TickerPriceChart({ symbol, initialBars }: TickerPriceChartProps)
             <button
               key={r}
               type="button"
-              className={`btn py-1 px-2 ${range === r ? "btn-primary" : "btn-ghost-secondary"}`}
+              className={`btn py-2 px-3 ${range === r ? "btn-primary" : "btn-ghost-secondary"}`}
               style={{ fontSize: "0.72rem", minWidth: 32 }}
               disabled={status === "loading"}
               onClick={() => setRange(r)}
@@ -518,7 +536,7 @@ export function TickerPriceChart({ symbol, initialBars }: TickerPriceChartProps)
         {status === "loading" && (
           <div
             className="d-flex align-items-center justify-content-center"
-            style={{ position: "absolute", inset: 0, zIndex: 1, background: "rgba(0,0,0,0.05)" }}
+            style={{ position: "absolute", inset: 0, zIndex: 1, background: loadingOverlayColorByTheme[theme] }}
           >
             <Spinner size="sm" label="Loading chart" />
           </div>

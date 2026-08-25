@@ -44,7 +44,7 @@ export function DataTable<TRow>({
         <ColumnVisibilityPopover columns={columns} isColumnVisible={isColumnVisible} onToggleColumn={toggleColumn} />
       </div>
       <div className="table-responsive">
-        <table className="table table-sm table-vcenter card-table" style={{ fontSize: "0.8125rem" }}>
+        <table className="table table-sm table-hover table-vcenter card-table" style={{ fontSize: "0.8125rem" }}>
           <thead className="table-light">
             <tr>
               {visibleColumns.map((column) => (

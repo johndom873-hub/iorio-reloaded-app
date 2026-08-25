@@ -87,11 +87,32 @@ export interface ConcentrationRow {
   notionalValue: string;
 }
 
+export interface StrategyAllocationRow {
+  strategyKey: StrategyKey | "unallocated";
+  notionalValue: string;
+}
+
+export interface TopPositionRow {
+  positionId: string;
+  symbol: string;
+  strategyKey: StrategyKey;
+  notionalValue: string;
+}
+
 export interface ExposureData {
   account: AccountSummary | null;
   accountDataError: string | null;
+  // Net liquidation value (positions + cash) — the denominator every
+  // concentration/allocation % on this page and the Dashboard is computed
+  // against, approved 2026-08-25 so an under-deployed account doesn't read
+  // as "concentrated" just because whatever's invested happens to cluster.
+  totalAccountValue: number | null;
   concentrationByTicker: ConcentrationRow[];
+  // Includes a synthetic "Unallocated" row for account value not sitting
+  // in any open position, when totalAccountValue is known.
   concentrationBySector: ConcentrationRow[];
+  strategyAllocation: StrategyAllocationRow[];
+  topPositions: TopPositionRow[];
 }
 
 export function fetchExposure(): Promise<ExposureData> {

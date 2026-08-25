@@ -2,8 +2,9 @@ import { useEffect, useRef, useState } from "react";
 import { Spinner } from "./Spinner";
 import { ApiError } from "../api/client";
 import { cancelOrder, confirmOrder, fetchOrder, fetchOrderLegQuote, type OrderLegQuote, type OrderRequest } from "../api/positions";
+import { fetchAccountValue } from "../api/dashboard";
 import type { StrategyKey } from "../api/screener";
-import { formatCurrency, formatDate, formatPercentage, formatSignedPnl, orderRequestStatusBadgeClass } from "../lib/formatters";
+import { formatCurrency, formatDate, formatNumber, formatPercentage, formatPercentageValue, formatSignedPnl, orderRequestStatusBadgeClass } from "../lib/formatters";
 import { computeCapitalAtRiskFromOrderLegs, computePayoff, orderLegsToPayoffInput } from "../lib/payoff";
 
 interface OrderReviewPanelProps {
@@ -68,12 +69,22 @@ export function OrderReviewPanel({ order: initialOrder, onCancelled, onFilled }:
   const [quote, setQuote] = useState<OrderLegQuote | null>(null);
   const [quoteError, setQuoteError] = useState<string | null>(null);
   const [quoteLoading, setQuoteLoading] = useState(false);
+  const [totalAccountValue, setTotalAccountValue] = useState<number | null>(null);
   const pollTimerRef = useRef<number | null>(null);
 
   useEffect(() => {
     return () => {
       if (pollTimerRef.current) window.clearTimeout(pollTimerRef.current);
     };
+  }, []);
+
+  // So Capital at Risk (below) can show what % of the account this order
+  // would commit, before the user confirms — approved 2026-08-25 so this
+  // is visible at the decision point, not just after the fact on Positions.
+  useEffect(() => {
+    fetchAccountValue()
+      .then((result) => setTotalAccountValue(result.netLiquidationValue))
+      .catch(() => setTotalAccountValue(null));
   }, []);
 
   // Fetched once when the panel opens, not continuously polled -- same
@@ -181,8 +192,16 @@ export function OrderReviewPanel({ order: initialOrder, onCancelled, onFilled }:
           )}
           {capitalAtRisk !== null && (
             <div className="col-4 col-md-2">
-              <div className="text-secondary">Capital at Risk</div>
+              <div className="text-secondary">EXP $</div>
               <div>{formatCurrency(capitalAtRisk)}</div>
+            </div>
+          )}
+          {capitalAtRisk !== null && (
+            <div className="col-4 col-md-2">
+              <div className="text-secondary">EXP %</div>
+              <div title="Share of total account value (positions + cash) this order would commit">
+                {totalAccountValue === null ? "—" : formatPercentageValue((capitalAtRisk / totalAccountValue) * 100, 1)}
+              </div>
             </div>
           )}
           {payoff && (
@@ -230,15 +249,15 @@ export function OrderReviewPanel({ order: initialOrder, onCancelled, onFilled }:
               </div>
               <div className="col-4 col-md-2">
                 <div className="text-secondary">Delta</div>
-                <div>{quote.delta !== null ? quote.delta.toFixed(2) : "—"}</div>
+                <div>{formatNumber(quote.delta, 2)}</div>
               </div>
               <div className="col-4 col-md-2">
                 <div className="text-secondary">Theta</div>
-                <div>{quote.theta !== null ? quote.theta.toFixed(2) : "—"}</div>
+                <div>{formatNumber(quote.theta, 2)}</div>
               </div>
               <div className="col-4 col-md-2">
                 <div className="text-secondary">Vega</div>
-                <div>{quote.vega !== null ? quote.vega.toFixed(2) : "—"}</div>
+                <div>{formatNumber(quote.vega, 2)}</div>
               </div>
             </div>
           )}
