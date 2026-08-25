@@ -4,6 +4,7 @@ import { PageHeader } from "../components/layout/PageHeader";
 import { DataTable, type DataTableColumn } from "../components/DataTable/DataTable";
 import { Spinner } from "../components/Spinner";
 import { PositionDetailModal } from "../components/PositionDetailModal";
+import { DownsizePositionModal } from "../components/DownsizePositionModal";
 import { OrderReviewPanel } from "../components/OrderReviewPanel";
 import { ApiError } from "../api/client";
 import {
@@ -88,6 +89,7 @@ export function PositionsPage() {
   const [greeksByLegId, setGreeksByLegId] = useState<Record<string, Greeks>>({});
   const [unrealizedPnlByPositionId, setUnrealizedPnlByPositionId] = useState<Record<string, UnrealizedPnlResult>>({});
   const [detailPositionId, setDetailPositionId] = useState<string | null>(null);
+  const [downsizePosition, setDownsizePosition] = useState<Position | null>(null);
 
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState<NewPositionFormState>(initialFormState());
@@ -407,6 +409,21 @@ export function PositionsPage() {
       },
     },
     { key: "notes", header: "Notes", render: (row) => row.notes ?? "—" },
+    {
+      key: "actions",
+      header: "",
+      align: "right",
+      render: (row) => {
+        if (row.status !== "open") return null;
+        const optionLeg = row.legs.find((leg) => leg.legType === "option" && !leg.exitAt);
+        if (!optionLeg || optionLeg.quantity <= 1) return null;
+        return (
+          <button type="button" className="btn btn-sm btn-outline-secondary" onClick={() => setDownsizePosition(row)}>
+            Downsize
+          </button>
+        );
+      },
+    },
   ];
 
   // Option chain scoped to the leg the current Strategy actually trades
@@ -758,6 +775,17 @@ export function PositionsPage() {
           positionId={detailPositionId}
           onClose={() => setDetailPositionId(null)}
           onChanged={loadPositions}
+        />
+      )}
+
+      {downsizePosition && (
+        <DownsizePositionModal
+          position={downsizePosition}
+          onClose={() => setDownsizePosition(null)}
+          onDownsized={() => {
+            setDownsizePosition(null);
+            loadPositions();
+          }}
         />
       )}
     </>

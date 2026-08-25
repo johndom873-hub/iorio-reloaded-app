@@ -138,8 +138,11 @@ export interface LegCloseInput {
   limitPrice: number;
 }
 
-export function buildCloseOrder(positionId: string, legs: LegCloseInput[]): Promise<OrderRequest> {
-  return apiRequest<OrderRequest>(`/positions/${positionId}/close`, { method: "POST", body: JSON.stringify({ legs }) });
+export function buildCloseOrder(positionId: string, legs: LegCloseInput[], contractsToClose?: number): Promise<OrderRequest> {
+  return apiRequest<OrderRequest>(`/positions/${positionId}/close`, {
+    method: "POST",
+    body: JSON.stringify(contractsToClose === undefined ? { legs } : { legs, contractsToClose }),
+  });
 }
 
 export interface RollLegInput {

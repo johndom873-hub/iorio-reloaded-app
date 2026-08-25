@@ -89,8 +89,15 @@ export function OrderReviewPanel({ order: initialOrder, onCancelled, onFilled }:
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [order.id]);
 
-  const payoff = computePayoff(order.payload.strategyKey as StrategyKey, orderLegsToPayoffInput(order.payload.legs));
-  const capitalAtRisk = computeCapitalAtRiskFromOrderLegs(order.payload.strategyKey as StrategyKey, order.payload.legs);
+  // Max gain/loss/breakeven/capital-at-risk only make sense read against an
+  // opening entry price -- computing them off a close/roll/downsize order's
+  // legs would treat the closing price as if it were a fresh entry (found
+  // 2026-08-25 testing the downsize flow: a real close showed "Capital at
+  // Risk: $48,419" and a max-loss bigger than the position itself, both
+  // nonsensical for a trade that's ending the position, not starting one).
+  const isOpeningOrder = order.payload.strategyKey && order.requestType.startsWith("open_");
+  const payoff = isOpeningOrder ? computePayoff(order.payload.strategyKey as StrategyKey, orderLegsToPayoffInput(order.payload.legs)) : null;
+  const capitalAtRisk = isOpeningOrder ? computeCapitalAtRiskFromOrderLegs(order.payload.strategyKey as StrategyKey, order.payload.legs) : null;
   const optionLeg = order.payload.legs.find((leg) => leg.role === "option");
   const dte = optionLeg?.expiry ? daysToExpiry(optionLeg.expiry) : null;
 
