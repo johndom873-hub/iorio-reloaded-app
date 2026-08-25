@@ -105,7 +105,7 @@ function ConcentrationList({ title, rows, labelKey, totalAccountValue, limitPct,
                     </span>
                   )}
                   <span className={isOverLimit ? "text-danger" : "text-muted"} style={{ fontSize: "0.8rem" }}>
-                    {formatCurrency(Number(row.notionalValue))}
+                    {formatCurrency(Number(row.notionalValue), 0)}
                     {fraction !== null && ` (${formatPercentage(fraction)})`}
                   </span>
                 </span>

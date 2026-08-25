@@ -59,14 +59,14 @@ export function jobRunStatusLabel(status: JobRunStatus, details?: Record<string,
   return status;
 }
 
-export function formatCurrency(amountInDollars: number | null | undefined): string {
+export function formatCurrency(amountInDollars: number | null | undefined, decimalPlaces = 2): string {
   if (amountInDollars === null || amountInDollars === undefined) return "—";
   if (Number.isNaN(amountInDollars)) return "—";
   return new Intl.NumberFormat("en-US", {
     style: "currency",
     currency: "USD",
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
+    minimumFractionDigits: decimalPlaces,
+    maximumFractionDigits: decimalPlaces,
   }).format(amountInDollars);
 }
 

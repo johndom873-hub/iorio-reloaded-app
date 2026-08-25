@@ -426,7 +426,7 @@ export function PositionsPage() {
       header: "EXP $",
       headerTitle: "Capital committed to this position — stock cost for covered calls, strike collateral for cash-secured puts",
       align: "right",
-      render: (row) => (row.capitalAtRisk === null ? "—" : formatCurrency(Number(row.capitalAtRisk))),
+      render: (row) => (row.capitalAtRisk === null ? "—" : formatCurrency(Number(row.capitalAtRisk), 0)),
     },
     {
       key: "exposurePercent",

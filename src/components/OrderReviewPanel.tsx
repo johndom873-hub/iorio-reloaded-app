@@ -193,7 +193,7 @@ export function OrderReviewPanel({ order: initialOrder, onCancelled, onFilled }:
           {capitalAtRisk !== null && (
             <div className="col-4 col-md-2">
               <div className="text-secondary">EXP $</div>
-              <div>{formatCurrency(capitalAtRisk)}</div>
+              <div>{formatCurrency(capitalAtRisk, 0)}</div>
             </div>
           )}
           {capitalAtRisk !== null && (

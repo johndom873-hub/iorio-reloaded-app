@@ -62,14 +62,15 @@ function AllocationDonut({ rows, colors }: { rows: AllocationListProps["rows"]; 
         stroke: { show: true, width: 2 }, // surface gap between slices
         dataLabels: { enabled: rows.length <= 4, formatter: (val: number) => `${val.toFixed(0)}%` },
         legend: { show: false }, // the list below doubles as the legend (label + swatch)
-        tooltip: { y: { formatter: (val: number) => formatCurrency(val) } },
+        tooltip: { y: { formatter: (val: number) => formatCurrency(val, 0) } },
         plotOptions: {
           pie: {
             donut: {
               size: "68%",
               labels: {
                 show: true,
-                total: { show: true, label: "Total", formatter: () => formatCurrency(total) },
+                total: { show: true, label: "Total", formatter: () => formatCurrency(total, 0) },
+                value: { formatter: (val: string) => formatCurrency(Number(val), 0) },
               },
             },
           },
@@ -106,7 +107,7 @@ function AllocationList({ title, emptyMessage, totalAccountValue, rows }: Alloca
                     {row.sublabel && <span className="text-muted ms-1" style={{ fontSize: "0.72rem" }}>{row.sublabel}</span>}
                   </span>
                   <span className="text-muted text-nowrap" style={{ fontSize: "0.8rem" }}>
-                    {formatCurrency(Number(row.notionalValue))}
+                    {formatCurrency(Number(row.notionalValue), 0)}
                     {fraction !== null && ` (${formatPercentage(fraction)})`}
                   </span>
                 </li>
