@@ -382,7 +382,7 @@ export function PositionsPage() {
         return (
           <span className={`badge ${pnlBadgeClass(pct)}`} title={asOfDate ? `As of ${formatDate(asOfDate)} close` : undefined}>
             {pct > 0 ? "+" : ""}
-            {formatPercentageValue(pct)}
+            {formatPercentageValue(pct, 2)}
           </span>
         );
       },

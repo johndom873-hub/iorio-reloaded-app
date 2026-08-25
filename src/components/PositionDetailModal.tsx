@@ -215,7 +215,7 @@ export function PositionDetailModal({ positionId, onClose, onChanged }: Position
                           {pct !== null && (
                             <span className={`badge ms-2 ${pnlBadgeClass(pct)}`} style={{ fontSize: "0.72rem" }} title={asOfTitle}>
                               {pct > 0 ? "+" : ""}
-                              {formatPercentageValue(pct)}
+                              {formatPercentageValue(pct, 2)}
                             </span>
                           )}
                         </>
