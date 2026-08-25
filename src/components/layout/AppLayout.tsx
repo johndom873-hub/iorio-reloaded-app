@@ -11,6 +11,7 @@ import {
   IconSearch,
   IconShieldCheck,
   IconSun,
+  IconTrendingUp,
 } from "@tabler/icons-react";
 import { useAuth } from "../../contexts/AuthContext";
 import { useTheme } from "../../contexts/ThemeContext";
@@ -20,6 +21,7 @@ const navigationItems = [
   { to: "/positions", label: "Positions", icon: IconChartCandle },
   { to: "/trade-alerts", label: "Trade Alerts", icon: IconClipboardList },
   { to: "/screener", label: "Screener", icon: IconSearch },
+  { to: "/price-performance", label: "Price Performance", icon: IconTrendingUp },
   { to: "/trade-blotter", label: "Trade Blotter", icon: IconReceipt2 },
   { to: "/risk-limits", label: "Risk & Limits", icon: IconShieldCheck },
   { to: "/system-health", label: "System Health", icon: IconHeartRateMonitor },
