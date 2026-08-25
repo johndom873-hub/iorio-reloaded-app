@@ -212,7 +212,8 @@ export function ScreenerPage() {
     { key: "sector", header: "Sector", render: (row) => row.sector ?? "—" },
     {
       key: "impliedVolatility",
-      header: "Implied Vol",
+      header: "IV %",
+      headerTitle: "Implied Volatility",
       align: "right",
       render: (row) => formatPercentage(row.impliedVolatility === null ? null : Number(row.impliedVolatility)),
     },
@@ -231,11 +232,12 @@ export function ScreenerPage() {
     },
     {
       key: "avgOptionVolume",
-      header: "Avg Option Volume",
+      header: "Avg Vol",
+      headerTitle: "Average Option Volume",
       align: "right",
       render: (row) => formatNumber(row.avgOptionVolume),
     },
-    { key: "snapshotDate", header: "Last Refreshed", render: (row) => formatDate(row.snapshotDate) },
+    { key: "snapshotDate", header: "Refreshed", headerTitle: "Last Refreshed", render: (row) => formatDate(row.snapshotDate) },
     { key: "notes", header: "Notes", render: (row) => <NotesCell row={row} onSave={handleUpdateNotes} /> },
     {
       key: "actions",

@@ -9,6 +9,8 @@ export interface DataTableColumn<TRow> {
   render: (row: TRow) => ReactNode;
   /** Right-align numeric/currency columns. */
   align?: "left" | "right";
+  /** Full-text tooltip for an abbreviated header (e.g. header: "Avg Vol", headerTitle: "Average Option Volume"). */
+  headerTitle?: string;
 }
 
 interface DataTableProps<TRow> {
@@ -42,11 +44,15 @@ export function DataTable<TRow>({
         <ColumnVisibilityPopover columns={columns} isColumnVisible={isColumnVisible} onToggleColumn={toggleColumn} />
       </div>
       <div className="table-responsive">
-        <table className="table table-vcenter card-table">
+        <table className="table table-sm table-vcenter card-table" style={{ fontSize: "0.8125rem" }}>
           <thead className="table-light">
             <tr>
               {visibleColumns.map((column) => (
-                <th key={column.key} className={column.align === "right" ? "text-end" : undefined}>
+                <th
+                  key={column.key}
+                  className={column.align === "right" ? "text-end" : undefined}
+                  title={column.headerTitle}
+                >
                   {column.header}
                 </th>
               ))}
