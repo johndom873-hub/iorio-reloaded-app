@@ -1,8 +1,10 @@
 import { useEffect, useRef, useState } from "react";
 import { Spinner } from "./Spinner";
 import { ApiError } from "../api/client";
-import { cancelOrder, confirmOrder, fetchOrder, type OrderRequest } from "../api/positions";
-import { formatCurrency, formatDate, orderRequestStatusBadgeClass } from "../lib/formatters";
+import { cancelOrder, confirmOrder, fetchOrder, fetchOrderLegQuote, type OrderLegQuote, type OrderRequest } from "../api/positions";
+import type { StrategyKey } from "../api/screener";
+import { formatCurrency, formatDate, formatPercentage, formatSignedPnl, orderRequestStatusBadgeClass } from "../lib/formatters";
+import { computeCapitalAtRiskFromOrderLegs, computePayoff, orderLegsToPayoffInput } from "../lib/payoff";
 
 interface OrderReviewPanelProps {
   order: OrderRequest;
@@ -51,11 +53,21 @@ function statusLabel(status: OrderRequest["status"]): string {
  * form only ever builds an OrderRequest (this component's `order` prop) —
  * nothing is sent to IBKR until the user clicks Confirm here.
  */
+// Whole calendar days between now and an option leg's YYYYMMDD/YYYY-MM-DD
+// expiry -- matches how DTE is presented everywhere else in this app.
+function daysToExpiry(expiry: string): number {
+  const iso = expiry.length === 8 ? `${expiry.slice(0, 4)}-${expiry.slice(4, 6)}-${expiry.slice(6, 8)}` : expiry;
+  return Math.round((new Date(iso).getTime() - Date.now()) / 86_400_000);
+}
+
 export function OrderReviewPanel({ order: initialOrder, onCancelled, onFilled }: OrderReviewPanelProps) {
   const [order, setOrder] = useState(initialOrder);
   const [confirming, setConfirming] = useState(false);
   const [cancelling, setCancelling] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [quote, setQuote] = useState<OrderLegQuote | null>(null);
+  const [quoteError, setQuoteError] = useState<string | null>(null);
+  const [quoteLoading, setQuoteLoading] = useState(false);
   const pollTimerRef = useRef<number | null>(null);
 
   useEffect(() => {
@@ -63,6 +75,24 @@ export function OrderReviewPanel({ order: initialOrder, onCancelled, onFilled }:
       if (pollTimerRef.current) window.clearTimeout(pollTimerRef.current);
     };
   }, []);
+
+  // Fetched once when the panel opens, not continuously polled -- same
+  // on-demand-fetch-once pattern as Positions' Greeks column. Only orders
+  // with an option leg have anything to quote (a lone stock leg never does).
+  useEffect(() => {
+    if (!order.payload.legs.some((leg) => leg.role === "option")) return;
+    setQuoteLoading(true);
+    fetchOrderLegQuote(order.id)
+      .then(setQuote)
+      .catch((err) => setQuoteError(err instanceof ApiError ? err.message : "Failed to load live quote."))
+      .finally(() => setQuoteLoading(false));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [order.id]);
+
+  const payoff = computePayoff(order.payload.strategyKey as StrategyKey, orderLegsToPayoffInput(order.payload.legs));
+  const capitalAtRisk = computeCapitalAtRiskFromOrderLegs(order.payload.strategyKey as StrategyKey, order.payload.legs);
+  const optionLeg = order.payload.legs.find((leg) => leg.role === "option");
+  const dte = optionLeg?.expiry ? daysToExpiry(optionLeg.expiry) : null;
 
   function schedulePoll(orderId: string) {
     pollTimerRef.current = window.setTimeout(async () => {
@@ -133,6 +163,81 @@ export function OrderReviewPanel({ order: initialOrder, onCancelled, onFilled }:
           </li>
         ))}
       </ul>
+
+      {(payoff || capitalAtRisk !== null || dte !== null) && (
+        <div className="row g-2 mb-2" style={{ fontSize: "0.85rem" }}>
+          {dte !== null && (
+            <div className="col-4 col-md-2">
+              <div className="text-secondary">DTE</div>
+              <div>{dte}</div>
+            </div>
+          )}
+          {capitalAtRisk !== null && (
+            <div className="col-4 col-md-2">
+              <div className="text-secondary">Capital at Risk</div>
+              <div>{formatCurrency(capitalAtRisk)}</div>
+            </div>
+          )}
+          {payoff && (
+            <>
+              <div className="col-4 col-md-2">
+                <div className="text-secondary">Max Gain</div>
+                <div>{formatSignedPnl(payoff.maxGain)}</div>
+              </div>
+              <div className="col-4 col-md-2">
+                <div className="text-secondary">Max Loss</div>
+                <div>{formatSignedPnl(-payoff.maxLoss)}</div>
+              </div>
+              <div className="col-4 col-md-2">
+                <div className="text-secondary">Breakeven</div>
+                <div>{formatCurrency(payoff.breakeven)}</div>
+              </div>
+            </>
+          )}
+        </div>
+      )}
+
+      {optionLeg && (
+        <div className="mb-2" style={{ fontSize: "0.85rem" }}>
+          {quoteLoading && <Spinner size="sm" label="Loading live quote" />}
+          {quoteError && (
+            <span className="text-muted" title={quoteError}>
+              Live quote unavailable
+            </span>
+          )}
+          {quote && (
+            <div className="row g-2">
+              <div className="col-4 col-md-2">
+                <div className="text-secondary">Bid / Ask</div>
+                <div>
+                  {quote.bid !== null ? formatCurrency(quote.bid) : "—"} / {quote.ask !== null ? formatCurrency(quote.ask) : "—"}
+                </div>
+              </div>
+              <div className="col-4 col-md-2">
+                <div className="text-secondary">Spread</div>
+                <div>{quote.bid !== null && quote.ask !== null ? formatCurrency(quote.ask - quote.bid) : "—"}</div>
+              </div>
+              <div className="col-4 col-md-2">
+                <div className="text-secondary">IV</div>
+                <div>{formatPercentage(quote.impliedVolatility)}</div>
+              </div>
+              <div className="col-4 col-md-2">
+                <div className="text-secondary">Delta</div>
+                <div>{quote.delta !== null ? quote.delta.toFixed(2) : "—"}</div>
+              </div>
+              <div className="col-4 col-md-2">
+                <div className="text-secondary">Theta</div>
+                <div>{quote.theta !== null ? quote.theta.toFixed(2) : "—"}</div>
+              </div>
+              <div className="col-4 col-md-2">
+                <div className="text-secondary">Vega</div>
+                <div>{quote.vega !== null ? quote.vega.toFixed(2) : "—"}</div>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
       <div className="d-flex align-items-center gap-2 mb-3">
         <span className={`badge ${orderRequestStatusBadgeClass(order.status)}`} style={{ fontSize: "0.72rem" }}>
           {statusLabel(order.status)}

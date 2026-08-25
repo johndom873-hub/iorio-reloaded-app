@@ -172,6 +172,24 @@ export function fetchOrder(orderId: string): Promise<OrderRequest> {
   return apiRequest<OrderRequest>(`/positions/orders/${orderId}`);
 }
 
+export interface OrderLegQuote {
+  expiry: string;
+  strike: number;
+  right: "C" | "P";
+  bid: number | null;
+  ask: number | null;
+  last: number | null;
+  impliedVolatility: number | null;
+  delta: number | null;
+  gamma: number | null;
+  vega: number | null;
+  theta: number | null;
+}
+
+export function fetchOrderLegQuote(orderId: string): Promise<OrderLegQuote> {
+  return apiRequest<OrderLegQuote>(`/positions/orders/${orderId}/quote`);
+}
+
 export interface Greeks {
   delta: number | null;
   gamma: number | null;

@@ -1,9 +1,21 @@
-import type { PositionLeg } from "../api/positions";
+import type { OrderLeg } from "../api/positions";
 import type { StrategyKey } from "../api/screener";
 
 export interface PayoffPoint {
   price: number;
   pnl: number;
+}
+
+// Narrowed to just the fields the math below actually reads, so both a real
+// PositionLeg and an adapted not-yet-confirmed OrderLeg (see
+// orderLegsToPayoffInput below) satisfy it structurally.
+export interface PayoffLegInput {
+  legType: "stock" | "option";
+  optionType: "call" | "put" | null;
+  entryPrice: string;
+  strikePrice: string | null;
+  quantity: number;
+  multiplier: number;
 }
 
 export interface PayoffResult {
@@ -30,7 +42,7 @@ function buildChartPoints(centerPrice: number, payoffAt: (price: number) => numb
   });
 }
 
-export function computeCoveredCallPayoff(legs: PositionLeg[]): PayoffResult | null {
+export function computeCoveredCallPayoff(legs: PayoffLegInput[]): PayoffResult | null {
   const stockLeg = legs.find((leg) => leg.legType === "stock");
   const callLeg = legs.find((leg) => leg.legType === "option" && leg.optionType === "call");
   if (!stockLeg || !callLeg || callLeg.strikePrice === null) return null;
@@ -57,7 +69,7 @@ export function computeCoveredCallPayoff(legs: PositionLeg[]): PayoffResult | nu
   };
 }
 
-export function computeCashSecuredPutPayoff(legs: PositionLeg[]): PayoffResult | null {
+export function computeCashSecuredPutPayoff(legs: PayoffLegInput[]): PayoffResult | null {
   const putLeg = legs.find((leg) => leg.legType === "option" && leg.optionType === "put");
   if (!putLeg || putLeg.strikePrice === null) return null;
 
@@ -79,7 +91,40 @@ export function computeCashSecuredPutPayoff(legs: PositionLeg[]): PayoffResult |
   };
 }
 
-export function computePayoff(strategyKey: StrategyKey, legs: PositionLeg[]): PayoffResult | null {
+export function computePayoff(strategyKey: StrategyKey, legs: PayoffLegInput[]): PayoffResult | null {
   if (strategyKey === "covered_call") return computeCoveredCallPayoff(legs);
   return computeCashSecuredPutPayoff(legs);
+}
+
+// Adapts an unconfirmed OrderRequest's legs (role/action/unitPrice/strike,
+// see OrderLeg) into the same shape computePayoff already reads from a real
+// PositionLeg -- no live data needed, this is pure math on the order's own
+// proposed entry price/strike. A stock leg's multiplier is fixed at 1
+// (shares, not contracts) matching how a real synced stock leg always ends
+// up (see project_position_leg_multiplier_vs_quantity); an option leg's
+// multiplier is assumed 100 -- the standard equity-option contract size,
+// same assumption already made throughout this order-building flow.
+export function orderLegsToPayoffInput(legs: OrderLeg[]): PayoffLegInput[] {
+  return legs.map((leg) => ({
+    legType: leg.role,
+    optionType: leg.right === "C" ? "call" : leg.right === "P" ? "put" : null,
+    entryPrice: String(leg.unitPrice),
+    strikePrice: leg.strike !== undefined ? String(leg.strike) : null,
+    quantity: leg.quantity,
+    multiplier: leg.role === "stock" ? 1 : 100,
+  }));
+}
+
+// Same definition already established for Trade Alerts/Positions'
+// capitalAtRisk (stock entry cost for a covered call, strike collateral for
+// a CSP) -- computed here from the order's own proposed legs since an
+// unconfirmed order has no stored capitalAtRisk field the way a real
+// Position does.
+export function computeCapitalAtRiskFromOrderLegs(strategyKey: StrategyKey, legs: OrderLeg[]): number | null {
+  if (strategyKey === "covered_call") {
+    const stockLeg = legs.find((leg) => leg.role === "stock");
+    return stockLeg ? stockLeg.unitPrice * stockLeg.quantity : null;
+  }
+  const putLeg = legs.find((leg) => leg.role === "option");
+  return putLeg && putLeg.strike !== undefined ? putLeg.strike * putLeg.quantity * 100 : null;
 }
