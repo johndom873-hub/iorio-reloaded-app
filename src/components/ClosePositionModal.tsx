@@ -5,26 +5,31 @@ import { ApiError } from "../api/client";
 import { buildCloseOrder, type OrderRequest, type Position } from "../api/positions";
 import { formatCurrency, formatDate } from "../lib/formatters";
 
-interface DownsizePositionModalProps {
+interface ClosePositionModalProps {
   position: Position;
   onClose: () => void;
-  onDownsized: () => void;
+  onClosed: () => void;
 }
 
 // Action modal (form submission) — per the app's modal convention, does not
 // close on backdrop click, only via the X button/Cancel/ESC.
 //
-// Downsizing is always driven by the option leg's contract count (approved
-// 2026-08-25, see PROGRESS.md) — the stock leg's quantity is derived
-// (contracts * multiplier), never independently editable, so a partial
-// close can't unbalance a covered call's coverage ratio.
-export function DownsizePositionModal({ position, onClose, onDownsized }: DownsizePositionModalProps) {
+// One flow for both a full close and a partial "downsize" (merged
+// 2026-08-25 — a separate Close button would've just duplicated this same
+// form, since it already handles a full close as the default case).
+// Contracts-to-close always drives the stock leg's quantity (contracts *
+// multiplier), never independently editable, so reducing it can't unbalance
+// a covered call's coverage ratio.
+export function ClosePositionModal({ position, onClose, onClosed }: ClosePositionModalProps) {
   const openLegs = position.legs.filter((leg) => !leg.exitAt);
   const optionLegs = openLegs.filter((leg) => leg.legType === "option");
   const stockLeg = openLegs.find((leg) => leg.legType === "stock");
   const optionLeg = optionLegs.length === 1 ? optionLegs[0] : undefined;
 
-  const [contractsToCloseDraft, setContractsToCloseDraft] = useState("1");
+  // Defaults to the full quantity -- clicking "Close" on an ordinary
+  // position should just work as a full close with no extra steps; reducing
+  // the number is how you downsize instead.
+  const [contractsToCloseDraft, setContractsToCloseDraft] = useState(() => String(optionLeg?.quantity ?? 1));
   const [optionLimitPriceDraft, setOptionLimitPriceDraft] = useState("");
   const [stockLimitPriceDraft, setStockLimitPriceDraft] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -50,7 +55,8 @@ export function DownsizePositionModal({ position, onClose, onDownsized }: Downsi
   const contractsToClose = Number(contractsToCloseDraft);
   const validContracts = optionLeg && Number.isInteger(contractsToClose) && contractsToClose >= 1 && contractsToClose <= optionLeg.quantity;
   const sharesToClose = optionLeg ? contractsToClose * optionLeg.multiplier : 0;
-  const willFullyClose = optionLeg !== undefined && contractsToClose === optionLeg.quantity;
+  const isPartialClose = optionLeg !== undefined && contractsToClose < optionLeg.quantity;
+  const remainingContracts = optionLeg ? optionLeg.quantity - contractsToClose : 0;
 
   async function handleSubmit() {
     if (!optionLeg || !validContracts) return;
@@ -68,7 +74,7 @@ export function DownsizePositionModal({ position, onClose, onDownsized }: Downsi
       const order = await buildCloseOrder(position.id, legs, contractsToClose);
       setPendingOrder(order);
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Failed to build downsize order.");
+      setError(err instanceof ApiError ? err.message : "Failed to build close order.");
     } finally {
       setSubmitting(false);
     }
@@ -83,17 +89,17 @@ export function DownsizePositionModal({ position, onClose, onDownsized }: Downsi
         <div className="modal-dialog modal-dialog-scrollable">
           <div className="modal-content">
             <div className="modal-header">
-              <h5 className="modal-title">Downsize {position.symbol}</h5>
+              <h5 className="modal-title">Close {position.symbol}</h5>
               <button type="button" className="btn-close" aria-label="Close" onClick={onClose} disabled={submitting} />
             </div>
             <div className="modal-body">
               {error && <div className="alert alert-danger">{error}</div>}
 
               {pendingOrder ? (
-                <OrderReviewPanel order={pendingOrder} onCancelled={onClose} onFilled={onDownsized} />
+                <OrderReviewPanel order={pendingOrder} onCancelled={onClose} onFilled={onClosed} />
               ) : !optionLeg ? (
                 <div className="alert alert-warning">
-                  Downsizing only supports positions with exactly one open option leg — this one has {optionLegs.length}.
+                  Closing only supports positions with exactly one open option leg — this one has {optionLegs.length}.
                 </div>
               ) : (
                 <>
@@ -146,8 +152,10 @@ export function DownsizePositionModal({ position, onClose, onDownsized }: Downsi
                       Contracts to close must be a whole number from 1 to {optionLeg.quantity}.
                     </div>
                   )}
-                  {validContracts && willFullyClose && (
-                    <div className="alert alert-warning">This will fully close the position — every contract and share will be closed.</div>
+                  {validContracts && isPartialClose && (
+                    <div className="alert alert-warning">
+                      This will leave {remainingContracts} contract{remainingContracts === 1 ? "" : "s"} ({remainingContracts * optionLeg.multiplier} sh) open — the position won't be fully closed.
+                    </div>
                   )}
 
                   <div className="row g-2 mb-2">
@@ -191,7 +199,7 @@ export function DownsizePositionModal({ position, onClose, onDownsized }: Downsi
                   disabled={submitting || !validContracts}
                 >
                   {submitting && <Spinner size="sm" />}
-                  Review Downsize Order
+                  Review Close Order
                 </button>
               </div>
             )}
