@@ -105,6 +105,20 @@ export function formatDate(dateInput: string | Date | null | undefined): string 
   return new Intl.DateTimeFormat("en-US", { year: "numeric", month: "short", day: "numeric" }).format(date);
 }
 
+// Whole calendar days between now and an ISO "YYYY-MM-DD" expiry date.
+export function daysToExpiry(expiryIsoDate: string): number {
+  return Math.round((new Date(expiryIsoDate).getTime() - Date.now()) / 86_400_000);
+}
+
+// Pairs with daysToExpiry for the "(in X days)" label shown next to an
+// expiry date across the app (Positions table, Order Review, Trade Alerts).
+export function formatDaysToExpiry(days: number): string {
+  if (days < 0) return "expired";
+  if (days === 0) return "today";
+  if (days === 1) return "in 1 day";
+  return `in ${days} days`;
+}
+
 export function formatDateTime(dateInput: string | Date | null | undefined): string {
   if (!dateInput) return "—";
   const date = typeof dateInput === "string" ? new Date(dateInput) : dateInput;

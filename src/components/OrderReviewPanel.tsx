@@ -4,7 +4,18 @@ import { ApiError } from "../api/client";
 import { cancelOrder, confirmOrder, fetchOrder, openOrderLegQuoteStream, type OrderLegQuote, type OrderRequest } from "../api/positions";
 import { fetchAccountValue, fetchAvailableCash } from "../api/dashboard";
 import type { StrategyKey } from "../api/screener";
-import { formatCurrency, formatCurrencyTrimmed, formatDate, formatNumber, formatPercentage, formatPercentageValue, formatSignedPnl, orderRequestStatusBadgeClass } from "../lib/formatters";
+import {
+  daysToExpiry,
+  formatCurrency,
+  formatCurrencyTrimmed,
+  formatDate,
+  formatNumber,
+  formatPercentage,
+  formatPercentageValue,
+  formatSignedPnl,
+  ibkrExpiryToIsoDate,
+  orderRequestStatusBadgeClass,
+} from "../lib/formatters";
 import { computeAnnualizedYield, computeCapitalAtRiskFromOrderLegs, computePayoff, orderLegsToPayoffInput } from "../lib/payoff";
 
 interface OrderReviewPanelProps {
@@ -20,9 +31,8 @@ const terminalStatuses = new Set(["filled", "partially_filled", "cancelled", "re
 function legDescription(leg: OrderRequest["payload"]["legs"][number]): string {
   if (leg.role === "stock") return `${leg.action} ${leg.quantity} sh @ ${formatCurrency(leg.unitPrice)}`;
   const right = leg.right === "C" ? "Call" : "Put";
-  const expiryLabel = leg.expiry
-    ? `${formatDate(leg.expiry.length === 8 ? `${leg.expiry.slice(0, 4)}-${leg.expiry.slice(4, 6)}-${leg.expiry.slice(6, 8)}` : leg.expiry)} (${daysToExpiry(leg.expiry)} DTE)`
-    : "—";
+  const expiryIsoDate = leg.expiry ? (leg.expiry.length === 8 ? ibkrExpiryToIsoDate(leg.expiry) : leg.expiry) : null;
+  const expiryLabel = expiryIsoDate ? `${formatDate(expiryIsoDate)} (${daysToExpiry(expiryIsoDate)} DTE)` : "—";
   return `${leg.action} ${leg.quantity}x ${leg.strike ? formatCurrencyTrimmed(leg.strike) : "—"} ${right} exp ${expiryLabel} @ ${formatCurrency(leg.unitPrice)}`;
 }
 
@@ -55,13 +65,6 @@ function statusLabel(status: OrderRequest["status"]): string {
  * form only ever builds an OrderRequest (this component's `order` prop) —
  * nothing is sent to IBKR until the user clicks Confirm here.
  */
-// Whole calendar days between now and an option leg's YYYYMMDD/YYYY-MM-DD
-// expiry -- matches how DTE is presented everywhere else in this app.
-function daysToExpiry(expiry: string): number {
-  const iso = expiry.length === 8 ? `${expiry.slice(0, 4)}-${expiry.slice(4, 6)}-${expiry.slice(6, 8)}` : expiry;
-  return Math.round((new Date(iso).getTime() - Date.now()) / 86_400_000);
-}
-
 export function OrderReviewPanel({ order: initialOrder, onCancelled, onFilled }: OrderReviewPanelProps) {
   const [order, setOrder] = useState(initialOrder);
   const [confirming, setConfirming] = useState(false);

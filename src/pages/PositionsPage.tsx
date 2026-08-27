@@ -17,15 +17,24 @@ import {
 import { fetchAccountValue } from "../api/dashboard";
 import type { StrategyKey } from "../api/screener";
 import {
+  daysToExpiry,
   formatCurrency,
   formatCurrencyTrimmed,
   formatDate,
+  formatDaysToExpiry,
   formatNumber,
   formatPercentageValue,
   formatSignedPnl,
-  pnlBadgeClass,
+  pnlTextClass,
 } from "../lib/formatters";
-import { positionPnlAsOfDate, positionTotalPnl, positionTotalPnlPercent, strategyBadgeClass, strategyLabel } from "../lib/positionPnl";
+import {
+  positionExpiryDate,
+  positionPnlAsOfDate,
+  positionTotalPnl,
+  positionTotalPnlPercent,
+  strategyBadgeClass,
+  strategyLabel,
+} from "../lib/positionPnl";
 
 const strategyTabs: { key: StrategyKey | "all"; label: string }[] = [
   { key: "all", label: "All" },
@@ -148,7 +157,7 @@ export function PositionsPage() {
           );
         const asOfDate = positionPnlAsOfDate(row, unrealizedPnlByPositionId);
         return (
-          <span className={`badge ${pnlBadgeClass(pnl)}`} title={asOfDate ? `As of ${formatDate(asOfDate)} close` : undefined}>
+          <span className={pnlTextClass(pnl)} title={asOfDate ? `As of ${formatDate(asOfDate)} close` : undefined}>
             {formatSignedPnl(pnl)}
           </span>
         );
@@ -179,7 +188,7 @@ export function PositionsPage() {
           );
         const asOfDate = positionPnlAsOfDate(row, unrealizedPnlByPositionId);
         return (
-          <span className={`badge ${pnlBadgeClass(pct)}`} title={asOfDate ? `As of ${formatDate(asOfDate)} close` : undefined}>
+          <span className={pnlTextClass(pct)} title={asOfDate ? `As of ${formatDate(asOfDate)} close` : undefined}>
             {pct > 0 ? "+" : ""}
             {formatPercentageValue(pct, 2)}
           </span>
@@ -204,6 +213,19 @@ export function PositionsPage() {
       },
     },
     { key: "openedAt", header: "Opened", render: (row) => formatDate(row.openedAt) },
+    {
+      key: "expiry",
+      header: "Expiry",
+      render: (row) => {
+        const expiryDate = positionExpiryDate(row);
+        if (!expiryDate) return "—";
+        return (
+          <>
+            {formatDate(expiryDate)} <span className="text-secondary">({formatDaysToExpiry(daysToExpiry(expiryDate))})</span>
+          </>
+        );
+      },
+    },
     {
       key: "delta",
       header: "Delta",

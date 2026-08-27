@@ -44,3 +44,14 @@ export function positionTotalPnlPercent(position: Position, pnl: number | null):
   if (pnl === null || capitalAtRisk === null || capitalAtRisk === 0) return null;
   return (pnl / capitalAtRisk) * 100;
 }
+
+// The expiry driving this position: the nearest expiry among its still-open
+// option legs, or (once every leg has been closed) the nearest among all of
+// them, so a closed position still shows what it expired/would have expired
+// on. Null for pure-stock or legless positions.
+export function positionExpiryDate(position: Position): string | null {
+  const openLegs = position.legs.filter((leg) => leg.legType === "option" && leg.expiryDate && !leg.exitAt);
+  const candidateLegs = openLegs.length > 0 ? openLegs : position.legs.filter((leg) => leg.legType === "option" && leg.expiryDate);
+  if (candidateLegs.length === 0) return null;
+  return candidateLegs.reduce((earliest, leg) => (leg.expiryDate! < earliest ? leg.expiryDate! : earliest), candidateLegs[0].expiryDate!);
+}
