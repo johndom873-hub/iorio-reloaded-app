@@ -1,8 +1,9 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 import { openTradeAlertRunStream, type TradeAlertRunStreamEvent } from "../api/tradeAlerts";
 import { fetchOrder, type OrderRequest } from "../api/positions";
+import { openNotificationStream } from "../api/notifications";
 
-export type BackgroundJobKind = "trade-alert-scan" | "order";
+export type BackgroundJobKind = "trade-alert-scan" | "order" | "position-closed";
 export type BackgroundJobStatus = "running" | "done" | "error";
 
 interface BackgroundJobBase {
@@ -23,10 +24,18 @@ export interface OrderJob extends BackgroundJobBase {
   order: OrderRequest;
 }
 
-export type BackgroundJob = TradeAlertScanJob | OrderJob;
+// Fed by the SSE notification stream's "position_closed" event (an option
+// expiring or being assigned — see ibkrGatewayWorker.ts's
+// notifyPositionExpired) rather than anything this browser itself did, so
+// unlike OrderJob there's no local order/poll state behind it — it's a
+// one-shot toast, done the instant it arrives.
+export interface PositionClosedJob extends BackgroundJobBase {
+  kind: "position-closed";
+}
+
+export type BackgroundJob = TradeAlertScanJob | OrderJob | PositionClosedJob;
 
 const tradeAlertScanJobId = "trade-alert-scan";
-const orderPollIntervalMs = 2_000;
 const terminalOrderStatuses = new Set(["filled", "partially_filled", "cancelled", "rejected", "error"]);
 
 function orderJobLabel(order: OrderRequest): string {
@@ -75,13 +84,7 @@ const BackgroundJobsContext = createContext<BackgroundJobsContextValue | undefin
 export function BackgroundJobsProvider({ children }: { children: ReactNode }) {
   const [jobs, setJobs] = useState<BackgroundJob[]>([]);
   const tradeAlertScanRunningRef = useRef(false);
-  const orderPollTimersRef = useRef<Map<string, number>>(new Map());
   const jobEventListenersRef = useRef<Map<string, Set<(event: TradeAlertRunStreamEvent) => void>>>(new Map());
-
-  useEffect(() => {
-    const timers = orderPollTimersRef.current;
-    return () => timers.forEach((timer) => window.clearTimeout(timer));
-  }, []);
 
   // Callers always pass dismissed: false to mean "this is a fresh update" —
   // whether that actually reopens a closed toast depends on whether
@@ -189,39 +192,7 @@ export function BackgroundJobsProvider({ children }: { children: ReactNode }) {
     });
   }, [upsertJob, emitJobEvent]);
 
-  const pollOrder = useCallback(
-    (orderId: string) => {
-      const existingTimer = orderPollTimersRef.current.get(orderId);
-      if (existingTimer) window.clearTimeout(existingTimer);
-
-      const timer = window.setTimeout(async () => {
-        try {
-          const updated = await fetchOrder(orderId);
-          upsertJob({
-            id: updated.id,
-            kind: "order",
-            label: orderJobLabel(updated),
-            status: orderJobStatus(updated),
-            message: orderStatusMessage(updated),
-            dismissed: false,
-            order: updated,
-          });
-          if (!terminalOrderStatuses.has(updated.status)) {
-            pollOrder(orderId);
-          } else {
-            orderPollTimersRef.current.delete(orderId);
-          }
-        } catch {
-          pollOrder(orderId);
-        }
-      }, orderPollIntervalMs);
-
-      orderPollTimersRef.current.set(orderId, timer);
-    },
-    [upsertJob],
-  );
-
-  const startOrderJob = useCallback(
+  const upsertOrderJob = useCallback(
     (order: OrderRequest) => {
       upsertJob({
         id: order.id,
@@ -232,12 +203,48 @@ export function BackgroundJobsProvider({ children }: { children: ReactNode }) {
         dismissed: false,
         order,
       });
-      if (!terminalOrderStatuses.has(order.status) && !orderPollTimersRef.current.has(order.id)) {
-        pollOrder(order.id);
-      }
     },
-    [upsertJob, pollOrder],
+    [upsertJob],
   );
+
+  // Seeds the toast immediately with the object OrderReviewPanel already has
+  // in hand (Confirm/Cancel's own response) rather than waiting on a round
+  // trip through the SSE stream — the stream then keeps it updated from here
+  // (see the notification-stream effect below), including after this panel
+  // closes or the user navigates away.
+  const startOrderJob = useCallback(
+    (order: OrderRequest) => {
+      upsertOrderJob(order);
+    },
+    [upsertOrderJob],
+  );
+
+  // One SSE connection for the app's lifetime (not tied to any page or
+  // panel) — see api/notifications.ts. Replaces the old per-order 2s client
+  // poll: that only ever tracked orders this browser itself started via
+  // startOrderJob, so an order placed outside this browser (Genosuke chat)
+  // or a position closed purely by IBKR (an option expiring) never
+  // surfaced anywhere in the UI. Every order_status event re-fetches the
+  // full order (the notification payload only carries its id) and reuses
+  // the same upsertOrderJob path startOrderJob does, so an order this
+  // browser never explicitly started still gets its own toast the first
+  // time an event mentions it.
+  useEffect(() => {
+    return openNotificationStream((notification) => {
+      if (notification.type === "order_status") {
+        fetchOrder(notification.orderId).then(upsertOrderJob).catch(() => {});
+      } else if (notification.type === "position_closed") {
+        upsertJob({
+          id: `position-closed-${notification.positionId}-${Date.now()}`,
+          kind: "position-closed",
+          label: `${notification.symbol} — Position Closed`,
+          status: "done",
+          message: notification.message,
+          dismissed: false,
+        });
+      }
+    });
+  }, [upsertJob, upsertOrderJob]);
 
   return (
     <BackgroundJobsContext.Provider value={{ jobs, dismissJob, startTradeAlertScan, startOrderJob, subscribeToJobEvents }}>
