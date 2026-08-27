@@ -233,6 +233,42 @@ export function openOrderLegQuoteStream(orderId: string, onEvent: (event: OrderL
   return () => source.close();
 }
 
+/**
+ * Same live quote as openOrderLegQuoteStream, but for a contract that has no
+ * order_requests row yet — used by RollPositionModal, which needs live
+ * pricing for both legs of a proposed roll (the closing leg and the
+ * replacement) before the roll order is built. Never carries a compliance
+ * verdict (always null) — rolling isn't gated the way an opening order is.
+ */
+export function openContractQuoteStream(
+  symbol: string,
+  expiry: string,
+  strike: number,
+  right: "C" | "P",
+  onEvent: (event: OrderLegQuoteStreamEvent) => void,
+): () => void {
+  const params = new URLSearchParams({ symbol, expiry, strike: String(strike), right });
+  const source = new EventSource(`${apiBaseUrl}/positions/quote/stream?${params.toString()}`, { withCredentials: true });
+
+  source.onmessage = (message) => {
+    let event: OrderLegQuoteStreamEvent;
+    try {
+      event = JSON.parse(message.data);
+    } catch {
+      return;
+    }
+    onEvent(event);
+    if (event.type === "done" || event.type === "streamError") source.close();
+  };
+
+  source.onerror = () => {
+    onEvent({ type: "streamError", message: "Connection to the server was lost." });
+    source.close();
+  };
+
+  return () => source.close();
+}
+
 export interface Greeks {
   delta: number | null;
   gamma: number | null;

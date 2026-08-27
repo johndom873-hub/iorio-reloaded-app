@@ -1,15 +1,18 @@
 import { useCallback, useEffect, useState } from "react";
 import { PageHeader } from "../components/layout/PageHeader";
 import { DataTable, type DataTableColumn } from "../components/DataTable/DataTable";
+import { Spinner } from "../components/Spinner";
 import { TickerDetailModal } from "../components/TickerDetailModal";
 import { ApiError } from "../api/client";
+import { cancelOrder } from "../api/positions";
 import { fetchTradeBlotter, type PendingOrder, type Trade } from "../api/tradeBlotter";
 import type { StrategyKey } from "../api/screener";
 import {
   formatCurrency,
   formatCurrencyTrimmed,
-  formatDate,
+  formatDateTime,
   formatNumber,
+  formatRelativeTime,
   formatSignedPnl,
   orderRequestStatusBadgeClass,
   orderRequestStatusLabel,
@@ -45,6 +48,7 @@ export function TradeBlotterPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [detailSymbol, setDetailSymbol] = useState<string | null>(null);
+  const [cancellingId, setCancellingId] = useState<string | null>(null);
 
   const loadTrades = useCallback(async () => {
     try {
@@ -77,11 +81,43 @@ export function TradeBlotterPage() {
     loadTrades().finally(() => setLoading(false));
   }, [loadTrades]);
 
+  // Never gated on age — a "pending_confirmation" order was never sent to
+  // IBKR, so there's nothing external to worry about cancelling regardless
+  // of how old it is. The full timestamp + relative-time label below is
+  // what keeps this safe: Juan/Marcelo can see at a glance whether an order
+  // was just built moments ago (don't touch it) or has genuinely been
+  // sitting untouched, rather than the button carrying any built-in delay.
+  async function handleCancel(orderId: string) {
+    setCancellingId(orderId);
+    try {
+      setError(null);
+      await cancelOrder(orderId);
+      await loadTrades();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Failed to cancel order.");
+    } finally {
+      setCancellingId(null);
+    }
+  }
+
   const columns: DataTableColumn<BlotterRow>[] = [
     {
       key: "date",
       header: "Date",
-      render: (row) => formatDate(row.kind === "trade" ? row.executedAt : row.createdAt),
+      render: (row) => {
+        const timestamp = row.kind === "trade" ? row.executedAt : row.createdAt;
+        const relative = formatRelativeTime(timestamp);
+        return (
+          <div>
+            <div>{formatDateTime(timestamp)}</div>
+            {relative && (
+              <div className="text-secondary" style={{ fontSize: "0.72rem" }}>
+                {relative}
+              </div>
+            )}
+          </div>
+        );
+      },
     },
     {
       key: "symbol",
@@ -164,6 +200,31 @@ export function TradeBlotterPage() {
               </div>
             )}
           </div>
+        );
+      },
+    },
+    {
+      key: "actions",
+      header: "",
+      align: "right",
+      render: (row) => {
+        if (row.kind !== "order" || row.status !== "pending_confirmation") return null;
+        // row.id is "<order_requests.id>:<legOrdinality>" here — a multi-leg
+        // order expands to one blotter row per leg, all sharing one real
+        // order id (see tradeBlotter.ts's WITH ORDINALITY comment). Cancel
+        // always targets the whole order, so every leg-row's button does the
+        // same thing regardless of which leg it's attached to.
+        const orderId = row.id.split(":")[0]!;
+        return (
+          <button
+            type="button"
+            className="btn btn-sm btn-outline-danger d-inline-flex align-items-center gap-1"
+            disabled={cancellingId === orderId}
+            onClick={() => handleCancel(orderId)}
+          >
+            {cancellingId === orderId && <Spinner size="sm" />}
+            Cancel
+          </button>
         );
       },
     },

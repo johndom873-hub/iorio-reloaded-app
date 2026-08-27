@@ -125,6 +125,25 @@ export function formatNumber(value: number | string | null | undefined, maximumF
   return new Intl.NumberFormat("en-US", { maximumFractionDigits }).format(numericValue);
 }
 
+// "x minutes/hours ago" for anything within the last 24h, otherwise null —
+// callers pair this with formatDateTime's full timestamp rather than using
+// it alone, so nothing older just silently has no relative label.
+export function formatRelativeTime(dateInput: string | Date | null | undefined): string | null {
+  if (!dateInput) return null;
+  const date = typeof dateInput === "string" ? new Date(dateInput) : dateInput;
+  if (Number.isNaN(date.getTime())) return null;
+
+  const diffMs = Date.now() - date.getTime();
+  if (diffMs < 0 || diffMs >= 24 * 60 * 60 * 1000) return null;
+
+  const diffMinutes = Math.round(diffMs / 60_000);
+  if (diffMinutes < 1) return "just now";
+  if (diffMinutes < 60) return `${diffMinutes} minute${diffMinutes === 1 ? "" : "s"} ago`;
+
+  const diffHours = Math.round(diffMinutes / 60);
+  return `${diffHours} hour${diffHours === 1 ? "" : "s"} ago`;
+}
+
 export function formatDuration(
   startedAt: string | Date | null | undefined,
   finishedAt: string | Date | null | undefined,

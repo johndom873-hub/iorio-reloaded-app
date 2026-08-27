@@ -9,7 +9,7 @@ import {
   type PriceBar,
   type TickerOverview,
 } from "../api/tickerDetail";
-import { fetchTradeAlerts, isRollAlert, type NewTradeCandidate, type TradeAlert } from "../api/tradeAlerts";
+import { fetchTradeAlerts, isRollAlert, refreshTickerAlerts, type NewTradeCandidate, type TradeAlert } from "../api/tradeAlerts";
 import { buildOpenOrder, type OrderRequest } from "../api/positions";
 import { ApiError } from "../api/client";
 import type { StrategyKey } from "../api/screener";
@@ -244,6 +244,8 @@ export function TickerDetailModal({ symbol, onClose, initialAlertId }: TickerDet
 
   const [alerts, setAlerts] = useState<TradeAlert[] | null>(null);
   const [alertsError, setAlertsError] = useState<string | null>(null);
+  const [scanning, setScanning] = useState(false);
+  const [scanError, setScanError] = useState<string | null>(null);
 
   const [activeExpiry, setActiveExpiry] = useState<string | null>(null);
   const [selectedAlert, setSelectedAlert] = useState<NewTradeAlert | null>(null);
@@ -337,7 +339,11 @@ export function TickerDetailModal({ symbol, onClose, initialAlertId }: TickerDet
     setActiveExpiry((withAlert ?? expiryGroups[0]).expiry);
   }, [expiryGroups, alertExpiries]);
 
-  // Opened via "View Details" on a specific alert — jump straight to it.
+  // Opened via "Review" on a specific alert (Trade Alerts page) — jump
+  // straight to it AND open the order panel, matching what clicking that
+  // same alert's row/pill inside this modal already does. Previously this
+  // only jumped/scrolled and left the order panel closed — fixed 2026-08-27,
+  // see handleAlertPillClick below.
   useEffect(() => {
     if (appliedInitialAlert.current || !initialAlertId || relevantAlerts.length === 0 || expiryGroups.length === 0) return;
     const alert = relevantAlerts.find((a) => a.id === initialAlertId);
@@ -346,6 +352,7 @@ export function TickerDetailModal({ symbol, onClose, initialAlertId }: TickerDet
     const expiryYyyymmdd = alert.suggestedStructure.expiry.replaceAll("-", "");
     if (expiryGroups.some((g) => g.expiry === expiryYyyymmdd)) setActiveExpiry(expiryYyyymmdd);
     chainRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    handleAlertPillClick(alert);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialAlertId, relevantAlerts, expiryGroups]);
 
@@ -361,6 +368,27 @@ export function TickerDetailModal({ symbol, onClose, initialAlertId }: TickerDet
     setContractQty("1");
     setPendingOrder(null);
     setBuildError(null);
+  }
+
+  // Same endpoint as the Trade Alerts page's per-ticker "Refresh" button —
+  // confirmed 2026-08-27 there's no cheaper path from inside the modal even
+  // though a lot of chain data is already resident here, since the alert
+  // scan's strike/expiry selection is structurally different from what the
+  // chain fetches (one-sided by strategy vs. the chain's near-the-money both
+  // sides). Label switches between "Scan for Alerts" (none yet) and
+  // "Refresh" (some exist) but both call the same thing.
+  async function handleScanOrRefresh() {
+    setScanning(true);
+    setScanError(null);
+    try {
+      await refreshTickerAlerts(symbol);
+      const updated = await fetchTradeAlerts({ status: "pending", symbol });
+      setAlerts(updated);
+    } catch (err) {
+      setScanError(err instanceof ApiError ? err.message : "Failed to scan for trade alerts.");
+    } finally {
+      setScanning(false);
+    }
   }
 
   function closeOrderPanel() {
@@ -637,11 +665,29 @@ export function TickerDetailModal({ symbol, onClose, initialAlertId }: TickerDet
                   <div style={{ minWidth: 0, flex: selectedAlert ? "1 1 68%" : "1 1 100%" }}>
                   {/* ---------- Trade Alerts ---------- */}
                   {alertsError && <div className="alert alert-danger">{alertsError}</div>}
-                  {relevantAlerts.length > 0 && (
+                  {alerts !== null && !alertsError && (
                     <div className="mb-4">
-                      <h4 className="mb-1" style={{ fontSize: "0.95rem" }}>
-                        Trade Alerts <span className="text-secondary fw-normal">({relevantAlerts.length})</span>
-                      </h4>
+                      <div className="d-flex align-items-center justify-content-between mb-1">
+                        <h4 className="mb-0" style={{ fontSize: "0.95rem" }}>
+                          Trade Alerts{" "}
+                          {relevantAlerts.length > 0 && <span className="text-secondary fw-normal">({relevantAlerts.length})</span>}
+                        </h4>
+                        <button
+                          type="button"
+                          className="btn btn-sm btn-outline-primary d-inline-flex align-items-center gap-1"
+                          disabled={scanning}
+                          onClick={handleScanOrRefresh}
+                        >
+                          {scanning && <Spinner size="sm" />}
+                          {relevantAlerts.length > 0 ? "Refresh" : "Scan for Alerts"}
+                        </button>
+                      </div>
+                      {scanError && <div className="alert alert-danger">{scanError}</div>}
+
+                      {relevantAlerts.length === 0 && !scanning && <p className="text-secondary mb-0">No active trade alerts.</p>}
+
+                      {relevantAlerts.length > 0 && (
+                        <>
                       <p className="text-secondary small mb-2">Click a row to jump to that expiry and flag the strike below.</p>
 
                       {/* Desktop/tablet: full table */}
@@ -712,6 +758,8 @@ export function TickerDetailModal({ symbol, onClose, initialAlertId }: TickerDet
                           );
                         })}
                       </div>
+                        </>
+                      )}
                     </div>
                   )}
 

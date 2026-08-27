@@ -2,9 +2,34 @@ import { useEffect, useState } from "react";
 import { Spinner } from "./Spinner";
 import { OrderReviewPanel } from "./OrderReviewPanel";
 import { ApiError } from "../api/client";
-import { buildRollOrder, type OrderRequest } from "../api/positions";
+import { buildRollOrder, openContractQuoteStream, type OrderLegQuote, type OrderRequest } from "../api/positions";
 import type { RollStructure, TradeAlert } from "../api/tradeAlerts";
 import { formatCurrency, formatCurrencyTrimmed, formatDate, formatNumber } from "../lib/formatters";
+
+function midPrice(quote: OrderLegQuote): number | null {
+  if (quote.bid !== null && quote.ask !== null) return (quote.bid + quote.ask) / 2;
+  return quote.last;
+}
+
+// Small inline live-quote readout for one leg, matching OrderReviewPanel's
+// "Live Quote" card in spirit but compact enough for two of these to sit
+// side by side (close leg + replacement) instead of one full-width block.
+function LiveLegQuote({ quote, error }: { quote: OrderLegQuote | null; error: string | null }) {
+  if (error) {
+    return (
+      <span className="text-muted" title={error}>
+        Live quote unavailable
+      </span>
+    );
+  }
+  if (!quote) return <Spinner size="sm" label="Loading live quote" />;
+  return (
+    <div className="font-mono" style={{ fontSize: "0.8rem" }}>
+      Bid {quote.bid !== null ? formatCurrency(quote.bid) : "—"} / Ask {quote.ask !== null ? formatCurrency(quote.ask) : "—"}
+      {" · "}Δ {formatNumber(quote.delta, 2)}
+    </div>
+  );
+}
 
 interface RollPositionModalProps {
   alert: TradeAlert & { suggestedStructure: RollStructure };
@@ -21,9 +46,56 @@ export function RollPositionModal({ alert, onClose, onRolled }: RollPositionModa
 
   const [closeLimitPriceDraft, setCloseLimitPriceDraft] = useState(closeLeg.currentPrice.toFixed(2));
   const [newLegLimitPriceDraft, setNewLegLimitPriceDraft] = useState(replacement.premium.toFixed(2));
+  const [closeLimitTouched, setCloseLimitTouched] = useState(false);
+  const [newLegLimitTouched, setNewLegLimitTouched] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pendingOrder, setPendingOrder] = useState<OrderRequest | null>(null);
+
+  const [closeLegQuote, setCloseLegQuote] = useState<OrderLegQuote | null>(null);
+  const [closeLegQuoteError, setCloseLegQuoteError] = useState<string | null>(null);
+  const [replacementQuote, setReplacementQuote] = useState<OrderLegQuote | null>(null);
+  const [replacementQuoteError, setReplacementQuoteError] = useState<string | null>(null);
+
+  const rightParam = closeLeg.right === "call" ? "C" : "P";
+
+  // Live for as long as this modal's review step stays open (approved
+  // 2026-08-27, matching Order Review/Ticker Detail's convention) — the
+  // alert's suggestedStructure prices are only ever a scan/refresh-time
+  // snapshot, and this modal can stay open review-side for a while.
+  useEffect(() => {
+    const closeExpiry = closeLeg.expiry.replaceAll("-", "");
+    const closeStream = openContractQuoteStream(alert.symbol, closeExpiry, closeLeg.strike, rightParam, (event) => {
+      if (event.type === "quote") setCloseLegQuote(event.data);
+      if (event.type === "streamError") setCloseLegQuoteError(event.message);
+    });
+    const replacementExpiry = replacement.expiry.replaceAll("-", "");
+    const replacementStream = openContractQuoteStream(alert.symbol, replacementExpiry, replacement.strike, rightParam, (event) => {
+      if (event.type === "quote") setReplacementQuote(event.data);
+      if (event.type === "streamError") setReplacementQuoteError(event.message);
+    });
+    return () => {
+      closeStream();
+      replacementStream();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [alert.symbol, closeLeg.expiry, closeLeg.strike, replacement.expiry, replacement.strike, rightParam]);
+
+  // Seed the editable limit-price inputs from the live quote once it first
+  // arrives, but only if the user hasn't already typed their own value —
+  // same "prefill unless touched" convention as PositionsPage's stock entry
+  // price. Both prices remain freely editable either way.
+  useEffect(() => {
+    if (closeLimitTouched || !closeLegQuote) return;
+    const mid = midPrice(closeLegQuote);
+    if (mid !== null) setCloseLimitPriceDraft(mid.toFixed(2));
+  }, [closeLegQuote, closeLimitTouched]);
+
+  useEffect(() => {
+    if (newLegLimitTouched || !replacementQuote) return;
+    const mid = midPrice(replacementQuote);
+    if (mid !== null) setNewLegLimitPriceDraft(mid.toFixed(2));
+  }, [replacementQuote, newLegLimitTouched]);
 
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent) {
@@ -113,6 +185,9 @@ export function RollPositionModal({ alert, onClose, onRolled }: RollPositionModa
                       <div className="text-success">{formatCurrency(closeLeg.entryPrice)}</div>
                     </div>
                   </div>
+                  <div className="mb-2">
+                    <LiveLegQuote quote={closeLegQuote} error={closeLegQuoteError} />
+                  </div>
                   <div className="row g-3 mb-4">
                     <div className="col-6">
                       <label className="form-label">Buy-back limit price</label>
@@ -121,7 +196,10 @@ export function RollPositionModal({ alert, onClose, onRolled }: RollPositionModa
                         step="0.01"
                         className="form-control"
                         value={closeLimitPriceDraft}
-                        onChange={(event) => setCloseLimitPriceDraft(event.target.value)}
+                        onChange={(event) => {
+                          setCloseLimitTouched(true);
+                          setCloseLimitPriceDraft(event.target.value);
+                        }}
                         disabled={submitting}
                       />
                     </div>
@@ -147,6 +225,9 @@ export function RollPositionModal({ alert, onClose, onRolled }: RollPositionModa
                       <div className="text-success">{formatCurrency(replacement.premium)}</div>
                     </div>
                   </div>
+                  <div className="mb-2">
+                    <LiveLegQuote quote={replacementQuote} error={replacementQuoteError} />
+                  </div>
                   <div className="row g-3">
                     <div className="col-6">
                       <label className="form-label">Sell limit price</label>
@@ -155,7 +236,10 @@ export function RollPositionModal({ alert, onClose, onRolled }: RollPositionModa
                         step="0.01"
                         className="form-control"
                         value={newLegLimitPriceDraft}
-                        onChange={(event) => setNewLegLimitPriceDraft(event.target.value)}
+                        onChange={(event) => {
+                          setNewLegLimitTouched(true);
+                          setNewLegLimitPriceDraft(event.target.value);
+                        }}
                         disabled={submitting}
                       />
                     </div>

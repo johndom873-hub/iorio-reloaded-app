@@ -8,15 +8,14 @@ import {
   fetchTradeAlerts,
   isRollAlert,
   openTradeAlertRunStream,
+  refreshTickerAlerts,
   refreshTradeAlert,
-  rejectTradeAlert,
   type NewTradeCandidate,
+  type RollStructure,
   type TradeAlert,
   type TradeAlertStatus,
 } from "../api/tradeAlerts";
 import type { StrategyKey } from "../api/screener";
-import type { PositionLeg } from "../api/positions";
-import { computePayoff } from "../lib/payoff";
 import {
   formatCurrency,
   formatCurrencyTrimmed,
@@ -24,8 +23,6 @@ import {
   formatDateTime,
   formatNumber,
   formatPercentage,
-  formatSignedPnl,
-  pnlTextClass,
 } from "../lib/formatters";
 
 const strategyTabs: { key: StrategyKey | "all"; label: string }[] = [
@@ -58,73 +55,28 @@ const statusLabel: Record<TradeAlertStatus, string> = {
   expired: "Expired",
 };
 
-// Pending alerts get action buttons (Trade/Roll/Reject); every other status
-// is a past decision, shown read-only with when it was reviewed.
-function ReviewedFooter({ alert }: { alert: TradeAlert }) {
+function StrategyBadge({ strategyKey }: { strategyKey: StrategyKey }) {
+  return <span className="badge bg-azure-lt">{strategyKey === "covered_call" ? "Covered Call" : "Cash-Secured Put"}</span>;
+}
+
+// A non-pending alert (viewed via the status filter) is a past decision, not
+// something actionable — shown as a read-only status badge instead of the
+// row's normal action button(s).
+function StatusCell({ alert }: { alert: TradeAlert }) {
   return (
-    <div className="d-flex justify-content-between align-items-center mt-auto pt-2">
+    <div>
       <span className={`badge ${statusBadgeClass[alert.status]}`}>{statusLabel[alert.status]}</span>
-      {alert.reviewedAt && <span className="text-secondary" style={{ fontSize: "0.75rem" }}>{formatDateTime(alert.reviewedAt)}</span>}
+      {alert.reviewedAt && (
+        <div className="text-secondary" style={{ fontSize: "0.7rem" }}>
+          {formatDateTime(alert.reviewedAt)}
+        </div>
+      )}
     </div>
   );
 }
 
-// Alerts generate at 10pm UTC overnight but get reviewed the next morning
-// (Juan's in an EU timezone) — showing both timestamps side by side is what
-// lets him tell "this is still last night's number" from "I already
-// validated this against the open" at a glance, instead of guessing.
-function AlertTimestamps({ alert }: { alert: TradeAlert }) {
-  return (
-    <div className="text-secondary" style={{ fontSize: "0.72rem" }}>
-      Generated {formatDateTime(alert.createdAt)}
-      {alert.lastRefreshedAt ? <> · Refreshed {formatDateTime(alert.lastRefreshedAt)}</> : <> · Not yet refreshed</>}
-    </div>
-  );
-}
-
-// Synthesizes the legs a payoff calculation needs from a suggestion, since
-// nothing has been entered into position_legs yet — this alert may never
-// become a real position. A covered call's implicit stock leg assumes
-// buying at the spot price captured when the alert was generated (the
-// same assumption the ranking formula's capitalAtRisk already makes) and
-// a standard 100-share lot; both are scan-time estimates for comparison
-// purposes only; make no claim about what an actual fill would be.
-function candidateToLegs(alert: TradeAlert & { suggestedStructure: NewTradeCandidate }): PositionLeg[] {
-  const s = alert.suggestedStructure;
-  const optionLeg: PositionLeg = {
-    id: `alert-${alert.id}-option`,
-    legType: "option",
-    side: "short",
-    quantity: 1,
-    optionType: s.right,
-    strikePrice: String(s.strike),
-    expiryDate: s.expiry,
-    multiplier: 100,
-    ibkrContractId: null,
-    entryPrice: String(s.premium),
-    entryAt: alert.createdAt,
-    exitPrice: null,
-    exitAt: null,
-  };
-  if (alert.strategyKey === "cash_secured_put") return [optionLeg];
-
-  const stockLeg: PositionLeg = {
-    id: `alert-${alert.id}-stock`,
-    legType: "stock",
-    side: "long",
-    quantity: 100,
-    optionType: null,
-    strikePrice: null,
-    expiryDate: null,
-    multiplier: 1,
-    ibkrContractId: null,
-    entryPrice: String(s.spotPrice),
-    entryAt: alert.createdAt,
-    exitPrice: null,
-    exitAt: null,
-  };
-  return [optionLeg, stockLeg];
-}
+type NewTradeAlert = TradeAlert & { suggestedStructure: NewTradeCandidate };
+type RollAlert = TradeAlert & { suggestedStructure: RollStructure };
 
 export function TradeAlertsPage() {
   const [strategy, setStrategy] = useState<StrategyKey | "all">("all");
@@ -132,28 +84,40 @@ export function TradeAlertsPage() {
   const [alerts, setAlerts] = useState<TradeAlert[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [rejectingId, setRejectingId] = useState<string | null>(null);
   const [refreshingId, setRefreshingId] = useState<string | null>(null);
   const [refreshError, setRefreshError] = useState<string | null>(null);
+  const [tickerRefreshingSymbol, setTickerRefreshingSymbol] = useState<string | null>(null);
+  const [tickerRefreshError, setTickerRefreshError] = useState<string | null>(null);
+  // A per-ticker refresh that finds zero remaining new_trade candidates
+  // shouldn't make the ticker's whole card vanish (approved 2026-08-27) —
+  // that reads as if the click did nothing. Cards for tickers refreshed down
+  // to empty stay pinned here (id -> display info) until a real reload
+  // (status/strategy filter change, or the global "Run Alerts Now") clears
+  // the slate, at which point a ticker with genuinely zero alerts correctly
+  // stops appearing at all, matching this page's normal behavior.
+  const [keptEmptyTickers, setKeptEmptyTickers] = useState<Map<string, { symbol: string; companyName: string | null }>>(new Map());
   const [detailSymbol, setDetailSymbol] = useState<string | null>(null);
   const [detailAlertId, setDetailAlertId] = useState<string | undefined>(undefined);
-  const [rollAlert, setRollAlert] = useState<TradeAlert | null>(null);
+  const [rollAlert, setRollAlert] = useState<RollAlert | null>(null);
   const [running, setRunning] = useState(false);
   const [runProgress, setRunProgress] = useState<string | null>(null);
   const [runError, setRunError] = useState<string | null>(null);
 
-  const loadAlerts = useCallback(async () => {
+  const loadAlerts = useCallback(async (): Promise<TradeAlert[] | null> => {
     try {
       setError(null);
       const result = await fetchTradeAlerts({ status, strategyKey: strategy === "all" ? undefined : strategy });
       setAlerts(result);
+      return result;
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Failed to load trade alerts.");
+      return null;
     }
   }, [strategy, status]);
 
   useEffect(() => {
     setLoading(true);
+    setKeptEmptyTickers(new Map());
     loadAlerts().finally(() => setLoading(false));
   }, [loadAlerts]);
 
@@ -198,29 +162,46 @@ export function TradeAlertsPage() {
     }
   }
 
-  async function handleReject(id: string) {
-    setRejectingId(id);
+  async function handleTickerRefresh(tickerId: string, symbol: string, companyName: string | null) {
+    setTickerRefreshingSymbol(symbol);
+    setTickerRefreshError(null);
     try {
-      setError(null);
-      await rejectTradeAlert(id);
-      setAlerts((prev) => prev.filter((alert) => alert.id !== id));
+      await refreshTickerAlerts(symbol);
+      const result = await loadAlerts();
+      const stillHasAlerts = result?.some((a) => a.tickerId === tickerId) ?? true;
+      setKeptEmptyTickers((prev) => {
+        const next = new Map(prev);
+        if (stillHasAlerts) next.delete(tickerId);
+        else next.set(tickerId, { symbol, companyName });
+        return next;
+      });
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Failed to reject alert.");
+      setTickerRefreshError(err instanceof ApiError ? err.message : "Failed to refresh alerts for this ticker.");
     } finally {
-      setRejectingId(null);
+      setTickerRefreshingSymbol(null);
     }
   }
 
-  function handleViewDetails(alert: TradeAlert) {
+  function handleReview(alert: NewTradeAlert) {
     setDetailSymbol(alert.symbol);
     setDetailAlertId(alert.id);
   }
 
-  const groupedByTicker = new Map<string, TradeAlert[]>();
+  interface TickerGroup {
+    tickerId: string;
+    symbol: string;
+    companyName: string | null;
+    alerts: TradeAlert[];
+  }
+
+  const groupedByTicker = new Map<string, TickerGroup>();
   for (const alert of alerts) {
-    const existing = groupedByTicker.get(alert.tickerId) ?? [];
-    existing.push(alert);
-    groupedByTicker.set(alert.tickerId, existing);
+    const existing = groupedByTicker.get(alert.tickerId);
+    if (existing) existing.alerts.push(alert);
+    else groupedByTicker.set(alert.tickerId, { tickerId: alert.tickerId, symbol: alert.symbol, companyName: alert.companyName, alerts: [alert] });
+  }
+  for (const [tickerId, { symbol, companyName }] of keptEmptyTickers) {
+    if (!groupedByTicker.has(tickerId)) groupedByTicker.set(tickerId, { tickerId, symbol, companyName, alerts: [] });
   }
 
   return (
@@ -243,6 +224,7 @@ export function TradeAlertsPage() {
 
       {error && <div className="alert alert-danger">{error}</div>}
       {refreshError && <div className="alert alert-danger">{refreshError}</div>}
+      {tickerRefreshError && <div className="alert alert-danger">{tickerRefreshError}</div>}
       {runError && <div className="alert alert-danger">{runError}</div>}
       {running && runProgress && <div className="alert alert-info">{runProgress}</div>}
 
@@ -289,206 +271,286 @@ export function TradeAlertsPage() {
       )}
 
       {!loading &&
-        Array.from(groupedByTicker.entries()).map(([tickerId, tickerAlerts]) => {
-          const first = tickerAlerts[0];
+        Array.from(groupedByTicker.values()).map((group) => {
+          const { tickerId, symbol, companyName, alerts: tickerAlerts } = group;
+          const newTradeAlerts = tickerAlerts.filter((a): a is NewTradeAlert => !isRollAlert(a));
+          const rollAlerts = tickerAlerts.filter((a): a is RollAlert => isRollAlert(a));
+          const isTickerRefreshing = tickerRefreshingSymbol === symbol;
+
           return (
             <div className="card mb-3" key={tickerId}>
-              <div className="card-header d-flex align-items-center justify-content-between">
+              <div className="card-header d-flex align-items-center justify-content-between flex-wrap gap-2">
                 <div>
                   <button
                     type="button"
                     className="btn btn-link p-0 text-decoration-none fw-bold fs-5"
                     onClick={() => {
-                      setDetailSymbol(first.symbol);
+                      setDetailSymbol(symbol);
                       setDetailAlertId(undefined);
                     }}
                   >
-                    {first.symbol}
+                    {symbol}
                   </button>
-                  <span className="text-secondary ms-2">{first.companyName ?? "—"}</span>
+                  <span className="text-secondary ms-2">{companyName ?? "—"}</span>
                 </div>
-                <span className="badge bg-azure-lt">
-                  {first.strategyKey === "covered_call" ? "Covered Call" : "Cash-Secured Put"}
-                </span>
+                {status === "pending" && (
+                  <button
+                    type="button"
+                    className="btn btn-sm btn-outline-primary d-inline-flex align-items-center gap-1"
+                    disabled={isTickerRefreshing}
+                    onClick={() => handleTickerRefresh(tickerId, symbol, companyName)}
+                    title="Rescan this ticker's new trade alerts (both strategies) against live IBKR data"
+                  >
+                    {isTickerRefreshing && <Spinner size="sm" />}
+                    Refresh
+                  </button>
+                )}
               </div>
-              <div className="card-body">
-                <div className="row g-3">
-                  {tickerAlerts.map((alert) => {
-                    if (isRollAlert(alert)) {
-                      const { closeLeg, replacement, trigger, dte, stillTriggered } = alert.suggestedStructure;
-                      const rightLabel = closeLeg.right === "call" ? "C" : "P";
-                      const triggerLabel = trigger === "decay" ? "Decayed ≤50%" : `≤21 DTE (${dte}d)`;
-                      return (
-                        <div className="col-12 col-md-6 col-lg-4" key={alert.id}>
-                          <div className="card h-100">
-                            <div className="card-body d-flex flex-column gap-2">
-                              <div className="d-flex flex-wrap justify-content-between align-items-start gap-2">
+              <div className="card-body d-flex flex-column gap-4">
+                <div>
+                  <h6 className="text-secondary text-uppercase mb-2" style={{ fontSize: "0.72rem" }}>
+                    New Trade Alerts
+                  </h6>
+                  {newTradeAlerts.length === 0 ? (
+                    <p className="text-secondary mb-0">No active trade alerts.</p>
+                  ) : (
+                    <>
+                      {/* Desktop/tablet: full table */}
+                      <div className="table-responsive border rounded d-none d-md-block">
+                        <table className="table table-sm table-vcenter card-table table-hover mb-0">
+                          <thead className="table-light">
+                            <tr>
+                              <th>Strategy</th>
+                              <th>Expiry</th>
+                              <th className="text-end">Strike</th>
+                              <th className="text-end">Delta</th>
+                              <th className="text-end">Premium</th>
+                              <th className="text-end">Ann. Yield</th>
+                              <th style={{ width: 110 }}></th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {newTradeAlerts.map((alert) => {
+                              const s = alert.suggestedStructure;
+                              return (
+                                <tr key={alert.id} title={alert.rationale ?? undefined}>
+                                  <td>
+                                    <StrategyBadge strategyKey={alert.strategyKey} />
+                                  </td>
+                                  <td>
+                                    {formatDate(s.expiry)} <span className="text-secondary">({s.dte} DTE)</span>
+                                  </td>
+                                  <td className="text-end font-mono">
+                                    {formatCurrencyTrimmed(s.strike)}
+                                    {s.right === "call" ? "C" : "P"}
+                                  </td>
+                                  <td className="text-end font-mono">{formatNumber(s.delta, 2)}</td>
+                                  <td className="text-end font-mono">{formatCurrency(s.premium)}</td>
+                                  <td className="text-end font-mono">
+                                    <span className="badge badge-change-pos">{formatPercentage(s.annualizedYield)}</span>
+                                  </td>
+                                  <td className="text-end">
+                                    {alert.status === "pending" ? (
+                                      <button type="button" className="btn btn-sm btn-primary" onClick={() => handleReview(alert)}>
+                                        Review
+                                      </button>
+                                    ) : (
+                                      <StatusCell alert={alert} />
+                                    )}
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+
+                      {/* Mobile: compact cards instead of a squeezed table */}
+                      <div className="d-md-none d-flex flex-column gap-2">
+                        {newTradeAlerts.map((alert) => {
+                          const s = alert.suggestedStructure;
+                          return (
+                            <div key={alert.id} className="border rounded p-2" title={alert.rationale ?? undefined}>
+                              <div className="d-flex align-items-start justify-content-between gap-2">
                                 <div>
-                                  <div className="fw-bold">
-                                    Roll {formatCurrencyTrimmed(closeLeg.strike)}
-                                    {rightLabel}
+                                  <StrategyBadge strategyKey={alert.strategyKey} />
+                                  <div className="fw-bold mt-1 font-mono">
+                                    {formatCurrencyTrimmed(s.strike)}
+                                    {s.right === "call" ? "C" : "P"} · {formatDate(s.expiry)}
                                   </div>
-                                  <div className="text-secondary" style={{ fontSize: "0.8rem" }}>
-                                    exp {formatDate(closeLeg.expiry)} → {formatCurrencyTrimmed(replacement.strike)} exp{" "}
-                                    {formatDate(replacement.expiry)}
+                                  <div className="text-secondary font-mono" style={{ fontSize: "0.75rem" }}>
+                                    Δ {formatNumber(s.delta, 2)} · Prem {formatCurrency(s.premium)} · {s.dte} DTE
                                   </div>
                                 </div>
-                                {stillTriggered === false ? (
-                                  <span className="badge bg-secondary-lt text-nowrap">No longer triggered</span>
+                                <span className="badge badge-change-pos font-mono text-nowrap">{formatPercentage(s.annualizedYield)}</span>
+                              </div>
+                              <div className="mt-2">
+                                {alert.status === "pending" ? (
+                                  <button type="button" className="btn btn-sm btn-primary w-100" onClick={() => handleReview(alert)}>
+                                    Review
+                                  </button>
                                 ) : (
-                                  <span className="badge bg-yellow-lt text-nowrap">{triggerLabel}</span>
+                                  <StatusCell alert={alert} />
                                 )}
                               </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </>
+                  )}
+                </div>
 
-                              <AlertTimestamps alert={alert} />
+                {rollAlerts.length > 0 && (
+                  <div>
+                    <h6 className="text-secondary text-uppercase mb-2" style={{ fontSize: "0.72rem" }}>
+                      Roll Alerts
+                    </h6>
+                    {/* Desktop/tablet: full table */}
+                    <div className="table-responsive border rounded d-none d-md-block">
+                      <table className="table table-sm table-vcenter card-table table-hover mb-0">
+                        <thead className="table-light">
+                          <tr>
+                            <th>Position</th>
+                            <th>Trigger</th>
+                            <th className="text-end">Current / Credit</th>
+                            <th>Replacement</th>
+                            <th className="text-end">New Premium</th>
+                            <th className="text-end">New Yield</th>
+                            <th style={{ width: 170 }}></th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {rollAlerts.map((alert) => {
+                            const { closeLeg, replacement, trigger, dte, stillTriggered } = alert.suggestedStructure;
+                            const rightLabel = closeLeg.right === "call" ? "C" : "P";
+                            const triggerLabel = trigger === "decay" ? "Decayed ≤50%" : `≤21 DTE (${dte}d)`;
+                            return (
+                              <tr key={alert.id} title={alert.rationale ?? undefined}>
+                                <td>
+                                  {formatCurrencyTrimmed(closeLeg.strike)}
+                                  {rightLabel} exp {formatDate(closeLeg.expiry)}
+                                </td>
+                                <td>
+                                  {stillTriggered === false ? (
+                                    <span className="badge bg-secondary-lt text-nowrap">No longer triggered</span>
+                                  ) : (
+                                    <span className="badge bg-yellow-lt text-nowrap">{triggerLabel}</span>
+                                  )}
+                                </td>
+                                <td className="text-end font-mono">
+                                  {formatCurrency(closeLeg.currentPrice)}
+                                  <span className="text-secondary"> / </span>
+                                  <span className="text-success">{formatCurrency(closeLeg.entryPrice)}</span>
+                                </td>
+                                <td>
+                                  {formatCurrencyTrimmed(replacement.strike)}
+                                  {rightLabel} exp {formatDate(replacement.expiry)}{" "}
+                                  <span className="text-secondary">
+                                    ({replacement.dte} DTE, Δ{formatNumber(replacement.delta, 2)})
+                                  </span>
+                                </td>
+                                <td className="text-end font-mono text-success">{formatCurrency(replacement.premium)}</td>
+                                <td className="text-end font-mono">
+                                  <span className="badge badge-change-pos">{formatPercentage(replacement.annualizedYield)}</span>
+                                </td>
+                                <td className="text-end">
+                                  {alert.status === "pending" ? (
+                                    <div className="d-flex gap-2 justify-content-end">
+                                      <button type="button" className="btn btn-sm btn-primary" onClick={() => setRollAlert(alert)}>
+                                        Roll
+                                      </button>
+                                      <button
+                                        type="button"
+                                        className="btn btn-sm btn-outline-secondary d-inline-flex align-items-center gap-1"
+                                        disabled={refreshingId === alert.id}
+                                        onClick={() => handleRefresh(alert.id)}
+                                        title="Re-quote this alert's contracts against live IBKR data"
+                                      >
+                                        {refreshingId === alert.id && <Spinner size="sm" />}
+                                        Refresh
+                                      </button>
+                                    </div>
+                                  ) : (
+                                    <StatusCell alert={alert} />
+                                  )}
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
 
-                              <div className="row g-2" style={{ fontSize: "0.85rem" }}>
-                                <div className="col-6">
-                                  <div className="text-secondary">Current price</div>
-                                  <div>{formatCurrency(closeLeg.currentPrice)}</div>
+                    {/* Mobile: compact cards */}
+                    <div className="d-md-none d-flex flex-column gap-2">
+                      {rollAlerts.map((alert) => {
+                        const { closeLeg, replacement, trigger, dte, stillTriggered } = alert.suggestedStructure;
+                        const rightLabel = closeLeg.right === "call" ? "C" : "P";
+                        const triggerLabel = trigger === "decay" ? "Decayed ≤50%" : `≤21 DTE (${dte}d)`;
+                        return (
+                          <div key={alert.id} className="border rounded p-2" title={alert.rationale ?? undefined}>
+                            <div className="d-flex align-items-start justify-content-between gap-2">
+                              <div>
+                                <div className="fw-bold font-mono">
+                                  {formatCurrencyTrimmed(closeLeg.strike)}
+                                  {rightLabel} → {formatCurrencyTrimmed(replacement.strike)}
+                                  {rightLabel}
                                 </div>
-                                <div className="col-6">
-                                  <div className="text-secondary">Credit collected</div>
-                                  <div className="text-success">{formatCurrency(closeLeg.entryPrice)}</div>
+                                <div className="text-secondary font-mono" style={{ fontSize: "0.75rem" }}>
+                                  exp {formatDate(closeLeg.expiry)} → {formatDate(replacement.expiry)} ({replacement.dte} DTE, Δ
+                                  {formatNumber(replacement.delta, 2)})
                                 </div>
                               </div>
-
-                              <div className="row g-2" style={{ fontSize: "0.85rem" }}>
-                                <div className="col-6">
-                                  <div className="text-secondary">New premium</div>
-                                  <div className="text-success">{formatCurrency(replacement.premium)}</div>
-                                </div>
-                                <div className="col-6">
-                                  <div className="text-secondary">New yield</div>
-                                  <div>
-                                    <span className="badge badge-change-pos">
-                                      {formatPercentage(replacement.annualizedYield)}
-                                    </span>
-                                  </div>
+                              {stillTriggered === false ? (
+                                <span className="badge bg-secondary-lt text-nowrap">No longer triggered</span>
+                              ) : (
+                                <span className="badge bg-yellow-lt text-nowrap">{triggerLabel}</span>
+                              )}
+                            </div>
+                            <div className="row g-2 mt-1" style={{ fontSize: "0.8rem" }}>
+                              <div className="col-6">
+                                <div className="text-secondary">Current / Credit</div>
+                                <div className="font-mono">
+                                  {formatCurrency(closeLeg.currentPrice)}
+                                  <span className="text-secondary"> / </span>
+                                  <span className="text-success">{formatCurrency(closeLeg.entryPrice)}</span>
                                 </div>
                               </div>
-
-                              <p className="text-secondary mb-0" style={{ fontSize: "0.8rem" }}>
-                                {alert.rationale}
-                              </p>
-
+                              <div className="col-6">
+                                <div className="text-secondary">New Premium / Yield</div>
+                                <div className="font-mono">
+                                  <span className="text-success">{formatCurrency(replacement.premium)}</span>{" "}
+                                  <span className="badge badge-change-pos">{formatPercentage(replacement.annualizedYield)}</span>
+                                </div>
+                              </div>
+                            </div>
+                            <div className="mt-2">
                               {alert.status === "pending" ? (
-                                <div className="d-flex gap-2 mt-auto pt-2">
+                                <div className="d-flex gap-2">
                                   <button type="button" className="btn btn-sm btn-primary flex-fill" onClick={() => setRollAlert(alert)}>
                                     Roll
                                   </button>
                                   <button
                                     type="button"
-                                    className="btn btn-sm btn-outline-secondary d-inline-flex align-items-center justify-content-center gap-1"
+                                    className="btn btn-sm btn-outline-secondary flex-fill d-inline-flex align-items-center justify-content-center gap-1"
                                     disabled={refreshingId === alert.id}
                                     onClick={() => handleRefresh(alert.id)}
-                                    title="Re-quote this alert's contracts against live IBKR data"
                                   >
                                     {refreshingId === alert.id && <Spinner size="sm" />}
                                     Refresh
                                   </button>
-                                  <button
-                                    type="button"
-                                    className="btn btn-sm btn-outline-danger flex-fill d-inline-flex align-items-center justify-content-center gap-1"
-                                    disabled={rejectingId === alert.id}
-                                    onClick={() => handleReject(alert.id)}
-                                  >
-                                    {rejectingId === alert.id && <Spinner size="sm" />}
-                                    Reject
-                                  </button>
                                 </div>
                               ) : (
-                                <ReviewedFooter alert={alert} />
+                                <StatusCell alert={alert} />
                               )}
                             </div>
                           </div>
-                        </div>
-                      );
-                    }
-
-                    const newTradeAlert = alert as TradeAlert & { suggestedStructure: NewTradeCandidate };
-                    const payoff = computePayoff(newTradeAlert.strategyKey, candidateToLegs(newTradeAlert));
-                    return (
-                      <div className="col-12 col-md-6 col-lg-4" key={alert.id}>
-                        <div className="card h-100">
-                          <div className="card-body d-flex flex-column gap-2">
-                            <div className="d-flex flex-wrap justify-content-between align-items-start gap-2">
-                              <div>
-                                <div className="fw-bold">
-                                  {formatCurrencyTrimmed(newTradeAlert.suggestedStructure.strike)}
-                                  {newTradeAlert.suggestedStructure.right === "call" ? "C" : "P"}
-                                </div>
-                                <div className="text-secondary" style={{ fontSize: "0.8rem" }}>
-                                  exp {formatDate(newTradeAlert.suggestedStructure.expiry)} ({newTradeAlert.suggestedStructure.dte} DTE)
-                                </div>
-                              </div>
-                              <span className="badge badge-change-pos text-nowrap">
-                                {formatPercentage(newTradeAlert.suggestedStructure.annualizedYield)} yield
-                              </span>
-                            </div>
-
-                            <AlertTimestamps alert={alert} />
-
-                            <div className="row g-2" style={{ fontSize: "0.85rem" }}>
-                              <div className="col-6">
-                                <div className="text-secondary">Delta</div>
-                                <div>{formatNumber(newTradeAlert.suggestedStructure.delta, 2)}</div>
-                              </div>
-                              <div className="col-6">
-                                <div className="text-secondary">Premium</div>
-                                <div className="text-success">{formatCurrency(newTradeAlert.suggestedStructure.premium)}</div>
-                              </div>
-                            </div>
-
-                            {payoff && (
-                              <div className="row g-2" style={{ fontSize: "0.85rem" }}>
-                                <div className="col-4">
-                                  <div className="text-secondary">Max Gain</div>
-                                  <div className={pnlTextClass(payoff.maxGain)}>{formatSignedPnl(payoff.maxGain, 0)}</div>
-                                </div>
-                                <div className="col-4">
-                                  <div className="text-secondary">Max Loss</div>
-                                  <div className={pnlTextClass(-payoff.maxLoss)}>{formatSignedPnl(-payoff.maxLoss, 0)}</div>
-                                </div>
-                                <div className="col-4">
-                                  <div className="text-secondary">Breakeven</div>
-                                  <div>{formatCurrency(payoff.breakeven)}</div>
-                                </div>
-                              </div>
-                            )}
-
-                            <p className="text-secondary mb-0" style={{ fontSize: "0.8rem" }}>
-                              {alert.rationale}
-                            </p>
-
-                            {alert.status === "pending" ? (
-                              <div className="d-flex gap-2 mt-auto pt-2">
-                                <button
-                                  type="button"
-                                  className="btn btn-sm btn-primary flex-fill"
-                                  onClick={() => handleViewDetails(newTradeAlert)}
-                                >
-                                  View Details
-                                </button>
-                                <button
-                                  type="button"
-                                  className="btn btn-sm btn-outline-danger flex-fill d-inline-flex align-items-center justify-content-center gap-1"
-                                  disabled={rejectingId === alert.id}
-                                  onClick={() => handleReject(alert.id)}
-                                >
-                                  {rejectingId === alert.id && <Spinner size="sm" />}
-                                  Dismiss
-                                </button>
-                              </div>
-                            ) : (
-                              <ReviewedFooter alert={alert} />
-                            )}
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
           );
@@ -504,7 +566,7 @@ export function TradeAlertsPage() {
           }}
         />
       )}
-      {rollAlert && isRollAlert(rollAlert) && (
+      {rollAlert && (
         <RollPositionModal
           alert={rollAlert}
           onClose={() => setRollAlert(null)}

@@ -76,12 +76,18 @@ export function fetchTradeAlerts(filters: TradeAlertFilters = {}): Promise<Trade
   return apiRequest<TradeAlert[]>(`/trade-alerts${query ? `?${query}` : ""}`);
 }
 
-export function rejectTradeAlert(id: string): Promise<TradeAlert> {
-  return apiRequest<TradeAlert>(`/trade-alerts/${id}`, { method: "PATCH", body: JSON.stringify({ status: "rejected" }) });
-}
-
 export function refreshTradeAlert(id: string): Promise<TradeAlert> {
   return apiRequest<TradeAlert>(`/trade-alerts/${id}/refresh`, { method: "POST" });
+}
+
+// Rescans one ticker's new_trade alerts for both strategies against live
+// IBKR data — backs the Trade Alerts page's per-ticker "Refresh" button and
+// the Ticker Detail modal's "Scan for Alerts"/"Refresh" button (same
+// endpoint either way, see refreshTickerTradeAlerts.ts on the backend).
+// Roll alerts are untouched by this call. Returns void — callers re-fetch
+// via fetchTradeAlerts afterward rather than relying on this response body.
+export function refreshTickerAlerts(symbol: string): Promise<void> {
+  return apiRequest<void>(`/trade-alerts/refresh-ticker`, { method: "POST", body: JSON.stringify({ symbol }) });
 }
 
 // Mirrors the backend's TradeAlertGenerationEvent (runTradeAlertGeneration.ts)
