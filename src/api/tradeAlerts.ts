@@ -96,6 +96,11 @@ export type TradeAlertRunStreamEvent =
   | { type: "strategyStart"; strategyKey: StrategyKey; tickerCount: number }
   | { type: "ticker"; strategyKey: StrategyKey; symbol: string; candidateCount: number }
   | { type: "tickerError"; strategyKey: StrategyKey; symbol: string; message: string }
+  | { type: "rollBatchReady"; lines: string[] }
+  | { type: "rollScanStart"; positionCount: number }
+  | { type: "rollCandidate"; symbol: string; triggered: boolean }
+  | { type: "rollError"; symbol: string; message: string }
+  | { type: "tickerAlertsReady"; symbol: string; lines: string[] }
   | { type: "streamError"; message: string }
   | { type: "done" };
 
