@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useNavigate } from "react-router-dom";
 import { PageHeader } from "../components/layout/PageHeader";
 import { Spinner } from "../components/Spinner";
 import { TickerDetailModal } from "../components/TickerDetailModal";
@@ -20,6 +19,7 @@ import type { PositionLeg } from "../api/positions";
 import { computePayoff } from "../lib/payoff";
 import {
   formatCurrency,
+  formatCurrencyTrimmed,
   formatDate,
   formatDateTime,
   formatNumber,
@@ -127,7 +127,6 @@ function candidateToLegs(alert: TradeAlert & { suggestedStructure: NewTradeCandi
 }
 
 export function TradeAlertsPage() {
-  const navigate = useNavigate();
   const [strategy, setStrategy] = useState<StrategyKey | "all">("all");
   const [status, setStatus] = useState<TradeAlertStatus>("pending");
   const [alerts, setAlerts] = useState<TradeAlert[]>([]);
@@ -137,6 +136,7 @@ export function TradeAlertsPage() {
   const [refreshingId, setRefreshingId] = useState<string | null>(null);
   const [refreshError, setRefreshError] = useState<string | null>(null);
   const [detailSymbol, setDetailSymbol] = useState<string | null>(null);
+  const [detailAlertId, setDetailAlertId] = useState<string | undefined>(undefined);
   const [rollAlert, setRollAlert] = useState<TradeAlert | null>(null);
   const [running, setRunning] = useState(false);
   const [runProgress, setRunProgress] = useState<string | null>(null);
@@ -211,17 +211,9 @@ export function TradeAlertsPage() {
     }
   }
 
-  function handleTradeNewAlert(alert: TradeAlert & { suggestedStructure: NewTradeCandidate }) {
-    const params = new URLSearchParams({
-      symbol: alert.symbol,
-      strategy: alert.strategyKey,
-      strike: String(alert.suggestedStructure.strike),
-      expiry: alert.suggestedStructure.expiry,
-      premium: String(alert.suggestedStructure.premium),
-      alertId: alert.id,
-      new: "1",
-    });
-    navigate(`/positions?${params.toString()}`);
+  function handleViewDetails(alert: TradeAlert) {
+    setDetailSymbol(alert.symbol);
+    setDetailAlertId(alert.id);
   }
 
   const groupedByTicker = new Map<string, TradeAlert[]>();
@@ -306,7 +298,10 @@ export function TradeAlertsPage() {
                   <button
                     type="button"
                     className="btn btn-link p-0 text-decoration-none fw-bold fs-5"
-                    onClick={() => setDetailSymbol(first.symbol)}
+                    onClick={() => {
+                      setDetailSymbol(first.symbol);
+                      setDetailAlertId(undefined);
+                    }}
                   >
                     {first.symbol}
                   </button>
@@ -330,11 +325,11 @@ export function TradeAlertsPage() {
                               <div className="d-flex flex-wrap justify-content-between align-items-start gap-2">
                                 <div>
                                   <div className="fw-bold">
-                                    Roll {formatCurrency(closeLeg.strike)}
+                                    Roll {formatCurrencyTrimmed(closeLeg.strike)}
                                     {rightLabel}
                                   </div>
                                   <div className="text-secondary" style={{ fontSize: "0.8rem" }}>
-                                    exp {formatDate(closeLeg.expiry)} → {formatCurrency(replacement.strike)} exp{" "}
+                                    exp {formatDate(closeLeg.expiry)} → {formatCurrencyTrimmed(replacement.strike)} exp{" "}
                                     {formatDate(replacement.expiry)}
                                   </div>
                                 </div>
@@ -420,7 +415,7 @@ export function TradeAlertsPage() {
                             <div className="d-flex flex-wrap justify-content-between align-items-start gap-2">
                               <div>
                                 <div className="fw-bold">
-                                  {formatCurrency(newTradeAlert.suggestedStructure.strike)}
+                                  {formatCurrencyTrimmed(newTradeAlert.suggestedStructure.strike)}
                                   {newTradeAlert.suggestedStructure.right === "call" ? "C" : "P"}
                                 </div>
                                 <div className="text-secondary" style={{ fontSize: "0.8rem" }}>
@@ -449,11 +444,11 @@ export function TradeAlertsPage() {
                               <div className="row g-2" style={{ fontSize: "0.85rem" }}>
                                 <div className="col-4">
                                   <div className="text-secondary">Max Gain</div>
-                                  <div className={pnlTextClass(payoff.maxGain)}>{formatSignedPnl(payoff.maxGain)}</div>
+                                  <div className={pnlTextClass(payoff.maxGain)}>{formatSignedPnl(payoff.maxGain, 0)}</div>
                                 </div>
                                 <div className="col-4">
                                   <div className="text-secondary">Max Loss</div>
-                                  <div className={pnlTextClass(-payoff.maxLoss)}>{formatSignedPnl(-payoff.maxLoss)}</div>
+                                  <div className={pnlTextClass(-payoff.maxLoss)}>{formatSignedPnl(-payoff.maxLoss, 0)}</div>
                                 </div>
                                 <div className="col-4">
                                   <div className="text-secondary">Breakeven</div>
@@ -471,19 +466,9 @@ export function TradeAlertsPage() {
                                 <button
                                   type="button"
                                   className="btn btn-sm btn-primary flex-fill"
-                                  onClick={() => handleTradeNewAlert(newTradeAlert)}
+                                  onClick={() => handleViewDetails(newTradeAlert)}
                                 >
-                                  Trade
-                                </button>
-                                <button
-                                  type="button"
-                                  className="btn btn-sm btn-outline-secondary d-inline-flex align-items-center justify-content-center gap-1"
-                                  disabled={refreshingId === alert.id}
-                                  onClick={() => handleRefresh(alert.id)}
-                                  title="Re-quote this alert's contract against live IBKR data"
-                                >
-                                  {refreshingId === alert.id && <Spinner size="sm" />}
-                                  Refresh
+                                  View Details
                                 </button>
                                 <button
                                   type="button"
@@ -492,7 +477,7 @@ export function TradeAlertsPage() {
                                   onClick={() => handleReject(alert.id)}
                                 >
                                   {rejectingId === alert.id && <Spinner size="sm" />}
-                                  Reject
+                                  Dismiss
                                 </button>
                               </div>
                             ) : (
@@ -509,7 +494,16 @@ export function TradeAlertsPage() {
           );
         })}
 
-      {detailSymbol && <TickerDetailModal symbol={detailSymbol} onClose={() => setDetailSymbol(null)} />}
+      {detailSymbol && (
+        <TickerDetailModal
+          symbol={detailSymbol}
+          initialAlertId={detailAlertId}
+          onClose={() => {
+            setDetailSymbol(null);
+            setDetailAlertId(undefined);
+          }}
+        />
+      )}
       {rollAlert && isRollAlert(rollAlert) && (
         <RollPositionModal
           alert={rollAlert}

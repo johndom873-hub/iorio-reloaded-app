@@ -64,12 +64,14 @@ export function isRollAlert(alert: TradeAlert): alert is TradeAlert & { suggeste
 export interface TradeAlertFilters {
   status?: TradeAlertStatus;
   strategyKey?: StrategyKey;
+  symbol?: string;
 }
 
 export function fetchTradeAlerts(filters: TradeAlertFilters = {}): Promise<TradeAlert[]> {
   const params = new URLSearchParams();
   if (filters.status) params.set("status", filters.status);
   if (filters.strategyKey) params.set("strategy", filters.strategyKey);
+  if (filters.symbol) params.set("symbol", filters.symbol);
   const query = params.toString();
   return apiRequest<TradeAlert[]>(`/trade-alerts${query ? `?${query}` : ""}`);
 }

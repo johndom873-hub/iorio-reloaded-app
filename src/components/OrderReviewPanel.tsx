@@ -4,8 +4,8 @@ import { ApiError } from "../api/client";
 import { cancelOrder, confirmOrder, fetchOrder, fetchOrderLegQuote, type OrderLegQuote, type OrderRequest } from "../api/positions";
 import { fetchAccountValue } from "../api/dashboard";
 import type { StrategyKey } from "../api/screener";
-import { formatCurrency, formatDate, formatNumber, formatPercentage, formatPercentageValue, formatSignedPnl, orderRequestStatusBadgeClass } from "../lib/formatters";
-import { computeCapitalAtRiskFromOrderLegs, computePayoff, orderLegsToPayoffInput } from "../lib/payoff";
+import { formatCurrency, formatCurrencyTrimmed, formatDate, formatNumber, formatPercentage, formatPercentageValue, formatSignedPnl, orderRequestStatusBadgeClass } from "../lib/formatters";
+import { computeAnnualizedYield, computeCapitalAtRiskFromOrderLegs, computePayoff, orderLegsToPayoffInput } from "../lib/payoff";
 
 interface OrderReviewPanelProps {
   order: OrderRequest;
@@ -20,9 +20,10 @@ const terminalStatuses = new Set(["filled", "partially_filled", "cancelled", "re
 function legDescription(leg: OrderRequest["payload"]["legs"][number]): string {
   if (leg.role === "stock") return `${leg.action} ${leg.quantity} sh @ ${formatCurrency(leg.unitPrice)}`;
   const right = leg.right === "C" ? "Call" : "Put";
-  return `${leg.action} ${leg.quantity}x ${leg.strike ? formatCurrency(leg.strike) : "—"}${right} exp ${
-    leg.expiry ? formatDate(leg.expiry.length === 8 ? `${leg.expiry.slice(0, 4)}-${leg.expiry.slice(4, 6)}-${leg.expiry.slice(6, 8)}` : leg.expiry) : "—"
-  } @ ${formatCurrency(leg.unitPrice)}`;
+  const expiryLabel = leg.expiry
+    ? `${formatDate(leg.expiry.length === 8 ? `${leg.expiry.slice(0, 4)}-${leg.expiry.slice(4, 6)}-${leg.expiry.slice(6, 8)}` : leg.expiry)} (${daysToExpiry(leg.expiry)} DTE)`
+    : "—";
+  return `${leg.action} ${leg.quantity}x ${leg.strike ? formatCurrencyTrimmed(leg.strike) : "—"} ${right} exp ${expiryLabel} @ ${formatCurrency(leg.unitPrice)}`;
 }
 
 function statusLabel(status: OrderRequest["status"]): string {
@@ -110,7 +111,25 @@ export function OrderReviewPanel({ order: initialOrder, onCancelled, onFilled }:
   const payoff = isOpeningOrder ? computePayoff(order.payload.strategyKey as StrategyKey, orderLegsToPayoffInput(order.payload.legs)) : null;
   const capitalAtRisk = isOpeningOrder ? computeCapitalAtRiskFromOrderLegs(order.payload.strategyKey as StrategyKey, order.payload.legs) : null;
   const optionLeg = order.payload.legs.find((leg) => leg.role === "option");
+  const stockLeg = order.payload.legs.find((leg) => leg.role === "stock");
   const dte = optionLeg?.expiry ? daysToExpiry(optionLeg.expiry) : null;
+
+  // Recomputed from the live quote (approved 2026-08-27) so this doesn't
+  // freeze at the yield shown when the order was first built -- the same
+  // approved formula as everywhere else, just fed the live bid/ask instead
+  // of the order's original limit price. Falls back to that limit price
+  // before the live quote arrives (same fallback the mid-price display
+  // elsewhere in the app uses).
+  const liveOptionMid = quote ? (quote.bid !== null && quote.ask !== null ? (quote.bid + quote.ask) / 2 : quote.last) : (optionLeg?.unitPrice ?? null);
+  const liveYield =
+    isOpeningOrder && optionLeg?.strike !== undefined && dte !== null
+      ? computeAnnualizedYield(order.payload.strategyKey as StrategyKey, {
+          premium: liveOptionMid,
+          dte,
+          strike: optionLeg.strike,
+          spotPrice: stockLeg?.unitPrice ?? optionLeg.strike,
+        })
+      : null;
 
   function schedulePoll(orderId: string) {
     pollTimerRef.current = window.setTimeout(async () => {
@@ -169,54 +188,60 @@ export function OrderReviewPanel({ order: initialOrder, onCancelled, onFilled }:
   const cancelRequested = order.status === "cancel_requested";
 
   return (
-    <div className="border rounded p-3">
-      <h4 className="mb-2" style={{ fontSize: "1rem" }}>
+    <div className="border rounded p-3 d-flex flex-column gap-3">
+      <div className="fw-bold" style={{ fontSize: "1.1rem" }}>
         Order Review
-      </h4>
+      </div>
       {error && <div className="alert alert-danger">{error}</div>}
-      <ul className="list-unstyled mb-2">
+
+      <ul className="list-unstyled mb-0 border rounded overflow-hidden">
         {order.payload.legs.map((leg, index) => (
-          <li key={index} style={{ fontSize: "0.875rem" }}>
-            {legDescription(leg)}
+          <li
+            key={index}
+            className="font-mono px-3 py-2"
+            style={{ fontSize: "0.85rem", borderBottom: index < order.payload.legs.length - 1 ? "1px solid var(--tblr-border-color)" : undefined }}
+          >
+            <span className={leg.action === "BUY" ? "text-success fw-bold" : "text-danger fw-bold"}>{leg.action}</span>{" "}
+            {legDescription(leg).replace(`${leg.action} `, "")}
           </li>
         ))}
       </ul>
 
-      {(payoff || capitalAtRisk !== null || dte !== null) && (
-        <div className="row g-2 mb-2" style={{ fontSize: "0.85rem" }}>
-          {dte !== null && (
-            <div className="col-4 col-md-2">
-              <div className="text-secondary">DTE</div>
-              <div>{dte}</div>
+      {(payoff || capitalAtRisk !== null || liveYield !== null) && (
+        <div className="row g-3 font-mono" style={{ fontSize: "0.85rem" }}>
+          {liveYield !== null && (
+            <div className="col-4">
+              <div className="text-secondary text-uppercase" style={{ fontSize: "0.68rem" }}>Ann. Yield</div>
+              <div className="fw-semibold text-success">{formatPercentage(liveYield)}</div>
             </div>
           )}
           {capitalAtRisk !== null && (
-            <div className="col-4 col-md-2">
-              <div className="text-secondary">EXP $</div>
-              <div>{formatCurrency(capitalAtRisk, 0)}</div>
+            <div className="col-4">
+              <div className="text-secondary text-uppercase" style={{ fontSize: "0.68rem" }}>Exp $</div>
+              <div className="fw-semibold">{formatCurrency(capitalAtRisk, 0)}</div>
             </div>
           )}
           {capitalAtRisk !== null && (
-            <div className="col-4 col-md-2">
-              <div className="text-secondary">EXP %</div>
-              <div title="Share of total account value (positions + cash) this order would commit">
+            <div className="col-4">
+              <div className="text-secondary text-uppercase" style={{ fontSize: "0.68rem" }}>Exp %</div>
+              <div className="fw-semibold" title="Share of total account value (positions + cash) this order would commit">
                 {totalAccountValue === null ? "—" : formatPercentageValue((capitalAtRisk / totalAccountValue) * 100, 1)}
               </div>
             </div>
           )}
           {payoff && (
             <>
-              <div className="col-4 col-md-2">
-                <div className="text-secondary">Max Gain</div>
-                <div>{formatSignedPnl(payoff.maxGain)}</div>
+              <div className="col-4">
+                <div className="text-secondary text-uppercase" style={{ fontSize: "0.68rem" }}>Max Gain</div>
+                <div className="fw-semibold text-success">{formatSignedPnl(payoff.maxGain, 0)}</div>
               </div>
-              <div className="col-4 col-md-2">
-                <div className="text-secondary">Max Loss</div>
-                <div>{formatSignedPnl(-payoff.maxLoss)}</div>
+              <div className="col-4">
+                <div className="text-secondary text-uppercase" style={{ fontSize: "0.68rem" }}>Max Loss</div>
+                <div className="fw-semibold text-danger">{formatSignedPnl(-payoff.maxLoss, 0)}</div>
               </div>
-              <div className="col-4 col-md-2">
-                <div className="text-secondary">Breakeven</div>
-                <div>{formatCurrency(payoff.breakeven)}</div>
+              <div className="col-4">
+                <div className="text-secondary text-uppercase" style={{ fontSize: "0.68rem" }}>Breakeven</div>
+                <div className="fw-semibold">{formatCurrency(payoff.breakeven)}</div>
               </div>
             </>
           )}
@@ -224,7 +249,10 @@ export function OrderReviewPanel({ order: initialOrder, onCancelled, onFilled }:
       )}
 
       {optionLeg && (
-        <div className="mb-2" style={{ fontSize: "0.85rem" }}>
+        <div className="border rounded p-3">
+          <div className="text-secondary text-uppercase mb-2" style={{ fontSize: "0.68rem", fontWeight: 700, letterSpacing: "0.04em" }}>
+            Live Quote
+          </div>
           {quoteLoading && <Spinner size="sm" label="Loading live quote" />}
           {quoteError && (
             <span className="text-muted" title={quoteError}>
@@ -232,51 +260,56 @@ export function OrderReviewPanel({ order: initialOrder, onCancelled, onFilled }:
             </span>
           )}
           {quote && (
-            <div className="row g-2">
-              <div className="col-4 col-md-2">
-                <div className="text-secondary">Bid / Ask</div>
-                <div>
+            <div className="row g-3 font-mono" style={{ fontSize: "0.85rem" }}>
+              <div className="col-4">
+                <div className="text-secondary text-uppercase" style={{ fontSize: "0.68rem" }}>Bid / Ask</div>
+                <div className="fw-semibold">
                   {quote.bid !== null ? formatCurrency(quote.bid) : "—"} / {quote.ask !== null ? formatCurrency(quote.ask) : "—"}
                 </div>
               </div>
-              <div className="col-4 col-md-2">
-                <div className="text-secondary">Spread</div>
-                <div>{quote.bid !== null && quote.ask !== null ? formatCurrency(quote.ask - quote.bid) : "—"}</div>
+              <div className="col-4">
+                <div className="text-secondary text-uppercase" style={{ fontSize: "0.68rem" }}>Spread</div>
+                <div className="fw-semibold">{quote.bid !== null && quote.ask !== null ? formatCurrency(quote.ask - quote.bid) : "—"}</div>
               </div>
-              <div className="col-4 col-md-2">
-                <div className="text-secondary">IV</div>
-                <div>{formatPercentage(quote.impliedVolatility)}</div>
+              <div className="col-4">
+                <div className="text-secondary text-uppercase" style={{ fontSize: "0.68rem" }}>IV</div>
+                <div className="fw-semibold">{formatPercentage(quote.impliedVolatility)}</div>
               </div>
-              <div className="col-4 col-md-2">
-                <div className="text-secondary">Delta</div>
-                <div>{formatNumber(quote.delta, 2)}</div>
+              <div className="col-4">
+                <div className="text-secondary text-uppercase" style={{ fontSize: "0.68rem" }}>Delta</div>
+                <div className="fw-semibold">{formatNumber(quote.delta, 2)}</div>
               </div>
-              <div className="col-4 col-md-2">
-                <div className="text-secondary">Theta</div>
-                <div>{formatNumber(quote.theta, 2)}</div>
+              <div className="col-4">
+                <div className="text-secondary text-uppercase" style={{ fontSize: "0.68rem" }}>Theta</div>
+                <div className="fw-semibold">{formatNumber(quote.theta, 2)}</div>
               </div>
-              <div className="col-4 col-md-2">
-                <div className="text-secondary">Vega</div>
-                <div>{formatNumber(quote.vega, 2)}</div>
+              <div className="col-4">
+                <div className="text-secondary text-uppercase" style={{ fontSize: "0.68rem" }}>Vega</div>
+                <div className="fw-semibold">{formatNumber(quote.vega, 2)}</div>
               </div>
             </div>
           )}
         </div>
       )}
 
-      <div className="d-flex align-items-center gap-2 mb-3">
-        <span className={`badge ${orderRequestStatusBadgeClass(order.status)}`} style={{ fontSize: "0.72rem" }}>
-          {statusLabel(order.status)}
-        </span>
-        {isWaiting && <Spinner size="sm" label="Waiting for IBKR" />}
-      </div>
-      {order.errorMessage && <div className="alert alert-danger">{order.errorMessage}</div>}
+      {/* "Awaiting your confirmation" specifically dropped (2026-08-27) —
+          redundant with the visible Confirm/Cancel buttons right below it.
+          Every other status still shows the badge here since it's the only
+          progress indicator once those buttons are gone (confirmed →
+          submitted → filled/cancelled/etc). */}
+      {!isPending && (
+        <div className="d-flex align-items-center gap-2">
+          <span className={`badge ${orderRequestStatusBadgeClass(order.status)}`}>{statusLabel(order.status)}</span>
+          {isWaiting && <Spinner size="sm" label="Waiting for IBKR" />}
+        </div>
+      )}
+      {order.errorMessage && <div className="alert alert-danger mb-0">{order.errorMessage}</div>}
 
       {isPending && (
         <div className="d-flex gap-2">
           <button
             type="button"
-            className="btn btn-primary d-inline-flex align-items-center gap-1"
+            className="btn btn-primary flex-fill d-inline-flex align-items-center justify-content-center gap-1"
             disabled={confirming}
             onClick={handleConfirm}
           >

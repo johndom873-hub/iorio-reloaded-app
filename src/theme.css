@@ -294,6 +294,17 @@
   font-size: 0.72rem;
 }
 
+/* Numeric/price columns in trading-terminal-style tables (Ticker Detail's
+   option chain, price header, order review) — Roboto Mono's fixed digit
+   widths read as sturdier, more "financial" than Inter's proportional
+   numerals, and keep decimal points aligned down a column. Not applied
+   app-wide: this is for dense tabular price data specifically, not every
+   number in the UI. */
+.font-mono {
+  font-family: "Roboto Mono", ui-monospace, monospace;
+  font-variant-numeric: tabular-nums;
+}
+
 /* Tabler's default success/warning are too light for white text (computed
    WCAG contrast: success #2fb344 = 2.74:1, warning #f59f00 = 2.13:1, both
    fail the 4.5:1 minimum for small text). Danger #d63939 already passes

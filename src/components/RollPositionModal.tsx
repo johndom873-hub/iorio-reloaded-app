@@ -4,7 +4,7 @@ import { OrderReviewPanel } from "./OrderReviewPanel";
 import { ApiError } from "../api/client";
 import { buildRollOrder, type OrderRequest } from "../api/positions";
 import type { RollStructure, TradeAlert } from "../api/tradeAlerts";
-import { formatCurrency, formatDate, formatNumber } from "../lib/formatters";
+import { formatCurrency, formatCurrencyTrimmed, formatDate, formatNumber } from "../lib/formatters";
 
 interface RollPositionModalProps {
   alert: TradeAlert & { suggestedStructure: RollStructure };
@@ -79,8 +79,7 @@ export function RollPositionModal({ alert, onClose, onRolled }: RollPositionModa
           <div className="modal-content">
             <div className="modal-header">
               <h5 className="modal-title">
-                Roll {alert.symbol} {formatCurrency(closeLeg.strike)}
-                {rightLabel}
+                Roll {alert.symbol} {formatCurrencyTrimmed(closeLeg.strike)} {rightLabel}
               </h5>
               <button type="button" className="btn-close" aria-label="Close" onClick={onClose} disabled={submitting} />
             </div>
@@ -104,8 +103,7 @@ export function RollPositionModal({ alert, onClose, onRolled }: RollPositionModa
                         Contract
                       </div>
                       <div>
-                        {formatCurrency(closeLeg.strike)}
-                        {rightLabel} exp {formatDate(closeLeg.expiry)}
+                        {formatCurrencyTrimmed(closeLeg.strike)} {rightLabel} exp {formatDate(closeLeg.expiry)}
                       </div>
                     </div>
                     <div className="col-6">
@@ -138,8 +136,7 @@ export function RollPositionModal({ alert, onClose, onRolled }: RollPositionModa
                         Contract
                       </div>
                       <div>
-                        {formatCurrency(replacement.strike)}
-                        {rightLabel} exp {formatDate(replacement.expiry)} ({replacement.dte} DTE, Δ
+                        {formatCurrencyTrimmed(replacement.strike)} {rightLabel} exp {formatDate(replacement.expiry)} ({replacement.dte} DTE, Δ
                         {formatNumber(replacement.delta, 2)})
                       </div>
                     </div>

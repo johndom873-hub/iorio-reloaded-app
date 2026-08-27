@@ -18,7 +18,7 @@ import {
 } from "../api/positions";
 import { fetchTickerChart } from "../api/tickerDetail";
 import { computePayoff } from "../lib/payoff";
-import { formatCurrency, formatDate, formatNumber, formatPercentageValue, formatSignedPnl, pnlBadgeClass } from "../lib/formatters";
+import { formatCurrency, formatCurrencyTrimmed, formatDate, formatNumber, formatPercentageValue, formatSignedPnl, pnlBadgeClass } from "../lib/formatters";
 import { positionPnlAsOfDate, positionTotalPnl, positionTotalPnlPercent, strategyBadgeClass, strategyLabel } from "../lib/positionPnl";
 
 interface PositionDetailModalProps {
@@ -284,7 +284,7 @@ export function PositionDetailModal({ positionId, onClose, onChanged }: Position
                             <td>{leg.legType === "stock" ? "Stock" : leg.optionType === "call" ? "Call" : "Put"}</td>
                             <td>{leg.side}</td>
                             <td className="text-end">{leg.quantity}</td>
-                            <td className="text-end">{leg.strikePrice ? formatCurrency(Number(leg.strikePrice)) : "—"}</td>
+                            <td className="text-end">{leg.strikePrice ? formatCurrencyTrimmed(Number(leg.strikePrice)) : "—"}</td>
                             <td>{leg.expiryDate ? formatDate(leg.expiryDate) : "—"}</td>
                             <td className="text-end">{formatCurrency(Number(leg.entryPrice))}</td>
                             <td className="text-end">
@@ -323,13 +323,13 @@ export function PositionDetailModal({ positionId, onClose, onChanged }: Position
                           <div className="text-muted" style={{ fontSize: "0.75rem" }}>
                             Max Gain
                           </div>
-                          <div className="fw-bold text-success">{formatSignedPnl(payoff.maxGain)}</div>
+                          <div className="fw-bold text-success">{formatSignedPnl(payoff.maxGain, 0)}</div>
                         </div>
                         <div className="col-4">
                           <div className="text-muted" style={{ fontSize: "0.75rem" }}>
                             Max Loss
                           </div>
-                          <div className="fw-bold text-danger">{formatSignedPnl(-payoff.maxLoss)}</div>
+                          <div className="fw-bold text-danger">{formatSignedPnl(-payoff.maxLoss, 0)}</div>
                         </div>
                         <div className="col-4">
                           <div className="text-muted" style={{ fontSize: "0.75rem" }}>

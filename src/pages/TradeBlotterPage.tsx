@@ -7,6 +7,7 @@ import { fetchTradeBlotter, type PendingOrder, type Trade } from "../api/tradeBl
 import type { StrategyKey } from "../api/screener";
 import {
   formatCurrency,
+  formatCurrencyTrimmed,
   formatDate,
   formatNumber,
   formatSignedPnl,
@@ -32,7 +33,7 @@ function legSummary(row: BlotterRow): string {
   if (legType === "stock") return "Stock";
   const strike = row.kind === "trade" ? row.strikePrice : row.strike;
   const optionType = row.kind === "trade" ? (row.optionType === "call" ? "C" : "P") : row.optionType;
-  return `${strike ? formatCurrency(Number(strike)) : "—"}${optionType ?? ""}`;
+  return `${strike ? formatCurrencyTrimmed(Number(strike)) : "—"}${optionType ?? ""}`;
 }
 
 export function TradeBlotterPage() {

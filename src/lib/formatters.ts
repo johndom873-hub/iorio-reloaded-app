@@ -70,6 +70,14 @@ export function formatCurrency(amountInDollars: number | null | undefined, decim
   }).format(amountInDollars);
 }
 
+// Same as formatCurrency, but drops decimal places entirely when the amount
+// is a whole number (e.g. option strikes, which are usually round dollars).
+export function formatCurrencyTrimmed(amountInDollars: number | null | undefined, decimalPlaces = 2): string {
+  if (amountInDollars === null || amountInDollars === undefined) return "—";
+  if (Number.isNaN(amountInDollars)) return "—";
+  return formatCurrency(amountInDollars, Number.isInteger(amountInDollars) ? 0 : decimalPlaces);
+}
+
 export function formatPercentage(fractionOrNull: number | null | undefined, decimalPlaces = 1): string {
   if (fractionOrNull === null || fractionOrNull === undefined) return "—";
   if (Number.isNaN(fractionOrNull)) return "—";
@@ -133,10 +141,10 @@ export function formatDuration(
   return minutes > 0 ? `${minutes}m ${seconds}s` : `${seconds}s`;
 }
 
-export function formatSignedPnl(amountInDollars: number | null | undefined): string {
+export function formatSignedPnl(amountInDollars: number | null | undefined, decimalPlaces = 2): string {
   if (amountInDollars === null || amountInDollars === undefined) return "—";
   if (Number.isNaN(amountInDollars)) return "—";
-  const formatted = formatCurrency(Math.abs(amountInDollars));
+  const formatted = formatCurrency(Math.abs(amountInDollars), decimalPlaces);
   if (amountInDollars > 0) return `+${formatted}`;
   if (amountInDollars < 0) return `-${formatted}`;
   return formatted;

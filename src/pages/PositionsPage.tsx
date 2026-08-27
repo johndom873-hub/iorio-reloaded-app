@@ -23,6 +23,7 @@ import { searchTickers, type StrategyKey, type TickerSearchResult } from "../api
 import { openPositionQuoteStream, type OptionQuote, type TickerPricing } from "../api/tickerDetail";
 import {
   formatCurrency,
+  formatCurrencyTrimmed,
   formatDate,
   formatNumber,
   formatPercentageValue,
@@ -45,7 +46,7 @@ function structureSummary(position: Position): string {
     .map((leg) => {
       const sideLabel = leg.side === "long" ? "Long" : "Short";
       if (leg.legType === "stock") return `${sideLabel} ${leg.quantity} sh`;
-      const strike = leg.strikePrice ? formatCurrency(Number(leg.strikePrice)) : "—";
+      const strike = leg.strikePrice ? formatCurrencyTrimmed(Number(leg.strikePrice)) : "—";
       const rightLabel = leg.optionType === "call" ? "C" : "P";
       return `${sideLabel} ${leg.quantity}x ${strike}${rightLabel}`;
     })
@@ -714,7 +715,7 @@ export function PositionsPage() {
                   <option value="">{!form.optionExpiry ? "Pick an expiry first" : "Select strike"}</option>
                   {strikeOptions.map((strike) => (
                     <option key={strike} value={strike}>
-                      {formatCurrency(strike)}
+                      {formatCurrencyTrimmed(strike)}
                     </option>
                   ))}
                 </select>

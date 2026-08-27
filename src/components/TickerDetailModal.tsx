@@ -1,5 +1,7 @@
-import { useEffect, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState } from "react";
+import { IconStar } from "@tabler/icons-react";
 import { Spinner } from "./Spinner";
+import { OrderReviewPanel } from "./OrderReviewPanel";
 import { TickerPriceChart } from "./charts/TickerPriceChart";
 import {
   openTickerDetailStream,
@@ -7,12 +9,21 @@ import {
   type PriceBar,
   type TickerOverview,
 } from "../api/tickerDetail";
-import { formatCurrency, formatNumber, formatPercentage } from "../lib/formatters";
+import { fetchTradeAlerts, isRollAlert, type NewTradeCandidate, type TradeAlert } from "../api/tradeAlerts";
+import { buildOpenOrder, type OrderRequest } from "../api/positions";
+import { ApiError } from "../api/client";
+import type { StrategyKey } from "../api/screener";
+import { computeAnnualizedYield } from "../lib/payoff";
+import { formatCurrency, formatCurrencyTrimmed, formatNumber, formatPercentage, ibkrExpiryToIsoDate } from "../lib/formatters";
 
 interface TickerDetailModalProps {
   symbol: string;
   onClose: () => void;
+  /** Set when opened via "View Details" on a Trade Alert — jumps to that alert's expiry on load. */
+  initialAlertId?: string;
 }
+
+type NewTradeAlert = TradeAlert & { suggestedStructure: NewTradeCandidate };
 
 interface StrikeRow {
   strike: number;
@@ -21,7 +32,7 @@ interface StrikeRow {
 }
 
 interface ExpiryGroup {
-  expiry: string;
+  expiry: string; // YYYYMMDD
   daysToExpiry: number;
   strikes: StrikeRow[];
 }
@@ -58,18 +69,168 @@ function groupOptionChain(quotes: OptionQuote[]): ExpiryGroup[] {
     }));
 }
 
-function OptionSideCells({ quote }: { quote: OptionQuote | null }) {
+function newTradeAlerts(alerts: TradeAlert[]): NewTradeAlert[] {
+  // Roll alerts are deliberately left out of this view (2026-08-26) — the
+  // chain-highlighting/order-setup flow here only knows how to flag a single
+  // opportunity strike, which doesn't fit a roll's two-leg (close + replace)
+  // shape. Roll alerts keep their existing Roll/Refresh/Reject card on the
+  // Trade Alerts page, unchanged.
+  return alerts.filter((alert): alert is NewTradeAlert => !isRollAlert(alert));
+}
+
+function midPrice(quote: OptionQuote): number | null {
+  if (quote.bid !== null && quote.ask !== null) return (quote.bid + quote.ask) / 2;
+  return quote.last;
+}
+
+function matchAlertToQuote(quote: OptionQuote, alerts: NewTradeAlert[]): NewTradeAlert | null {
+  const isoExpiry = ibkrExpiryToIsoDate(quote.expiry);
+  const wantsRight = quote.right;
+  return (
+    alerts.find((alert) => {
+      const rightForStrategy = alert.strategyKey === "covered_call" ? "C" : "P";
+      return (
+        rightForStrategy === wantsRight &&
+        alert.suggestedStructure.strike === quote.strike &&
+        alert.suggestedStructure.expiry === isoExpiry
+      );
+    }) ?? null
+  );
+}
+
+function findQuoteForAlert(alert: NewTradeAlert, quotes: OptionQuote[] | null): OptionQuote | null {
+  if (!quotes) return null;
+  const wantsRight = alert.strategyKey === "covered_call" ? "C" : "P";
+  return (
+    quotes.find(
+      (q) => q.right === wantsRight && q.strike === alert.suggestedStructure.strike && ibkrExpiryToIsoDate(q.expiry) === alert.suggestedStructure.expiry,
+    ) ?? null
+  );
+}
+
+function StrategyBadge({ strategyKey }: { strategyKey: StrategyKey }) {
+  return <span className="badge bg-azure-lt">{strategyKey === "covered_call" ? "Covered Call" : "Cash-Secured Put"}</span>;
+}
+
+// Recomputes an alert's delta/premium/DTE/yield from the live chain quote
+// when one's available, instead of the alert's frozen scan-time values —
+// approved 2026-08-26 after the two disagreeing (e.g. yield shown as 189%
+// in this table vs. 398% on the same strike's chain badge, hours apart in
+// scan time vs. live DTE) read as a bug. Falls back to the alert's stored
+// suggestedStructure fields when the chain hasn't loaded that strike yet.
+function liveAlertMetrics(
+  alert: NewTradeAlert,
+  optionChain: OptionQuote[] | null,
+  expiryGroups: ExpiryGroup[],
+  spotPrice: number | null,
+): { dte: number; premium: number | null; delta: number | null; yieldValue: number | null } {
+  const liveQuote = findQuoteForAlert(alert, optionChain);
+  const group = expiryGroups.find((g) => g.expiry === alert.suggestedStructure.expiry.replaceAll("-", ""));
+  const dte = group ? group.daysToExpiry : alert.suggestedStructure.dte;
+  const premium = liveQuote ? midPrice(liveQuote) : alert.suggestedStructure.premium;
+  const delta = liveQuote?.delta ?? alert.suggestedStructure.delta;
+  const yieldValue =
+    spotPrice !== null
+      ? computeAnnualizedYield(alert.strategyKey, { premium, dte, strike: alert.suggestedStructure.strike, spotPrice })
+      : alert.suggestedStructure.annualizedYield;
+  return { dte, premium, delta, yieldValue };
+}
+
+// Where the live spot price sits among a sorted strikes list — the row
+// index to insert a marker BEFORE (see SpotPriceMarkerRow). strikes.length
+// means "below every strike shown," -1 is never returned (findIndex falls
+// through to strikes.length via the ?? below).
+function findSpotPriceMarkerIndex(strikes: StrikeRow[], spotPrice: number | null): number | null {
+  if (spotPrice === null || strikes.length === 0) return null;
+  const firstAbove = strikes.findIndex((s) => s.strike > spotPrice);
+  return firstAbove === -1 ? strikes.length : firstAbove;
+}
+
+// The price figure sits in its own cell, aligned with the STRIKE column
+// above/below it (not just centered across the whole row) — beforeColSpan/
+// afterColSpan are the column counts flanking that strike column at this
+// table's width (desktop: 4 calls + 4 puts; mobile: strike is the first
+// column, so only afterColSpan is used).
+function SpotPriceMarkerRow({
+  spotPrice,
+  beforeColSpan = 0,
+  afterColSpan = 0,
+  priceCellClassName,
+}: {
+  spotPrice: number;
+  beforeColSpan?: number;
+  afterColSpan?: number;
+  priceCellClassName: string;
+}) {
+  const label = <span className="text-secondary">current price</span>;
+  return (
+    <tr className="bg-azure-lt">
+      {beforeColSpan > 0 && (
+        <td colSpan={beforeColSpan} className="text-end py-1" style={{ fontSize: "0.72rem" }}>
+          {label}
+        </td>
+      )}
+      <td className={`${priceCellClassName} py-1`} style={{ fontSize: "0.72rem" }}>
+        {formatCurrency(spotPrice)}
+      </td>
+      {afterColSpan > 0 && (
+        <td colSpan={afterColSpan} className="py-1" style={{ fontSize: "0.72rem" }}>
+          {beforeColSpan === 0 && label}
+        </td>
+      )}
+    </tr>
+  );
+}
+
+function AlertPill({ onClick }: { onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      className="badge bg-azure d-inline-flex align-items-center gap-1 border-0"
+      style={{ cursor: "pointer" }}
+      onClick={onClick}
+    >
+      <IconStar size={11} />
+      Alert
+    </button>
+  );
+}
+
+function OptionSideCells({
+  quote,
+  dte,
+  spotPrice,
+  matchedAlert,
+  onAlertClick,
+}: {
+  quote: OptionQuote | null;
+  dte: number;
+  spotPrice: number | null;
+  matchedAlert: NewTradeAlert | null;
+  onAlertClick: (alert: NewTradeAlert) => void;
+}) {
+  const strategyKey: StrategyKey | null = quote ? (quote.right === "C" ? "covered_call" : "cash_secured_put") : null;
+  const yieldValue =
+    quote && strategyKey && spotPrice !== null
+      ? computeAnnualizedYield(strategyKey, { premium: midPrice(quote), dte, strike: quote.strike, spotPrice })
+      : null;
+
   return (
     <>
-      <td className="text-end">{formatCurrency(quote?.bid ?? null)}</td>
-      <td className="text-end">{formatCurrency(quote?.ask ?? null)}</td>
-      <td className="text-end">{formatPercentage(quote?.impliedVolatility ?? null)}</td>
-      <td className="text-end">{formatNumber(quote?.delta ?? null, 2)}</td>
+      <td className="text-end font-mono">{formatCurrency(quote?.bid ?? null)}</td>
+      <td className="text-end font-mono">{formatCurrency(quote?.ask ?? null)}</td>
+      <td className="text-end font-mono">{formatNumber(quote?.delta ?? null, 2)}</td>
+      <td className="text-end">
+        <div className="d-inline-flex align-items-center gap-2">
+          {matchedAlert && <AlertPill onClick={() => onAlertClick(matchedAlert)} />}
+          <span className={`font-mono ${matchedAlert ? "text-success fw-semibold" : "text-secondary"}`}>{formatPercentage(yieldValue)}</span>
+        </div>
+      </td>
     </>
   );
 }
 
-export function TickerDetailModal({ symbol, onClose }: TickerDetailModalProps) {
+export function TickerDetailModal({ symbol, onClose, initialAlertId }: TickerDetailModalProps) {
   const [overview, setOverview] = useState<TickerOverview | null>(null);
   const [overviewError, setOverviewError] = useState<string | null>(null);
 
@@ -84,6 +245,20 @@ export function TickerDetailModal({ symbol, onClose }: TickerDetailModalProps) {
   // will arrive either in that case.
   const [streamError, setStreamError] = useState<string | null>(null);
 
+  const [alerts, setAlerts] = useState<TradeAlert[] | null>(null);
+  const [alertsError, setAlertsError] = useState<string | null>(null);
+
+  const [activeExpiry, setActiveExpiry] = useState<string | null>(null);
+  const [selectedAlert, setSelectedAlert] = useState<NewTradeAlert | null>(null);
+  const [contractQty, setContractQty] = useState("1");
+  const [pendingOrder, setPendingOrder] = useState<OrderRequest | null>(null);
+  const [building, setBuilding] = useState(false);
+  const [buildError, setBuildError] = useState<string | null>(null);
+
+  const chainRef = useRef<HTMLDivElement | null>(null);
+  const appliedInitialAlert = useRef(false);
+  const appliedDefaultExpiry = useRef(false);
+
   useEffect(() => {
     setOverview(null);
     setOverviewError(null);
@@ -92,6 +267,11 @@ export function TickerDetailModal({ symbol, onClose }: TickerDetailModalProps) {
     setOptionChain(null);
     setOptionChainError(null);
     setStreamError(null);
+    setActiveExpiry(null);
+    setSelectedAlert(null);
+    setPendingOrder(null);
+    appliedInitialAlert.current = false;
+    appliedDefaultExpiry.current = false;
 
     const close = openTickerDetailStream(symbol, (event) => {
       switch (event.type) {
@@ -117,7 +297,12 @@ export function TickerDetailModal({ symbol, onClose }: TickerDetailModalProps) {
       }
     });
 
+    fetchTradeAlerts({ status: "pending", symbol })
+      .then(setAlerts)
+      .catch((err) => setAlertsError(err instanceof ApiError ? err.message : "Failed to load trade alerts."));
+
     return close;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [symbol]);
 
   // Informational modal, no action required — closable via ESC or backdrop click.
@@ -140,10 +325,207 @@ export function TickerDetailModal({ symbol, onClose }: TickerDetailModalProps) {
   }, []);
 
   const expiryGroups = useMemo(() => groupOptionChain(optionChain ?? []), [optionChain]);
+  const relevantAlerts = useMemo(() => newTradeAlerts(alerts ?? []), [alerts]);
+  const alertExpiries = useMemo(
+    () => new Set(relevantAlerts.map((alert) => alert.suggestedStructure.expiry.replaceAll("-", ""))),
+    [relevantAlerts],
+  );
+
+  // Default to the first expiry that has an alert (if any), otherwise the
+  // nearest expiry — runs once per chain load, not on every render.
+  useEffect(() => {
+    if (appliedDefaultExpiry.current || expiryGroups.length === 0) return;
+    appliedDefaultExpiry.current = true;
+    const withAlert = expiryGroups.find((g) => alertExpiries.has(g.expiry));
+    setActiveExpiry((withAlert ?? expiryGroups[0]).expiry);
+  }, [expiryGroups, alertExpiries]);
+
+  // Opened via "View Details" on a specific alert — jump straight to it.
+  useEffect(() => {
+    if (appliedInitialAlert.current || !initialAlertId || relevantAlerts.length === 0 || expiryGroups.length === 0) return;
+    const alert = relevantAlerts.find((a) => a.id === initialAlertId);
+    if (!alert) return;
+    appliedInitialAlert.current = true;
+    const expiryYyyymmdd = alert.suggestedStructure.expiry.replaceAll("-", "");
+    if (expiryGroups.some((g) => g.expiry === expiryYyyymmdd)) setActiveExpiry(expiryYyyymmdd);
+    chainRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialAlertId, relevantAlerts, expiryGroups]);
+
+  function handleAlertRowClick(alert: NewTradeAlert) {
+    const expiryYyyymmdd = alert.suggestedStructure.expiry.replaceAll("-", "");
+    if (expiryGroups.some((g) => g.expiry === expiryYyyymmdd)) setActiveExpiry(expiryYyyymmdd);
+    chainRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    handleAlertPillClick(alert);
+  }
+
+  function handleAlertPillClick(alert: NewTradeAlert) {
+    setSelectedAlert(alert);
+    setContractQty("1");
+    setPendingOrder(null);
+    setBuildError(null);
+  }
+
+  function closeOrderPanel() {
+    setSelectedAlert(null);
+    setPendingOrder(null);
+    setBuildError(null);
+  }
+
+  async function handleReviewOrder() {
+    if (!selectedAlert) return;
+    const qty = Number(contractQty);
+    if (!Number.isInteger(qty) || qty < 1) {
+      setBuildError("Enter a valid number of contracts.");
+      return;
+    }
+
+    setBuilding(true);
+    setBuildError(null);
+    try {
+      const spotPrice = overview?.pricing.last ?? overview?.pricing.previousClose ?? selectedAlert.suggestedStructure.spotPrice;
+      const liveQuote = findQuoteForAlert(selectedAlert, optionChain);
+      const premium = liveQuote ? midPrice(liveQuote) : selectedAlert.suggestedStructure.premium;
+      if (premium === null) throw new Error("No live price available for this contract yet — try again in a moment.");
+
+      const order = await buildOpenOrder({
+        symbol,
+        strategyKey: selectedAlert.strategyKey,
+        stock:
+          selectedAlert.strategyKey === "covered_call"
+            ? { quantity: qty * 100, limitPrice: spotPrice }
+            : undefined,
+        option: {
+          quantity: qty,
+          limitPrice: premium,
+          strikePrice: selectedAlert.suggestedStructure.strike,
+          expiryDate: selectedAlert.suggestedStructure.expiry,
+        },
+        sourceAlertId: selectedAlert.id,
+      });
+      setPendingOrder(order);
+    } catch (err) {
+      setBuildError(err instanceof ApiError ? err.message : err instanceof Error ? err.message : "Failed to build order.");
+    } finally {
+      setBuilding(false);
+    }
+  }
 
   const pricing = overview?.pricing;
+  const spotPrice = pricing?.last ?? pricing?.previousClose ?? null;
   const change = pricing?.last != null && pricing?.previousClose != null ? pricing.last - pricing.previousClose : null;
   const changePercent = change != null && pricing?.previousClose ? change / pricing.previousClose : null;
+
+  const activeGroup = expiryGroups.find((g) => g.expiry === activeExpiry) ?? null;
+  const spotPriceMarkerIndex = activeGroup ? findSpotPriceMarkerIndex(activeGroup.strikes, spotPrice) : null;
+
+  const liveQuoteForSelected = selectedAlert ? findQuoteForAlert(selectedAlert, optionChain) : null;
+  const selectedPremium = liveQuoteForSelected ? midPrice(liveQuoteForSelected) : (selectedAlert?.suggestedStructure.premium ?? null);
+  const selectedDelta = liveQuoteForSelected?.delta ?? selectedAlert?.suggestedStructure.delta ?? null;
+  const selectedDte = activeGroup?.expiry === selectedAlert?.suggestedStructure.expiry.replaceAll("-", "")
+    ? activeGroup?.daysToExpiry
+    : selectedAlert?.suggestedStructure.dte;
+  const selectedYield =
+    selectedAlert && spotPrice !== null && selectedDte !== undefined
+      ? computeAnnualizedYield(selectedAlert.strategyKey, {
+          premium: selectedPremium,
+          dte: selectedDte,
+          strike: selectedAlert.suggestedStructure.strike,
+          spotPrice,
+        })
+      : selectedAlert?.suggestedStructure.annualizedYield ?? null;
+
+  // Deliberately two different shapes, not one wrapper around both: once
+  // pendingOrder exists, OrderReviewPanel supplies its own "Order Review"
+  // header and border (shared with Positions/Roll/Close, which have no
+  // wrapper of their own to rely on) — reusing this component's header/
+  // border around it too produced a visibly doubled header and a
+  // border-within-a-border (found 2026-08-27).
+  const orderSetupPanel = selectedAlert && pendingOrder && (
+    <OrderReviewPanel
+      order={pendingOrder}
+      onCancelled={closeOrderPanel}
+      onFilled={() => {
+        closeOrderPanel();
+        fetchTradeAlerts({ status: "pending", symbol }).then(setAlerts).catch(() => {});
+      }}
+    />
+  );
+
+  const orderSetupForm = selectedAlert && !pendingOrder && (
+    <div className="d-flex flex-column gap-3">
+      <div>
+        <div className="text-secondary text-uppercase" style={{ fontSize: "0.68rem", fontWeight: 700, letterSpacing: "0.06em" }}>
+          Order Setup
+        </div>
+        <h4 className="mb-0" style={{ fontSize: "1.05rem" }}>
+          {selectedAlert.strategyKey === "covered_call" ? "Covered Call" : "Cash-Secured Put"} · {symbol}
+        </h4>
+      </div>
+
+      <>
+          <div className="border rounded p-3">
+            <div className="d-flex justify-content-between py-1" style={{ fontSize: "0.85rem" }}>
+              <span className="text-secondary">Expiry</span>
+              <span className="fw-semibold font-mono">
+                {formatExpiry(selectedAlert.suggestedStructure.expiry.replaceAll("-", ""))} ({selectedDte} DTE)
+              </span>
+            </div>
+            <div className="d-flex justify-content-between py-1" style={{ fontSize: "0.85rem" }}>
+              <span className="text-secondary">Strike</span>
+              <span className="fw-semibold font-mono">
+                {formatCurrencyTrimmed(selectedAlert.suggestedStructure.strike)} {selectedAlert.strategyKey === "covered_call" ? "Call" : "Put"}
+              </span>
+            </div>
+            <div className="d-flex justify-content-between py-1" style={{ fontSize: "0.85rem" }}>
+              <span className="text-secondary">Delta</span>
+              <span className="fw-semibold font-mono">{formatNumber(selectedDelta, 2)}</span>
+            </div>
+            <div className="d-flex justify-content-between py-1" style={{ fontSize: "0.85rem" }}>
+              <span className="text-secondary">Premium (mid)</span>
+              <span className="fw-semibold font-mono">{formatCurrency(selectedPremium)}</span>
+            </div>
+            <hr className="my-2" />
+            <div className="d-flex justify-content-between py-1" style={{ fontSize: "0.85rem" }}>
+              <span className="text-secondary">Annualized Yield</span>
+              <span className="fw-semibold font-mono text-success">{formatPercentage(selectedYield)}</span>
+            </div>
+          </div>
+
+          <div>
+            <label className="form-label text-secondary text-uppercase" style={{ fontSize: "0.7rem", fontWeight: 600, letterSpacing: "0.04em" }}>
+              Contracts
+            </label>
+            <input
+              type="number"
+              min={1}
+              step={1}
+              className="form-control font-mono"
+              value={contractQty}
+              onChange={(event) => setContractQty(event.target.value)}
+            />
+            {selectedAlert.strategyKey === "covered_call" && (
+              <div className="text-secondary mt-1 font-mono" style={{ fontSize: "0.78rem" }}>
+                = <strong>{(Number(contractQty) || 0) * 100}</strong> shares to buy ({contractQty || 0} contract
+                {Number(contractQty) === 1 ? "" : "s"} × 100)
+              </div>
+            )}
+          </div>
+
+          {buildError && <div className="alert alert-danger mb-0">{buildError}</div>}
+
+          <div className="d-flex gap-2">
+            <button type="button" className="btn btn-primary flex-fill d-inline-flex align-items-center justify-content-center gap-1" disabled={building} onClick={handleReviewOrder}>
+              {building && <Spinner size="sm" />}
+              Review Order
+            </button>
+            <button type="button" className="btn btn-outline-secondary" onClick={closeOrderPanel}>
+              Cancel
+            </button>
+          </div>
+      </>
+    </div>
+  );
 
   return (
     <>
@@ -155,12 +537,12 @@ export function TickerDetailModal({ symbol, onClose }: TickerDetailModalProps) {
           if (event.target === event.currentTarget) onClose();
         }}
       >
-        <div className="modal-dialog modal-dialog-scrollable modal-fullscreen-sm-down modal-xl">
+        <div className="modal-dialog modal-dialog-scrollable modal-fullscreen">
           <div className="modal-content">
             <div className="modal-header">
               <h5 className="modal-title">
                 {symbol}
-                {overview?.companyName && <span className="text-muted fw-normal"> — {overview.companyName}</span>}
+                {overview?.companyName && <span className="text-secondary fw-normal"> — {overview.companyName}</span>}
               </h5>
               <button type="button" className="btn-close" aria-label="Close" onClick={onClose} />
             </div>
@@ -176,27 +558,294 @@ export function TickerDetailModal({ symbol, onClose }: TickerDetailModalProps) {
                     </div>
                   )}
                   {overview && (
-                    <div className="d-flex flex-wrap align-items-baseline gap-3 mb-3" style={{ fontVariantNumeric: "tabular-nums" }}>
+                    <div className="d-flex flex-wrap align-items-baseline gap-3 mb-3 font-mono">
                       <span className="h2 mb-0">{formatCurrency(pricing?.last ?? null)}</span>
                       {change != null && (
-                        <strong className={change > 0 ? "text-success" : change < 0 ? "text-danger" : "text-muted"}>
+                        <strong className={change > 0 ? "text-success" : change < 0 ? "text-danger" : "text-secondary"}>
                           {change >= 0 ? "+" : ""}
                           {formatCurrency(change)} ({change >= 0 ? "+" : ""}
                           {formatPercentage(changePercent, 2)})
                         </strong>
                       )}
-                      <span className="text-muted small">
+                      <span className="text-secondary small">
                         Bid {formatCurrency(pricing?.bid ?? null)} &middot; Ask {formatCurrency(pricing?.ask ?? null)}
                       </span>
-                      <span className="text-muted small">
+                      <span className="text-secondary small">
                         Day range {formatCurrency(pricing?.low ?? null)} – {formatCurrency(pricing?.high ?? null)}
                       </span>
-                      <span className="text-muted small">Volume {formatNumber(pricing?.volume ?? null)}</span>
+                      <span className="text-secondary small">Volume {formatNumber(pricing?.volume ?? null)}</span>
                       {overview.sector && <span className="badge bg-secondary-lt text-dark">{overview.sector}</span>}
                     </div>
                   )}
 
-                  <div className="mb-4">
+                  {/* Trade Alerts + Option Chain share this row's left column;
+                      the order panel (when open) spans the FULL height of both,
+                      not just the chain table next to it. */}
+                  <div className="d-flex flex-column flex-lg-row gap-3">
+                  <div style={{ minWidth: 0, flex: selectedAlert ? "1 1 68%" : "1 1 100%" }}>
+                  {/* ---------- Trade Alerts ---------- */}
+                  {alertsError && <div className="alert alert-danger">{alertsError}</div>}
+                  {relevantAlerts.length > 0 && (
+                    <div className="mb-4">
+                      <h4 className="mb-1" style={{ fontSize: "0.95rem" }}>
+                        Trade Alerts <span className="text-secondary fw-normal">({relevantAlerts.length})</span>
+                      </h4>
+                      <p className="text-secondary small mb-2">Click a row to jump to that expiry and flag the strike below.</p>
+
+                      {/* Desktop/tablet: full table */}
+                      <div className="table-responsive border rounded d-none d-md-block">
+                        <table className="table table-sm table-vcenter card-table table-hover mb-0">
+                          <thead className="table-light">
+                            <tr>
+                              <th>Strategy</th>
+                              <th>Expiry</th>
+                              <th className="text-end">Strike</th>
+                              <th className="text-end">Delta</th>
+                              <th className="text-end">Premium</th>
+                              <th className="text-end">Ann. Yield</th>
+                              <th style={{ width: 24 }}></th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {relevantAlerts.map((alert) => {
+                              const live = liveAlertMetrics(alert, optionChain, expiryGroups, spotPrice);
+                              return (
+                                <tr key={alert.id} style={{ cursor: "pointer" }} onClick={() => handleAlertRowClick(alert)}>
+                                  <td>
+                                    <StrategyBadge strategyKey={alert.strategyKey} />
+                                  </td>
+                                  <td>
+                                    {formatExpiry(alert.suggestedStructure.expiry.replaceAll("-", ""))}{" "}
+                                    <span className="text-secondary">({live.dte} DTE)</span>
+                                  </td>
+                                  <td className="text-end font-mono">{formatCurrencyTrimmed(alert.suggestedStructure.strike)}</td>
+                                  <td className="text-end font-mono">{formatNumber(live.delta, 2)}</td>
+                                  <td className="text-end font-mono">{formatCurrency(live.premium)}</td>
+                                  <td className="text-end font-mono">
+                                    <span className="badge badge-change-pos">{formatPercentage(live.yieldValue)}</span>
+                                  </td>
+                                  <td className="text-secondary">›</td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+
+                      {/* Mobile: compact tappable cards instead of a squeezed table */}
+                      <div className="d-md-none d-flex flex-column gap-2">
+                        {relevantAlerts.map((alert) => {
+                          const live = liveAlertMetrics(alert, optionChain, expiryGroups, spotPrice);
+                          return (
+                            <div
+                              key={alert.id}
+                              className="border rounded p-2 d-flex align-items-center justify-content-between gap-2"
+                              style={{ cursor: "pointer" }}
+                              onClick={() => handleAlertRowClick(alert)}
+                            >
+                              <div>
+                                <StrategyBadge strategyKey={alert.strategyKey} />
+                                <div className="fw-bold mt-1 font-mono">
+                                  {formatCurrencyTrimmed(alert.suggestedStructure.strike)} · {formatExpiry(alert.suggestedStructure.expiry.replaceAll("-", ""))}
+                                </div>
+                                <div className="text-secondary font-mono" style={{ fontSize: "0.75rem" }}>
+                                  Δ {formatNumber(live.delta, 2)} · Prem {formatCurrency(live.premium)} · {live.dte} DTE
+                                </div>
+                              </div>
+                              <div className="text-end d-flex flex-column align-items-end gap-1">
+                                <span className="badge badge-change-pos font-mono">{formatPercentage(live.yieldValue)}</span>
+                                <span className="text-secondary">›</span>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* ---------- Option Chain ---------- */}
+                  <div ref={chainRef}>
+                    <h4 className="mb-2">Option Chain</h4>
+                    <p className="text-secondary small mb-3">
+                      Near-the-money strikes for the nearest expiries in the strategies' trading window. Yield shown for every strike;
+                      flagged strikes match an open trade alert.
+                    </p>
+
+                    {optionChainError && <div className="alert alert-danger">{optionChainError}</div>}
+                    {!optionChainError && !optionChain && (
+                      <div className="d-flex justify-content-center py-3">
+                        <Spinner label="Loading option chain" />
+                      </div>
+                    )}
+                    {optionChain && expiryGroups.length === 0 && <p className="text-muted">No option chain data available.</p>}
+
+                    {expiryGroups.length > 0 && (
+                      <>
+                          <ul className="nav nav-tabs mb-0 flex-nowrap overflow-auto">
+                            {expiryGroups.map((group) => (
+                              <li className="nav-item" key={group.expiry}>
+                                <button
+                                  type="button"
+                                  className={`nav-link position-relative text-nowrap ${activeExpiry === group.expiry ? "active" : ""}`}
+                                  onClick={() => setActiveExpiry(group.expiry)}
+                                >
+                                  {formatExpiry(group.expiry)}
+                                  <span className="text-secondary fw-normal ms-1">{group.daysToExpiry}D</span>
+                                  {alertExpiries.has(group.expiry) && (
+                                    <span
+                                      className="position-absolute bg-danger rounded-circle"
+                                      style={{ width: 6, height: 6, top: 6, right: 6 }}
+                                    />
+                                  )}
+                                </button>
+                              </li>
+                            ))}
+                          </ul>
+
+                          {activeGroup && (
+                            <>
+                              {/* Desktop: calls | strike | puts, side by side */}
+                              <div className="table-responsive border border-top-0 rounded-bottom d-none d-lg-block">
+                                <table className="table table-sm table-vcenter card-table table-hover mb-0">
+                                  <thead className="table-light">
+                                    <tr>
+                                      <th colSpan={4} className="text-center">
+                                        Calls
+                                      </th>
+                                      <th className="text-center">Strike</th>
+                                      <th colSpan={4} className="text-center">
+                                        Puts
+                                      </th>
+                                    </tr>
+                                    <tr>
+                                      <th className="text-end">Bid</th>
+                                      <th className="text-end">Ask</th>
+                                      <th className="text-end">Delta</th>
+                                      <th className="text-end">Yield</th>
+                                      <th className="text-center">·</th>
+                                      <th className="text-end">Bid</th>
+                                      <th className="text-end">Ask</th>
+                                      <th className="text-end">Delta</th>
+                                      <th className="text-end">Yield</th>
+                                    </tr>
+                                  </thead>
+                                  <tbody>
+                                    {activeGroup.strikes.map((row, index) => {
+                                      const callAlert = row.call ? matchAlertToQuote(row.call, relevantAlerts) : null;
+                                      const putAlert = row.put ? matchAlertToQuote(row.put, relevantAlerts) : null;
+                                      return (
+                                        <Fragment key={row.strike}>
+                                          {spotPriceMarkerIndex === index && spotPrice !== null && (
+                                            <SpotPriceMarkerRow spotPrice={spotPrice} beforeColSpan={4} afterColSpan={4} priceCellClassName="text-center fw-bold font-mono" />
+                                          )}
+                                          <tr className={callAlert || putAlert ? "table-active" : undefined}>
+                                            <OptionSideCells
+                                              quote={row.call}
+                                              dte={activeGroup.daysToExpiry}
+                                              spotPrice={spotPrice}
+                                              matchedAlert={callAlert}
+                                              onAlertClick={handleAlertPillClick}
+                                            />
+                                            <td className="text-center fw-bold font-mono">{formatCurrencyTrimmed(row.strike)}</td>
+                                            <OptionSideCells
+                                              quote={row.put}
+                                              dte={activeGroup.daysToExpiry}
+                                              spotPrice={spotPrice}
+                                              matchedAlert={putAlert}
+                                              onAlertClick={handleAlertPillClick}
+                                            />
+                                          </tr>
+                                        </Fragment>
+                                      );
+                                    })}
+                                    {spotPriceMarkerIndex === activeGroup.strikes.length && spotPrice !== null && (
+                                      <SpotPriceMarkerRow spotPrice={spotPrice} beforeColSpan={4} afterColSpan={4} priceCellClassName="text-center fw-bold font-mono" />
+                                    )}
+                                  </tbody>
+                                </table>
+                              </div>
+
+                              {/* Mobile: calls table, then puts table, stacked */}
+                              <div className="d-lg-none">
+                                {(["call", "put"] as const).map((side) => (
+                                  <div key={side} className="mb-2">
+                                    <div className="text-secondary text-uppercase fw-bold mt-2 mb-1" style={{ fontSize: "0.68rem", letterSpacing: "0.06em" }}>
+                                      {side === "call" ? "Calls" : "Puts"}
+                                    </div>
+                                    <div className="table-responsive border rounded">
+                                      <table className="table table-sm table-vcenter card-table table-hover mb-0">
+                                        <thead className="table-light">
+                                          <tr>
+                                            <th>Strike</th>
+                                            <th className="text-end">Bid</th>
+                                            <th className="text-end">Ask</th>
+                                            <th className="text-end">Delta</th>
+                                            <th className="text-end">Yield</th>
+                                          </tr>
+                                        </thead>
+                                        <tbody>
+                                          {activeGroup.strikes.map((row, index) => {
+                                            const quote = side === "call" ? row.call : row.put;
+                                            const matchedAlert = quote ? matchAlertToQuote(quote, relevantAlerts) : null;
+                                            return (
+                                              <Fragment key={row.strike}>
+                                                {spotPriceMarkerIndex === index && spotPrice !== null && (
+                                                  <SpotPriceMarkerRow spotPrice={spotPrice} afterColSpan={4} priceCellClassName="fw-bold font-mono" />
+                                                )}
+                                                <tr className={matchedAlert ? "table-active" : undefined}>
+                                                  <td className="fw-bold font-mono">{formatCurrencyTrimmed(row.strike)}</td>
+                                                  <OptionSideCells
+                                                    quote={quote}
+                                                    dte={activeGroup.daysToExpiry}
+                                                    spotPrice={spotPrice}
+                                                    matchedAlert={matchedAlert}
+                                                    onAlertClick={handleAlertPillClick}
+                                                  />
+                                                </tr>
+                                              </Fragment>
+                                            );
+                                          })}
+                                          {spotPriceMarkerIndex === activeGroup.strikes.length && spotPrice !== null && (
+                                            <SpotPriceMarkerRow spotPrice={spotPrice} afterColSpan={4} priceCellClassName="fw-bold font-mono" />
+                                          )}
+                                        </tbody>
+                                      </table>
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            </>
+                          )}
+                      </>
+                    )}
+                  </div>
+                  </div>
+
+                  {/* Order setup / review — spans the full height of the
+                      Trade Alerts + Option Chain column on desktop (not a
+                      cramped sidebar next to just the chain table), sticky
+                      so it stays in view while that column scrolls. Inline
+                      card on mobile instead, below everything. */}
+                  {selectedAlert && (
+                    <div
+                      className={pendingOrder ? "d-none d-lg-block" : "border rounded p-4 d-none d-lg-block"}
+                      style={{ flex: "1 1 32%", maxWidth: "420px", minWidth: 0, alignSelf: "flex-start", position: "sticky", top: 0 }}
+                    >
+                      {orderSetupForm}
+                      {orderSetupPanel}
+                    </div>
+                  )}
+                  </div>
+
+                  {selectedAlert && (
+                    <div className={pendingOrder ? "mt-3 d-lg-none" : "border rounded p-3 mt-3 d-lg-none"}>
+                      {orderSetupForm}
+                      {orderSetupPanel}
+                    </div>
+                  )}
+
+                  {/* ---------- Chart ---------- */}
+                  <div className="mt-4">
                     {chartError && <div className="alert alert-danger">{chartError}</div>}
                     {!chartError && !chartBars && (
                       <div className="d-flex justify-content-center py-3">
@@ -205,64 +854,6 @@ export function TickerDetailModal({ symbol, onClose }: TickerDetailModalProps) {
                     )}
                     {chartBars && <TickerPriceChart symbol={symbol} initialBars={chartBars} />}
                   </div>
-
-                  <h4 className="mb-2">Option Chain</h4>
-                  <p className="text-muted small mb-3">
-                    Near-the-money strikes for the nearest expiries out to 60 days, covering weeklies through the
-                    monthly range typically used for covered calls and cash-secured puts.
-                  </p>
-
-                  {optionChainError && <div className="alert alert-danger">{optionChainError}</div>}
-                  {!optionChainError && !optionChain && (
-                    <div className="d-flex justify-content-center py-3">
-                      <Spinner label="Loading option chain" />
-                    </div>
-                  )}
-                  {optionChain && expiryGroups.length === 0 && <p className="text-muted">No option chain data available.</p>}
-
-                  {expiryGroups.map((group) => (
-                    <div key={group.expiry} className="mb-4">
-                      <h5 className="mb-2">
-                        {formatExpiry(group.expiry)}{" "}
-                        <span className="text-muted fw-normal small">({group.daysToExpiry} DTE)</span>
-                      </h5>
-                      <div className="table-responsive">
-                        <table className="table table-sm table-vcenter card-table">
-                          <thead className="table-light">
-                            <tr>
-                              <th colSpan={4} className="text-center">
-                                Calls
-                              </th>
-                              <th className="text-center">Strike</th>
-                              <th colSpan={4} className="text-center">
-                                Puts
-                              </th>
-                            </tr>
-                            <tr>
-                              <th className="text-end">Bid</th>
-                              <th className="text-end">Ask</th>
-                              <th className="text-end">IV</th>
-                              <th className="text-end">Delta</th>
-                              <th className="text-center">·</th>
-                              <th className="text-end">Bid</th>
-                              <th className="text-end">Ask</th>
-                              <th className="text-end">IV</th>
-                              <th className="text-end">Delta</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {group.strikes.map((row) => (
-                              <tr key={row.strike}>
-                                <OptionSideCells quote={row.call} />
-                                <td className="text-center fw-bold">{formatCurrency(row.strike)}</td>
-                                <OptionSideCells quote={row.put} />
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      </div>
-                    </div>
-                  ))}
                 </>
               )}
             </div>
