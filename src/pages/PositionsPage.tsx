@@ -43,7 +43,12 @@ const strategyTabs: { key: StrategyKey | "all"; label: string }[] = [
 ];
 
 function structureSummary(position: Position): string {
-  return position.legs
+  // An open position can carry closed legs from a past roll (they stay
+  // attached to the same position_id for history) — only summarize what's
+  // actually still held. A closed position's legs are all closed by
+  // definition, so show the full set there.
+  const legs = position.status === "open" ? position.legs.filter((leg) => !leg.exitAt) : position.legs;
+  return legs
     .map((leg) => {
       const sideLabel = leg.side === "long" ? "Long" : "Short";
       if (leg.legType === "stock") return `${sideLabel} ${leg.quantity} sh`;
