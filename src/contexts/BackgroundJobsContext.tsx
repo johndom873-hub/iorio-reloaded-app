@@ -2,6 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useRef, useState, ty
 import { openTradeAlertRunStream, type TradeAlertRunStreamEvent } from "../api/tradeAlerts";
 import { fetchOrder, type OrderRequest } from "../api/positions";
 import { openNotificationStream } from "../api/notifications";
+import { useAuth } from "./AuthContext";
 
 export type BackgroundJobKind = "trade-alert-scan" | "order" | "position-closed";
 export type BackgroundJobStatus = "running" | "done" | "error";
@@ -82,6 +83,7 @@ interface BackgroundJobsContextValue {
 const BackgroundJobsContext = createContext<BackgroundJobsContextValue | undefined>(undefined);
 
 export function BackgroundJobsProvider({ children }: { children: ReactNode }) {
+  const { currentUser } = useAuth();
   const [jobs, setJobs] = useState<BackgroundJob[]>([]);
   const tradeAlertScanRunningRef = useRef(false);
   const jobEventListenersRef = useRef<Map<string, Set<(event: TradeAlertRunStreamEvent) => void>>>(new Map());
@@ -219,17 +221,24 @@ export function BackgroundJobsProvider({ children }: { children: ReactNode }) {
     [upsertOrderJob],
   );
 
-  // One SSE connection for the app's lifetime (not tied to any page or
-  // panel) — see api/notifications.ts. Replaces the old per-order 2s client
-  // poll: that only ever tracked orders this browser itself started via
-  // startOrderJob, so an order placed outside this browser (Genosuke chat)
-  // or a position closed purely by IBKR (an option expiring) never
-  // surfaced anywhere in the UI. Every order_status event re-fetches the
-  // full order (the notification payload only carries its id) and reuses
-  // the same upsertOrderJob path startOrderJob does, so an order this
-  // browser never explicitly started still gets its own toast the first
-  // time an event mentions it.
+  // One SSE connection for as long as the user is logged in (not tied to
+  // any page or panel) — see api/notifications.ts. Gated on currentUser
+  // rather than opened unconditionally at mount: /notifications/stream
+  // requires a session, and EventSource treats any non-200 response (a 401
+  // from connecting before login) as fatal — it does not retry the way it
+  // does for a plain network drop — so opening it before auth is confirmed
+  // permanently kills notifications for the rest of the tab's life. Closes
+  // and reopens on logout/login so a shared machine's next user gets their
+  // own stream. Replaces the old per-order 2s client poll: that only ever
+  // tracked orders this browser itself started via startOrderJob, so an
+  // order placed outside this browser (Genosuke chat) or a position closed
+  // purely by IBKR (an option expiring) never surfaced anywhere in the UI.
+  // Every order_status event re-fetches the full order (the notification
+  // payload only carries its id) and reuses the same upsertOrderJob path
+  // startOrderJob does, so an order this browser never explicitly started
+  // still gets its own toast the first time an event mentions it.
   useEffect(() => {
+    if (!currentUser) return;
     return openNotificationStream((notification) => {
       if (notification.type === "order_status") {
         fetchOrder(notification.orderId).then(upsertOrderJob).catch(() => {});
@@ -244,7 +253,7 @@ export function BackgroundJobsProvider({ children }: { children: ReactNode }) {
         });
       }
     });
-  }, [upsertJob, upsertOrderJob]);
+  }, [currentUser, upsertJob, upsertOrderJob]);
 
   return (
     <BackgroundJobsContext.Provider value={{ jobs, dismissJob, startTradeAlertScan, startOrderJob, subscribeToJobEvents }}>
