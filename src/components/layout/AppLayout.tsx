@@ -15,6 +15,7 @@ import {
 } from "@tabler/icons-react";
 import { useAuth } from "../../contexts/AuthContext";
 import { useTheme } from "../../contexts/ThemeContext";
+import { BackgroundJobsToastStack } from "./BackgroundJobsToastStack";
 
 const navigationItems = [
   { to: "/", label: "Dashboard", icon: IconLayoutDashboard, end: true },
@@ -165,6 +166,8 @@ export function AppLayout() {
           </div>
         </div>
       </div>
+
+      <BackgroundJobsToastStack />
     </div>
   );
 }

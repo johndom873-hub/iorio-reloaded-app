@@ -1,13 +1,13 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { PageHeader } from "../components/layout/PageHeader";
 import { Spinner } from "../components/Spinner";
 import { TickerDetailModal } from "../components/TickerDetailModal";
 import { RollPositionModal } from "../components/RollPositionModal";
 import { ApiError } from "../api/client";
+import { useBackgroundJobs, useJobEvents } from "../contexts/BackgroundJobsContext";
 import {
   fetchTradeAlerts,
   isRollAlert,
-  openTradeAlertRunStream,
   refreshTickerAlerts,
   refreshTradeAlert,
   type NewTradeCandidate,
@@ -99,9 +99,9 @@ export function TradeAlertsPage() {
   const [detailSymbol, setDetailSymbol] = useState<string | null>(null);
   const [detailAlertId, setDetailAlertId] = useState<string | undefined>(undefined);
   const [rollAlert, setRollAlert] = useState<RollAlert | null>(null);
-  const [running, setRunning] = useState(false);
-  const [runProgress, setRunProgress] = useState<string | null>(null);
-  const [runError, setRunError] = useState<string | null>(null);
+  const { jobs, startTradeAlertScan } = useBackgroundJobs();
+  const scanJob = jobs.find((job) => job.id === "trade-alert-scan");
+  const running = scanJob?.status === "running";
 
   const loadAlerts = useCallback(async (): Promise<TradeAlert[] | null> => {
     try {
@@ -121,33 +121,17 @@ export function TradeAlertsPage() {
     loadAlerts().finally(() => setLoading(false));
   }, [loadAlerts]);
 
-  const closeRunStreamRef = useRef<(() => void) | null>(null);
-  useEffect(() => () => closeRunStreamRef.current?.(), []);
-
-  function handleRunAlerts() {
-    setRunning(true);
-    setRunError(null);
-    setRunProgress("Starting scan...");
-
-    closeRunStreamRef.current = openTradeAlertRunStream((event) => {
-      if (event.type === "strategyStart") {
-        const label = event.strategyKey === "covered_call" ? "Covered Calls" : "Cash-Secured Puts";
-        setRunProgress(`Scanning ${event.tickerCount} shortlisted ticker(s) for ${label}...`);
-      } else if (event.type === "ticker") {
-        setRunProgress(`${event.symbol}: ${event.candidateCount} candidate(s) found.`);
-      } else if (event.type === "tickerError") {
-        setRunProgress(`${event.symbol}: scan failed — ${event.message}`);
-      } else if (event.type === "streamError") {
-        setRunError(event.message);
-        setRunning(false);
-        setRunProgress(null);
-      } else if (event.type === "done") {
-        setRunning(false);
-        setRunProgress(null);
-        loadAlerts();
-      }
-    });
-  }
+  // While this page is open, pull in each ticker/roll result as soon as it's
+  // persisted (see runTradeAlertGeneration.ts — the DB row lands before the
+  // event fires) instead of waiting for the whole scan to finish. The scan
+  // itself and its toast live in BackgroundJobsContext, so this keeps
+  // running (and the toast keeps updating) even if the user navigates away
+  // and back.
+  useJobEvents("trade-alert-scan", (event) => {
+    if (event.type === "tickerAlertsReady" || event.type === "done" || (event.type === "rollCandidate" && event.triggered)) {
+      loadAlerts();
+    }
+  });
 
   async function handleRefresh(id: string) {
     setRefreshingId(id);
@@ -214,7 +198,7 @@ export function TradeAlertsPage() {
             type="button"
             className="btn btn-outline-primary d-inline-flex align-items-center gap-1"
             disabled={running}
-            onClick={handleRunAlerts}
+            onClick={startTradeAlertScan}
           >
             {running && <Spinner size="sm" />}
             Run Alerts Now
@@ -225,8 +209,6 @@ export function TradeAlertsPage() {
       {error && <div className="alert alert-danger">{error}</div>}
       {refreshError && <div className="alert alert-danger">{refreshError}</div>}
       {tickerRefreshError && <div className="alert alert-danger">{tickerRefreshError}</div>}
-      {runError && <div className="alert alert-danger">{runError}</div>}
-      {running && runProgress && <div className="alert alert-info">{runProgress}</div>}
 
       <div className="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
         <ul className="nav nav-tabs mb-0">

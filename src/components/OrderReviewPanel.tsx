@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import { Spinner } from "./Spinner";
 import { ApiError } from "../api/client";
-import { cancelOrder, confirmOrder, fetchOrder, openOrderLegQuoteStream, type OrderLegQuote, type OrderRequest } from "../api/positions";
+import { useBackgroundJobs, type OrderJob } from "../contexts/BackgroundJobsContext";
+import { cancelOrder, confirmOrder, openOrderLegQuoteStream, type OrderLegQuote, type OrderRequest } from "../api/positions";
 import { fetchAccountValue, fetchAvailableCash } from "../api/dashboard";
 import type { StrategyKey } from "../api/screener";
 import {
@@ -25,7 +26,6 @@ interface OrderReviewPanelProps {
   onFilled: () => void;
 }
 
-const pollIntervalMs = 2_000;
 const terminalStatuses = new Set(["filled", "partially_filled", "cancelled", "rejected", "error"]);
 
 function legDescription(leg: OrderRequest["payload"]["legs"][number]): string {
@@ -66,7 +66,16 @@ function statusLabel(status: OrderRequest["status"]): string {
  * nothing is sent to IBKR until the user clicks Confirm here.
  */
 export function OrderReviewPanel({ order: initialOrder, onCancelled, onFilled }: OrderReviewPanelProps) {
-  const [order, setOrder] = useState(initialOrder);
+  const { jobs, startOrderJob } = useBackgroundJobs();
+  // Once confirmed or cancel-requested, status polling is owned by
+  // BackgroundJobsContext (startOrderJob below) rather than a local
+  // setTimeout chain, so it keeps running -- and the toast keeps updating --
+  // even if this panel/modal closes. `localOrder` only matters before that
+  // handoff (the pending_confirmation phase, before Confirm/Cancel is ever
+  // clicked); once a job exists for this order id, its polled snapshot wins.
+  const [localOrder, setLocalOrder] = useState(initialOrder);
+  const job = jobs.find((candidate): candidate is OrderJob => candidate.kind === "order" && candidate.id === localOrder.id);
+  const order = job?.order ?? localOrder;
   const [confirming, setConfirming] = useState(false);
   const [cancelling, setCancelling] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -74,13 +83,19 @@ export function OrderReviewPanel({ order: initialOrder, onCancelled, onFilled }:
   const [quoteStreamError, setQuoteStreamError] = useState<string | null>(null);
   const [totalAccountValue, setTotalAccountValue] = useState<number | null>(null);
   const [availableCashToTrade, setAvailableCashToTrade] = useState<number | null>(null);
-  const pollTimerRef = useRef<number | null>(null);
+  const notifiedFilledRef = useRef(false);
 
+  // Mirrors the old schedulePoll's onFilled short-circuit, just fed by the
+  // context's polling instead of a local one -- fires once, the instant the
+  // shared job's order flips to a filled state, guarded so a re-render at an
+  // already-terminal status doesn't call onFilled twice.
   useEffect(() => {
-    return () => {
-      if (pollTimerRef.current) window.clearTimeout(pollTimerRef.current);
-    };
-  }, []);
+    if ((order.status === "filled" || order.status === "partially_filled") && !notifiedFilledRef.current) {
+      notifiedFilledRef.current = true;
+      onFilled();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [order.status]);
 
   // So Capital at Risk (below) can show what % of the account this order
   // would commit, before the user confirms — approved 2026-08-25 so this
@@ -162,29 +177,13 @@ export function OrderReviewPanel({ order: initialOrder, onCancelled, onFilled }:
         })
       : null;
 
-  function schedulePoll(orderId: string) {
-    pollTimerRef.current = window.setTimeout(async () => {
-      try {
-        const updated = await fetchOrder(orderId);
-        setOrder(updated);
-        if (updated.status === "filled" || updated.status === "partially_filled") {
-          onFilled();
-          return;
-        }
-        if (!terminalStatuses.has(updated.status)) schedulePoll(orderId);
-      } catch {
-        schedulePoll(orderId);
-      }
-    }, pollIntervalMs);
-  }
-
   async function handleConfirm() {
     setConfirming(true);
     setError(null);
     try {
-      const confirmed = await confirmOrder(order.id);
-      setOrder(confirmed);
-      schedulePoll(confirmed.id);
+      const confirmed = await confirmOrder(localOrder.id);
+      setLocalOrder(confirmed);
+      startOrderJob(confirmed);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Failed to confirm order.");
     } finally {
@@ -196,14 +195,14 @@ export function OrderReviewPanel({ order: initialOrder, onCancelled, onFilled }:
     setCancelling(true);
     setError(null);
     try {
-      const updated = await cancelOrder(order.id);
-      setOrder(updated);
+      const updated = await cancelOrder(localOrder.id);
+      setLocalOrder(updated);
       if (updated.status === "cancelled") {
         onCancelled();
       } else {
         // "cancel_requested" — order was already at IBKR, so cancellation
         // isn't final until the worker's cancelOrder() call is confirmed.
-        schedulePoll(updated.id);
+        startOrderJob(updated);
       }
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Failed to cancel order.");
@@ -333,7 +332,9 @@ export function OrderReviewPanel({ order: initialOrder, onCancelled, onFilled }:
         <div className="d-flex flex-column gap-1" style={{ fontSize: "0.8rem" }}>
           <div className="d-flex justify-content-between">
             <span className="text-secondary">Available cash to trade</span>
-            <span className="font-mono fw-semibold">{formatCurrency(availableCashToTrade)}</span>
+            <span className="font-mono fw-semibold">
+              {availableCashToTrade !== null ? formatCurrency(availableCashToTrade) : <Spinner size="sm" label="Loading available cash" />}
+            </span>
           </div>
           <div className="d-flex justify-content-between">
             <span className="text-secondary">Cash required</span>
@@ -342,7 +343,7 @@ export function OrderReviewPanel({ order: initialOrder, onCancelled, onFilled }:
           <div className="d-flex justify-content-between">
             <span className="text-secondary">Cash after this trade</span>
             <span className="font-mono fw-semibold">
-              {availableCashToTrade !== null ? formatCurrency(availableCashToTrade - capitalAtRisk) : "—"}
+              {availableCashToTrade !== null ? formatCurrency(availableCashToTrade - capitalAtRisk) : <Spinner size="sm" label="Loading available cash" />}
             </span>
           </div>
         </div>
