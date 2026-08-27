@@ -379,3 +379,23 @@
   color: #000;
   font-weight: 700;
 }
+
+/* Ticker Detail modal: a small inset + rounded corners instead of true
+   edge-to-edge full-bleed, so the backdrop stays visible and it reads as a
+   modal rather than a full-page view (Marcelo, 2026-08-27). Combined-class
+   selectors (rather than !important) beat Bootstrap's plain .modal-dialog
+   rules on specificity regardless of cascade order. */
+.modal-dialog.modal-dialog-inset {
+  position: fixed;
+  inset: 12px;
+  width: auto;
+  max-width: none;
+  margin: 0;
+}
+.modal-dialog.modal-dialog-inset.modal-dialog-scrollable {
+  height: auto;
+}
+.modal-dialog-inset .modal-content {
+  height: 100%;
+  max-height: 100%;
+}

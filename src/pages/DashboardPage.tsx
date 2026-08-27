@@ -4,7 +4,7 @@ import { Spinner } from "../components/Spinner";
 import { ApexChart } from "../components/charts/ApexChart";
 import { useTheme } from "../contexts/ThemeContext";
 import { ApiError } from "../api/client";
-import { fetchDashboardSummary, fetchPnlHistory, type DashboardSummary, type PnlHistoryPoint } from "../api/dashboard";
+import { fetchAvailableCash, fetchDashboardSummary, fetchPnlHistory, type AvailableCash, type DashboardSummary, type PnlHistoryPoint } from "../api/dashboard";
 import { fetchExposure, type ConcentrationRow, type ExposureData, type StrategyAllocationRow, type TopPositionRow } from "../api/riskLimits";
 import { formatCurrency, formatDate, formatPercentage, formatSignedPnl, pnlTextClass } from "../lib/formatters";
 
@@ -154,11 +154,25 @@ export function DashboardPage() {
   const [exposureLoading, setExposureLoading] = useState(true);
   const [exposureError, setExposureError] = useState<string | null>(null);
 
+  const [cash, setCash] = useState<AvailableCash | null>(null);
+  const [cashLoading, setCashLoading] = useState(true);
+  const [cashError, setCashError] = useState<string | null>(null);
+
   useEffect(() => {
     fetchDashboardSummary()
       .then(setSummary)
       .catch((err) => setSummaryError(err instanceof ApiError ? err.message : "Failed to load dashboard summary."))
       .finally(() => setSummaryLoading(false));
+  }, []);
+
+  // Live IBKR round trip (approved 2026-08-27, see fetchAvailableCash) --
+  // same figure shown on Order Review, here as a plain breakdown rather than
+  // netted against a specific pending order's capital requirement.
+  useEffect(() => {
+    fetchAvailableCash()
+      .then(setCash)
+      .catch((err) => setCashError(err instanceof ApiError ? err.message : "Failed to load available cash."))
+      .finally(() => setCashLoading(false));
   }, []);
 
   useEffect(() => {
@@ -230,6 +244,38 @@ export function DashboardPage() {
                     <div className={`fw-bold ${pnlTextClass(Number(summary.cumulativeUnrealizedPnl))}`}>
                       {formatSignedPnl(Number(summary.cumulativeUnrealizedPnl))}
                     </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+
+          <div className="card mb-3">
+            <div className="card-body">
+              <h3 className="card-title" style={{ fontSize: "1rem" }}>
+                Cash
+              </h3>
+              {cashError && <div className="alert alert-danger mb-0">{cashError}</div>}
+              {!cashError && cashLoading && <Spinner size="sm" label="Loading cash" />}
+              {!cashError && !cashLoading && (
+                <div className="row">
+                  <div className="col-12 col-sm-4">
+                    <div className="text-muted" style={{ fontSize: "0.75rem" }}>
+                      Total Cash
+                    </div>
+                    <div className="fw-bold font-mono">{formatCurrency(cash?.totalCashValue ?? null)}</div>
+                  </div>
+                  <div className="col-12 col-sm-4">
+                    <div className="text-muted" style={{ fontSize: "0.75rem" }}>
+                      Cash Locked in CSPs
+                    </div>
+                    <div className="fw-bold font-mono">{formatCurrency(cash?.cashLockedInCsps ?? null)}</div>
+                  </div>
+                  <div className="col-12 col-sm-4">
+                    <div className="text-muted" style={{ fontSize: "0.75rem" }}>
+                      Available Cash to Trade
+                    </div>
+                    <div className="fw-bold font-mono">{formatCurrency(cash?.availableCashToTrade ?? null)}</div>
                   </div>
                 </div>
               )}

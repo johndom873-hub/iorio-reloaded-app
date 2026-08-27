@@ -1,4 +1,4 @@
-import { apiRequest } from "./client";
+import { apiRequest, apiBaseUrl } from "./client";
 import type { StrategyKey } from "./screener";
 
 export type PositionStatus = "open" | "closed";
@@ -175,6 +175,11 @@ export function fetchOrder(orderId: string): Promise<OrderRequest> {
   return apiRequest<OrderRequest>(`/positions/orders/${orderId}`);
 }
 
+export interface OrderLegQuoteCompliance {
+  compliant: boolean;
+  reason: string | null;
+}
+
 export interface OrderLegQuote {
   expiry: string;
   strike: number;
@@ -187,10 +192,45 @@ export interface OrderLegQuote {
   gamma: number | null;
   vega: number | null;
   theta: number | null;
+  // Non-null only for opening orders (see streamOrderLegQuote.ts on the
+  // backend) -- Close/Roll orders get a live quote but no compliance gate.
+  compliance: OrderLegQuoteCompliance | null;
 }
 
-export function fetchOrderLegQuote(orderId: string): Promise<OrderLegQuote> {
-  return apiRequest<OrderLegQuote>(`/positions/orders/${orderId}/quote`);
+export type OrderLegQuoteStreamEvent =
+  | { type: "quote"; data: OrderLegQuote }
+  | { type: "streamError"; message: string }
+  | { type: "done" };
+
+/**
+ * Order Review panel's live bid/ask/Greeks/compliance for a not-yet-confirmed
+ * order's option leg (approved 2026-08-27, replacing a one-shot fetch — see
+ * PROGRESS.md). Same EventSource/close-on-terminal-event shape as
+ * openTickerDetailStream/openPositionQuoteStream in api/tickerDetail.ts: no
+ * auto-reconnect on drop, a lost connection surfaces as a streamError instead
+ * of silently retrying, so the panel can fail closed rather than showing
+ * stale data as if it were still live.
+ */
+export function openOrderLegQuoteStream(orderId: string, onEvent: (event: OrderLegQuoteStreamEvent) => void): () => void {
+  const source = new EventSource(`${apiBaseUrl}/positions/orders/${orderId}/quote/stream`, { withCredentials: true });
+
+  source.onmessage = (message) => {
+    let event: OrderLegQuoteStreamEvent;
+    try {
+      event = JSON.parse(message.data);
+    } catch {
+      return;
+    }
+    onEvent(event);
+    if (event.type === "done" || event.type === "streamError") source.close();
+  };
+
+  source.onerror = () => {
+    onEvent({ type: "streamError", message: "Connection to the server was lost." });
+    source.close();
+  };
+
+  return () => source.close();
 }
 
 export interface Greeks {

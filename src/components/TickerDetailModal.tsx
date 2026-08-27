@@ -13,8 +13,8 @@ import { fetchTradeAlerts, isRollAlert, type NewTradeCandidate, type TradeAlert 
 import { buildOpenOrder, type OrderRequest } from "../api/positions";
 import { ApiError } from "../api/client";
 import type { StrategyKey } from "../api/screener";
-import { computeAnnualizedYield } from "../lib/payoff";
-import { formatCurrency, formatCurrencyTrimmed, formatNumber, formatPercentage, ibkrExpiryToIsoDate } from "../lib/formatters";
+import { computeAnnualizedYield, computePayoff, type PayoffLegInput } from "../lib/payoff";
+import { formatCurrency, formatCurrencyTrimmed, formatNumber, formatPercentage, formatSignedPnl, ibkrExpiryToIsoDate } from "../lib/formatters";
 
 interface TickerDetailModalProps {
   symbol: string;
@@ -127,7 +127,13 @@ function liveAlertMetrics(
   const liveQuote = findQuoteForAlert(alert, optionChain);
   const group = expiryGroups.find((g) => g.expiry === alert.suggestedStructure.expiry.replaceAll("-", ""));
   const dte = group ? group.daysToExpiry : alert.suggestedStructure.dte;
-  const premium = liveQuote ? midPrice(liveQuote) : alert.suggestedStructure.premium;
+  // (liveQuote ? midPrice(liveQuote) : ...) only fell back when the chain
+  // hadn't matched a quote at all -- a matched quote with no live bid/ask/last
+  // right now (e.g. outside market hours) made midPrice() return null and
+  // this table show "-" instead of falling back the same way `delta` below
+  // already does (found 2026-08-27, same table showing "-" for premium/yield
+  // while a matching "Alert" badge quote clearly existed in the chain).
+  const premium = (liveQuote ? midPrice(liveQuote) : null) ?? alert.suggestedStructure.premium;
   const delta = liveQuote?.delta ?? alert.suggestedStructure.delta;
   const yieldValue =
     spotPrice !== null
@@ -162,22 +168,13 @@ function SpotPriceMarkerRow({
   afterColSpan?: number;
   priceCellClassName: string;
 }) {
-  const label = <span className="text-secondary">current price</span>;
   return (
     <tr className="bg-azure-lt">
-      {beforeColSpan > 0 && (
-        <td colSpan={beforeColSpan} className="text-end py-1" style={{ fontSize: "0.72rem" }}>
-          {label}
-        </td>
-      )}
+      {beforeColSpan > 0 && <td colSpan={beforeColSpan} className="py-1" style={{ fontSize: "0.72rem" }} />}
       <td className={`${priceCellClassName} py-1`} style={{ fontSize: "0.72rem" }}>
         {formatCurrency(spotPrice)}
       </td>
-      {afterColSpan > 0 && (
-        <td colSpan={afterColSpan} className="py-1" style={{ fontSize: "0.72rem" }}>
-          {beforeColSpan === 0 && label}
-        </td>
-      )}
+      {afterColSpan > 0 && <td colSpan={afterColSpan} className="py-1" style={{ fontSize: "0.72rem" }} />}
     </tr>
   );
 }
@@ -386,7 +383,7 @@ export function TickerDetailModal({ symbol, onClose, initialAlertId }: TickerDet
       const spotPrice = overview?.pricing.last ?? overview?.pricing.previousClose ?? selectedAlert.suggestedStructure.spotPrice;
       const liveQuote = findQuoteForAlert(selectedAlert, optionChain);
       const premium = liveQuote ? midPrice(liveQuote) : selectedAlert.suggestedStructure.premium;
-      if (premium === null) throw new Error("No live price available for this contract yet — try again in a moment.");
+      if (premium === null) throw new Error("No live price available for this contract yet — try again when the market is open.");
 
       const order = await buildOpenOrder({
         symbol,
@@ -420,7 +417,12 @@ export function TickerDetailModal({ symbol, onClose, initialAlertId }: TickerDet
   const spotPriceMarkerIndex = activeGroup ? findSpotPriceMarkerIndex(activeGroup.strikes, spotPrice) : null;
 
   const liveQuoteForSelected = selectedAlert ? findQuoteForAlert(selectedAlert, optionChain) : null;
-  const selectedPremium = liveQuoteForSelected ? midPrice(liveQuoteForSelected) : (selectedAlert?.suggestedStructure.premium ?? null);
+  // Same fallback fix as liveAlertMetrics above: a matched quote with no live
+  // price right now shouldn't stop this preview from showing the alert's own
+  // last-known premium (order-build time still requires a genuinely live
+  // price -- see handleReviewOrder's own separate `premium`/error below,
+  // deliberately not given this same fallback).
+  const selectedPremium = (liveQuoteForSelected ? midPrice(liveQuoteForSelected) : null) ?? selectedAlert?.suggestedStructure.premium ?? null;
   const selectedDelta = liveQuoteForSelected?.delta ?? selectedAlert?.suggestedStructure.delta ?? null;
   const selectedDte = activeGroup?.expiry === selectedAlert?.suggestedStructure.expiry.replaceAll("-", "")
     ? activeGroup?.daysToExpiry
@@ -434,6 +436,39 @@ export function TickerDetailModal({ symbol, onClose, initialAlertId }: TickerDet
           spotPrice,
         })
       : selectedAlert?.suggestedStructure.annualizedYield ?? null;
+
+  // Same payoff math as OrderReviewPanel/Trade Alerts (computePayoff, pure
+  // math on entry price/strike, no live data needed) -- built directly from
+  // the selected alert's strike/premium/spot rather than orderLegsToPayoffInput
+  // since there's no OrderRequest yet at this "Order Setup" stage. Scales
+  // with the contracts input so Max Gain/Max Loss/Breakeven reflect what the
+  // user's actually about to build, not a fixed 1-contract preview.
+  const selectedQty = Number(contractQty) || 1;
+  const selectedPayoff =
+    selectedAlert && selectedPremium !== null && spotPrice !== null
+      ? computePayoff(selectedAlert.strategyKey, [
+          ...(selectedAlert.strategyKey === "covered_call"
+            ? [
+                {
+                  legType: "stock",
+                  optionType: null,
+                  entryPrice: String(spotPrice),
+                  strikePrice: null,
+                  quantity: selectedQty * 100,
+                  multiplier: 1,
+                } satisfies PayoffLegInput,
+              ]
+            : []),
+          {
+            legType: "option",
+            optionType: selectedAlert.strategyKey === "covered_call" ? "call" : "put",
+            entryPrice: String(selectedPremium),
+            strikePrice: String(selectedAlert.suggestedStructure.strike),
+            quantity: selectedQty,
+            multiplier: 100,
+          } satisfies PayoffLegInput,
+        ])
+      : null;
 
   // Deliberately two different shapes, not one wrapper around both: once
   // pendingOrder exists, OrderReviewPanel supplies its own "Order Review"
@@ -490,6 +525,23 @@ export function TickerDetailModal({ symbol, onClose, initialAlertId }: TickerDet
               <span className="text-secondary">Annualized Yield</span>
               <span className="fw-semibold font-mono text-success">{formatPercentage(selectedYield)}</span>
             </div>
+            {selectedPayoff && (
+              <>
+                <hr className="my-2" />
+                <div className="d-flex justify-content-between py-1" style={{ fontSize: "0.85rem" }}>
+                  <span className="text-secondary">Max Gain</span>
+                  <span className="fw-semibold font-mono text-success">{formatSignedPnl(selectedPayoff.maxGain, 0)}</span>
+                </div>
+                <div className="d-flex justify-content-between py-1" style={{ fontSize: "0.85rem" }}>
+                  <span className="text-secondary">Max Loss</span>
+                  <span className="fw-semibold font-mono text-danger">{formatSignedPnl(-selectedPayoff.maxLoss, 0)}</span>
+                </div>
+                <div className="d-flex justify-content-between py-1" style={{ fontSize: "0.85rem" }}>
+                  <span className="text-secondary">Breakeven</span>
+                  <span className="fw-semibold font-mono">{formatCurrency(selectedPayoff.breakeven)}</span>
+                </div>
+              </>
+            )}
           </div>
 
           <div>
@@ -537,7 +589,7 @@ export function TickerDetailModal({ symbol, onClose, initialAlertId }: TickerDet
           if (event.target === event.currentTarget) onClose();
         }}
       >
-        <div className="modal-dialog modal-dialog-scrollable modal-fullscreen">
+        <div className="modal-dialog modal-dialog-scrollable modal-dialog-inset">
           <div className="modal-content">
             <div className="modal-header">
               <h5 className="modal-title">
@@ -559,7 +611,7 @@ export function TickerDetailModal({ symbol, onClose, initialAlertId }: TickerDet
                   )}
                   {overview && (
                     <div className="d-flex flex-wrap align-items-baseline gap-3 mb-3 font-mono">
-                      <span className="h2 mb-0">{formatCurrency(pricing?.last ?? null)}</span>
+                      <span className="h2 mb-0">{formatCurrency(spotPrice)}</span>
                       {change != null && (
                         <strong className={change > 0 ? "text-success" : change < 0 ? "text-danger" : "text-secondary"}>
                           {change >= 0 ? "+" : ""}

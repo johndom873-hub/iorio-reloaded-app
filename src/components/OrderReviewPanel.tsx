@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import { Spinner } from "./Spinner";
 import { ApiError } from "../api/client";
-import { cancelOrder, confirmOrder, fetchOrder, fetchOrderLegQuote, type OrderLegQuote, type OrderRequest } from "../api/positions";
-import { fetchAccountValue } from "../api/dashboard";
+import { cancelOrder, confirmOrder, fetchOrder, openOrderLegQuoteStream, type OrderLegQuote, type OrderRequest } from "../api/positions";
+import { fetchAccountValue, fetchAvailableCash } from "../api/dashboard";
 import type { StrategyKey } from "../api/screener";
 import { formatCurrency, formatCurrencyTrimmed, formatDate, formatNumber, formatPercentage, formatPercentageValue, formatSignedPnl, orderRequestStatusBadgeClass } from "../lib/formatters";
 import { computeAnnualizedYield, computeCapitalAtRiskFromOrderLegs, computePayoff, orderLegsToPayoffInput } from "../lib/payoff";
@@ -68,9 +68,9 @@ export function OrderReviewPanel({ order: initialOrder, onCancelled, onFilled }:
   const [cancelling, setCancelling] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [quote, setQuote] = useState<OrderLegQuote | null>(null);
-  const [quoteError, setQuoteError] = useState<string | null>(null);
-  const [quoteLoading, setQuoteLoading] = useState(false);
+  const [quoteStreamError, setQuoteStreamError] = useState<string | null>(null);
   const [totalAccountValue, setTotalAccountValue] = useState<number | null>(null);
+  const [availableCashToTrade, setAvailableCashToTrade] = useState<number | null>(null);
   const pollTimerRef = useRef<number | null>(null);
 
   useEffect(() => {
@@ -88,17 +88,29 @@ export function OrderReviewPanel({ order: initialOrder, onCancelled, onFilled }:
       .catch(() => setTotalAccountValue(null));
   }, []);
 
-  // Fetched once when the panel opens, not continuously polled -- same
-  // on-demand-fetch-once pattern as Positions' Greeks column. Only orders
-  // with an option leg have anything to quote (a lone stock leg never does).
+  // Live (approved 2026-08-27, see fetchAvailableCash) -- shown below the
+  // Live Quote card so "can I afford this" is answered with a genuinely
+  // current cash figure, not last night's snapshot.
+  useEffect(() => {
+    fetchAvailableCash()
+      .then((result) => setAvailableCashToTrade(result.availableCashToTrade))
+      .catch(() => setAvailableCashToTrade(null));
+  }, []);
+
+  // Streams for as long as the panel stays open (approved 2026-08-27,
+  // replacing a fetch-once snapshot) -- every tick recomputes Ann. Yield
+  // below and, for an opening order, a live delta-vs-strategy-band
+  // compliance verdict that gates Confirm. Only orders with an option leg
+  // have anything to quote (a lone stock leg never does).
   useEffect(() => {
     if (!order.payload.legs.some((leg) => leg.role === "option")) return;
-    setQuoteLoading(true);
-    fetchOrderLegQuote(order.id)
-      .then(setQuote)
-      .catch((err) => setQuoteError(err instanceof ApiError ? err.message : "Failed to load live quote."))
-      .finally(() => setQuoteLoading(false));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    setQuote(null);
+    setQuoteStreamError(null);
+    const close = openOrderLegQuoteStream(order.id, (event) => {
+      if (event.type === "quote") setQuote(event.data);
+      if (event.type === "streamError") setQuoteStreamError(event.message);
+    });
+    return close;
   }, [order.id]);
 
   // Max gain/loss/breakeven/capital-at-risk only make sense read against an
@@ -113,6 +125,22 @@ export function OrderReviewPanel({ order: initialOrder, onCancelled, onFilled }:
   const optionLeg = order.payload.legs.find((leg) => leg.role === "option");
   const stockLeg = order.payload.legs.find((leg) => leg.role === "stock");
   const dte = optionLeg?.expiry ? daysToExpiry(optionLeg.expiry) : null;
+
+  // Gates Confirm for opening orders only (approved 2026-08-27) -- Close/Roll
+  // orders keep a live quote display but no compliance check, same
+  // isOpeningOrder condition as the payoff/capital-at-risk figures above.
+  // Fails closed: no quote yet, or a lost stream, both count as "not
+  // confirmed compliant" rather than silently letting Confirm through.
+  const complianceGated = Boolean(isOpeningOrder) && Boolean(optionLeg);
+  const complianceBlockReason = !complianceGated
+    ? null
+    : quoteStreamError
+      ? "Live quote feed lost — reopen this order to re-check compliance before confirming."
+      : !quote
+        ? "Waiting for a live quote before this order can be confirmed."
+        : !quote.compliance || quote.compliance.compliant
+          ? null
+          : quote.compliance.reason;
 
   // Recomputed from the live quote (approved 2026-08-27) so this doesn't
   // freeze at the yield shown when the order was first built -- the same
@@ -253,9 +281,9 @@ export function OrderReviewPanel({ order: initialOrder, onCancelled, onFilled }:
           <div className="text-secondary text-uppercase mb-2" style={{ fontSize: "0.68rem", fontWeight: 700, letterSpacing: "0.04em" }}>
             Live Quote
           </div>
-          {quoteLoading && <Spinner size="sm" label="Loading live quote" />}
-          {quoteError && (
-            <span className="text-muted" title={quoteError}>
+          {!quote && !quoteStreamError && <Spinner size="sm" label="Loading live quote" />}
+          {quoteStreamError && (
+            <span className="text-muted" title={quoteStreamError}>
               Live quote unavailable
             </span>
           )}
@@ -292,6 +320,31 @@ export function OrderReviewPanel({ order: initialOrder, onCancelled, onFilled }:
         </div>
       )}
 
+      {/* Cash sufficiency check (approved 2026-08-27) -- opening orders only,
+          same gate as capitalAtRisk above (Close/Roll don't commit new
+          capital the same way). Only "Cash required" gets red -- it's the
+          one row that's always presented as a negative figure; the other two
+          keep their default color regardless of sign. font-mono applies to
+          the number only, not the label, per the approved design. */}
+      {isOpeningOrder && optionLeg && capitalAtRisk !== null && (
+        <div className="d-flex flex-column gap-1" style={{ fontSize: "0.8rem" }}>
+          <div className="d-flex justify-content-between">
+            <span className="text-secondary">Available cash to trade</span>
+            <span className="font-mono fw-semibold">{formatCurrency(availableCashToTrade)}</span>
+          </div>
+          <div className="d-flex justify-content-between">
+            <span className="text-secondary">Cash required</span>
+            <span className="font-mono fw-semibold text-danger">{formatSignedPnl(-capitalAtRisk, 0)}</span>
+          </div>
+          <div className="d-flex justify-content-between">
+            <span className="text-secondary">Cash after this trade</span>
+            <span className="font-mono fw-semibold">
+              {availableCashToTrade !== null ? formatCurrency(availableCashToTrade - capitalAtRisk) : "—"}
+            </span>
+          </div>
+        </div>
+      )}
+
       {/* "Awaiting your confirmation" specifically dropped (2026-08-27) —
           redundant with the visible Confirm/Cancel buttons right below it.
           Every other status still shows the badge here since it's the only
@@ -306,21 +359,29 @@ export function OrderReviewPanel({ order: initialOrder, onCancelled, onFilled }:
       {order.errorMessage && <div className="alert alert-danger mb-0">{order.errorMessage}</div>}
 
       {isPending && (
-        <div className="d-flex gap-2">
-          <button
-            type="button"
-            className="btn btn-primary flex-fill d-inline-flex align-items-center justify-content-center gap-1"
-            disabled={confirming}
-            onClick={handleConfirm}
-          >
-            {confirming && <Spinner size="sm" />}
-            Confirm &amp; Submit to IBKR
-          </button>
-          <button type="button" className="btn btn-outline-secondary" disabled={cancelling} onClick={handleCancel}>
-            {cancelling && <Spinner size="sm" />}
-            Cancel
-          </button>
-        </div>
+        <>
+          <div className="d-flex gap-2">
+            <button
+              type="button"
+              className="btn btn-primary flex-fill d-inline-flex align-items-center justify-content-center gap-1"
+              disabled={confirming || Boolean(complianceBlockReason)}
+              title={complianceBlockReason ?? undefined}
+              onClick={handleConfirm}
+            >
+              {confirming && <Spinner size="sm" />}
+              Confirm &amp; Submit to IBKR
+            </button>
+            <button type="button" className="btn btn-outline-secondary" disabled={cancelling} onClick={handleCancel}>
+              {cancelling && <Spinner size="sm" />}
+              Cancel
+            </button>
+          </div>
+          {complianceBlockReason && (
+            <div className="text-danger" style={{ fontSize: "0.8rem" }} title={complianceBlockReason}>
+              {complianceBlockReason}
+            </div>
+          )}
+        </>
       )}
       {canRequestCancel && (
         <button type="button" className="btn btn-outline-secondary" disabled={cancelling} onClick={handleCancel}>

@@ -48,3 +48,15 @@ export interface AccountValue {
 export function fetchAccountValue(): Promise<AccountValue> {
   return apiRequest<AccountValue>("/dashboard/account-value");
 }
+
+export interface AvailableCash {
+  totalCashValue: number | null;
+  cashLockedInCsps: number;
+  availableCashToTrade: number | null;
+}
+
+// Live IBKR round trip (see the route's own comment) -- used by Order Review
+// (can this specific order be afforded right now) and the Dashboard.
+export function fetchAvailableCash(): Promise<AvailableCash> {
+  return apiRequest<AvailableCash>("/dashboard/available-cash");
+}
