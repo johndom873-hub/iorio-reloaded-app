@@ -303,7 +303,7 @@ function EventRow({ event }: { event: PositionEvent }) {
           {strategyLabel}
         </span>
       </td>
-      <td style={{ fontSize: "0.8rem" }}>
+      <td className="text-nowrap" style={{ fontSize: "0.8rem" }}>
         {description}
         {event.eventType === "unstructured" && event.unstructuredReason && (
           <div className="text-muted" style={{ fontSize: "0.75rem" }}>
