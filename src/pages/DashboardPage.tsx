@@ -186,7 +186,7 @@ function TopStat({ label, value, loading, valueClassName, tooltip }: TopStatProp
           <div className="text-muted mb-1 d-flex align-items-center" style={{ fontSize: "0.75rem", lineHeight: 1 }}>
             {label}
             {tooltip && (
-              <span style={{ margin: "-10px" }}>
+              <span style={{ marginTop: "-10px", marginRight: "-10px", marginBottom: "-10px", marginLeft: "-6px" }}>
                 <HelpTooltip text={tooltip} />
               </span>
             )}
