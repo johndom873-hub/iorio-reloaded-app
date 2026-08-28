@@ -1,7 +1,9 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { NavLink, Outlet } from "react-router-dom";
 import {
   IconChartCandle,
+  IconChevronLeft,
+  IconChevronRight,
   IconClipboardList,
   IconHeartRateMonitor,
   IconLayoutDashboard,
@@ -41,6 +43,17 @@ const SIDEBAR_ROW_INSET_PX = 16;
 const NAV_ICON_WIDTH_PX = 20;
 const NAV_ICON_LABEL_GAP_PX = 8;
 
+// Persisted per-browser (not per-user — see CLAUDE.md's localStorage-only
+// personalization rule): "retractable" is the icon rail that expands on
+// hover (the original/default behavior), "fixed" pins it open at the
+// expanded width all the time.
+const SIDEBAR_MODE_STORAGE_KEY = "iorio-sidebar-mode";
+type SidebarMode = "retractable" | "fixed";
+
+function readStoredSidebarMode(): SidebarMode {
+  return localStorage.getItem(SIDEBAR_MODE_STORAGE_KEY) === "fixed" ? "fixed" : "retractable";
+}
+
 function BrandMark() {
   // The full icon+wordmark lockup, not reconstructed from a live web
   // font — the brand pack (public/brand/) only ships it as a flat
@@ -57,6 +70,15 @@ export function AppLayout() {
   const { logout } = useAuth();
   const { theme, toggleTheme } = useTheme();
   const navTitleRefs = useRef<(HTMLSpanElement | null)[]>([]);
+  const [sidebarMode, setSidebarMode] = useState<SidebarMode>(readStoredSidebarMode);
+
+  const toggleSidebarMode = () => {
+    setSidebarMode((current) => {
+      const next = current === "fixed" ? "retractable" : "fixed";
+      localStorage.setItem(SIDEBAR_MODE_STORAGE_KEY, next);
+      return next;
+    });
+  };
 
   useEffect(() => {
     const measureAndApply = () => {
@@ -83,7 +105,9 @@ export function AppLayout() {
 
   return (
     <div className="page">
-      <aside className="navbar navbar-vertical navbar-expand-lg navbar-dark iorio-sidebar">
+      <aside
+        className={`navbar navbar-vertical navbar-expand-lg navbar-dark iorio-sidebar${sidebarMode === "fixed" ? " iorio-sidebar-fixed" : ""}`}
+      >
         <div className="container-fluid">
           <div className="d-flex align-items-center gap-2 iorio-sidebar-brand-row d-lg-none">
             <button
@@ -136,6 +160,14 @@ export function AppLayout() {
             </ul>
           </div>
         </div>
+        <button
+          type="button"
+          className="iorio-sidebar-pin-toggle d-none d-lg-flex"
+          title={sidebarMode === "fixed" ? "Unpin sidebar (collapse on hover-away)" : "Pin sidebar open"}
+          onClick={toggleSidebarMode}
+        >
+          {sidebarMode === "fixed" ? <IconChevronRight size={14} /> : <IconChevronLeft size={14} />}
+        </button>
       </aside>
 
       <header className="navbar navbar-expand-md navbar-dark d-print-none d-none d-lg-flex iorio-topbar">

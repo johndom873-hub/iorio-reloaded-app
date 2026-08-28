@@ -287,6 +287,69 @@
   .iorio-sidebar:hover .nav-link-icon {
     margin-right: 0.5rem;
   }
+
+  /* "Fixed" mode (user-toggled, persisted in localStorage — see
+     AppLayout.tsx's sidebarMode/pin button): pins the rail open at the
+     expanded width permanently instead of collapsing to icons and
+     expanding on hover. Selectors mirror the collapsed/hover rules
+     above at equal specificity, so they're placed after them here to
+     win the cascade on ties rather than relying on !important. */
+  .navbar-vertical.navbar-expand-lg.iorio-sidebar.iorio-sidebar-fixed {
+    width: var(--iorio-sidebar-expanded-width, 13rem);
+  }
+
+  .navbar-vertical.navbar-expand-lg.iorio-sidebar.iorio-sidebar-fixed ~ .page-wrapper {
+    margin-left: var(--iorio-sidebar-expanded-width, 13rem);
+  }
+
+  .iorio-sidebar.iorio-sidebar-fixed .nav-link-title {
+    opacity: 1;
+    width: auto;
+  }
+
+  .iorio-sidebar.iorio-sidebar-fixed .nav-link-icon {
+    margin-right: 0.5rem;
+  }
+
+  /* Pin/unpin toggle: lives on the rail itself rather than the top bar,
+     vertically centered on the right edge. Hidden while collapsed —
+     there's no room for it next to a bare icon column, and it would sit
+     awkwardly off-center from the (icon-only) nav rows — and revealed
+     once the rail is actually expanded, whether that's from hovering
+     (retractable mode) or permanently (fixed mode). Sits inside the
+     rail rather than straddling its edge because .iorio-sidebar clips
+     overflow for the width transition; straddling would get clipped
+     mid-animation. */
+  .iorio-sidebar-pin-toggle {
+    position: absolute;
+    top: 50%;
+    right: 0.5rem;
+    transform: translateY(-50%);
+    width: 1.5rem;
+    height: 1.5rem;
+    padding: 0;
+    border: none;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.08);
+    color: rgba(255, 255, 255, 0.7);
+    align-items: center;
+    justify-content: center;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 100ms ease, background-color 100ms ease, color 100ms ease;
+    z-index: 5;
+  }
+
+  .iorio-sidebar-pin-toggle:hover {
+    background: rgba(255, 255, 255, 0.16);
+    color: #fff;
+  }
+
+  .iorio-sidebar:hover .iorio-sidebar-pin-toggle,
+  .iorio-sidebar.iorio-sidebar-fixed .iorio-sidebar-pin-toggle {
+    opacity: 1;
+    pointer-events: auto;
+  }
 }
 
 /* Global UI/UX standard: all badges use 0.72rem regardless of context. */
