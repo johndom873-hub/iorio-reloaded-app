@@ -110,13 +110,25 @@ export function daysToExpiry(expiryIsoDate: string): number {
   return Math.round((new Date(expiryIsoDate).getTime() - Date.now()) / 86_400_000);
 }
 
+// Platform-wide convention (approved 2026-08-28): every plain expiry date
+// shown anywhere always carries its DTE alongside it, so "when does this
+// expire" and "how soon" are never split across a hover/lookup. Takes an
+// ISO "YYYY-MM-DD" date — callers holding IBKR's "YYYYMMDD" format convert
+// via ibkrExpiryToIsoDate first. Not used where a relative label
+// ("in 7d") already stands in for the date itself (e.g. Positions'
+// Expiry column) — the DTE would just repeat what "in 7d" already says.
+export function formatExpiryWithDte(expiryIsoDate: string | null | undefined): string {
+  if (!expiryIsoDate) return "—";
+  return `${formatDate(expiryIsoDate)} (${daysToExpiry(expiryIsoDate)} DTE)`;
+}
+
 // Pairs with daysToExpiry for the "(in X days)" label shown next to an
 // expiry date across the app (Positions table, Order Review, Trade Alerts).
 export function formatDaysToExpiry(days: number): string {
   if (days < 0) return "expired";
   if (days === 0) return "today";
   if (days === 1) return "tomorrow";
-  return `in ${days} days`;
+  return `in ${days}d`;
 }
 
 // Whole calendar days between an ISO "YYYY-MM-DD"/timestamp and now, for a
@@ -134,7 +146,7 @@ export function daysAgo(dateInput: string | Date): number {
 export function formatDaysAgo(days: number): string {
   if (days <= 0) return "today";
   if (days === 1) return "yesterday";
-  return `${days} days ago`;
+  return `${days}d ago`;
 }
 
 // Finer-grained sibling of formatDaysAgo — "x minutes/hours ago" within the
@@ -182,10 +194,10 @@ export function formatRelativeTime(dateInput: string | Date | null | undefined):
 
   const diffMinutes = Math.round(diffMs / 60_000);
   if (diffMinutes < 1) return "just now";
-  if (diffMinutes < 60) return `${diffMinutes} minute${diffMinutes === 1 ? "" : "s"} ago`;
+  if (diffMinutes < 60) return `${diffMinutes}m ago`;
 
   const diffHours = Math.round(diffMinutes / 60);
-  return `${diffHours} hour${diffHours === 1 ? "" : "s"} ago`;
+  return `${diffHours}h ago`;
 }
 
 export function formatDuration(

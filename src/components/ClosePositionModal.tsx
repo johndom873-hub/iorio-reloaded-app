@@ -3,7 +3,7 @@ import { Spinner } from "./Spinner";
 import { OrderReviewPanel } from "./OrderReviewPanel";
 import { ApiError } from "../api/client";
 import { buildCloseOrder, type OrderRequest, type Position } from "../api/positions";
-import { formatCurrencyTrimmed, formatDate } from "../lib/formatters";
+import { formatCurrencyTrimmed, formatExpiryWithDte } from "../lib/formatters";
 
 interface ClosePositionModalProps {
   position: Position;
@@ -110,7 +110,7 @@ export function ClosePositionModal({ position, onClose, onClosed }: ClosePositio
                       </div>
                       <div>
                         {optionLeg.quantity}x {optionLeg.strikePrice ? formatCurrencyTrimmed(Number(optionLeg.strikePrice)) : "—"}
-                        {rightLabel} exp {formatDate(optionLeg.expiryDate)}
+                        {rightLabel} exp {formatExpiryWithDte(optionLeg.expiryDate)}
                       </div>
                     </div>
                     {stockLeg && (

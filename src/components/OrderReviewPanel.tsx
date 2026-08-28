@@ -9,7 +9,7 @@ import {
   daysToExpiry,
   formatCurrency,
   formatCurrencyTrimmed,
-  formatDate,
+  formatExpiryWithDte,
   formatNumber,
   formatPercentage,
   formatPercentageValue,
@@ -32,7 +32,7 @@ function legDescription(leg: OrderRequest["payload"]["legs"][number]): string {
   if (leg.role === "stock") return `${leg.action} ${leg.quantity} sh @ ${formatCurrency(leg.unitPrice)}`;
   const right = leg.right === "C" ? "Call" : "Put";
   const expiryIsoDate = leg.expiry ? (leg.expiry.length === 8 ? ibkrExpiryToIsoDate(leg.expiry) : leg.expiry) : null;
-  const expiryLabel = expiryIsoDate ? `${formatDate(expiryIsoDate)} (${daysToExpiry(expiryIsoDate)} DTE)` : "—";
+  const expiryLabel = formatExpiryWithDte(expiryIsoDate);
   return `${leg.action} ${leg.quantity}x ${leg.strike ? formatCurrencyTrimmed(leg.strike) : "—"} ${right} exp ${expiryLabel} @ ${formatCurrency(leg.unitPrice)}`;
 }
 

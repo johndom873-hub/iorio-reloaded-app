@@ -18,7 +18,16 @@ import {
 } from "../api/positions";
 import { fetchTickerChart } from "../api/tickerDetail";
 import { computePayoff } from "../lib/payoff";
-import { formatCurrency, formatCurrencyTrimmed, formatDate, formatNumber, formatPercentageValue, formatSignedPnl, pnlBadgeClass } from "../lib/formatters";
+import {
+  formatCurrency,
+  formatCurrencyTrimmed,
+  formatDate,
+  formatExpiryWithDte,
+  formatNumber,
+  formatPercentageValue,
+  formatSignedPnl,
+  pnlBadgeClass,
+} from "../lib/formatters";
 import { positionPnlAsOfDate, positionTotalPnl, positionTotalPnlPercent, strategyBadgeClass, strategyLabel } from "../lib/positionPnl";
 
 interface PositionDetailModalProps {
@@ -285,7 +294,7 @@ export function PositionDetailModal({ positionId, onClose, onChanged }: Position
                             <td>{leg.side}</td>
                             <td className="text-end">{leg.quantity}</td>
                             <td className="text-end">{leg.strikePrice ? formatCurrencyTrimmed(Number(leg.strikePrice)) : "—"}</td>
-                            <td>{leg.expiryDate ? formatDate(leg.expiryDate) : "—"}</td>
+                            <td>{formatExpiryWithDte(leg.expiryDate)}</td>
                             <td className="text-end">{formatCurrency(Number(leg.entryPrice))}</td>
                             <td className="text-end">
                               {leg.legType === "option" ? (

@@ -175,7 +175,7 @@ export function RollPositionModal({ alert, onClose, onRolled }: RollPositionModa
                         Contract
                       </div>
                       <div>
-                        {formatCurrencyTrimmed(closeLeg.strike)} {rightLabel} exp {formatDate(closeLeg.expiry)}
+                        {formatCurrencyTrimmed(closeLeg.strike)} {rightLabel} exp {formatDate(closeLeg.expiry)} ({dte} DTE)
                       </div>
                     </div>
                     <div className="col-6">

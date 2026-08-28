@@ -24,8 +24,8 @@ import {
 import { fetchExposure, type ConcentrationRow, type ExposureData, type StrategyAllocationRow, type TopPositionRow } from "../api/riskLimits";
 import {
   formatCurrency,
-  formatDate,
   formatDateTime,
+  formatExpiryWithDte,
   formatPercentage,
   formatRelativeDate,
   formatSignedPercentageValue,
@@ -259,7 +259,7 @@ function formatLegDescription(leg: PositionEvent["legs"][number], showExitPrice:
   if (leg.legType === "stock") return `${sideLabel} ${leg.quantity} sh ${priceLabel}`;
   const strikeLabel = leg.strikePrice !== null ? `$${leg.strikePrice}` : "—";
   const rightLabel = leg.optionType === "call" ? "C" : "P";
-  const expiryLabel = leg.expiryDate ? `, exp ${formatDate(leg.expiryDate)}` : "";
+  const expiryLabel = leg.expiryDate ? `, exp ${formatExpiryWithDte(leg.expiryDate)}` : "";
   return `${sideLabel} ${leg.quantity}x ${strikeLabel}${rightLabel}${expiryLabel} ${priceLabel}`;
 }
 
@@ -293,7 +293,7 @@ function EventRow({ event }: { event: PositionEvent }) {
       <td className="text-nowrap" title={formatDateTime(event.eventAt)}>
         {formatRelativeDate(event.eventAt)}
       </td>
-      <td className="text-nowrap text-muted">{event.attributedTo ?? "—"}</td>
+      <td className="text-nowrap">{event.attributedTo ?? "—"}</td>
       <td className="text-nowrap fw-bold">{event.symbol}</td>
       <td className="text-nowrap">
         <span className={`badge ${statusBadgeClass} me-1`} style={{ fontSize: "0.72rem" }}>
@@ -312,6 +312,9 @@ function EventRow({ event }: { event: PositionEvent }) {
         )}
       </td>
       <td className="text-end font-mono">{value === null ? "—" : formatCurrency(value, 0)}</td>
+      <td className={`text-end font-mono ${event.realizedPnl === null ? "" : pnlTextClass(event.realizedPnl)}`}>
+        {event.realizedPnl === null ? "—" : formatSignedPnl(event.realizedPnl, 0)}
+      </td>
     </tr>
   );
 }
@@ -456,6 +459,7 @@ export function DashboardPage() {
                   <th>Event</th>
                   <th>Description</th>
                   <th className="text-end">Value</th>
+                  <th className="text-end">P&L</th>
                 </tr>
               </thead>
               <tbody>
@@ -470,7 +474,7 @@ export function DashboardPage() {
 
       <div className="row g-3 mb-3">
         <div className="col-12 col-lg-8">
-          <CollapsibleCard title="P&L">
+          <CollapsibleCard title="P&L by Period">
             {periodPnlError && <div className="alert alert-danger mb-0">{periodPnlError}</div>}
             {!periodPnlError && periodPnlLoading && <Spinner size="sm" label="Loading P&L" />}
             {!periodPnlError && !periodPnlLoading && periodPnl && (
@@ -502,51 +506,67 @@ export function DashboardPage() {
           <CollapsibleCard title="P&L by Strategy">
             {summaryLoading ? (
               <Spinner size="sm" label="Loading breakdown" />
-            ) : !summary?.strategyBreakdown.length ? (
-              <div className="text-muted">No open positions with a snapshotted P&L yet.</div>
+            ) : !summary ? (
+              <div className="text-muted">No data yet.</div>
             ) : (
-              <div className="table-responsive">
-                <table className="table table-vcenter mb-0">
-                  <thead className="table-light">
-                    <tr>
-                      <th>Strategy</th>
-                      <th className="text-end">Realized</th>
-                      <th className="text-end">Unrealized</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {summary.strategyBreakdown
-                      .filter((row) => row.strategyKey !== "unallocated")
-                      .map((row) => (
-                        <tr key={row.strategyKey}>
-                          <td>{strategyLabels[row.strategyKey] ?? row.strategyKey}</td>
-                          <td className={`text-end font-mono ${pnlTextClass(Number(row.realizedPnl))}`}>
-                            {formatSignedPnl(Number(row.realizedPnl), 0)}
-                          </td>
-                          <td className={`text-end font-mono ${pnlTextClass(Number(row.unrealizedPnl))}`}>
-                            {formatSignedPnl(Number(row.unrealizedPnl), 0)}
-                          </td>
+              (() => {
+                // Fixed rows (matching P&L by Period's convention) rather
+                // than only rendering whatever strategy_key happens to have
+                // a row today — Unstructured otherwise disappears from this
+                // table entirely whenever no unstructured position is open.
+                const knownRows = (["covered_call", "cash_secured_put", "unstructured"] as const).map((strategyKey) => {
+                  const found = summary.strategyBreakdown.find((row) => row.strategyKey === strategyKey);
+                  return {
+                    strategyKey,
+                    realizedPnl: found ? Number(found.realizedPnl) : 0,
+                    unrealizedPnl: found ? Number(found.unrealizedPnl) : 0,
+                  };
+                });
+                const cumulativeRealized = summary.cumulativeRealizedPnl ? Number(summary.cumulativeRealizedPnl) : 0;
+                const cumulativeUnrealized = summary.cumulativeUnrealizedPnl ? Number(summary.cumulativeUnrealizedPnl) : 0;
+                const knownTotal = summary.strategyBreakdown
+                  .filter((row) => row.strategyKey !== "unallocated")
+                  .reduce((sum, row) => sum + Number(row.realizedPnl ?? 0) + Number(row.unrealizedPnl ?? 0), 0);
+                const residual = cumulativeRealized + cumulativeUnrealized - knownTotal;
+
+                return (
+                  <div className="table-responsive">
+                    <table className="table table-vcenter mb-0">
+                      <thead className="table-light">
+                        <tr>
+                          <th>Strategy</th>
+                          <th className="text-end">Realized</th>
+                          <th className="text-end">Unrealized</th>
                         </tr>
-                      ))}
-                    {(() => {
-                      const cumulativeRealized = summary.cumulativeRealizedPnl ? Number(summary.cumulativeRealizedPnl) : 0;
-                      const cumulativeUnrealized = summary.cumulativeUnrealizedPnl ? Number(summary.cumulativeUnrealizedPnl) : 0;
-                      const knownTotal = summary.strategyBreakdown
-                        .filter((row) => row.strategyKey !== "unallocated")
-                        .reduce((sum, row) => sum + Number(row.realizedPnl ?? 0) + Number(row.unrealizedPnl ?? 0), 0);
-                      const residual = cumulativeRealized + cumulativeUnrealized - knownTotal;
-                      return (
+                      </thead>
+                      <tbody>
+                        {knownRows.map((row) => (
+                          <tr key={row.strategyKey}>
+                            <td>{strategyLabels[row.strategyKey] ?? row.strategyKey}</td>
+                            <td className={`text-end font-mono ${pnlTextClass(row.realizedPnl)}`}>{formatSignedPnl(row.realizedPnl, 0)}</td>
+                            <td className={`text-end font-mono ${pnlTextClass(row.unrealizedPnl)}`}>{formatSignedPnl(row.unrealizedPnl, 0)}</td>
+                          </tr>
+                        ))}
                         <tr>
                           <td className="fw-bold">Residual</td>
                           <td className={`text-end font-mono fw-bold ${pnlTextClass(residual)}`} colSpan={2}>
                             {formatSignedPnl(residual, 0)}
                           </td>
                         </tr>
-                      );
-                    })()}
-                  </tbody>
-                </table>
-              </div>
+                        <tr>
+                          <td className="fw-bold">Total</td>
+                          <td className={`text-end font-mono fw-bold ${pnlTextClass(cumulativeRealized)}`}>
+                            {formatSignedPnl(cumulativeRealized, 0)}
+                          </td>
+                          <td className={`text-end font-mono fw-bold ${pnlTextClass(cumulativeUnrealized)}`}>
+                            {formatSignedPnl(cumulativeUnrealized, 0)}
+                          </td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
+                );
+              })()
             )}
           </CollapsibleCard>
         </div>

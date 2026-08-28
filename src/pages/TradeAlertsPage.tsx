@@ -359,10 +359,10 @@ export function TradeAlertsPage() {
                                   <StrategyBadge strategyKey={alert.strategyKey} />
                                   <div className="fw-bold mt-1 font-mono">
                                     {formatCurrencyTrimmed(s.strike)}
-                                    {s.right === "call" ? "C" : "P"} · {formatDate(s.expiry)}
+                                    {s.right === "call" ? "C" : "P"} · {formatDate(s.expiry)} ({s.dte} DTE)
                                   </div>
                                   <div className="text-secondary font-mono" style={{ fontSize: "0.75rem" }}>
-                                    Δ {formatNumber(s.delta, 2)} · Prem {formatCurrency(s.premium)} · {s.dte} DTE
+                                    Δ {formatNumber(s.delta, 2)} · Prem {formatCurrency(s.premium)}
                                   </div>
                                 </div>
                                 <span className="badge badge-change-pos font-mono text-nowrap">{formatPercentage(s.annualizedYield)}</span>
@@ -412,7 +412,7 @@ export function TradeAlertsPage() {
                               <tr key={alert.id} title={alert.rationale ?? undefined}>
                                 <td>
                                   {formatCurrencyTrimmed(closeLeg.strike)}
-                                  {rightLabel} exp {formatDate(closeLeg.expiry)}
+                                  {rightLabel} exp {formatDate(closeLeg.expiry)} ({dte} DTE)
                                 </td>
                                 <td>
                                   {stillTriggered === false ? (

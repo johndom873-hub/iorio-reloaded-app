@@ -69,6 +69,23 @@
      --tblr-border-color above rather than another low-alpha rgba, for
      the same visibility and so every bordered surface reads consistently. */
   --tblr-border-color-translucent: #45566e;
+  /* Root cause of the long-standing "cards look flat in dark mode"
+     complaint (raised repeatedly, never fixed at the source before
+     2026-08-28): Tabler's own dark theme sets --tblr-bg-surface (what
+     .card/.modal-content/.dropdown-menu paint their fill with) to the
+     exact same #1f2937 as --tblr-body-bg above — zero color contrast
+     between "inside" and "outside" a card, unlike light mode where the
+     card is white against an off-white #f9fafb page. The border fix
+     above helps but was never going to be enough on its own without this.
+     Lightened one step in the same navy-gray family so cards read as a
+     distinct raised surface, matching light mode's fill contrast. */
+  --tblr-bg-surface: #2a3648;
+  /* Tabler's default --tblr-shadow-card is a 4%-opacity highlight derived
+     from --tblr-body-color (near-white) — meant to catch light on a pale
+     background; on a dark background it's imperceptible. A real dark
+     shadow instead, for the same "raised surface" depth light mode gets
+     from its shadow + fill contrast combined. */
+  --tblr-shadow-card: 0 2px 8px rgba(0, 0, 0, 0.35);
 }
 
 /* Tabler's default inactive .nav-tabs .nav-link color is a low-contrast
