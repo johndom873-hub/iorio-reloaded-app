@@ -48,6 +48,7 @@ export interface TradeAlert {
   rationale: string | null;
   status: TradeAlertStatus;
   reviewedAt: string | null;
+  reviewedByDisplayName: string | null;
   resultingPositionId: string | null;
   createdAt: string;
   lastRefreshedAt: string | null;

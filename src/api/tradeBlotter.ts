@@ -44,6 +44,8 @@ export interface PendingOrder {
   strike: number | null;
   expiry: string | null; // YYYY-MM-DD
   optionType: "C" | "P" | null;
+  requestedByDisplayName: string | null;
+  cancelledByDisplayName: string | null;
 }
 
 export interface TradeBlotterFilters {

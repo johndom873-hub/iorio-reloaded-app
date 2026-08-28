@@ -68,6 +68,7 @@ function StatusCell({ alert }: { alert: TradeAlert }) {
       <span className={`badge ${statusBadgeClass[alert.status]}`}>{statusLabel[alert.status]}</span>
       {alert.reviewedAt && (
         <div className="text-secondary" style={{ fontSize: "0.7rem" }}>
+          {alert.reviewedByDisplayName ? `${alert.reviewedByDisplayName} — ` : ""}
           {formatDateTime(alert.reviewedAt)}
         </div>
       )}

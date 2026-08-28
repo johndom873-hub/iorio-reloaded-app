@@ -13,7 +13,7 @@ import {
   type StrategySettingsInput,
 } from "../api/riskLimits";
 import type { StrategyKey } from "../api/screener";
-import { formatCurrency, formatPercentage, formatPercentageValue } from "../lib/formatters";
+import { formatCurrency, formatDateTime, formatPercentage, formatPercentageValue, formatRelativeTime } from "../lib/formatters";
 
 const strategyTabs: { key: StrategyKey; label: string }[] = [
   { key: "covered_call", label: "Covered Calls" },
@@ -303,9 +303,19 @@ export function RiskLimitsPage() {
             <>
               {saveError && <div className="alert alert-danger">{saveError}</div>}
 
-              <p className="text-muted mb-3" style={{ fontSize: "0.85rem" }}>
+              <p className="text-muted mb-1" style={{ fontSize: "0.85rem" }}>
                 {strategyDescriptions[strategy]}
               </p>
+              {(() => {
+                const current = allSettings.find((row) => row.strategyKey === strategy);
+                if (!current?.updatedByDisplayName) return null;
+                const relative = formatRelativeTime(current.updatedAt);
+                return (
+                  <p className="text-secondary mb-3" style={{ fontSize: "0.72rem" }}>
+                    Last updated by {current.updatedByDisplayName}, {relative ?? formatDateTime(current.updatedAt)}
+                  </p>
+                );
+              })()}
 
               <div className="row g-3">
                 <NumberField

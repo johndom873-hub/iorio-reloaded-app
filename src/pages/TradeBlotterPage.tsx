@@ -182,6 +182,27 @@ export function TradeBlotterPage() {
       },
     },
     {
+      key: "requestedBy",
+      header: "Requested by",
+      // Only meaningful for a still-open order_requests row — a filled
+      // Trade has no stored link back to the order that placed it (trades
+      // are matched to position_legs, not order_requests), so there's
+      // nothing to show once it's actually filled.
+      render: (row) => {
+        if (row.kind !== "order") return "—";
+        return (
+          <div>
+            <div>{row.requestedByDisplayName ?? "—"}</div>
+            {row.cancelledByDisplayName && (
+              <div className="text-secondary" style={{ fontSize: "0.72rem" }}>
+                Cancelled by {row.cancelledByDisplayName}
+              </div>
+            )}
+          </div>
+        );
+      },
+    },
+    {
       key: "ibkrState",
       header: "IBKR State",
       render: (row) => {

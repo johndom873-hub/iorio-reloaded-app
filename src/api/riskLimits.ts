@@ -14,6 +14,7 @@ export interface StrategySettings {
   maxConcentrationPerSectorPct: string;
   minCashReservePct: string;
   updatedAt: string;
+  updatedByDisplayName: string | null;
 }
 
 // Backend columns are snake_case; this app's convention elsewhere is
@@ -33,6 +34,7 @@ function mapSettingsRow(row: Record<string, unknown>): StrategySettings {
     maxConcentrationPerSectorPct: row.max_concentration_per_sector_pct as string,
     minCashReservePct: row.min_cash_reserve_pct as string,
     updatedAt: row.updated_at as string,
+    updatedByDisplayName: (row.updated_by_display_name as string | null) ?? null,
   };
 }
 
