@@ -262,7 +262,12 @@ export function RiskLimitsPage() {
                 />
                 <ConcentrationList
                   title="Concentration by Sector"
-                  rows={exposure?.concentrationBySector ?? []}
+                  // Unallocated (cash) dropped from this list per request —
+                  // every other row's % stays computed against
+                  // totalAccountValue regardless (see ConcentrationList's
+                  // fraction calc below), so removing it doesn't inflate
+                  // the remaining sectors' percentages.
+                  rows={(exposure?.concentrationBySector ?? []).filter((row) => row.sector !== "Unallocated")}
                   labelKey="sector"
                   totalAccountValue={exposure?.totalAccountValue ?? null}
                   limitPct={formState ? Number(formState.maxConcentrationPerSectorPct) : null}

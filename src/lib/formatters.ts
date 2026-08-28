@@ -55,7 +55,7 @@ export function jobRunStatusBadgeClass(
 }
 
 export function jobRunStatusLabel(status: JobRunStatus, details?: Record<string, unknown> | null): string {
-  if (status === "success" && jobRunHasProblems(details)) return "success — issues found";
+  if (status === "success" && jobRunHasProblems(details)) return "issues found";
   return status;
 }
 

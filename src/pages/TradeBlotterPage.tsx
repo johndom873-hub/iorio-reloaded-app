@@ -12,7 +12,7 @@ import {
   formatCurrencyTrimmed,
   formatDateTime,
   formatNumber,
-  formatRelativeTime,
+  formatRelativeDate,
   formatSignedPnl,
   orderRequestStatusBadgeClass,
   orderRequestStatusLabel,
@@ -106,16 +106,10 @@ export function TradeBlotterPage() {
       header: "Date",
       render: (row) => {
         const timestamp = row.kind === "trade" ? row.executedAt : row.createdAt;
-        const relative = formatRelativeTime(timestamp);
         return (
-          <div>
-            <div>{formatDateTime(timestamp)}</div>
-            {relative && (
-              <div className="text-secondary" style={{ fontSize: "0.72rem" }}>
-                {relative}
-              </div>
-            )}
-          </div>
+          <span className="text-nowrap" title={formatDateTime(timestamp)}>
+            {formatRelativeDate(timestamp)}
+          </span>
         );
       },
     },
@@ -210,11 +204,6 @@ export function TradeBlotterPage() {
         return (
           <div>
             <span className={`badge ${orderRequestStatusBadgeClass(row.status)}`}>{orderRequestStatusLabel(row.status)}</span>
-            {row.ibkrOrderId !== null && (
-              <div className="text-secondary" style={{ fontSize: "0.72rem" }}>
-                IBKR order #{row.ibkrOrderId}
-              </div>
-            )}
             {row.errorMessage && (
               <div className="text-danger" style={{ fontSize: "0.72rem" }}>
                 {row.errorMessage}
@@ -223,6 +212,11 @@ export function TradeBlotterPage() {
           </div>
         );
       },
+    },
+    {
+      key: "ibkrOrderId",
+      header: "ID",
+      render: (row) => (row.kind === "order" && row.ibkrOrderId !== null ? row.ibkrOrderId : "—"),
     },
     {
       key: "actions",
