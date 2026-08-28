@@ -41,7 +41,15 @@ export function DataTable<TRow>({
   return (
     <div className="card">
       <div className="card-body d-flex justify-content-end py-2 border-bottom">
-        <ColumnVisibilityPopover columns={columns} isColumnVisible={isColumnVisible} onToggleColumn={toggleColumn} />
+        {/* A column with no header (e.g. a trailing actions column) has
+            nothing meaningful to label a checkbox with and is never meant
+            to be hidden — exclude it from the toggle list rather than show
+            a blank row (found 2026-08-28). */}
+        <ColumnVisibilityPopover
+          columns={columns.filter((column) => column.header !== "")}
+          isColumnVisible={isColumnVisible}
+          onToggleColumn={toggleColumn}
+        />
       </div>
       <div className="table-responsive">
         <table className="table table-sm table-hover table-vcenter card-table" style={{ fontSize: "0.8125rem" }}>

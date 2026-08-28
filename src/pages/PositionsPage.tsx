@@ -304,7 +304,19 @@ export function PositionsPage() {
         return formatNumber(greeks.gamma, 3);
       },
     },
-    { key: "notes", header: "Notes", render: (row) => row.notes ?? "—" },
+    {
+      key: "notes",
+      header: "Notes",
+      render: (row) => (
+        <button
+          type="button"
+          className="btn btn-link px-2 py-1 text-decoration-none text-body text-start"
+          onClick={() => setDetailPositionId(row.id)}
+        >
+          {row.notes ?? "—"}
+        </button>
+      ),
+    },
     {
       key: "actions",
       header: "",

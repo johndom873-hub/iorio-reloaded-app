@@ -667,7 +667,7 @@ export function TickerDetailModal({ symbol, onClose, initialAlertId }: TickerDet
                   {alertsError && <div className="alert alert-danger">{alertsError}</div>}
                   {alerts !== null && !alertsError && (
                     <div className="mb-4">
-                      <div className="d-flex align-items-center justify-content-between mb-1">
+                      <div className="d-flex align-items-center gap-2 mb-1">
                         <h4 className="mb-0" style={{ fontSize: "0.95rem" }}>
                           Trade Alerts{" "}
                           {relevantAlerts.length > 0 && <span className="text-secondary fw-normal">({relevantAlerts.length})</span>}

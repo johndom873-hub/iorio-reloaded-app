@@ -105,9 +105,16 @@ export function formatDate(dateInput: string | Date | null | undefined): string 
   return new Intl.DateTimeFormat("en-US", { year: "numeric", month: "short", day: "numeric" }).format(date);
 }
 
-// Whole calendar days between now and an ISO "YYYY-MM-DD" expiry date.
-export function daysToExpiry(expiryIsoDate: string): number {
-  return Math.round((new Date(expiryIsoDate).getTime() - Date.now()) / 86_400_000);
+// Whole calendar days between a reference point (default: now) and an ISO
+// "YYYY-MM-DD" expiry date. Pass asOf for a historical DTE — e.g. the
+// Events feed wants "how many days out was this expiry when the position
+// was opened/closed", not a live countdown that goes negative once the
+// expiry's in the past (found 2026-08-28: every historical leg was
+// showing a stale/negative DTE relative to today instead of the DTE that
+// was actually true at the time).
+export function daysToExpiry(expiryIsoDate: string, asOf: string | Date = new Date()): number {
+  const asOfTime = typeof asOf === "string" ? new Date(asOf).getTime() : asOf.getTime();
+  return Math.round((new Date(expiryIsoDate).getTime() - asOfTime) / 86_400_000);
 }
 
 // Platform-wide convention (approved 2026-08-28): every plain expiry date
@@ -117,9 +124,10 @@ export function daysToExpiry(expiryIsoDate: string): number {
 // via ibkrExpiryToIsoDate first. Not used where a relative label
 // ("in 7d") already stands in for the date itself (e.g. Positions'
 // Expiry column) — the DTE would just repeat what "in 7d" already says.
-export function formatExpiryWithDte(expiryIsoDate: string | null | undefined): string {
+// asOf defaults to now; pass it for a historical DTE (see daysToExpiry).
+export function formatExpiryWithDte(expiryIsoDate: string | null | undefined, asOf?: string | Date): string {
   if (!expiryIsoDate) return "—";
-  return `${formatDate(expiryIsoDate)} (${daysToExpiry(expiryIsoDate)} DTE)`;
+  return `${formatDate(expiryIsoDate)} (${daysToExpiry(expiryIsoDate, asOf)} DTE)`;
 }
 
 // Pairs with daysToExpiry for the "(in X days)" label shown next to an

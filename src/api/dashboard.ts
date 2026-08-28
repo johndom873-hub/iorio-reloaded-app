@@ -89,6 +89,7 @@ export interface PositionEvent {
   positionId: string;
   eventType: "opened" | "closed" | "unstructured";
   eventAt: string;
+  openedAt: string;
   symbol: string;
   strategyKey: string;
   closeReason: string | null;

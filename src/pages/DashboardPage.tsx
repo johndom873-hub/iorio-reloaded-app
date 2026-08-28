@@ -253,19 +253,19 @@ const eventStatusBadge: Record<string, string> = {
 // "opened" event must always describe the entry, never the eventual exit
 // (found 2026-08-28: closed positions' "opened" row was showing exit
 // prices instead of what was actually paid/collected at open).
-function formatLegDescription(leg: PositionEvent["legs"][number], showExitPrice: boolean): string {
+function formatLegDescription(leg: PositionEvent["legs"][number], showExitPrice: boolean, dteAsOf: string): string {
   const sideLabel = leg.side === "long" ? "Long" : "Short";
   const priceLabel = showExitPrice && leg.exitPrice !== null ? `exit $${leg.exitPrice.toFixed(2)}` : `@ $${leg.entryPrice.toFixed(2)}`;
   if (leg.legType === "stock") return `${sideLabel} ${leg.quantity} sh ${priceLabel}`;
   const strikeLabel = leg.strikePrice !== null ? `$${leg.strikePrice}` : "—";
   const rightLabel = leg.optionType === "call" ? "C" : "P";
-  const expiryLabel = leg.expiryDate ? `, exp ${formatExpiryWithDte(leg.expiryDate)}` : "";
+  const expiryLabel = leg.expiryDate ? `, exp ${formatExpiryWithDte(leg.expiryDate, dteAsOf)}` : "";
   return `${sideLabel} ${leg.quantity}x ${strikeLabel}${rightLabel}${expiryLabel} ${priceLabel}`;
 }
 
 function EventRow({ event }: { event: PositionEvent }) {
   const strategyLabel = strategyLabels[event.strategyKey] ?? event.strategyKey;
-  const description = event.legs.map((leg) => formatLegDescription(leg, event.eventType === "closed")).join(" / ");
+  const description = event.legs.map((leg) => formatLegDescription(leg, event.eventType === "closed", event.openedAt)).join(" / ");
 
   let statusLabel: string;
   let statusBadgeClass: string;
@@ -449,9 +449,9 @@ export function DashboardPage() {
         ) : events.length === 0 ? (
           <div className="text-muted">No recent activity.</div>
         ) : (
-          <div className="table-responsive">
+          <div className="table-responsive" style={{ maxHeight: "26rem", overflowY: "auto" }}>
             <table className="table table-vcenter mb-0">
-              <thead className="table-light">
+              <thead className="table-light" style={{ position: "sticky", top: 0, zIndex: 1 }}>
                 <tr>
                   <th>Date</th>
                   <th>User</th>
@@ -597,13 +597,23 @@ export function DashboardPage() {
                 title="Top Positions"
                 emptyMessage="No open positions yet."
                 totalAccountValue={exposure?.totalAccountValue ?? null}
-                donutTotalLabel="Top 5"
-                rows={(exposure?.topPositions ?? []).map((row: TopPositionRow) => ({
-                  key: row.positionId,
-                  label: row.symbol,
-                  sublabel: strategyLabels[row.strategyKey] ?? row.strategyKey,
-                  notionalValue: row.notionalValue,
-                }))}
+                rows={(() => {
+                  const topRows = (exposure?.topPositions ?? []).map((row: TopPositionRow) => ({
+                    key: row.positionId,
+                    label: row.symbol,
+                    sublabel: strategyLabels[row.strategyKey] ?? row.strategyKey,
+                    notionalValue: row.notionalValue,
+                  }));
+                  // Rest of the book beyond the top 5, by position count —
+                  // concentrationByTicker sums every open position's
+                  // exposure (unlike topPositions, it isn't pre-truncated),
+                  // so the difference is exactly what's outside the top 5.
+                  const allExposure = (exposure?.concentrationByTicker ?? []).reduce((sum, row) => sum + Number(row.notionalValue), 0);
+                  const topExposure = topRows.reduce((sum, row) => sum + Number(row.notionalValue), 0);
+                  const othersValue = allExposure - topExposure;
+                  if (othersValue <= 0) return topRows;
+                  return [...topRows, { key: "others", label: "Others", notionalValue: String(othersValue), isUnallocated: true }];
+                })()}
               />
               <AllocationList
                 title="By Industry"
