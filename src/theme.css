@@ -58,6 +58,17 @@
      body) and #0f141d (sidebar/topbar navy) while still reading as a
      subtle divider, not a highlight. */
   --tblr-border-color: #45566e;
+  /* This token alone only fixes .nav-tabs/.list-group — .card, .table,
+     and .dropdown-menu don't consume --tblr-border-color at all, they
+     consume this separate translucent token (found 2026-08-28: card
+     borders were still invisible after the fix above). Tabler's own
+     dark default is rgba(72,110,149,0.14) — only 14% alpha, so it reads
+     as basically transparent against #1f2937 (the card and page share
+     that exact background, so a translucent border has nothing but the
+     page color to blend into). Set to the same solid color as
+     --tblr-border-color above rather than another low-alpha rgba, for
+     the same visibility and so every bordered surface reads consistently. */
+  --tblr-border-color-translucent: #45566e;
 }
 
 /* Tabler's default inactive .nav-tabs .nav-link color is a low-contrast
@@ -68,6 +79,16 @@
    color, so a same-specificity override further down the cascade wins. */
 :root[data-bs-theme="dark"] .nav-tabs .nav-link:not(.active) {
   color: #adb5bd;
+}
+
+/* Modals ship with a transparent border by default (--tblr-modal-border-
+   color), relying entirely on box-shadow to read as a distinct surface —
+   that shadow is a near-black rgba tuned for a light backdrop, so on the
+   dark backdrop used here (rgba(0,0,0,0.5), see project_tabler_modal_
+   backdrop_opacity memory) a dark modal panel had no visible edge against
+   it at all. Give it a real border in dark mode instead of a shadow. */
+:root[data-bs-theme="dark"] .modal-content {
+  border: 1px solid var(--tblr-border-color);
 }
 
 /* @fontsource/inter (imported in main.tsx) already registers proper

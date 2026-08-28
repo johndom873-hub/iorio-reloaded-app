@@ -2,16 +2,56 @@ import { useEffect, useState } from "react";
 import { PageHeader } from "../components/layout/PageHeader";
 import { Spinner } from "../components/Spinner";
 import { ApexChart } from "../components/charts/ApexChart";
+import { CollapsibleCard } from "../components/CollapsibleCard";
+import { HelpTooltip } from "../components/HelpTooltip";
 import { useTheme } from "../contexts/ThemeContext";
 import { ApiError } from "../api/client";
-import { fetchAvailableCash, fetchDashboardSummary, fetchPnlHistory, type AvailableCash, type DashboardSummary, type PnlHistoryPoint } from "../api/dashboard";
+import {
+  fetchAvailableCash,
+  fetchDashboardEvents,
+  fetchDashboardSummary,
+  fetchPeriodPnlByStrategy,
+  fetchPnlHistory,
+  fetchPortfolio,
+  type AvailableCash,
+  type DashboardSummary,
+  type PeriodPnlByStrategy,
+  type PnlHistoryPoint,
+  type Portfolio,
+  type PositionEvent,
+  type StrategyPeriodPnlRow,
+} from "../api/dashboard";
 import { fetchExposure, type ConcentrationRow, type ExposureData, type StrategyAllocationRow, type TopPositionRow } from "../api/riskLimits";
-import { formatCurrency, formatDate, formatPercentage, formatSignedPnl, pnlTextClass } from "../lib/formatters";
+import {
+  formatCurrency,
+  formatDate,
+  formatDateTime,
+  formatPercentage,
+  formatRelativeDate,
+  formatSignedPercentageValue,
+  formatSignedPnl,
+  pnlTextClass,
+} from "../lib/formatters";
 
 const strategyLabels: Record<string, string> = {
   covered_call: "Covered Calls",
   cash_secured_put: "Cash-Secured Puts",
+  unstructured: "Unstructured",
   unallocated: "Unallocated (cash)",
+};
+
+const closeReasonLabels: Record<string, string> = {
+  assigned: "assigned",
+  expired_worthless: "expired worthless",
+  closed_via_app: "closed",
+  closed_via_external_trade: "closed outside the app",
+  unknown: "closed (reason unclear)",
+};
+
+const unstructuredReasonLabels: Record<string, string> = {
+  cc_expired_leftover_stock: "covered call expired without assignment, shares remain",
+  csp_assigned_stock: "cash-secured put assigned, shares received",
+  unknown: "cause unclear — flagged for review",
 };
 
 // Fixed-order categorical palette (blue, orange, aqua, yellow, magenta,
@@ -34,6 +74,11 @@ interface AllocationListProps {
   emptyMessage: string;
   totalAccountValue: number | null;
   rows: { key: string; label: string; sublabel?: string; notionalValue: string; isUnallocated?: boolean }[];
+  // Overrides the donut's center label — e.g. "Top 5" for a truncated
+  // list, so its total doesn't read as "the full account total" when it
+  // deliberately isn't (found confusing 2026-08-28: Top Positions and By
+  // Industry showed different totals with no visual explanation why).
+  donutTotalLabel?: string;
 }
 
 // Assigns the fixed-order categorical palette to each real row (skipping
@@ -47,7 +92,7 @@ function allocationColors(rows: AllocationListProps["rows"], theme: "light" | "d
   return rows.map((row) => (row.isUnallocated ? unallocatedGrayByTheme[theme] : categorical[nextSlot++ % categorical.length]));
 }
 
-function AllocationDonut({ rows, colors }: { rows: AllocationListProps["rows"]; colors: string[] }) {
+function AllocationDonut({ rows, colors, totalLabel = "Total" }: { rows: AllocationListProps["rows"]; colors: string[]; totalLabel?: string }) {
   const series = rows.map((row) => Number(row.notionalValue));
   const total = series.reduce((sum, value) => sum + value, 0);
 
@@ -69,7 +114,7 @@ function AllocationDonut({ rows, colors }: { rows: AllocationListProps["rows"]; 
               size: "68%",
               labels: {
                 show: true,
-                total: { show: true, label: "Total", formatter: () => formatCurrency(total, 0) },
+                total: { show: true, label: totalLabel, formatter: () => formatCurrency(total, 0) },
                 value: { formatter: (val: string) => formatCurrency(Number(val), 0) },
               },
             },
@@ -80,7 +125,7 @@ function AllocationDonut({ rows, colors }: { rows: AllocationListProps["rows"]; 
   );
 }
 
-function AllocationList({ title, emptyMessage, totalAccountValue, rows }: AllocationListProps) {
+function AllocationList({ title, emptyMessage, totalAccountValue, rows, donutTotalLabel }: AllocationListProps) {
   const { theme } = useTheme();
   const colors = allocationColors(rows, theme);
   return (
@@ -92,7 +137,7 @@ function AllocationList({ title, emptyMessage, totalAccountValue, rows }: Alloca
         </div>
       ) : (
         <>
-          <AllocationDonut rows={rows} colors={colors} />
+          <AllocationDonut rows={rows} colors={colors} totalLabel={donutTotalLabel} />
           <ul className="list-group list-group-flush">
             {rows.map((row, index) => {
               const fraction = totalAccountValue ? Number(row.notionalValue) / totalAccountValue : null;
@@ -106,7 +151,7 @@ function AllocationList({ title, emptyMessage, totalAccountValue, rows }: Alloca
                     {row.label}
                     {row.sublabel && <span className="text-muted ms-1" style={{ fontSize: "0.72rem" }}>{row.sublabel}</span>}
                   </span>
-                  <span className="text-muted text-nowrap" style={{ fontSize: "0.8rem" }}>
+                  <span className="text-muted text-nowrap font-mono" style={{ fontSize: "0.8rem" }}>
                     {formatCurrency(Number(row.notionalValue), 0)}
                     {fraction !== null && ` (${formatPercentage(fraction)})`}
                   </span>
@@ -120,24 +165,154 @@ function AllocationList({ title, emptyMessage, totalAccountValue, rows }: Alloca
   );
 }
 
-interface PeriodCardProps {
+interface TopStatProps {
   label: string;
-  value: string | null;
+  value: string;
+  loading?: boolean;
+  valueClassName?: string;
+  tooltip?: string;
 }
 
-function PeriodCard({ label, value }: PeriodCardProps) {
-  const numericValue = value === null ? null : Number(value);
+function TopStat({ label, value, loading, valueClassName, tooltip }: TopStatProps) {
   return (
-    <div className="col-12 col-sm-6 col-md-3">
+    <div className="col-12 col-sm-4">
       <div className="card">
         <div className="card-body">
-          <div className="text-muted mb-1" style={{ fontSize: "0.75rem" }}>
+          {/* HelpTooltip's own hit-target padding (10px) is taller than a
+              plain text line, which was making this card noticeably taller
+              than its siblings — the negative margin below cancels the
+              padding's layout contribution without shrinking the actual
+              hoverable target. */}
+          <div className="text-muted mb-1 d-flex align-items-center" style={{ fontSize: "0.75rem", lineHeight: 1 }}>
             {label}
+            {tooltip && (
+              <span style={{ margin: "-10px" }}>
+                <HelpTooltip text={tooltip} />
+              </span>
+            )}
           </div>
-          <div className={`fw-bold ${pnlTextClass(numericValue)}`}>{formatSignedPnl(numericValue)}</div>
+          {loading ? (
+            <Spinner size="sm" label={`Loading ${label}`} />
+          ) : (
+            <div className={`fw-bold font-mono ${valueClassName ?? ""}`} style={{ fontSize: "1.25rem" }}>
+              {value}
+            </div>
+          )}
         </div>
       </div>
     </div>
+  );
+}
+
+function PortfolioTile({ label, value }: { label: string; value: number | null }) {
+  return (
+    <div className="col-6 col-md-3">
+      <div className="text-muted mb-1" style={{ fontSize: "0.75rem" }}>
+        {label}
+      </div>
+      <div className="fw-bold font-mono">{formatCurrency(value, 0)}</div>
+    </div>
+  );
+}
+
+const periodColumns: { key: keyof StrategyPeriodPnlRow; label: string }[] = [
+  { key: "day", label: "Day" },
+  { key: "week", label: "WTD" },
+  { key: "month", label: "MTD" },
+  { key: "year", label: "YTD" },
+];
+
+function PeriodPnlRow({ label, row, bold }: { label: string; row: StrategyPeriodPnlRow; bold?: boolean }) {
+  return (
+    <tr>
+      <td className={bold ? "fw-bold" : undefined}>{label}</td>
+      {periodColumns.map((column) => (
+        <td key={column.key} className={`text-end font-mono ${pnlTextClass(row[column.key])} ${bold ? "fw-bold" : ""}`}>
+          {formatSignedPnl(row[column.key], 0)}
+        </td>
+      ))}
+    </tr>
+  );
+}
+
+// Dark-safe badge classes only — the plain bg-*-lt variants (e.g.
+// bg-blue-lt) have no contrast override in theme.css and render nearly
+// invisible in dark mode; only success/danger/warning-yellow/azure/
+// secondary are covered there, so status badges are restricted to those.
+const eventStatusBadge: Record<string, string> = {
+  opened: "bg-azure-lt",
+  unstructured: "bg-warning-lt",
+  closed_good: "bg-success-lt",
+  closed_flagged: "bg-warning-lt",
+};
+
+// showExitPrice must come from the EVENT's type, not just "does this leg
+// have an exit price" — the same leg row is reused for both an "opened"
+// and a later "closed" event on the same position, and by the time the
+// position has closed, exitPrice is already populated on both. An
+// "opened" event must always describe the entry, never the eventual exit
+// (found 2026-08-28: closed positions' "opened" row was showing exit
+// prices instead of what was actually paid/collected at open).
+function formatLegDescription(leg: PositionEvent["legs"][number], showExitPrice: boolean): string {
+  const sideLabel = leg.side === "long" ? "Long" : "Short";
+  const priceLabel = showExitPrice && leg.exitPrice !== null ? `exit $${leg.exitPrice.toFixed(2)}` : `@ $${leg.entryPrice.toFixed(2)}`;
+  if (leg.legType === "stock") return `${sideLabel} ${leg.quantity} sh ${priceLabel}`;
+  const strikeLabel = leg.strikePrice !== null ? `$${leg.strikePrice}` : "—";
+  const rightLabel = leg.optionType === "call" ? "C" : "P";
+  const expiryLabel = leg.expiryDate ? `, exp ${formatDate(leg.expiryDate)}` : "";
+  return `${sideLabel} ${leg.quantity}x ${strikeLabel}${rightLabel}${expiryLabel} ${priceLabel}`;
+}
+
+function EventRow({ event }: { event: PositionEvent }) {
+  const strategyLabel = strategyLabels[event.strategyKey] ?? event.strategyKey;
+  const description = event.legs.map((leg) => formatLegDescription(leg, event.eventType === "closed")).join(" / ");
+
+  let statusLabel: string;
+  let statusBadgeClass: string;
+  if (event.eventType === "opened") {
+    statusLabel = "Opened";
+    statusBadgeClass = eventStatusBadge.opened;
+  } else if (event.eventType === "unstructured") {
+    statusLabel = "Unstructured";
+    statusBadgeClass = eventStatusBadge.unstructured;
+  } else {
+    statusLabel = closeReasonLabels[event.closeReason ?? ""] ?? event.closeReason ?? "Closed";
+    statusBadgeClass =
+      event.closeReason === "unknown" || event.closeReason === "closed_via_external_trade"
+        ? eventStatusBadge.closed_flagged
+        : eventStatusBadge.closed_good;
+  }
+
+  // Full market value across both legs (same standard as Portfolio/
+  // Allocation) for CC/CSP, priced at entry for an open and exit for a
+  // close — null for unstructured (no clean cash-lock rule to apply).
+  const value = event.fullMarketValue;
+
+  return (
+    <tr>
+      <td className="text-nowrap" title={formatDateTime(event.eventAt)}>
+        {formatRelativeDate(event.eventAt)}
+      </td>
+      <td className="text-nowrap text-muted">{event.attributedTo ?? "—"}</td>
+      <td className="text-nowrap fw-bold">{event.symbol}</td>
+      <td className="text-nowrap">
+        <span className={`badge ${statusBadgeClass} me-1`} style={{ fontSize: "0.72rem" }}>
+          {statusLabel}
+        </span>
+        <span className="badge bg-secondary-lt" style={{ fontSize: "0.72rem" }}>
+          {strategyLabel}
+        </span>
+      </td>
+      <td style={{ fontSize: "0.8rem" }}>
+        {description}
+        {event.eventType === "unstructured" && event.unstructuredReason && (
+          <div className="text-muted" style={{ fontSize: "0.75rem" }}>
+            {unstructuredReasonLabels[event.unstructuredReason] ?? event.unstructuredReason}
+          </div>
+        )}
+      </td>
+      <td className="text-end font-mono">{value === null ? "—" : formatCurrency(value, 0)}</td>
+    </tr>
   );
 }
 
@@ -157,6 +332,18 @@ export function DashboardPage() {
   const [cash, setCash] = useState<AvailableCash | null>(null);
   const [cashLoading, setCashLoading] = useState(true);
   const [cashError, setCashError] = useState<string | null>(null);
+
+  const [portfolio, setPortfolio] = useState<Portfolio | null>(null);
+  const [portfolioLoading, setPortfolioLoading] = useState(true);
+  const [portfolioError, setPortfolioError] = useState<string | null>(null);
+
+  const [periodPnl, setPeriodPnl] = useState<PeriodPnlByStrategy | null>(null);
+  const [periodPnlLoading, setPeriodPnlLoading] = useState(true);
+  const [periodPnlError, setPeriodPnlError] = useState<string | null>(null);
+
+  const [events, setEvents] = useState<PositionEvent[]>([]);
+  const [eventsLoading, setEventsLoading] = useState(true);
+  const [eventsError, setEventsError] = useState<string | null>(null);
 
   useEffect(() => {
     fetchDashboardSummary()
@@ -189,230 +376,275 @@ export function DashboardPage() {
       .finally(() => setHistoryLoading(false));
   }, []);
 
+  useEffect(() => {
+    fetchPortfolio()
+      .then(setPortfolio)
+      .catch((err) => setPortfolioError(err instanceof ApiError ? err.message : "Failed to load portfolio."))
+      .finally(() => setPortfolioLoading(false));
+  }, []);
+
+  useEffect(() => {
+    fetchPeriodPnlByStrategy()
+      .then(setPeriodPnl)
+      .catch((err) => setPeriodPnlError(err instanceof ApiError ? err.message : "Failed to load P&L by strategy."))
+      .finally(() => setPeriodPnlLoading(false));
+  }, []);
+
+  useEffect(() => {
+    fetchDashboardEvents()
+      .then(setEvents)
+      .catch((err) => setEventsError(err instanceof ApiError ? err.message : "Failed to load recent events."))
+      .finally(() => setEventsLoading(false));
+  }, []);
+
+  const sectorRows = (exposure?.concentrationBySector ?? []).filter((row: ConcentrationRow) => row.sector !== "Unallocated");
+
   return (
     <>
       <PageHeader title="Dashboard" subtitle="Aggregate P&L across all strategies" />
 
       {summaryError && <div className="alert alert-danger">{summaryError}</div>}
+      {cashError && <div className="alert alert-danger">{cashError}</div>}
 
-      {summaryLoading ? (
-        <div className="d-flex justify-content-center py-3">
-          <Spinner label="Loading dashboard" />
+      <div className="row g-3 mb-3">
+        <TopStat
+          label="Account Value"
+          loading={summaryLoading}
+          value={formatCurrency(summary?.netLiquidationValue ? Number(summary.netLiquidationValue) : null, 0)}
+        />
+        <TopStat
+          label="Available Cash"
+          loading={cashLoading}
+          value={formatCurrency(cash?.availableCashToTrade ?? null, 0)}
+          tooltip="Total cash minus cash reserved to cover assignment on open cash-secured puts."
+        />
+        <TopStat
+          label="Day P&L"
+          loading={summaryLoading}
+          value={`${formatSignedPnl(summary?.periods.day ? Number(summary.periods.day) : null, 0)} (${formatSignedPercentageValue(summary?.dayPnlPercent ?? null)})`}
+          valueClassName={pnlTextClass(summary?.periods.day ? Number(summary.periods.day) : null)}
+        />
+      </div>
+
+      <CollapsibleCard title="Portfolio" className="mb-3">
+        {portfolioError && <div className="alert alert-danger mb-0">{portfolioError}</div>}
+        {!portfolioError && portfolioLoading && <Spinner size="sm" label="Loading portfolio" />}
+        {!portfolioError && !portfolioLoading && (
+          <div className="row g-3">
+            <PortfolioTile label="Available Cash" value={portfolio?.availableCash ?? null} />
+            <PortfolioTile label="Cash-Secured Puts" value={portfolio?.cashSecuredPuts ?? null} />
+            <PortfolioTile label="Covered Calls" value={portfolio?.coveredCalls ?? null} />
+            <PortfolioTile label="Unstructured" value={portfolio?.unstructured ?? null} />
+          </div>
+        )}
+      </CollapsibleCard>
+
+      <CollapsibleCard title="Latest Events" className="mb-3">
+        {eventsError && <div className="alert alert-danger">{eventsError}</div>}
+        {eventsLoading ? (
+          <Spinner size="sm" label="Loading events" />
+        ) : events.length === 0 ? (
+          <div className="text-muted">No recent activity.</div>
+        ) : (
+          <div className="table-responsive">
+            <table className="table table-vcenter mb-0">
+              <thead className="table-light">
+                <tr>
+                  <th>Date</th>
+                  <th>User</th>
+                  <th>Ticker</th>
+                  <th>Event</th>
+                  <th>Description</th>
+                  <th className="text-end">Value</th>
+                </tr>
+              </thead>
+              <tbody>
+                {events.map((event) => (
+                  <EventRow key={`${event.positionId}-${event.eventType}-${event.eventAt}`} event={event} />
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </CollapsibleCard>
+
+      <div className="row g-3 mb-3">
+        <div className="col-12 col-lg-8">
+          <CollapsibleCard title="P&L">
+            {periodPnlError && <div className="alert alert-danger mb-0">{periodPnlError}</div>}
+            {!periodPnlError && periodPnlLoading && <Spinner size="sm" label="Loading P&L" />}
+            {!periodPnlError && !periodPnlLoading && periodPnl && (
+              <div className="table-responsive">
+                <table className="table table-vcenter mb-0">
+                  <thead className="table-light">
+                    <tr>
+                      <th>Strategy</th>
+                      {periodColumns.map((column) => (
+                        <th key={column.key} className="text-end">
+                          {column.label}
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <PeriodPnlRow label="Covered Calls" row={periodPnl.coveredCalls} />
+                    <PeriodPnlRow label="Cash-Secured Puts" row={periodPnl.cashSecuredPuts} />
+                    <PeriodPnlRow label="Unstructured" row={periodPnl.unstructured} />
+                    <PeriodPnlRow label="Residual" row={periodPnl.residual} />
+                    <PeriodPnlRow label="Total" row={periodPnl.total} bold />
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </CollapsibleCard>
         </div>
-      ) : (
-        <>
-          <div className="row g-3 mb-3">
-            <PeriodCard label="Day" value={summary?.periods.day ?? null} />
-            <PeriodCard label="Week to Date" value={summary?.periods.week ?? null} />
-            <PeriodCard label="Month to Date" value={summary?.periods.month ?? null} />
-            <PeriodCard label="Year to Date" value={summary?.periods.year ?? null} />
-          </div>
-
-          <div className="card mb-3">
-            <div className="card-body">
-              <h3 className="card-title" style={{ fontSize: "1rem" }}>
-                Current State
-                {summary?.asOf && (
-                  <span className="text-muted fw-normal ms-2" style={{ fontSize: "0.75rem" }}>
-                    as of {formatDate(summary.asOf)}
-                  </span>
-                )}
-              </h3>
-
-              {!summary?.asOf ? (
-                <div className="text-muted">No P&L snapshots captured yet.</div>
-              ) : (
-                <div className="row">
-                  <div className="col-12 col-sm-4">
-                    <div className="text-muted" style={{ fontSize: "0.75rem" }}>
-                      Net Liquidation Value
-                    </div>
-                    <div className="fw-bold">{formatCurrency(Number(summary.netLiquidationValue))}</div>
-                  </div>
-                  <div className="col-12 col-sm-4">
-                    <div className="text-muted" style={{ fontSize: "0.75rem" }}>
-                      Realized P&L (cumulative)
-                    </div>
-                    <div className={`fw-bold ${pnlTextClass(Number(summary.cumulativeRealizedPnl))}`}>
-                      {formatSignedPnl(Number(summary.cumulativeRealizedPnl))}
-                    </div>
-                  </div>
-                  <div className="col-12 col-sm-4">
-                    <div className="text-muted" style={{ fontSize: "0.75rem" }}>
-                      Unrealized P&L (cumulative)
-                    </div>
-                    <div className={`fw-bold ${pnlTextClass(Number(summary.cumulativeUnrealizedPnl))}`}>
-                      {formatSignedPnl(Number(summary.cumulativeUnrealizedPnl))}
-                    </div>
-                  </div>
-                </div>
-              )}
-            </div>
-          </div>
-
-          <div className="card mb-3">
-            <div className="card-body">
-              <h3 className="card-title" style={{ fontSize: "1rem" }}>
-                Cash
-              </h3>
-              {cashError && <div className="alert alert-danger mb-0">{cashError}</div>}
-              {!cashError && cashLoading && <Spinner size="sm" label="Loading cash" />}
-              {!cashError && !cashLoading && (
-                <div className="row">
-                  <div className="col-12 col-sm-4">
-                    <div className="text-muted" style={{ fontSize: "0.75rem" }}>
-                      Total Cash
-                    </div>
-                    <div className="fw-bold font-mono">{formatCurrency(cash?.totalCashValue ?? null)}</div>
-                  </div>
-                  <div className="col-12 col-sm-4">
-                    <div className="text-muted" style={{ fontSize: "0.75rem" }}>
-                      Cash Locked in CSPs
-                    </div>
-                    <div className="fw-bold font-mono">{formatCurrency(cash?.cashLockedInCsps ?? null)}</div>
-                  </div>
-                  <div className="col-12 col-sm-4">
-                    <div className="text-muted" style={{ fontSize: "0.75rem" }}>
-                      Available Cash to Trade
-                    </div>
-                    <div className="fw-bold font-mono">{formatCurrency(cash?.availableCashToTrade ?? null)}</div>
-                  </div>
-                </div>
-              )}
-            </div>
-          </div>
-
-          <div className="card mb-3">
-            <div className="card-body">
-              <h3 className="card-title" style={{ fontSize: "1rem" }}>
-                Per-Strategy Breakdown
-              </h3>
-              {!summary?.strategyBreakdown.length ? (
-                <div className="text-muted">No open positions with a snapshotted P&L yet.</div>
-              ) : (
-                <ul className="list-group list-group-flush">
-                  {summary.strategyBreakdown.map((row) => (
-                    <li key={row.strategyKey} className="list-group-item d-flex justify-content-between align-items-center px-0">
-                      <span>{strategyLabels[row.strategyKey] ?? row.strategyKey}</span>
-                      <span>
-                        Realized <span className={pnlTextClass(Number(row.realizedPnl))}>{formatSignedPnl(Number(row.realizedPnl))}</span>
-                        {" "}&middot; Unrealized{" "}
-                        <span className={pnlTextClass(Number(row.unrealizedPnl))}>{formatSignedPnl(Number(row.unrealizedPnl))}</span>
-                      </span>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </div>
-          </div>
-        </>
-      )}
-
-      <div className="card mb-3">
-        <div className="card-body">
-          <h3 className="card-title" style={{ fontSize: "1rem" }}>
-            Allocation
-          </h3>
-
-          {exposureLoading ? (
-            <Spinner size="sm" label="Loading allocation" />
-          ) : (
-            <>
-              {exposureError && <div className="alert alert-danger">{exposureError}</div>}
-              {exposure?.accountDataError && (
-                <div className="alert alert-warning">Live account data unavailable: {exposure.accountDataError}</div>
-              )}
-              <div className="row g-3">
-                <AllocationList
-                  title="By Strategy"
-                  emptyMessage="No open positions yet."
-                  totalAccountValue={exposure?.totalAccountValue ?? null}
-                  rows={(exposure?.strategyAllocation ?? []).map((row: StrategyAllocationRow) => ({
-                    key: row.strategyKey,
-                    label: strategyLabels[row.strategyKey] ?? row.strategyKey,
-                    notionalValue: row.notionalValue,
-                    isUnallocated: row.strategyKey === "unallocated",
-                  }))}
-                />
-                <AllocationList
-                  title="Top Positions"
-                  emptyMessage="No open positions yet."
-                  totalAccountValue={exposure?.totalAccountValue ?? null}
-                  rows={(exposure?.topPositions ?? []).map((row: TopPositionRow) => ({
-                    key: row.positionId,
-                    label: row.symbol,
-                    sublabel: strategyLabels[row.strategyKey] ?? row.strategyKey,
-                    notionalValue: row.notionalValue,
-                  }))}
-                />
-                <AllocationList
-                  title="By Industry"
-                  emptyMessage="No open positions yet."
-                  totalAccountValue={exposure?.totalAccountValue ?? null}
-                  rows={(exposure?.concentrationBySector ?? []).map((row: ConcentrationRow) => ({
-                    key: row.sector ?? "",
-                    label: row.sector ?? "",
-                    notionalValue: row.notionalValue,
-                    isUnallocated: row.sector === "Unallocated",
-                  }))}
-                />
+        <div className="col-12 col-lg-4">
+          <CollapsibleCard title="P&L by Strategy">
+            {summaryLoading ? (
+              <Spinner size="sm" label="Loading breakdown" />
+            ) : !summary?.strategyBreakdown.length ? (
+              <div className="text-muted">No open positions with a snapshotted P&L yet.</div>
+            ) : (
+              <div className="table-responsive">
+                <table className="table table-vcenter mb-0">
+                  <thead className="table-light">
+                    <tr>
+                      <th>Strategy</th>
+                      <th className="text-end">Realized</th>
+                      <th className="text-end">Unrealized</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {summary.strategyBreakdown
+                      .filter((row) => row.strategyKey !== "unallocated")
+                      .map((row) => (
+                        <tr key={row.strategyKey}>
+                          <td>{strategyLabels[row.strategyKey] ?? row.strategyKey}</td>
+                          <td className={`text-end font-mono ${pnlTextClass(Number(row.realizedPnl))}`}>
+                            {formatSignedPnl(Number(row.realizedPnl), 0)}
+                          </td>
+                          <td className={`text-end font-mono ${pnlTextClass(Number(row.unrealizedPnl))}`}>
+                            {formatSignedPnl(Number(row.unrealizedPnl), 0)}
+                          </td>
+                        </tr>
+                      ))}
+                    {(() => {
+                      const cumulativeRealized = summary.cumulativeRealizedPnl ? Number(summary.cumulativeRealizedPnl) : 0;
+                      const cumulativeUnrealized = summary.cumulativeUnrealizedPnl ? Number(summary.cumulativeUnrealizedPnl) : 0;
+                      const knownTotal = summary.strategyBreakdown
+                        .filter((row) => row.strategyKey !== "unallocated")
+                        .reduce((sum, row) => sum + Number(row.realizedPnl ?? 0) + Number(row.unrealizedPnl ?? 0), 0);
+                      const residual = cumulativeRealized + cumulativeUnrealized - knownTotal;
+                      return (
+                        <tr>
+                          <td className="fw-bold">Residual</td>
+                          <td className={`text-end font-mono fw-bold ${pnlTextClass(residual)}`} colSpan={2}>
+                            {formatSignedPnl(residual, 0)}
+                          </td>
+                        </tr>
+                      );
+                    })()}
+                  </tbody>
+                </table>
               </div>
-              <div className="text-muted mt-2" style={{ fontSize: "0.72rem" }}>
-                % of total account value (net liquidation value, including cash). See Risk &amp; Limits for concentration limits.
-              </div>
-            </>
-          )}
+            )}
+          </CollapsibleCard>
         </div>
       </div>
 
-      <div className="card">
-        <div className="card-body">
-          <h3 className="card-title" style={{ fontSize: "1rem" }}>
-            P&L Over Time
-          </h3>
-
-          {historyError && <div className="alert alert-danger">{historyError}</div>}
-
-          {historyLoading ? (
-            <div className="d-flex justify-content-center py-3">
-              <Spinner label="Loading history" />
+      <CollapsibleCard title="Allocation" className="mb-3">
+        {exposureLoading ? (
+          <Spinner size="sm" label="Loading allocation" />
+        ) : (
+          <>
+            {exposureError && <div className="alert alert-danger">{exposureError}</div>}
+            {exposure?.accountDataError && (
+              <div className="alert alert-warning">Live account data unavailable: {exposure.accountDataError}</div>
+            )}
+            <div className="row g-3">
+              <AllocationList
+                title="By Strategy"
+                emptyMessage="No open positions yet."
+                totalAccountValue={exposure?.totalAccountValue ?? null}
+                rows={(exposure?.strategyAllocation ?? []).map((row: StrategyAllocationRow) => ({
+                  key: row.strategyKey,
+                  label: strategyLabels[row.strategyKey] ?? row.strategyKey,
+                  notionalValue: row.notionalValue,
+                  isUnallocated: row.strategyKey === "unallocated",
+                }))}
+              />
+              <AllocationList
+                title="Top Positions"
+                emptyMessage="No open positions yet."
+                totalAccountValue={exposure?.totalAccountValue ?? null}
+                donutTotalLabel="Top 5"
+                rows={(exposure?.topPositions ?? []).map((row: TopPositionRow) => ({
+                  key: row.positionId,
+                  label: row.symbol,
+                  sublabel: strategyLabels[row.strategyKey] ?? row.strategyKey,
+                  notionalValue: row.notionalValue,
+                }))}
+              />
+              <AllocationList
+                title="By Industry"
+                emptyMessage="No open positions yet."
+                totalAccountValue={exposure?.totalAccountValue ?? null}
+                rows={sectorRows.map((row: ConcentrationRow) => ({
+                  key: row.sector ?? "",
+                  label: row.sector ?? "",
+                  notionalValue: row.notionalValue,
+                }))}
+              />
             </div>
-          ) : history.length < 2 ? (
-            <div className="text-muted">Not enough snapshot history yet to chart a trend.</div>
-          ) : (
-            <ApexChart
-              type="area"
-              height={260}
-              series={[
-                {
-                  name: "Daily P&L",
-                  // null (not 0) for a missing snapshot day, so the chart
-                  // shows a gap instead of a misleading flat zero day.
-                  data: history.map((point) => ({
-                    x: point.snapshotDate,
-                    y: point.dailyPnl === null ? null : Number(point.dailyPnl),
-                  })),
-                },
-              ]}
-              options={{
-                xaxis: {
-                  type: "datetime",
-                  tickAmount: Math.min(history.length - 1, 7),
-                  labels: { datetimeUTC: false, format: "dd MMM" },
-                },
-                yaxis: { labels: { formatter: (value: number) => formatCurrency(value) } },
-                tooltip: {
-                  x: { format: "dd MMM yyyy" },
-                  y: { formatter: (value: number) => formatSignedPnl(value) },
-                },
-                dataLabels: { enabled: false },
-                stroke: { curve: "straight", width: 2 },
-                responsive: [{ breakpoint: 768, options: { legend: { position: "bottom" }, chart: { height: 220 } } }],
-              }}
-            />
-          )}
-        </div>
-      </div>
+            <div className="text-muted mt-2" style={{ fontSize: "0.72rem" }}>
+              % of total account value (net liquidation value, including cash). See Risk &amp; Limits for concentration limits.
+            </div>
+          </>
+        )}
+      </CollapsibleCard>
+
+      <CollapsibleCard title="P&L Over Time" className="mb-3">
+        {historyError && <div className="alert alert-danger">{historyError}</div>}
+
+        {historyLoading ? (
+          <div className="d-flex justify-content-center py-3">
+            <Spinner label="Loading history" />
+          </div>
+        ) : history.length < 2 ? (
+          <div className="text-muted">Not enough snapshot history yet to chart a trend.</div>
+        ) : (
+          <ApexChart
+            type="area"
+            height={260}
+            series={[
+              { name: "Covered Calls", data: history.map((point) => ({ x: point.snapshotDate, y: point.coveredCalls })) },
+              { name: "Cash-Secured Puts", data: history.map((point) => ({ x: point.snapshotDate, y: point.cashSecuredPuts })) },
+              { name: "Unstructured", data: history.map((point) => ({ x: point.snapshotDate, y: point.unstructured })) },
+              {
+                name: "Residual",
+                data: history.map((point) => ({ x: point.snapshotDate, y: point.residual === null ? null : point.residual })),
+              },
+            ]}
+            options={{
+              xaxis: {
+                type: "datetime",
+                tickAmount: Math.min(history.length - 1, 7),
+                labels: { datetimeUTC: false, format: "dd MMM" },
+              },
+              yaxis: { labels: { formatter: (value: number) => formatCurrency(value, 0) } },
+              tooltip: {
+                x: { format: "dd MMM yyyy" },
+                y: { formatter: (value: number) => formatSignedPnl(value, 0) },
+              },
+              dataLabels: { enabled: false },
+              stroke: { curve: "straight", width: 2 },
+              legend: { position: "top" },
+              responsive: [{ breakpoint: 768, options: { legend: { position: "bottom" }, chart: { height: 220 } } }],
+            }}
+          />
+        )}
+      </CollapsibleCard>
+
     </>
   );
 }

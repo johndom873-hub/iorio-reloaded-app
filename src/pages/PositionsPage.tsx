@@ -22,6 +22,7 @@ import {
   formatCurrency,
   formatCurrencyTrimmed,
   formatDate,
+  formatDateTime,
   formatDaysAgo,
   formatDaysToExpiry,
   formatNumber,
@@ -244,7 +245,7 @@ export function PositionsPage() {
     {
       key: "openedAt",
       header: "Opened",
-      render: (row) => <span title={formatDate(row.openedAt)}>{formatDaysAgo(daysAgo(row.openedAt))}</span>,
+      render: (row) => <span title={formatDateTime(row.openedAt)}>{formatDaysAgo(daysAgo(row.openedAt))}</span>,
     },
     {
       key: "expiry",

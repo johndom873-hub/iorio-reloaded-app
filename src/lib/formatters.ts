@@ -137,6 +137,18 @@ export function formatDaysAgo(days: number): string {
   return `${days} days ago`;
 }
 
+// Finer-grained sibling of formatDaysAgo — "x minutes/hours ago" within the
+// last 24h (via formatRelativeTime), falling back to the day-level label
+// once it's a full day old or more. Pair with formatDateTime (not
+// formatDate) for the hover tooltip: a "3 hours ago" label needs the exact
+// time on hover, not just the calendar date.
+export function formatRelativeDate(dateInput: string | Date | null | undefined): string {
+  const fineGrained = formatRelativeTime(dateInput);
+  if (fineGrained) return fineGrained;
+  if (!dateInput) return "—";
+  return formatDaysAgo(daysAgo(dateInput));
+}
+
 export function formatDateTime(dateInput: string | Date | null | undefined): string {
   if (!dateInput) return "—";
   const date = typeof dateInput === "string" ? new Date(dateInput) : dateInput;
@@ -198,6 +210,17 @@ export function formatSignedPnl(amountInDollars: number | null | undefined, deci
   const formatted = formatCurrency(Math.abs(amountInDollars), decimalPlaces);
   if (amountInDollars > 0) return `+${formatted}`;
   if (amountInDollars < 0) return `-${formatted}`;
+  return formatted;
+}
+
+// Signed version of formatPercentageValue (0-100 scale, not a 0-1
+// fraction) — e.g. a Day P&L % next to its $ figure.
+export function formatSignedPercentageValue(percentOrNull: number | null | undefined, decimalPlaces = 2): string {
+  if (percentOrNull === null || percentOrNull === undefined) return "—";
+  if (Number.isNaN(percentOrNull)) return "—";
+  const formatted = formatPercentageValue(Math.abs(percentOrNull), decimalPlaces);
+  if (percentOrNull > 0) return `+${formatted}`;
+  if (percentOrNull < 0) return `-${formatted}`;
   return formatted;
 }
 
