@@ -294,7 +294,16 @@ export function PositionDetailModal({ positionId, onClose, onChanged }: Position
                             <td>{leg.side}</td>
                             <td className="text-end">{leg.quantity}</td>
                             <td className="text-end">{leg.strikePrice ? formatCurrencyTrimmed(Number(leg.strikePrice)) : "—"}</td>
-                            <td>{formatExpiryWithDte(leg.expiryDate)}</td>
+                            {/* A closed position is a historical record —
+                                DTE as of "now" would drift/go negative as
+                                time passes (same issue fixed in the
+                                Dashboard's Events feed, 2026-08-28). An
+                                open position's DTE stays live: it's an
+                                actionable decision input (e.g. the Roll
+                                modal's own "≤21 DTE" trigger), so freezing
+                                it at the open date would be wrong, not just
+                                stylistically different. */}
+                            <td>{formatExpiryWithDte(leg.expiryDate, position.status === "closed" ? position.openedAt : undefined)}</td>
                             <td className="text-end">{formatCurrency(Number(leg.entryPrice))}</td>
                             <td className="text-end">
                               {leg.legType === "option" ? (
