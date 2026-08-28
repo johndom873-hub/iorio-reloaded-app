@@ -17,10 +17,12 @@ import {
 import { fetchAccountValue } from "../api/dashboard";
 import type { StrategyKey } from "../api/screener";
 import {
+  daysAgo,
   daysToExpiry,
   formatCurrency,
   formatCurrencyTrimmed,
   formatDate,
+  formatDaysAgo,
   formatDaysToExpiry,
   formatNumber,
   formatPercentageValue,
@@ -217,18 +219,40 @@ export function PositionsPage() {
         return formatPercentageValue((Number(row.capitalAtRisk) / totalAccountValue) * 100, 1);
       },
     },
-    { key: "openedAt", header: "Opened", render: (row) => formatDate(row.openedAt) },
+    {
+      key: "marketValue",
+      header: "MV",
+      headerTitle: "Market value — capital committed to this position plus its unrealized P&L",
+      align: "right",
+      render: (row) => {
+        if (row.capitalAtRisk === null) return "—";
+        const pnl = positionTotalPnl(row, unrealizedPnlByPositionId);
+        if (pnl === "loading") {
+          if (unrealizedPnlFetchFailed) {
+            return (
+              <span className="text-muted" title="Failed to load live P&L data">
+                —
+              </span>
+            );
+          }
+          return <Spinner size="sm" label="Loading market value" />;
+        }
+        if (pnl === null) return "—";
+        return formatCurrency(Number(row.capitalAtRisk) + pnl, 0);
+      },
+    },
+    {
+      key: "openedAt",
+      header: "Opened",
+      render: (row) => <span title={formatDate(row.openedAt)}>{formatDaysAgo(daysAgo(row.openedAt))}</span>,
+    },
     {
       key: "expiry",
       header: "Expiry",
       render: (row) => {
         const expiryDate = positionExpiryDate(row);
         if (!expiryDate) return "—";
-        return (
-          <>
-            {formatDate(expiryDate)} <span className="text-secondary">({formatDaysToExpiry(daysToExpiry(expiryDate))})</span>
-          </>
-        );
+        return <span title={formatDate(expiryDate)}>{formatDaysToExpiry(daysToExpiry(expiryDate))}</span>;
       },
     },
     {

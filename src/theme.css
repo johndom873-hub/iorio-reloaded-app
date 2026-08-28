@@ -51,7 +51,13 @@
      used in light mode (only 3.11:1 on dark navy) — verified. Button
      fills still use --tblr-primary above, unaffected by this. */
   --tblr-link-color: #0ea5e9;
-  --tblr-border-color: rgb(45.7, 60.5, 81.1);
+  /* Tabler's computed dark-mode border (~#2e3d51) sits too close to the
+     #1f2937 body-bg to read as a border at all (card edges, table
+     dividers, nav-tabs underline all disappeared into the background).
+     Lightened until it's clearly visible against both #1f2937 (page
+     body) and #0f141d (sidebar/topbar navy) while still reading as a
+     subtle divider, not a highlight. */
+  --tblr-border-color: #45566e;
 }
 
 /* Tabler's default inactive .nav-tabs .nav-link color is a low-contrast
@@ -357,13 +363,21 @@
   font-size: 0.72rem;
 }
 
-/* Numeric/price columns in trading-terminal-style tables (Ticker Detail's
-   option chain, price header, order review) — Roboto Mono's fixed digit
-   widths read as sturdier, more "financial" than Inter's proportional
-   numerals, and keep decimal points aligned down a column. Not applied
-   app-wide: this is for dense tabular price data specifically, not every
-   number in the UI. */
-.font-mono {
+/* Roboto Mono's fixed digit widths read as sturdier, more "financial" than
+   Inter's proportional numerals, and keep decimal points aligned down a
+   column — the shared numeric treatment for the whole app (approved
+   2026-08-28 to go platform-wide, previously scoped to a few
+   trading-terminal-style tables). Applied via the two conventions every
+   numeric value in the app already follows: DataTable's align:"right"
+   columns (rendered as td.text-end) and the badge-change-pos/neg/flat
+   price-change badges — rather than hand-adding a class at every call
+   site. .font-mono itself stays available for one-off numeric spots that
+   don't fit either convention (e.g. TickerPriceChart's inline labels). */
+.font-mono,
+.table td.text-end,
+.badge-change-pos,
+.badge-change-neg,
+.badge-change-flat {
   font-family: "Roboto Mono", ui-monospace, monospace;
   font-variant-numeric: tabular-nums;
 }

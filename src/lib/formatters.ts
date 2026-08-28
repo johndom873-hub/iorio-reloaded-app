@@ -115,8 +115,26 @@ export function daysToExpiry(expiryIsoDate: string): number {
 export function formatDaysToExpiry(days: number): string {
   if (days < 0) return "expired";
   if (days === 0) return "today";
-  if (days === 1) return "in 1 day";
+  if (days === 1) return "tomorrow";
   return `in ${days} days`;
+}
+
+// Whole calendar days between an ISO "YYYY-MM-DD"/timestamp and now, for a
+// date that's typically in the past (e.g. Positions' Opened column) —
+// mirrors daysToExpiry but the sign convention matches how people talk
+// about a past date ("2 days ago", not "-2 days").
+export function daysAgo(dateInput: string | Date): number {
+  const date = typeof dateInput === "string" ? new Date(dateInput) : dateInput;
+  return Math.round((Date.now() - date.getTime()) / 86_400_000);
+}
+
+// Pairs with daysAgo for the relative label shown in place of a raw date
+// (Positions table's Opened column) — the date itself moves to a hover
+// tooltip instead.
+export function formatDaysAgo(days: number): string {
+  if (days <= 0) return "today";
+  if (days === 1) return "yesterday";
+  return `${days} days ago`;
 }
 
 export function formatDateTime(dateInput: string | Date | null | undefined): string {
