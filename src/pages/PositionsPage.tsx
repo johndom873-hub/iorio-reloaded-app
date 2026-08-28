@@ -280,6 +280,29 @@ export function PositionsPage() {
         return formatNumber(greeks.delta, 2);
       },
     },
+    {
+      key: "gamma",
+      header: "Gamma",
+      headerTitle: "Rate of change of delta per $1 move in the underlying — higher gamma means delta (and assignment risk) can shift faster",
+      align: "right",
+      render: (row) => {
+        const optionLeg = row.legs.find((leg) => leg.legType === "option");
+        if (!optionLeg) return "—";
+        if (row.status === "closed") return "—";
+        const greeks = greeksByLegId[optionLeg.id];
+        if (!greeks) {
+          if (greeksFetchFailed) {
+            return (
+              <span className="text-muted" title="Failed to load gamma">
+                —
+              </span>
+            );
+          }
+          return <Spinner size="sm" label="Loading gamma" />;
+        }
+        return formatNumber(greeks.gamma, 3);
+      },
+    },
     { key: "notes", header: "Notes", render: (row) => row.notes ?? "—" },
     {
       key: "actions",
