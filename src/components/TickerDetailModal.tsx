@@ -585,8 +585,9 @@ export function TickerDetailModal({ symbol, onClose, initialAlertId }: TickerDet
             />
             {selectedAlert.strategyKey === "covered_call" && (
               <div className="text-secondary mt-1 font-mono" style={{ fontSize: "0.78rem" }}>
-                = <strong>{(Number(contractQty) || 0) * 100}</strong> shares to buy ({contractQty || 0} contract
-                {Number(contractQty) === 1 ? "" : "s"} × 100)
+                = <strong>{(Number(contractQty) || 0) * 100}</strong> shares required ({contractQty || 0} contract
+                {Number(contractQty) === 1 ? "" : "s"} × 100) — already-held shares on this symbol are netted out
+                automatically when the order is built
               </div>
             )}
           </div>
