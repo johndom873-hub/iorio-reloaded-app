@@ -27,8 +27,19 @@ import {
   formatPercentageValue,
   formatSignedPnl,
   pnlBadgeClass,
+  pnlTextClass,
 } from "../lib/formatters";
-import { positionPnlAsOfDate, positionTotalPnl, positionTotalPnlPercent, strategyBadgeClass, strategyLabel } from "../lib/positionPnl";
+import {
+  positionHasOptionLeg,
+  positionHasStockLeg,
+  positionPnlAsOfDate,
+  positionPremiumPnl,
+  positionStockPnl,
+  positionTotalPnl,
+  positionTotalPnlPercent,
+  strategyBadgeClass,
+  strategyLabel,
+} from "../lib/positionPnl";
 
 interface PositionDetailModalProps {
   positionId: string;
@@ -263,6 +274,38 @@ export function PositionDetailModal({ positionId, onClose, onChanged }: Position
               </h5>
               <button type="button" className="btn-close" aria-label="Close" onClick={onClose} />
             </div>
+            {position && (positionHasOptionLeg(position) || positionHasStockLeg(position)) && (
+              <div className="px-3 py-2 border-bottom d-flex flex-wrap gap-3 small">
+                {positionHasOptionLeg(position) &&
+                  (() => {
+                    const premiumPnl = positionPremiumPnl(position, unrealizedPnlByPositionId);
+                    return (
+                      <span title="Premium collected vs. current buy-back cost of the option contract(s)">
+                        <span className="text-muted">Premium P&L:</span>{" "}
+                        {premiumPnl === "loading" || premiumPnl === null ? (
+                          <span className="text-muted">—</span>
+                        ) : (
+                          <span className={pnlTextClass(premiumPnl)}>{formatSignedPnl(premiumPnl)}</span>
+                        )}
+                      </span>
+                    );
+                  })()}
+                {positionHasStockLeg(position) &&
+                  (() => {
+                    const stockPnl = positionStockPnl(position, unrealizedPnlByPositionId);
+                    return (
+                      <span title="Stock price movement vs. entry price">
+                        <span className="text-muted">Stock P&L:</span>{" "}
+                        {stockPnl === "loading" || stockPnl === null ? (
+                          <span className="text-muted">—</span>
+                        ) : (
+                          <span className={pnlTextClass(stockPnl)}>{formatSignedPnl(stockPnl)}</span>
+                        )}
+                      </span>
+                    );
+                  })()}
+              </div>
+            )}
             <div className="modal-body">
               {loadError && <div className="alert alert-danger">{loadError}</div>}
               {!loadError && !position && (

@@ -32,7 +32,10 @@ import {
 } from "../lib/formatters";
 import {
   positionExpiryDate,
+  positionHasStockLeg,
   positionPnlAsOfDate,
+  positionPremiumPnl,
+  positionStockPnl,
   positionTotalPnl,
   positionTotalPnlPercent,
   strategyBadgeClass,
@@ -201,6 +204,41 @@ export function PositionsPage() {
             {formatPercentageValue(pct, 2)}
           </span>
         );
+      },
+    },
+    {
+      key: "premiumPnl",
+      header: "Premium P&L",
+      headerTitle: "Premium collected vs. current buy-back cost of the option contract(s) — isolated from any stock price movement",
+      align: "right",
+      render: (row) => {
+        const pnl = positionPremiumPnl(row, unrealizedPnlByPositionId);
+        if (pnl === "loading") return <Spinner size="sm" label="Loading premium P&L" />;
+        if (pnl === null)
+          return (
+            <span className="text-muted" title="No live price or recent snapshot available for this position">
+              —
+            </span>
+          );
+        return <span className={pnlTextClass(pnl)}>{formatSignedPnl(pnl)}</span>;
+      },
+    },
+    {
+      key: "stockPnl",
+      header: "Stock P&L",
+      headerTitle: "Stock price movement vs. entry — positions with a stock leg only (covered calls, and unstructured stock-only positions); a cash-secured put never has one",
+      align: "right",
+      render: (row) => {
+        if (!positionHasStockLeg(row)) return <span className="text-muted">—</span>;
+        const pnl = positionStockPnl(row, unrealizedPnlByPositionId);
+        if (pnl === "loading") return <Spinner size="sm" label="Loading stock P&L" />;
+        if (pnl === null)
+          return (
+            <span className="text-muted" title="No live price or recent snapshot available for this position">
+              —
+            </span>
+          );
+        return <span className={pnlTextClass(pnl)}>{formatSignedPnl(pnl)}</span>;
       },
     },
     {

@@ -12,6 +12,8 @@ export interface NewTradeCandidate {
   dte: number;
   annualizedYield: number;
   spotPrice: number;
+  /** Black-Scholes N(d2) estimate, breakeven-adjusted — pending a manual validation pass against IBKR's own TWS-displayed POP. Null if the quote had no usable IV. */
+  probabilityOfProfit: number | null;
 }
 
 // Kept as an alias — most existing call sites refer to "SuggestedStructure"

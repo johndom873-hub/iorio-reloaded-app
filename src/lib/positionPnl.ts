@@ -14,6 +14,27 @@ export function strategyBadgeClass(strategyKey: PositionStrategyKey): string {
   return strategyKey === "unstructured" ? "bg-warning-lt text-dark" : "bg-azure-lt text-dark";
 }
 
+// Whether Stock P&L is meaningful to show for this position — not just
+// "is it a covered call". An unstructured position can be bare stock (e.g.
+// leftover shares after a covered call's short call expired) with no
+// option leg at all, in which case its *entire* P&L is stock movement and
+// hiding that behind strategyKey === "covered_call" would suppress real,
+// correctly-computed data (bug found 2026-08-30 testing against live
+// data — BMNR/HOOD unstructured positions showed a real loss with Premium
+// P&L $0.00 and Stock P&L wrongly hidden as "—"). CSP never has a stock
+// leg, so this is false for it either way.
+export function positionHasStockLeg(position: Position): boolean {
+  return position.legs.some((leg) => leg.legType === "stock");
+}
+
+// Same reasoning as positionHasStockLeg, for the premium side — an
+// unstructured position can in principle be an orphaned option leg with no
+// stock (e.g. a stray short call), in which case only the premium line is
+// meaningful.
+export function positionHasOptionLeg(position: Position): boolean {
+  return position.legs.some((leg) => leg.legType === "option");
+}
+
 // Total P&L for a position: realized-only for closed positions (no live
 // call needed, computed server-side from stored exit prices); realized (any
 // already-rolled-away leg) + unrealized for open ones. Returns "loading"
@@ -29,6 +50,38 @@ export function positionTotalPnl(
   if (position.status === "closed") return realized;
   if (!(position.id in unrealizedByPositionId)) return "loading";
   const unrealized = unrealizedByPositionId[position.id].unrealizedPnl;
+  if (unrealized === null) return null;
+  return realized + unrealized;
+}
+
+// Premium P/L: the option leg(s) only (current buy-back cost vs. premium
+// collected). Meaningful for both covered calls and CSPs. Returns "loading"/
+// null with the same semantics as positionTotalPnl. See "P/L Split & Roll
+// Intelligence" proposal (2026-08-30, approved) — final total P/L is
+// unchanged, this just exposes one of its two ingredients.
+export function positionPremiumPnl(
+  position: Position,
+  unrealizedByPositionId: Record<string, UnrealizedPnlResult>,
+): number | null | "loading" {
+  const realized = Number(position.realizedPremiumPnl);
+  if (position.status === "closed") return realized;
+  if (!(position.id in unrealizedByPositionId)) return "loading";
+  const unrealized = unrealizedByPositionId[position.id].unrealizedPremiumPnl;
+  if (unrealized === null) return null;
+  return realized + unrealized;
+}
+
+// Stock-movement P/L: the stock leg only. Only meaningful for covered calls
+// — a CSP has no stock leg, so this is always 0 and the caller should hide
+// it rather than display a stray "$0.00".
+export function positionStockPnl(
+  position: Position,
+  unrealizedByPositionId: Record<string, UnrealizedPnlResult>,
+): number | null | "loading" {
+  const realized = Number(position.realizedStockPnl);
+  if (position.status === "closed") return realized;
+  if (!(position.id in unrealizedByPositionId)) return "loading";
+  const unrealized = unrealizedByPositionId[position.id].unrealizedStockPnl;
   if (unrealized === null) return null;
   return realized + unrealized;
 }

@@ -45,6 +45,10 @@ export interface Position {
   legs: PositionLeg[];
   /** Sum of already-exited legs' locked-in gain — nonzero on an open position that's been rolled. */
   realizedPnl: string;
+  /** realizedPnl's option-leg-only component: premium collected vs. bought back. */
+  realizedPremiumPnl: string;
+  /** realizedPnl's stock-leg-only component. Always "0" for CSP (no stock leg). */
+  realizedStockPnl: string;
   /** Entry-time capital committed: stock cost for covered calls, strike collateral for CSPs. Null if unavailable. */
   capitalAtRisk: string | null;
 }
@@ -283,6 +287,12 @@ export function fetchGreeks(legIds: string[]): Promise<Record<string, Greeks>> {
 
 export interface UnrealizedPnlResult {
   unrealizedPnl: number | null;
+  // unrealizedPnl's option-leg-only / stock-leg-only components. Both null
+  // together whenever unrealizedPnl is null, or when it came from the nightly
+  // snapshot fallback (asOfDate set) — that snapshot only stores the blended
+  // whole-position figure, not a per-leg-type split.
+  unrealizedPremiumPnl: number | null;
+  unrealizedStockPnl: number | null;
   // Set only when unrealizedPnl came from the last nightly snapshot instead
   // of a live IBKR quote (outside market hours) — the date that snapshot
   // was captured. null when unrealizedPnl is live, or when neither a live
