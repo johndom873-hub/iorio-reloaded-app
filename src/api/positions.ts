@@ -112,6 +112,8 @@ export interface OrderRequest {
   errorMessage: string | null;
   /** Non-blocking advisory from POST /orders — e.g. leftover uncovered shares beyond what this order uses. Never persisted, transient on the preview response only. */
   note?: string | null;
+  /** Non-blocking economic-calendar advisory (New Position/Roll only, approved 2026-08-31) — Medium/High-importance events between today and expiry. Never persisted, transient on the preview response only. */
+  calendarWarning?: string | null;
   createdAt: string;
   updatedAt: string;
 }

@@ -362,6 +362,7 @@ export function OrderReviewPanel({ order: initialOrder, onCancelled, onFilled }:
       )}
       {order.errorMessage && <div className="alert alert-danger mb-0">{order.errorMessage}</div>}
       {order.note && <div className="alert alert-info mb-0">{order.note}</div>}
+      {order.calendarWarning && <div className="alert alert-warning mb-0">⚠ {order.calendarWarning}</div>}
 
       {isPending && (
         <>
