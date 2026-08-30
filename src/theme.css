@@ -196,6 +196,22 @@
   --tblr-btn-hover-bg: var(--tblr-gray-200);
 }
 
+/* Tabler's own .btn rule (not Bootstrap's) sets a calc()-based min-height
+   -- var(--tblr-btn-line-height) + padding-y*2 + border-width*2, ~40px --
+   as a touch-target guarantee. It reads the *default* --tblr-btn-padding-y
+   variable regardless of a `p-0` utility override on the `padding`
+   property itself, so a "p-0" symbol-link button in a data table (the
+   "btn btn-link p-0" pattern used for every clickable ticker symbol) still
+   forces a 40px-tall row even though it displays with zero padding (found
+   2026-08-31: Calendar's Ticker Events rows were nearly 2x the height of
+   its plain-text Economic Events rows). Scoped to inside tables, where
+   these buttons are inline text standing in for a link, not a real
+   touch-target-sized control. */
+.table-responsive .btn-link.p-0 {
+  min-height: auto;
+  min-width: auto;
+}
+
 :root[data-bs-theme="dark"] .iorio-icon-btn {
   --tblr-btn-hover-bg: var(--tblr-gray-700);
 }

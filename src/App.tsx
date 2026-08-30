@@ -13,6 +13,7 @@ import { PricePerformancePage } from "./pages/PricePerformancePage";
 import { TradeBlotterPage } from "./pages/TradeBlotterPage";
 import { RiskLimitsPage } from "./pages/RiskLimitsPage";
 import { SystemHealthPage } from "./pages/SystemHealthPage";
+import { CalendarEventsPage } from "./pages/CalendarEventsPage";
 
 function App() {
   return (
@@ -32,6 +33,7 @@ function App() {
                   <Route path="/trade-blotter" element={<TradeBlotterPage />} />
                   <Route path="/risk-limits" element={<RiskLimitsPage />} />
                   <Route path="/system-health" element={<SystemHealthPage />} />
+                  <Route path="/calendar" element={<CalendarEventsPage />} />
                 </Route>
               </Route>
             </Routes>

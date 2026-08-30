@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { NavLink, Outlet } from "react-router-dom";
 import {
+  IconCalendarEvent,
   IconChartCandle,
   IconChevronLeft,
   IconChevronRight,
@@ -26,6 +27,7 @@ const navigationItems = [
   { to: "/screener", label: "Screener", icon: IconSearch },
   { to: "/price-performance", label: "Price Performance", icon: IconTrendingUp },
   { to: "/trade-blotter", label: "Trade Blotter", icon: IconReceipt2 },
+  { to: "/calendar", label: "Calendar", icon: IconCalendarEvent },
   { to: "/risk-limits", label: "Risk & Limits", icon: IconShieldCheck },
   { to: "/system-health", label: "System Health", icon: IconHeartRateMonitor },
 ];
