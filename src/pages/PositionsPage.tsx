@@ -4,6 +4,7 @@ import { DataTable, type DataTableColumn } from "../components/DataTable/DataTab
 import { Spinner } from "../components/Spinner";
 import { PositionDetailModal } from "../components/PositionDetailModal";
 import { ClosePositionModal } from "../components/ClosePositionModal";
+import { TickerDetailModal } from "../components/TickerDetailModal";
 import { ApiError } from "../api/client";
 import {
   fetchGreeks,
@@ -80,6 +81,7 @@ export function PositionsPage() {
   const [unrealizedPnlFetchFailed, setUnrealizedPnlFetchFailed] = useState(false);
   const [detailPositionId, setDetailPositionId] = useState<string | null>(null);
   const [closePosition, setClosePosition] = useState<Position | null>(null);
+  const [sellCallSymbol, setSellCallSymbol] = useState<string | null>(null);
 
   const loadPositions = useCallback(async () => {
     try {
@@ -361,13 +363,28 @@ export function PositionsPage() {
       align: "right",
       render: (row) => {
         if (row.status !== "open") return null;
-        const optionLeg = row.legs.find((leg) => leg.legType === "option" && !leg.exitAt);
-        if (!optionLeg) return null;
-        return (
-          <button type="button" className="btn btn-sm btn-outline-secondary" onClick={() => setClosePosition(row)}>
-            Close
-          </button>
-        );
+        const openOptionLeg = row.legs.find((leg) => leg.legType === "option" && !leg.exitAt);
+        if (openOptionLeg) {
+          return (
+            <button type="button" className="btn btn-sm btn-outline-secondary" onClick={() => setClosePosition(row)}>
+              Close
+            </button>
+          );
+        }
+        // Unstructured + bare stock, no open option leg — e.g. a covered
+        // call's short call expired worthless, or a CSP got assigned. Both
+        // are the same "sell a call against shares you're already holding"
+        // situation Juan's domain notes describe, so one button covers
+        // either cause rather than gating on unstructuredReason specifically.
+        const openStockLeg = row.legs.find((leg) => leg.legType === "stock" && !leg.exitAt);
+        if (row.strategyKey === "unstructured" && openStockLeg) {
+          return (
+            <button type="button" className="btn btn-sm btn-outline-warning" onClick={() => setSellCallSymbol(row.symbol)}>
+              Sell Call
+            </button>
+          );
+        }
+        return null;
       },
     },
   ];
@@ -434,6 +451,16 @@ export function PositionsPage() {
           onClose={() => setClosePosition(null)}
           onClosed={() => {
             setClosePosition(null);
+            loadPositions();
+          }}
+        />
+      )}
+
+      {sellCallSymbol && (
+        <TickerDetailModal
+          symbol={sellCallSymbol}
+          onClose={() => {
+            setSellCallSymbol(null);
             loadPositions();
           }}
         />

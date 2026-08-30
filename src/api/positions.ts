@@ -38,6 +38,8 @@ export interface Position {
   notes: string | null;
   priceTarget: string | null;
   closeTriggerNotes: string | null;
+  closeReason: string | null;
+  unstructuredReason: string | null;
   tickerId: string;
   symbol: string;
   companyName: string | null;
@@ -108,6 +110,8 @@ export interface OrderRequest {
   status: OrderRequestStatus;
   ibkrOrderId: number | null;
   errorMessage: string | null;
+  /** Non-blocking advisory from POST /orders — e.g. leftover uncovered shares beyond what this order uses. Never persisted, transient on the preview response only. */
+  note?: string | null;
   createdAt: string;
   updatedAt: string;
 }

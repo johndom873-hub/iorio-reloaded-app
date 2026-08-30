@@ -408,7 +408,6 @@ export function TickerDetailModal({ symbol, onClose, initialAlertId }: TickerDet
     setBuilding(true);
     setBuildError(null);
     try {
-      const spotPrice = overview?.pricing.last ?? overview?.pricing.previousClose ?? selectedAlert.suggestedStructure.spotPrice;
       const liveQuote = findQuoteForAlert(selectedAlert, optionChain);
       const premium = liveQuote ? midPrice(liveQuote) : selectedAlert.suggestedStructure.premium;
       if (premium === null) throw new Error("No live price available for this contract yet — try again when the market is open.");
@@ -416,10 +415,10 @@ export function TickerDetailModal({ symbol, onClose, initialAlertId }: TickerDet
       const order = await buildOpenOrder({
         symbol,
         strategyKey: selectedAlert.strategyKey,
-        stock:
-          selectedAlert.strategyKey === "covered_call"
-            ? { quantity: qty * 100, limitPrice: spotPrice }
-            : undefined,
+        // No explicit stock leg — covered_call orders auto-fill it server-side,
+        // netted against any shares already held uncovered for this symbol
+        // (see routes/positions.ts POST /orders) rather than always buying a
+        // fresh full lot. Ignored entirely for cash_secured_put.
         option: {
           quantity: qty,
           limitPrice: premium,

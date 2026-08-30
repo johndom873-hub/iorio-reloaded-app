@@ -1,9 +1,10 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { PageHeader } from "../components/layout/PageHeader";
 import { Spinner } from "../components/Spinner";
 import { ApexChart } from "../components/charts/ApexChart";
 import { CollapsibleCard } from "../components/CollapsibleCard";
 import { HelpTooltip } from "../components/HelpTooltip";
+import { TickerDetailModal } from "../components/TickerDetailModal";
 import { useTheme } from "../contexts/ThemeContext";
 import { ApiError } from "../api/client";
 import {
@@ -21,6 +22,7 @@ import {
   type PositionEvent,
   type StrategyPeriodPnlRow,
 } from "../api/dashboard";
+import { fetchPositions, type Position } from "../api/positions";
 import { fetchExposure, type ConcentrationRow, type ExposureData, type StrategyAllocationRow, type TopPositionRow } from "../api/riskLimits";
 import {
   formatCurrency,
@@ -348,6 +350,11 @@ export function DashboardPage() {
   const [eventsLoading, setEventsLoading] = useState(true);
   const [eventsError, setEventsError] = useState<string | null>(null);
 
+  const [needsAttention, setNeedsAttention] = useState<Position[]>([]);
+  const [needsAttentionLoading, setNeedsAttentionLoading] = useState(true);
+  const [needsAttentionError, setNeedsAttentionError] = useState<string | null>(null);
+  const [sellCallSymbol, setSellCallSymbol] = useState<string | null>(null);
+
   useEffect(() => {
     fetchDashboardSummary()
       .then(setSummary)
@@ -400,6 +407,40 @@ export function DashboardPage() {
       .finally(() => setEventsLoading(false));
   }, []);
 
+  // "unstructured" positions with a bare stock leg and no open option leg —
+  // e.g. a covered call's short call expired worthless, or a CSP got
+  // assigned — never surface anywhere persistent otherwise: the Events feed
+  // above is a 7-day rolling window, so a leftover position older than that
+  // is invisible except folded into the Unstructured $ tile. Filtered
+  // client-side (open-legs-only, same convention as PositionsPage's own
+  // Close/Sell Call action-column gating) rather than a new backend route,
+  // since GET /positions already returns everything needed.
+  const loadNeedsAttention = useCallback(async () => {
+    try {
+      setNeedsAttentionError(null);
+      // No strategy filter here — GET /positions?strategy= only accepts
+      // covered_call/cash_secured_put (validStrategyKeys), "unstructured"
+      // isn't a filterable value server-side, so this fetches every open
+      // position and filters client-side instead.
+      const openPositions = await fetchPositions({ status: "open" });
+      setNeedsAttention(
+        openPositions.filter((position) => {
+          if (position.strategyKey !== "unstructured") return false;
+          const openLegs = position.legs.filter((leg) => !leg.exitAt);
+          return openLegs.some((leg) => leg.legType === "stock") && !openLegs.some((leg) => leg.legType === "option");
+        }),
+      );
+    } catch (err) {
+      setNeedsAttentionError(err instanceof ApiError ? err.message : "Failed to load positions needing attention.");
+    } finally {
+      setNeedsAttentionLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadNeedsAttention();
+  }, [loadNeedsAttention]);
+
   const sectorRows = (exposure?.concentrationBySector ?? []).filter((row: ConcentrationRow) => row.sector !== "Unallocated");
 
   return (
@@ -441,6 +482,46 @@ export function DashboardPage() {
           </div>
         )}
       </CollapsibleCard>
+
+      {needsAttentionLoading || needsAttentionError || needsAttention.length > 0 ? (
+        <CollapsibleCard title="Needs Attention" className="mb-3">
+          {needsAttentionError && <div className="alert alert-danger mb-0">{needsAttentionError}</div>}
+          {!needsAttentionError && needsAttentionLoading && <Spinner size="sm" label="Loading positions needing attention" />}
+          {!needsAttentionError && !needsAttentionLoading && (
+            <div className="table-responsive">
+              <table className="table table-vcenter mb-0">
+                <thead className="table-light">
+                  <tr>
+                    <th>Ticker</th>
+                    <th>Shares</th>
+                    <th>Reason</th>
+                    <th className="text-end"></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {needsAttention.map((position) => {
+                    const stockLeg = position.legs.find((leg) => leg.legType === "stock" && !leg.exitAt);
+                    return (
+                      <tr key={position.id}>
+                        <td className="fw-semibold">{position.symbol}</td>
+                        <td className="font-mono">{stockLeg?.quantity ?? "—"}</td>
+                        <td className="text-secondary">
+                          {(position.unstructuredReason && unstructuredReasonLabels[position.unstructuredReason]) ?? "cause unclear — flagged for review"}
+                        </td>
+                        <td className="text-end">
+                          <button type="button" className="btn btn-sm btn-outline-warning" onClick={() => setSellCallSymbol(position.symbol)}>
+                            Sell Call
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </CollapsibleCard>
+      ) : null}
 
       <CollapsibleCard title="Latest Events" className="mb-3">
         {eventsError && <div className="alert alert-danger">{eventsError}</div>}
@@ -675,6 +756,15 @@ export function DashboardPage() {
         )}
       </CollapsibleCard>
 
+      {sellCallSymbol && (
+        <TickerDetailModal
+          symbol={sellCallSymbol}
+          onClose={() => {
+            setSellCallSymbol(null);
+            loadNeedsAttention();
+          }}
+        />
+      )}
     </>
   );
 }
