@@ -363,24 +363,38 @@ export function PositionsPage() {
       align: "right",
       render: (row) => {
         if (row.status !== "open") return null;
-        const openOptionLeg = row.legs.find((leg) => leg.legType === "option" && !leg.exitAt);
+        const openLegs = row.legs.filter((leg) => !leg.exitAt);
+        const openOptionLeg = openLegs.find((leg) => leg.legType === "option");
+        const openStockLeg = openLegs.find((leg) => leg.legType === "stock");
+
+        // Unstructured positions can carry any leg mix (bare stock, a naked
+        // call, mismatched stock+call ratios) — ClosePositionModal handles
+        // that shape with a per-leg quantity form, so Close is offered
+        // whenever there's anything open at all, alongside Sell Call (which
+        // is a separate action: opening a new covered call against shares
+        // you're already holding, e.g. after a call expired worthless or a
+        // CSP got assigned — Juan's domain notes describe both the same way,
+        // so one button covers either cause).
+        if (row.strategyKey === "unstructured") {
+          if (openLegs.length === 0) return null;
+          return (
+            <div className="d-flex gap-1 justify-content-end">
+              {openStockLeg && (
+                <button type="button" className="btn btn-sm btn-outline-warning" onClick={() => setSellCallSymbol(row.symbol)}>
+                  Sell Call
+                </button>
+              )}
+              <button type="button" className="btn btn-sm btn-outline-secondary" onClick={() => setClosePosition(row)}>
+                Close
+              </button>
+            </div>
+          );
+        }
+
         if (openOptionLeg) {
           return (
             <button type="button" className="btn btn-sm btn-outline-secondary" onClick={() => setClosePosition(row)}>
               Close
-            </button>
-          );
-        }
-        // Unstructured + bare stock, no open option leg — e.g. a covered
-        // call's short call expired worthless, or a CSP got assigned. Both
-        // are the same "sell a call against shares you're already holding"
-        // situation Juan's domain notes describe, so one button covers
-        // either cause rather than gating on unstructuredReason specifically.
-        const openStockLeg = row.legs.find((leg) => leg.legType === "stock" && !leg.exitAt);
-        if (row.strategyKey === "unstructured" && openStockLeg) {
-          return (
-            <button type="button" className="btn btn-sm btn-outline-warning" onClick={() => setSellCallSymbol(row.symbol)}>
-              Sell Call
             </button>
           );
         }

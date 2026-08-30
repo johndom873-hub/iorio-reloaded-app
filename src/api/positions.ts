@@ -146,6 +146,7 @@ export function updatePosition(id: string, patch: PositionPatch): Promise<Positi
 export interface LegCloseInput {
   legId: string;
   limitPrice: number;
+  quantity?: number;
 }
 
 export function buildCloseOrder(positionId: string, legs: LegCloseInput[], contractsToClose?: number): Promise<OrderRequest> {
