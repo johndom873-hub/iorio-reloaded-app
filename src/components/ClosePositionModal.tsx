@@ -2,8 +2,16 @@ import { useEffect, useState } from "react";
 import { Spinner } from "./Spinner";
 import { OrderReviewPanel } from "./OrderReviewPanel";
 import { ApiError } from "../api/client";
-import { buildCloseOrder, type OrderRequest, type Position, type PositionLeg } from "../api/positions";
-import { formatCurrencyTrimmed, formatExpiryWithDte } from "../lib/formatters";
+import {
+  buildCloseOrder,
+  openContractQuoteStream,
+  type OrderLegQuote,
+  type OrderRequest,
+  type Position,
+  type PositionLeg,
+} from "../api/positions";
+import { openPositionQuoteStream, type TickerPricing } from "../api/tickerDetail";
+import { formatCurrency, formatCurrencyTrimmed, formatExpiryWithDte } from "../lib/formatters";
 
 interface ClosePositionModalProps {
   position: Position;
@@ -20,10 +28,37 @@ function legLabel(leg: PositionLeg): string {
   return `${leg.side} ${leg.quantity} sh`;
 }
 
+type LegQuote = OrderLegQuote | TickerPricing;
+
+function midPrice(quote: LegQuote): number | null {
+  if (quote.bid !== null && quote.ask !== null) return (quote.bid + quote.ask) / 2;
+  return quote.last;
+}
+
+// Compact live-quote readout, same spirit as RollPositionModal's
+// LiveLegQuote — shown under each leg's limit-price input so the prefilled
+// mid isn't a mystery number.
+function LiveMidQuote({ quote, error }: { quote: LegQuote | null; error: string | null }) {
+  if (error) {
+    return (
+      <span className="text-muted" title={error}>
+        Live quote unavailable
+      </span>
+    );
+  }
+  if (!quote) return <Spinner size="sm" label="Loading live quote" />;
+  return (
+    <div className="font-mono" style={{ fontSize: "0.8rem" }}>
+      Bid {quote.bid !== null ? formatCurrency(quote.bid) : "—"} / Ask {quote.ask !== null ? formatCurrency(quote.ask) : "—"}
+    </div>
+  );
+}
+
 interface UnstructuredLegDraft {
   included: boolean;
   quantityDraft: string;
   limitPriceDraft: string;
+  limitPriceTouched: boolean;
 }
 
 // Action modal (form submission) — per the app's modal convention, does not
@@ -57,16 +92,87 @@ export function ClosePositionModal({ position, onClose, onClosed }: ClosePositio
   const [contractsToCloseDraft, setContractsToCloseDraft] = useState(() => String(optionLeg?.quantity ?? 1));
   const [optionLimitPriceDraft, setOptionLimitPriceDraft] = useState("");
   const [stockLimitPriceDraft, setStockLimitPriceDraft] = useState("");
+  const [optionLimitTouched, setOptionLimitTouched] = useState(false);
+  const [stockLimitTouched, setStockLimitTouched] = useState(false);
 
   const [legDrafts, setLegDrafts] = useState<Record<string, UnstructuredLegDraft>>(() =>
     Object.fromEntries(
-      openLegs.map((leg) => [leg.id, { included: true, quantityDraft: String(leg.quantity), limitPriceDraft: "" }]),
+      openLegs.map((leg) => [
+        leg.id,
+        { included: true, quantityDraft: String(leg.quantity), limitPriceDraft: "", limitPriceTouched: false },
+      ]),
     ),
   );
 
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pendingOrder, setPendingOrder] = useState<OrderRequest | null>(null);
+
+  const [legQuotes, setLegQuotes] = useState<Record<string, LegQuote | null>>({});
+  const [legQuoteErrors, setLegQuoteErrors] = useState<Record<string, string | null>>({});
+
+  // Live quote per open leg, fetched once for the life of this modal (same
+  // convention as RollPositionModal) — option legs via openContractQuoteStream,
+  // stock legs via the ticker pricing stream. Feeds the mid-price prefill
+  // below; not re-run on every render since openLegs is a fresh array each
+  // time but the underlying legs/position don't change while this is open.
+  useEffect(() => {
+    const unsubscribers = openLegs.map((leg) => {
+      if (leg.legType === "option") {
+        const expiry = (leg.expiryDate ?? "").replaceAll("-", "");
+        const strike = Number(leg.strikePrice);
+        const right = leg.optionType === "call" ? "C" : "P";
+        return openContractQuoteStream(position.symbol, expiry, strike, right, (event) => {
+          if (event.type === "quote") setLegQuotes((prev) => ({ ...prev, [leg.id]: event.data }));
+          if (event.type === "streamError") setLegQuoteErrors((prev) => ({ ...prev, [leg.id]: event.message }));
+        });
+      }
+      return openPositionQuoteStream(position.symbol, (event) => {
+        if (event.type === "overview") setLegQuotes((prev) => ({ ...prev, [leg.id]: event.data.pricing }));
+        if (event.type === "streamError") setLegQuoteErrors((prev) => ({ ...prev, [leg.id]: event.message }));
+      });
+    });
+    return () => unsubscribers.forEach((unsubscribe) => unsubscribe());
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [position.id]);
+
+  // Seed each limit-price input from its live quote's mid once it first
+  // arrives, but only if the user hasn't already typed their own value —
+  // "prefill unless touched", same convention as RollPositionModal.
+  useEffect(() => {
+    if (!optionLeg || optionLimitTouched) return;
+    const quote = legQuotes[optionLeg.id];
+    if (!quote) return;
+    const mid = midPrice(quote);
+    if (mid !== null) setOptionLimitPriceDraft(mid.toFixed(2));
+  }, [legQuotes, optionLeg, optionLimitTouched]);
+
+  useEffect(() => {
+    if (!stockLeg || stockLimitTouched) return;
+    const quote = legQuotes[stockLeg.id];
+    if (!quote) return;
+    const mid = midPrice(quote);
+    if (mid !== null) setStockLimitPriceDraft(mid.toFixed(2));
+  }, [legQuotes, stockLeg, stockLimitTouched]);
+
+  useEffect(() => {
+    setLegDrafts((prev) => {
+      let changed = false;
+      const next = { ...prev };
+      for (const leg of openLegs) {
+        const draft = next[leg.id];
+        const quote = legQuotes[leg.id];
+        if (!draft || draft.limitPriceTouched || !quote) continue;
+        const mid = midPrice(quote);
+        if (mid !== null) {
+          next[leg.id] = { ...draft, limitPriceDraft: mid.toFixed(2) };
+          changed = true;
+        }
+      }
+      return changed ? next : prev;
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [legQuotes]);
 
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent) {
@@ -212,10 +318,17 @@ export function ClosePositionModal({ position, onClose, onClosed }: ClosePositio
                                 step="0.01"
                                 className="form-control"
                                 value={draft.limitPriceDraft}
-                                onChange={(event) => updateLegDraft(leg.id, { limitPriceDraft: event.target.value })}
+                                onChange={(event) =>
+                                  updateLegDraft(leg.id, { limitPriceDraft: event.target.value, limitPriceTouched: true })
+                                }
                                 disabled={submitting}
                               />
                             </div>
+                          </div>
+                        )}
+                        {draft.included && (
+                          <div className="mt-2">
+                            <LiveMidQuote quote={legQuotes[leg.id] ?? null} error={legQuoteErrors[leg.id] ?? null} />
                           </div>
                         )}
                         {draft.included && legError && <div className="alert alert-danger mt-2 mb-0">{legError}</div>}
@@ -293,9 +406,15 @@ export function ClosePositionModal({ position, onClose, onClosed }: ClosePositio
                         step="0.01"
                         className="form-control"
                         value={optionLimitPriceDraft}
-                        onChange={(event) => setOptionLimitPriceDraft(event.target.value)}
+                        onChange={(event) => {
+                          setOptionLimitTouched(true);
+                          setOptionLimitPriceDraft(event.target.value);
+                        }}
                         disabled={submitting}
                       />
+                      <div className="mt-1">
+                        <LiveMidQuote quote={legQuotes[optionLeg.id] ?? null} error={legQuoteErrors[optionLeg.id] ?? null} />
+                      </div>
                     </div>
                     {stockLeg && (
                       <div className="col-6">
@@ -305,9 +424,15 @@ export function ClosePositionModal({ position, onClose, onClosed }: ClosePositio
                           step="0.01"
                           className="form-control"
                           value={stockLimitPriceDraft}
-                          onChange={(event) => setStockLimitPriceDraft(event.target.value)}
+                          onChange={(event) => {
+                            setStockLimitTouched(true);
+                            setStockLimitPriceDraft(event.target.value);
+                          }}
                           disabled={submitting}
                         />
+                        <div className="mt-1">
+                          <LiveMidQuote quote={legQuotes[stockLeg.id] ?? null} error={legQuoteErrors[stockLeg.id] ?? null} />
+                        </div>
                       </div>
                     )}
                   </div>

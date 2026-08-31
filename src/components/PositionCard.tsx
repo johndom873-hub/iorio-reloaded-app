@@ -39,8 +39,13 @@ interface PositionCardProps {
   unrealizedPnlFetchFailed: boolean;
   currentPrice: number | null;
   onChanged: () => void;
-  /** Scrolls to this ticker's option chain so the user can pick a strike to sell against held shares. */
-  onSellCall: () => void;
+  /**
+   * Scrolls to this ticker's option chain so the user can pick a strike to
+   * sell against held shares. When called with a prefill (e.g. from Recovery
+   * Path's "Sell This"), the parent also preselects that strike/expiry/
+   * quantity in the chain's order panel instead of leaving it blank.
+   */
+  onSellCall: (prefill?: { strike: number; expiry: string; quantity: number; premium: number }) => void;
 }
 
 const annotationColorsByTheme = {
@@ -236,7 +241,7 @@ export function PositionCard({
                         "—"
                       )}
                     </td>
-                    <td className="text-end">{leg.exitPrice ? formatCurrency(Number(leg.exitPrice)) : "—"}</td>
+                    <td className="text-end">{leg.exitAt ? formatCurrency(Number(leg.exitPrice)) : "—"}</td>
                     <td className="text-end">
                       {rollEligible && (
                         <button
@@ -364,7 +369,7 @@ export function PositionCard({
           <div className="border-top pt-3 d-flex flex-wrap gap-2">
             {isUnstructured && hasOpenStockLeg && (
               <>
-                <button type="button" className="btn btn-outline-warning" onClick={onSellCall}>
+                <button type="button" className="btn btn-outline-warning" onClick={() => onSellCall()}>
                   Sell Call
                 </button>
                 <button type="button" className="btn btn-outline-secondary" onClick={() => setShowRecoveryPath(true)}>
@@ -390,7 +395,17 @@ export function PositionCard({
         />
       )}
 
-      {showRecoveryPath && <RecoveryPathModal positionId={position.id} symbol={position.symbol} onClose={() => setShowRecoveryPath(false)} />}
+      {showRecoveryPath && (
+        <RecoveryPathModal
+          positionId={position.id}
+          symbol={position.symbol}
+          onClose={() => setShowRecoveryPath(false)}
+          onSellCandidate={(prefill) => {
+            setShowRecoveryPath(false);
+            onSellCall(prefill);
+          }}
+        />
+      )}
 
       {rollCandidate && (
         <RollPositionModal

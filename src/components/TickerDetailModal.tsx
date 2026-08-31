@@ -54,6 +54,14 @@ interface ChainSelection {
   strike: number;
   expiryYyyymmdd: string;
   sourceAlert?: NewTradeAlert;
+  /**
+   * Frozen premium snapshot for a selection whose strike may fall outside the
+   * fetched near-the-money chain window (e.g. Recovery Path's candidate,
+   * which is picked by target delta rather than proximity to spot) — same
+   * "frozen fallback" role as sourceAlert.suggestedStructure.premium, for a
+   * selection that doesn't originate from a real alert.
+   */
+  fallbackPremium?: number;
 }
 
 interface StrikeRow {
@@ -305,6 +313,17 @@ export function TickerDetailModal({ symbol, onClose, initialAlertId, focusPositi
   const appliedInitialAlert = useRef(false);
   const appliedDefaultExpiry = useRef(false);
 
+  // Bumped after Scan/Refresh or an order fill changes which alerts are
+  // pending — included in the connection effect's deps below so it tears
+  // down and reopens the whole ticker-detail stream (overview/chart/option
+  // chain together, one shared IBKR connection, same as the initial open).
+  // Necessary because prepareOptionChainStrikes (fetchOptionChain.ts) only
+  // computes the option chain's must-include alert strikes once, at connection
+  // open — it doesn't notice the alerts list changing underneath an
+  // already-open connection, which left the chain showing strikes from
+  // alerts that had since expired (found 2026-09-01 on SNDK).
+  const [streamKey, setStreamKey] = useState(0);
+
   useEffect(() => {
     setOverview(null);
     setOverviewError(null);
@@ -354,7 +373,7 @@ export function TickerDetailModal({ symbol, onClose, initialAlertId, focusPositi
 
     return close;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [symbol]);
+  }, [symbol, streamKey]);
 
   // Informational modal, no action required — closable via ESC or backdrop click.
   useEffect(() => {
@@ -505,6 +524,7 @@ export function TickerDetailModal({ symbol, onClose, initialAlertId, focusPositi
       await refreshTickerAlerts(symbol);
       const updated = await fetchTradeAlerts({ status: "pending", symbol });
       setAlerts(updated);
+      setStreamKey((key) => key + 1);
     } catch (err) {
       setScanError(err instanceof ApiError ? err.message : "Failed to scan for trade alerts.");
     } finally {
@@ -531,7 +551,7 @@ export function TickerDetailModal({ symbol, onClose, initialAlertId, focusPositi
     try {
       const wantsRight = selection.strategyKey === "covered_call" ? "C" : "P";
       const liveQuote = optionChain?.find((q) => q.right === wantsRight && q.strike === selection.strike && q.expiry === selection.expiryYyyymmdd) ?? null;
-      const premium = liveQuote ? midPrice(liveQuote) : selection.sourceAlert?.suggestedStructure.premium ?? null;
+      const premium = liveQuote ? midPrice(liveQuote) : selection.sourceAlert?.suggestedStructure.premium ?? selection.fallbackPremium ?? null;
       if (premium === null) throw new Error("No live price available for this contract yet — try again when the market is open.");
 
       const order = await buildOpenOrder({
@@ -636,7 +656,10 @@ export function TickerDetailModal({ symbol, onClose, initialAlertId, focusPositi
       onCancelled={closeOrderPanel}
       onFilled={() => {
         closeOrderPanel();
-        fetchTradeAlerts({ status: "pending", symbol }).then(setAlerts).catch(() => {});
+        fetchTradeAlerts({ status: "pending", symbol })
+          .then(setAlerts)
+          .then(() => setStreamKey((key) => key + 1))
+          .catch(() => {});
       }}
     />
   );
@@ -813,7 +836,22 @@ export function TickerDetailModal({ symbol, onClose, initialAlertId, focusPositi
                                   unrealizedPnlFetchFailed={unrealizedPnlFetchFailed}
                                   currentPrice={spotPrice}
                                   onChanged={loadPositions}
-                                  onSellCall={() => chainRef.current?.scrollIntoView({ behavior: "smooth", block: "start" })}
+                                  onSellCall={(prefill) => {
+                                    if (prefill) {
+                                      const expiryYyyymmdd = prefill.expiry.replaceAll("-", "");
+                                      if (expiryGroups.some((g) => g.expiry === expiryYyyymmdd)) setActiveExpiry(expiryYyyymmdd);
+                                      setSelection({
+                                        strategyKey: "covered_call",
+                                        strike: prefill.strike,
+                                        expiryYyyymmdd,
+                                        fallbackPremium: prefill.premium,
+                                      });
+                                      setContractQty(String(prefill.quantity));
+                                      setPendingOrder(null);
+                                      setBuildError(null);
+                                    }
+                                    chainRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+                                  }}
                                 />
                               </div>
                             ))}

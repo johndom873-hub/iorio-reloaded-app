@@ -9,6 +9,8 @@ interface RecoveryPathModalProps {
   positionId: string;
   symbol: string;
   onClose: () => void;
+  /** Sell This on the suggested candidate — jumps to the option chain in the parent TickerDetailModal, prefilled. */
+  onSellCandidate: (prefill: { strike: number; expiry: string; quantity: number; premium: number }) => void;
 }
 
 const caveatsText =
@@ -20,7 +22,7 @@ const caveatsText =
 // click per the app's convention for display-only modals. Read-only
 // "Recovery Path Formula" projection, approved by Marcelo 2026-08-31 — see
 // evaluateRecoveryPathForPosition.ts for the formula.
-export function RecoveryPathModal({ positionId, symbol, onClose }: RecoveryPathModalProps) {
+export function RecoveryPathModal({ positionId, symbol, onClose, onSellCandidate }: RecoveryPathModalProps) {
   const [result, setResult] = useState<RecoveryPath | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -73,7 +75,7 @@ export function RecoveryPathModal({ positionId, symbol, onClose }: RecoveryPathM
         <div className="modal-dialog modal-dialog-scrollable">
           <div className="modal-content">
             <div className="modal-header">
-              <h5 className="modal-title d-inline-flex align-items-center">
+              <h5 className="modal-title d-inline-flex align-items-center gap-1">
                 Recovery Path — {symbol}
                 <HelpTooltip text={caveatsText} />
               </h5>
@@ -132,10 +134,28 @@ export function RecoveryPathModal({ positionId, symbol, onClose }: RecoveryPathM
                       <div className="text-secondary" style={{ fontSize: "0.8rem" }}>
                         Suggested path
                       </div>
-                      <div>
-                        Sell {result.contractsAvailable}x {formatCurrencyTrimmed(result.candidate.strike)}C exp{" "}
-                        {formatDate(result.candidate.expiry)} ({result.candidate.dte} DTE) for{" "}
-                        <span className="text-success">{formatCurrency(result.candidate.premium)}</span> premium
+                      <div className="d-flex align-items-center flex-wrap gap-2">
+                        <div>
+                          Sell {result.contractsAvailable}x {formatCurrencyTrimmed(result.candidate.strike)}C exp{" "}
+                          {formatDate(result.candidate.expiry)} ({result.candidate.dte} DTE) for{" "}
+                          <span className="text-success">{formatCurrency(result.candidate.premium)}</span> premium
+                        </div>
+                        <button
+                          type="button"
+                          className="btn btn-outline-primary"
+                          onClick={() => {
+                            const candidate = result.candidate!;
+                            onSellCandidate({
+                              strike: candidate.strike,
+                              expiry: candidate.expiry,
+                              quantity: result.contractsAvailable,
+                              premium: candidate.premium,
+                            });
+                            onClose();
+                          }}
+                        >
+                          Sell This
+                        </button>
                       </div>
                     </div>
                   )}

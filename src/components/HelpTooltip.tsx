@@ -20,7 +20,7 @@ export function HelpTooltip({ text }: HelpTooltipProps) {
     <span
       ref={iconRef}
       className="text-muted d-inline-flex align-items-center justify-content-center"
-      style={{ cursor: "help", padding: "10px" }}
+      style={{ cursor: "help", padding: "4px" }}
       tabIndex={0}
     >
       <IconHelpCircle size={14} />
