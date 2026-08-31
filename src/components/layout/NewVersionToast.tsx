@@ -51,9 +51,12 @@ export function NewVersionToast() {
   if (!newVersionAvailable) return null;
 
   return (
-    <div className="toast-container position-fixed top-0 end-0 p-3" style={{ zIndex: 1090 }}>
+    <div
+      className="toast-container position-fixed end-0 p-3"
+      style={{ top: "var(--iorio-topbar-height)", zIndex: 1090 }}
+    >
       <div className="toast show iorio-new-version-toast" role="status" aria-live="polite">
-        <div className="toast-header iorio-new-version-toast-header">
+        <div className="toast-header">
           <IconRefresh size={18} className="me-2" />
           <strong className="me-auto">Update available</strong>
         </div>

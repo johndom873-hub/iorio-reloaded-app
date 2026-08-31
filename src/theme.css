@@ -594,3 +594,12 @@
   height: 100%;
   max-height: 100%;
 }
+
+/* Tabler's default --tblr-toast-header-color (gray-500) sits at ~3.7:1
+   against the dark-theme toast header background -- under the 4.5:1 AA
+   floor for normal text (verified 2026-09-01 with Playwright-measured
+   computed colors). Overriding the token rather than fighting the cascade
+   with `color` directly: same pattern Tabler itself uses everywhere else. */
+.iorio-new-version-toast {
+  --tblr-toast-header-color: var(--tblr-body-color);
+}
