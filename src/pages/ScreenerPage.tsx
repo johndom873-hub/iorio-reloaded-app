@@ -3,6 +3,7 @@ import { PageHeader } from "../components/layout/PageHeader";
 import { DataTable, type DataTableColumn } from "../components/DataTable/DataTable";
 import { Spinner } from "../components/Spinner";
 import { TickerDetailModal } from "../components/TickerDetailModal";
+import { ConfirmModal } from "../components/ConfirmModal";
 import { ApiError } from "../api/client";
 import {
   addToScreener,
@@ -99,6 +100,7 @@ export function ScreenerPage() {
   const [isSearching, setIsSearching] = useState(false);
   const [showDropdown, setShowDropdown] = useState(false);
   const [detailSymbol, setDetailSymbol] = useState<string | null>(null);
+  const [removeConfirmRow, setRemoveConfirmRow] = useState<ScreenerRow | null>(null);
   const searchDebounceRef = useRef<number | null>(null);
 
   const loadRows = useCallback(async () => {
@@ -182,6 +184,7 @@ export function ScreenerPage() {
       setError(err instanceof ApiError ? err.message : "Failed to remove ticker.");
     } finally {
       setRemovingId(null);
+      setRemoveConfirmRow(null);
     }
   }
 
@@ -240,7 +243,7 @@ export function ScreenerPage() {
             type="button"
             className="btn btn-sm btn-outline-danger d-inline-flex align-items-center gap-1"
             disabled={removingId === row.id}
-            onClick={() => handleRemove(row.id)}
+            onClick={() => setRemoveConfirmRow(row)}
           >
             {removingId === row.id && <Spinner size="sm" />}
             Remove
@@ -325,6 +328,17 @@ export function ScreenerPage() {
       />
 
       {detailSymbol && <TickerDetailModal symbol={detailSymbol} onClose={() => setDetailSymbol(null)} />}
+
+      {removeConfirmRow && (
+        <ConfirmModal
+          title="Remove from Screener"
+          message={<>Remove <strong>{removeConfirmRow.symbol}</strong> from the screener? It will stop being scanned for trade alerts.</>}
+          confirmLabel="Remove"
+          confirming={removingId === removeConfirmRow.id}
+          onConfirm={() => handleRemove(removeConfirmRow.id)}
+          onCancel={() => setRemoveConfirmRow(null)}
+        />
+      )}
     </>
   );
 }

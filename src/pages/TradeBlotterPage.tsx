@@ -3,6 +3,7 @@ import { PageHeader } from "../components/layout/PageHeader";
 import { DataTable, type DataTableColumn } from "../components/DataTable/DataTable";
 import { Spinner } from "../components/Spinner";
 import { TickerDetailModal } from "../components/TickerDetailModal";
+import { ConfirmModal } from "../components/ConfirmModal";
 import { ApiError } from "../api/client";
 import { cancelOrder } from "../api/positions";
 import { fetchTradeBlotter, type PendingOrder, type Trade } from "../api/tradeBlotter";
@@ -49,6 +50,7 @@ export function TradeBlotterPage() {
   const [error, setError] = useState<string | null>(null);
   const [detailSymbol, setDetailSymbol] = useState<string | null>(null);
   const [cancellingId, setCancellingId] = useState<string | null>(null);
+  const [cancelConfirm, setCancelConfirm] = useState<{ orderId: string; symbol: string } | null>(null);
 
   const loadTrades = useCallback(async () => {
     try {
@@ -97,6 +99,7 @@ export function TradeBlotterPage() {
       setError(err instanceof ApiError ? err.message : "Failed to cancel order.");
     } finally {
       setCancellingId(null);
+      setCancelConfirm(null);
     }
   }
 
@@ -235,7 +238,7 @@ export function TradeBlotterPage() {
             type="button"
             className="btn btn-sm btn-outline-danger d-inline-flex align-items-center gap-1"
             disabled={cancellingId === orderId}
-            onClick={() => handleCancel(orderId)}
+            onClick={() => setCancelConfirm({ orderId, symbol: row.symbol })}
           >
             {cancellingId === orderId && <Spinner size="sm" />}
             Cancel
@@ -305,6 +308,17 @@ export function TradeBlotterPage() {
       />
 
       {detailSymbol && <TickerDetailModal symbol={detailSymbol} onClose={() => setDetailSymbol(null)} />}
+
+      {cancelConfirm && (
+        <ConfirmModal
+          title="Cancel Order"
+          message={<>Cancel the pending <strong>{cancelConfirm.symbol}</strong> order? This can't be undone.</>}
+          confirmLabel="Cancel Order"
+          confirming={cancellingId === cancelConfirm.orderId}
+          onConfirm={() => handleCancel(cancelConfirm.orderId)}
+          onCancel={() => setCancelConfirm(null)}
+        />
+      )}
     </>
   );
 }

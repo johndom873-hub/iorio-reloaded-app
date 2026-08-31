@@ -25,6 +25,23 @@ interface TickerDetailModalProps {
 
 type NewTradeAlert = TradeAlert & { suggestedStructure: NewTradeCandidate };
 
+// What's currently selected for order building. Originally this was always a
+// NewTradeAlert (order-building only reachable by clicking an alert row/pill)
+// — fixed 2026-08-31: a symbol with no live trade alert at the strike you
+// want (the exact "Sell Call against held shares, but the scanner hasn't
+// surfaced anything yet" case) had NO way to build an order at all, since the
+// API's sourceAlertId is optional but the UI never offered a path without
+// one. Clicking any chain quote now creates a selection too; sourceAlert is
+// only set when the selection did originate from (or matches) a real alert,
+// giving it the frozen suggestedStructure fallback values live quotes don't
+// have outside market hours.
+interface ChainSelection {
+  strategyKey: StrategyKey;
+  strike: number;
+  expiryYyyymmdd: string;
+  sourceAlert?: NewTradeAlert;
+}
+
 interface StrikeRow {
   strike: number;
   call: OptionQuote | null;
@@ -199,25 +216,31 @@ function OptionSideCells({
   spotPrice,
   matchedAlert,
   onAlertClick,
+  onQuoteClick,
 }: {
   quote: OptionQuote | null;
   dte: number;
   spotPrice: number | null;
   matchedAlert: NewTradeAlert | null;
   onAlertClick: (alert: NewTradeAlert) => void;
+  onQuoteClick: (quote: OptionQuote) => void;
 }) {
   const strategyKey: StrategyKey | null = quote ? (quote.right === "C" ? "covered_call" : "cash_secured_put") : null;
   const yieldValue =
     quote && strategyKey && spotPrice !== null
       ? computeAnnualizedYield(strategyKey, { premium: midPrice(quote), dte, strike: quote.strike, spotPrice })
       : null;
+  // Any quote (matched to an alert or not) is clickable to select it for
+  // order building — a matched alert's pill takes the click there instead,
+  // since it also carries the alert's rationale/frozen fallback values.
+  const cellProps = quote ? { style: { cursor: "pointer" }, onClick: () => onQuoteClick(quote) } : {};
 
   return (
     <>
-      <td className="text-end font-mono">{formatCurrency(quote?.bid ?? null)}</td>
-      <td className="text-end font-mono">{formatCurrency(quote?.ask ?? null)}</td>
-      <td className="text-end font-mono">{formatNumber(quote?.delta ?? null, 2)}</td>
-      <td className="text-end">
+      <td className="text-end font-mono" {...cellProps}>{formatCurrency(quote?.bid ?? null)}</td>
+      <td className="text-end font-mono" {...cellProps}>{formatCurrency(quote?.ask ?? null)}</td>
+      <td className="text-end font-mono" {...cellProps}>{formatNumber(quote?.delta ?? null, 2)}</td>
+      <td className="text-end" {...(matchedAlert ? {} : cellProps)}>
         <div className="d-inline-flex align-items-center gap-2">
           {matchedAlert && <AlertPill onClick={() => onAlertClick(matchedAlert)} />}
           <span className={`font-mono ${matchedAlert ? "text-success fw-semibold" : "text-secondary"}`}>{formatPercentage(yieldValue)}</span>
@@ -248,7 +271,7 @@ export function TickerDetailModal({ symbol, onClose, initialAlertId }: TickerDet
   const [scanError, setScanError] = useState<string | null>(null);
 
   const [activeExpiry, setActiveExpiry] = useState<string | null>(null);
-  const [selectedAlert, setSelectedAlert] = useState<NewTradeAlert | null>(null);
+  const [selection, setSelection] = useState<ChainSelection | null>(null);
   const [contractQty, setContractQty] = useState("1");
   const [pendingOrder, setPendingOrder] = useState<OrderRequest | null>(null);
   const [building, setBuilding] = useState(false);
@@ -267,7 +290,7 @@ export function TickerDetailModal({ symbol, onClose, initialAlertId }: TickerDet
     setOptionChainError(null);
     setStreamError(null);
     setActiveExpiry(null);
-    setSelectedAlert(null);
+    setSelection(null);
     setPendingOrder(null);
     appliedInitialAlert.current = false;
     appliedDefaultExpiry.current = false;
@@ -352,7 +375,7 @@ export function TickerDetailModal({ symbol, onClose, initialAlertId }: TickerDet
     const expiryYyyymmdd = alert.suggestedStructure.expiry.replaceAll("-", "");
     if (expiryGroups.some((g) => g.expiry === expiryYyyymmdd)) setActiveExpiry(expiryYyyymmdd);
     chainRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
-    handleAlertPillClick(alert);
+    selectAlert(alert);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialAlertId, relevantAlerts, expiryGroups]);
 
@@ -360,11 +383,33 @@ export function TickerDetailModal({ symbol, onClose, initialAlertId }: TickerDet
     const expiryYyyymmdd = alert.suggestedStructure.expiry.replaceAll("-", "");
     if (expiryGroups.some((g) => g.expiry === expiryYyyymmdd)) setActiveExpiry(expiryYyyymmdd);
     chainRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
-    handleAlertPillClick(alert);
+    selectAlert(alert);
   }
 
-  function handleAlertPillClick(alert: NewTradeAlert) {
-    setSelectedAlert(alert);
+  function selectAlert(alert: NewTradeAlert) {
+    setSelection({
+      strategyKey: alert.strategyKey,
+      strike: alert.suggestedStructure.strike,
+      expiryYyyymmdd: alert.suggestedStructure.expiry.replaceAll("-", ""),
+      sourceAlert: alert,
+    });
+    setContractQty("1");
+    setPendingOrder(null);
+    setBuildError(null);
+  }
+
+  // Selecting a raw chain quote — the fix for the dead end where a ticker
+  // with no matching trade alert had no way to build an order at all.
+  // matchAlertToQuote still runs so clicking an alert-matched quote's bid/ask
+  // cells (as opposed to its pill specifically) carries the same frozen
+  // fallback values a pill click would.
+  function selectQuote(quote: OptionQuote) {
+    setSelection({
+      strategyKey: quote.right === "C" ? "covered_call" : "cash_secured_put",
+      strike: quote.strike,
+      expiryYyyymmdd: quote.expiry,
+      sourceAlert: matchAlertToQuote(quote, relevantAlerts) ?? undefined,
+    });
     setContractQty("1");
     setPendingOrder(null);
     setBuildError(null);
@@ -392,13 +437,13 @@ export function TickerDetailModal({ symbol, onClose, initialAlertId }: TickerDet
   }
 
   function closeOrderPanel() {
-    setSelectedAlert(null);
+    setSelection(null);
     setPendingOrder(null);
     setBuildError(null);
   }
 
   async function handleReviewOrder() {
-    if (!selectedAlert) return;
+    if (!selection) return;
     const qty = Number(contractQty);
     if (!Number.isInteger(qty) || qty < 1) {
       setBuildError("Enter a valid number of contracts.");
@@ -408,13 +453,14 @@ export function TickerDetailModal({ symbol, onClose, initialAlertId }: TickerDet
     setBuilding(true);
     setBuildError(null);
     try {
-      const liveQuote = findQuoteForAlert(selectedAlert, optionChain);
-      const premium = liveQuote ? midPrice(liveQuote) : selectedAlert.suggestedStructure.premium;
+      const wantsRight = selection.strategyKey === "covered_call" ? "C" : "P";
+      const liveQuote = optionChain?.find((q) => q.right === wantsRight && q.strike === selection.strike && q.expiry === selection.expiryYyyymmdd) ?? null;
+      const premium = liveQuote ? midPrice(liveQuote) : selection.sourceAlert?.suggestedStructure.premium ?? null;
       if (premium === null) throw new Error("No live price available for this contract yet — try again when the market is open.");
 
       const order = await buildOpenOrder({
         symbol,
-        strategyKey: selectedAlert.strategyKey,
+        strategyKey: selection.strategyKey,
         // No explicit stock leg — covered_call orders auto-fill it server-side,
         // netted against any shares already held uncovered for this symbol
         // (see routes/positions.ts POST /orders) rather than always buying a
@@ -422,10 +468,10 @@ export function TickerDetailModal({ symbol, onClose, initialAlertId }: TickerDet
         option: {
           quantity: qty,
           limitPrice: premium,
-          strikePrice: selectedAlert.suggestedStructure.strike,
-          expiryDate: selectedAlert.suggestedStructure.expiry,
+          strikePrice: selection.strike,
+          expiryDate: ibkrExpiryToIsoDate(selection.expiryYyyymmdd),
         },
-        sourceAlertId: selectedAlert.id,
+        sourceAlertId: selection.sourceAlert?.id,
       });
       setPendingOrder(order);
     } catch (err) {
@@ -443,26 +489,31 @@ export function TickerDetailModal({ symbol, onClose, initialAlertId }: TickerDet
   const activeGroup = expiryGroups.find((g) => g.expiry === activeExpiry) ?? null;
   const spotPriceMarkerIndex = activeGroup ? findSpotPriceMarkerIndex(activeGroup.strikes, spotPrice) : null;
 
-  const liveQuoteForSelected = selectedAlert ? findQuoteForAlert(selectedAlert, optionChain) : null;
+  const selectedGroup = expiryGroups.find((g) => g.expiry === selection?.expiryYyyymmdd) ?? null;
+  const liveQuoteForSelected = selection
+    ? optionChain?.find(
+        (q) => q.right === (selection.strategyKey === "covered_call" ? "C" : "P") && q.strike === selection.strike && q.expiry === selection.expiryYyyymmdd,
+      ) ?? null
+    : null;
   // Same fallback fix as liveAlertMetrics above: a matched quote with no live
   // price right now shouldn't stop this preview from showing the alert's own
   // last-known premium (order-build time still requires a genuinely live
   // price -- see handleReviewOrder's own separate `premium`/error below,
-  // deliberately not given this same fallback).
-  const selectedPremium = (liveQuoteForSelected ? midPrice(liveQuoteForSelected) : null) ?? selectedAlert?.suggestedStructure.premium ?? null;
-  const selectedDelta = liveQuoteForSelected?.delta ?? selectedAlert?.suggestedStructure.delta ?? null;
-  const selectedDte = activeGroup?.expiry === selectedAlert?.suggestedStructure.expiry.replaceAll("-", "")
-    ? activeGroup?.daysToExpiry
-    : selectedAlert?.suggestedStructure.dte;
+  // deliberately not given this same fallback). A selection with no source
+  // alert (a raw chain click) has no frozen fallback at all — null until a
+  // live quote arrives, same as everywhere else in this modal.
+  const selectedPremium = (liveQuoteForSelected ? midPrice(liveQuoteForSelected) : null) ?? selection?.sourceAlert?.suggestedStructure.premium ?? null;
+  const selectedDelta = liveQuoteForSelected?.delta ?? selection?.sourceAlert?.suggestedStructure.delta ?? null;
+  const selectedDte = selectedGroup?.daysToExpiry ?? selection?.sourceAlert?.suggestedStructure.dte;
   const selectedYield =
-    selectedAlert && spotPrice !== null && selectedDte !== undefined
-      ? computeAnnualizedYield(selectedAlert.strategyKey, {
+    selection && spotPrice !== null && selectedDte !== undefined
+      ? computeAnnualizedYield(selection.strategyKey, {
           premium: selectedPremium,
           dte: selectedDte,
-          strike: selectedAlert.suggestedStructure.strike,
+          strike: selection.strike,
           spotPrice,
         })
-      : selectedAlert?.suggestedStructure.annualizedYield ?? null;
+      : selection?.sourceAlert?.suggestedStructure.annualizedYield ?? null;
 
   // Same payoff math as OrderReviewPanel/Trade Alerts (computePayoff, pure
   // math on entry price/strike, no live data needed) -- built directly from
@@ -472,9 +523,9 @@ export function TickerDetailModal({ symbol, onClose, initialAlertId }: TickerDet
   // user's actually about to build, not a fixed 1-contract preview.
   const selectedQty = Number(contractQty) || 1;
   const selectedPayoff =
-    selectedAlert && selectedPremium !== null && spotPrice !== null
-      ? computePayoff(selectedAlert.strategyKey, [
-          ...(selectedAlert.strategyKey === "covered_call"
+    selection && selectedPremium !== null && spotPrice !== null
+      ? computePayoff(selection.strategyKey, [
+          ...(selection.strategyKey === "covered_call"
             ? [
                 {
                   legType: "stock",
@@ -488,9 +539,9 @@ export function TickerDetailModal({ symbol, onClose, initialAlertId }: TickerDet
             : []),
           {
             legType: "option",
-            optionType: selectedAlert.strategyKey === "covered_call" ? "call" : "put",
+            optionType: selection.strategyKey === "covered_call" ? "call" : "put",
             entryPrice: String(selectedPremium),
-            strikePrice: String(selectedAlert.suggestedStructure.strike),
+            strikePrice: String(selection.strike),
             quantity: selectedQty,
             multiplier: 100,
           } satisfies PayoffLegInput,
@@ -503,7 +554,7 @@ export function TickerDetailModal({ symbol, onClose, initialAlertId }: TickerDet
   // wrapper of their own to rely on) — reusing this component's header/
   // border around it too produced a visibly doubled header and a
   // border-within-a-border (found 2026-08-27).
-  const orderSetupPanel = selectedAlert && pendingOrder && (
+  const orderSetupPanel = selection && pendingOrder && (
     <OrderReviewPanel
       order={pendingOrder}
       onCancelled={closeOrderPanel}
@@ -514,14 +565,14 @@ export function TickerDetailModal({ symbol, onClose, initialAlertId }: TickerDet
     />
   );
 
-  const orderSetupForm = selectedAlert && !pendingOrder && (
+  const orderSetupForm = selection && !pendingOrder && (
     <div className="d-flex flex-column gap-3">
       <div>
         <div className="text-secondary text-uppercase" style={{ fontSize: "0.68rem", fontWeight: 700, letterSpacing: "0.06em" }}>
           Order Setup
         </div>
         <h4 className="mb-0" style={{ fontSize: "1.05rem" }}>
-          {selectedAlert.strategyKey === "covered_call" ? "Covered Call" : "Cash-Secured Put"} · {symbol}
+          {selection.strategyKey === "covered_call" ? "Covered Call" : "Cash-Secured Put"} · {symbol}
         </h4>
       </div>
 
@@ -530,13 +581,13 @@ export function TickerDetailModal({ symbol, onClose, initialAlertId }: TickerDet
             <div className="d-flex justify-content-between py-1" style={{ fontSize: "0.85rem" }}>
               <span className="text-secondary">Expiry</span>
               <span className="fw-semibold font-mono">
-                {formatExpiry(selectedAlert.suggestedStructure.expiry.replaceAll("-", ""))} ({selectedDte} DTE)
+                {formatExpiry(selection.expiryYyyymmdd)} ({selectedDte} DTE)
               </span>
             </div>
             <div className="d-flex justify-content-between py-1" style={{ fontSize: "0.85rem" }}>
               <span className="text-secondary">Strike</span>
               <span className="fw-semibold font-mono">
-                {formatCurrencyTrimmed(selectedAlert.suggestedStructure.strike)} {selectedAlert.strategyKey === "covered_call" ? "Call" : "Put"}
+                {formatCurrencyTrimmed(selection.strike)} {selection.strategyKey === "covered_call" ? "Call" : "Put"}
               </span>
             </div>
             <div className="d-flex justify-content-between py-1" style={{ fontSize: "0.85rem" }}>
@@ -583,7 +634,7 @@ export function TickerDetailModal({ symbol, onClose, initialAlertId }: TickerDet
               value={contractQty}
               onChange={(event) => setContractQty(event.target.value)}
             />
-            {selectedAlert.strategyKey === "covered_call" && (
+            {selection.strategyKey === "covered_call" && (
               <div className="text-secondary mt-1 font-mono" style={{ fontSize: "0.78rem" }}>
                 = <strong>{(Number(contractQty) || 0) * 100}</strong> shares required ({contractQty || 0} contract
                 {Number(contractQty) === 1 ? "" : "s"} × 100) — already-held shares on this symbol are netted out
@@ -662,7 +713,7 @@ export function TickerDetailModal({ symbol, onClose, initialAlertId }: TickerDet
                       the order panel (when open) spans the FULL height of both,
                       not just the chain table next to it. */}
                   <div className="d-flex flex-column flex-lg-row gap-3">
-                  <div style={{ minWidth: 0, flex: selectedAlert ? "1 1 68%" : "1 1 100%" }}>
+                  <div style={{ minWidth: 0, flex: selection ? "1 1 68%" : "1 1 100%" }}>
                   {/* ---------- Trade Alerts ---------- */}
                   {alertsError && <div className="alert alert-danger">{alertsError}</div>}
                   {alerts !== null && !alertsError && (
@@ -844,7 +895,8 @@ export function TickerDetailModal({ symbol, onClose, initialAlertId }: TickerDet
                                               dte={activeGroup.daysToExpiry}
                                               spotPrice={spotPrice}
                                               matchedAlert={callAlert}
-                                              onAlertClick={handleAlertPillClick}
+                                              onAlertClick={selectAlert}
+                                              onQuoteClick={selectQuote}
                                             />
                                             <td className="text-center fw-bold font-mono">{formatCurrencyTrimmed(row.strike)}</td>
                                             <OptionSideCells
@@ -852,7 +904,8 @@ export function TickerDetailModal({ symbol, onClose, initialAlertId }: TickerDet
                                               dte={activeGroup.daysToExpiry}
                                               spotPrice={spotPrice}
                                               matchedAlert={putAlert}
-                                              onAlertClick={handleAlertPillClick}
+                                              onAlertClick={selectAlert}
+                                              onQuoteClick={selectQuote}
                                             />
                                           </tr>
                                         </Fragment>
@@ -899,7 +952,8 @@ export function TickerDetailModal({ symbol, onClose, initialAlertId }: TickerDet
                                                     dte={activeGroup.daysToExpiry}
                                                     spotPrice={spotPrice}
                                                     matchedAlert={matchedAlert}
-                                                    onAlertClick={handleAlertPillClick}
+                                                    onAlertClick={selectAlert}
+                                                    onQuoteClick={selectQuote}
                                                   />
                                                 </tr>
                                               </Fragment>
@@ -926,7 +980,7 @@ export function TickerDetailModal({ symbol, onClose, initialAlertId }: TickerDet
                       cramped sidebar next to just the chain table), sticky
                       so it stays in view while that column scrolls. Inline
                       card on mobile instead, below everything. */}
-                  {selectedAlert && (
+                  {selection && (
                     <div
                       className={pendingOrder ? "d-none d-lg-block" : "border rounded p-4 d-none d-lg-block"}
                       style={{ flex: "1 1 32%", maxWidth: "420px", minWidth: 0, alignSelf: "flex-start", position: "sticky", top: 0 }}
@@ -937,7 +991,7 @@ export function TickerDetailModal({ symbol, onClose, initialAlertId }: TickerDet
                   )}
                   </div>
 
-                  {selectedAlert && (
+                  {selection && (
                     <div className={pendingOrder ? "mt-3 d-lg-none" : "border rounded p-3 mt-3 d-lg-none"}>
                       {orderSetupForm}
                       {orderSetupPanel}
