@@ -75,12 +75,25 @@ interface AllocationListProps {
   title: string;
   emptyMessage: string;
   totalAccountValue: number | null;
-  rows: { key: string; label: string; sublabel?: string; notionalValue: string; isUnallocated?: boolean }[];
+  rows: {
+    key: string;
+    label: string;
+    sublabel?: string;
+    notionalValue: string;
+    isUnallocated?: boolean;
+    tickerSymbol?: string;
+    focusPositionId?: string;
+  }[];
   // Overrides the donut's center label — e.g. "Top 5" for a truncated
   // list, so its total doesn't read as "the full account total" when it
   // deliberately isn't (found confusing 2026-08-28: Top Positions and By
   // Industry showed different totals with no visual explanation why).
   donutTotalLabel?: string;
+  // Only "Top Positions" rows carry a tickerSymbol — that's what makes them
+  // clickable, matching the platform-wide convention that any displayed
+  // ticker opens TickerDetailModal (By Strategy/By Industry labels aren't
+  // tickers, so they stay plain text).
+  onTickerClick?: (ticker: { symbol: string; focusPositionId?: string }) => void;
 }
 
 // Assigns the fixed-order categorical palette to each real row (skipping
@@ -127,7 +140,7 @@ function AllocationDonut({ rows, colors, totalLabel = "Total" }: { rows: Allocat
   );
 }
 
-function AllocationList({ title, emptyMessage, totalAccountValue, rows, donutTotalLabel }: AllocationListProps) {
+function AllocationList({ title, emptyMessage, totalAccountValue, rows, donutTotalLabel, onTickerClick }: AllocationListProps) {
   const { theme } = useTheme();
   const colors = allocationColors(rows, theme);
   return (
@@ -150,7 +163,17 @@ function AllocationList({ title, emptyMessage, totalAccountValue, rows, donutTot
                       aria-hidden="true"
                       style={{ width: "0.6rem", height: "0.6rem", borderRadius: "50%", backgroundColor: colors[index], flexShrink: 0 }}
                     />
-                    {row.label}
+                    {row.tickerSymbol && onTickerClick ? (
+                      <button
+                        type="button"
+                        className="btn btn-link p-0"
+                        onClick={() => onTickerClick({ symbol: row.tickerSymbol!, focusPositionId: row.focusPositionId })}
+                      >
+                        {row.label}
+                      </button>
+                    ) : (
+                      row.label
+                    )}
                     {row.sublabel && <span className="text-muted ms-1" style={{ fontSize: "0.72rem" }}>{row.sublabel}</span>}
                   </span>
                   <span className="text-muted text-nowrap font-mono" style={{ fontSize: "0.8rem" }}>
@@ -265,7 +288,7 @@ function formatLegDescription(leg: PositionEvent["legs"][number], showExitPrice:
   return `${sideLabel} ${leg.quantity}x ${strikeLabel}${rightLabel}${expiryLabel} ${priceLabel}`;
 }
 
-function EventRow({ event }: { event: PositionEvent }) {
+function EventRow({ event, onSymbolClick }: { event: PositionEvent; onSymbolClick: (ticker: { symbol: string; focusPositionId?: string }) => void }) {
   const strategyLabel = strategyLabels[event.strategyKey] ?? event.strategyKey;
   const description = event.legs.map((leg) => formatLegDescription(leg, event.eventType === "closed", event.openedAt)).join(" / ");
 
@@ -296,21 +319,38 @@ function EventRow({ event }: { event: PositionEvent }) {
         {formatRelativeDate(event.eventAt)}
       </td>
       <td className="text-nowrap">{event.attributedTo ?? "—"}</td>
-      <td className="text-nowrap fw-bold">{event.symbol}</td>
+      <td className="text-nowrap fw-bold">
+        <button
+          type="button"
+          className="btn btn-link p-0 fw-bold"
+          onClick={() => onSymbolClick({ symbol: event.symbol, focusPositionId: event.positionId })}
+        >
+          {event.symbol}
+        </button>
+      </td>
       <td className="text-nowrap">
-        <span className={`badge ${statusBadgeClass} me-1`} style={{ fontSize: "0.72rem" }}>
+        <span
+          className={`badge ${statusBadgeClass} text-truncate d-inline-block align-bottom me-1`}
+          style={{ fontSize: "0.72rem", maxWidth: "8rem", padding: "0.2em 0.45em" }}
+          title={statusLabel}
+        >
           {statusLabel}
         </span>
-        <span className="badge bg-secondary-lt" style={{ fontSize: "0.72rem" }}>
+        <span
+          className="badge bg-secondary-lt text-truncate d-inline-block align-bottom"
+          style={{ fontSize: "0.72rem", maxWidth: "8rem", padding: "0.2em 0.45em" }}
+          title={strategyLabel}
+        >
           {strategyLabel}
         </span>
       </td>
-      <td style={{ fontSize: "0.8rem", maxWidth: "22rem", whiteSpace: "normal" }}>
+      <td style={{ fontSize: "0.8rem", whiteSpace: "normal" }}>
         {description}
         {event.eventType === "unstructured" && event.unstructuredReason && (
-          <div className="text-muted" style={{ fontSize: "0.75rem" }}>
-            {unstructuredReasonLabels[event.unstructuredReason] ?? event.unstructuredReason}
-          </div>
+          <span className="text-muted" style={{ fontSize: "0.75rem" }}>
+            {" "}
+            ({unstructuredReasonLabels[event.unstructuredReason] ?? event.unstructuredReason})
+          </span>
         )}
       </td>
       <td className="text-end font-mono">{value === null ? "—" : formatCurrency(value, 0)}</td>
@@ -543,7 +583,16 @@ export function DashboardPage() {
           <div className="text-muted">No recent activity.</div>
         ) : (
           <div className="table-responsive" style={{ maxHeight: "26rem", overflowY: "auto" }}>
-            <table className="table table-sm table-vcenter card-table mb-0">
+            <table className="table table-sm table-vcenter card-table mb-0" style={{ tableLayout: "fixed" }}>
+              <colgroup>
+                <col style={{ width: "5.5rem" }} />
+                <col style={{ width: "6rem" }} />
+                <col style={{ width: "4.5rem" }} />
+                <col style={{ width: "17rem" }} />
+                <col style={{ width: "auto" }} />
+                <col style={{ width: "6rem" }} />
+                <col style={{ width: "5.5rem" }} />
+              </colgroup>
               <thead className="table-light" style={{ position: "sticky", top: 0, zIndex: 1 }}>
                 <tr>
                   <th>Date</th>
@@ -557,7 +606,7 @@ export function DashboardPage() {
               </thead>
               <tbody>
                 {events.map((event) => (
-                  <EventRow key={`${event.positionId}-${event.eventType}-${event.eventAt}`} event={event} />
+                  <EventRow key={`${event.positionId}-${event.eventType}-${event.eventAt}`} event={event} onSymbolClick={setDetailTicker} />
                 ))}
               </tbody>
             </table>
@@ -690,12 +739,15 @@ export function DashboardPage() {
                 title="Top Positions"
                 emptyMessage="No open positions yet."
                 totalAccountValue={exposure?.totalAccountValue ?? null}
+                onTickerClick={setDetailTicker}
                 rows={(() => {
                   const topRows = (exposure?.topPositions ?? []).map((row: TopPositionRow) => ({
                     key: row.positionId,
                     label: row.symbol,
                     sublabel: strategyLabels[row.strategyKey] ?? row.strategyKey,
                     notionalValue: row.notionalValue,
+                    tickerSymbol: row.symbol,
+                    focusPositionId: row.positionId,
                   }));
                   // Rest of the book beyond the top 5, by position count —
                   // concentrationByTicker sums every open position's

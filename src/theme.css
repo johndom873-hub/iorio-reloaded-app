@@ -441,15 +441,19 @@
    --tblr-btn-border-width*2) — a deliberate tap-target-size rule, not tied
    to font-size at all. A plain (non-.btn-sm) button, e.g. a ticker-link
    button with px-0/py-0, still floors out at 40px tall from these variables
-   alone. Rather than inventing a new smaller size, this reuses the values
-   .btn-sm itself already defines — the project's own designated "compact
-   table row" button size (see CLAUDE.md's Buttons convention) — so a table
-   row's height is governed by content, not by whichever button variant a
-   given call site happened to use. */
+   alone.
+
+   First pass reused .btn-sm's own padding/line-height values, which brought
+   a Sell-Call row down to 41px against Latest Events' 28px text-only rows —
+   better, but still visibly taller, since .btn-sm's own tap-target padding
+   is sized for a standalone click target, not a button sharing a table
+   cell's own padding. Tightened further 2026-08-31 with dedicated values
+   (not reused from any existing .btn-* variant) so an action-button row
+   lands within ~2px of a plain-text row instead of ~13px taller. */
 .table.table-sm .btn {
   font-size: inherit;
-  --tblr-btn-padding-y: 0.3125rem;
-  --tblr-btn-line-height: 1.25rem;
+  --tblr-btn-padding-y: 0.0625rem;
+  --tblr-btn-line-height: 1rem;
 }
 
 /* Roboto Mono's fixed digit widths read as sturdier, more "financial" than
