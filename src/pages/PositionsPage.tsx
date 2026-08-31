@@ -2,7 +2,6 @@ import { useCallback, useEffect, useState } from "react";
 import { PageHeader } from "../components/layout/PageHeader";
 import { DataTable, type DataTableColumn } from "../components/DataTable/DataTable";
 import { Spinner } from "../components/Spinner";
-import { PositionDetailModal } from "../components/PositionDetailModal";
 import { ClosePositionModal } from "../components/ClosePositionModal";
 import { TickerDetailModal } from "../components/TickerDetailModal";
 import { ApiError } from "../api/client";
@@ -79,9 +78,8 @@ export function PositionsPage() {
   const [greeksFetchFailed, setGreeksFetchFailed] = useState(false);
   const [unrealizedPnlByPositionId, setUnrealizedPnlByPositionId] = useState<Record<string, UnrealizedPnlResult>>({});
   const [unrealizedPnlFetchFailed, setUnrealizedPnlFetchFailed] = useState(false);
-  const [detailPositionId, setDetailPositionId] = useState<string | null>(null);
+  const [detailTicker, setDetailTicker] = useState<{ symbol: string; focusPositionId?: string } | null>(null);
   const [closePosition, setClosePosition] = useState<Position | null>(null);
-  const [sellCallSymbol, setSellCallSymbol] = useState<string | null>(null);
 
   const loadPositions = useCallback(async () => {
     try {
@@ -132,7 +130,7 @@ export function PositionsPage() {
         <button
           type="button"
           className="btn btn-link px-2 py-1 text-decoration-none fw-bold"
-          onClick={() => setDetailPositionId(row.id)}
+          onClick={() => setDetailTicker({ symbol: row.symbol, focusPositionId: row.id })}
         >
           {row.symbol}
         </button>
@@ -351,7 +349,7 @@ export function PositionsPage() {
         <button
           type="button"
           className="btn btn-link px-2 py-1 text-decoration-none text-body text-start"
-          onClick={() => setDetailPositionId(row.id)}
+          onClick={() => setDetailTicker({ symbol: row.symbol, focusPositionId: row.id })}
         >
           {row.notes ?? "—"}
         </button>
@@ -380,7 +378,11 @@ export function PositionsPage() {
           return (
             <div className="d-flex gap-1 justify-content-end">
               {openStockLeg && (
-                <button type="button" className="btn btn-sm btn-outline-warning" onClick={() => setSellCallSymbol(row.symbol)}>
+                <button
+                  type="button"
+                  className="btn btn-sm btn-outline-warning"
+                  onClick={() => setDetailTicker({ symbol: row.symbol, focusPositionId: row.id })}
+                >
                   Sell Call
                 </button>
               )}
@@ -451,14 +453,6 @@ export function PositionsPage() {
         emptyMessage={`No ${status} positions yet.`}
       />
 
-      {detailPositionId && (
-        <PositionDetailModal
-          positionId={detailPositionId}
-          onClose={() => setDetailPositionId(null)}
-          onChanged={loadPositions}
-        />
-      )}
-
       {closePosition && (
         <ClosePositionModal
           position={closePosition}
@@ -470,11 +464,12 @@ export function PositionsPage() {
         />
       )}
 
-      {sellCallSymbol && (
+      {detailTicker && (
         <TickerDetailModal
-          symbol={sellCallSymbol}
+          symbol={detailTicker.symbol}
+          focusPositionId={detailTicker.focusPositionId}
           onClose={() => {
-            setSellCallSymbol(null);
+            setDetailTicker(null);
             loadPositions();
           }}
         />

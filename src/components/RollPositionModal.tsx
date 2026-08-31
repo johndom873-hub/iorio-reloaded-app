@@ -3,7 +3,7 @@ import { Spinner } from "./Spinner";
 import { OrderReviewPanel } from "./OrderReviewPanel";
 import { ApiError } from "../api/client";
 import { buildRollOrder, openContractQuoteStream, type OrderLegQuote, type OrderRequest } from "../api/positions";
-import type { RollStructure, TradeAlert } from "../api/tradeAlerts";
+import type { RollStructure } from "../api/tradeAlerts";
 import { formatCurrency, formatCurrencyTrimmed, formatDate, formatNumber } from "../lib/formatters";
 
 function midPrice(quote: OrderLegQuote): number | null {
@@ -31,8 +31,14 @@ function LiveLegQuote({ quote, error }: { quote: OrderLegQuote | null; error: st
   );
 }
 
+// Widened 2026-08-31 (was `TradeAlert & {suggestedStructure: RollStructure}`)
+// so an on-demand roll candidate (fetchRollCandidate — no backing
+// trade_alerts row, so no real `id`/`status`/etc.) can be passed here too,
+// not just a real roll alert. Every field actually used below is still
+// present on both shapes; `id` is optional and simply omitted as
+// sourceAlertId when absent.
 interface RollPositionModalProps {
-  alert: TradeAlert & { suggestedStructure: RollStructure };
+  alert: { id?: string; symbol: string; relatedPositionId: string | null; suggestedStructure: RollStructure };
   onClose: () => void;
   onRolled: () => void;
 }
@@ -122,7 +128,7 @@ export function RollPositionModal({ alert, onClose, onRolled }: RollPositionModa
     setError(null);
     try {
       const order = await buildRollOrder(alert.relatedPositionId, {
-        sourceAlertId: alert.id,
+        sourceAlertId: alert.id ?? undefined,
         closeLegId: closeLeg.legId,
         closeLimitPrice: Number(closeLimitPriceDraft),
         newLeg: {
@@ -157,6 +163,11 @@ export function RollPositionModal({ alert, onClose, onRolled }: RollPositionModa
             </div>
             <div className="modal-body">
               {error && <div className="alert alert-danger">{error}</div>}
+              {alert.suggestedStructure.stillTriggered === false && !pendingOrder && (
+                <div className="alert alert-warning">
+                  This leg hasn't actually hit the 50%-decay/21-DTE roll trigger yet — you're rolling early.
+                </div>
+              )}
 
               {pendingOrder ? (
                 <OrderReviewPanel order={pendingOrder} onCancelled={onClose} onFilled={onRolled} />

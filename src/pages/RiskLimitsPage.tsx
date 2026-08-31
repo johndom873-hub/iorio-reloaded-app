@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { PageHeader } from "../components/layout/PageHeader";
 import { Spinner } from "../components/Spinner";
 import { HelpTooltip } from "../components/HelpTooltip";
+import { TickerDetailModal } from "../components/TickerDetailModal";
 import { ApiError } from "../api/client";
 import {
   fetchExposure,
@@ -78,9 +79,11 @@ interface ConcentrationListProps {
   // the warning compares against whichever tab is active below.
   limitPct: number | null;
   unallocatedLabel: string;
+  /** Only meaningful for labelKey="symbol" — a sector name isn't a tradable ticker. */
+  onSymbolClick?: (symbol: string) => void;
 }
 
-function ConcentrationList({ title, rows, labelKey, totalAccountValue, limitPct, unallocatedLabel }: ConcentrationListProps) {
+function ConcentrationList({ title, rows, labelKey, totalAccountValue, limitPct, unallocatedLabel, onSymbolClick }: ConcentrationListProps) {
   return (
     <div className="col-12 col-md-6">
       <h4 style={{ fontSize: "0.9rem" }}>{title}</h4>
@@ -97,7 +100,13 @@ function ConcentrationList({ title, rows, labelKey, totalAccountValue, limitPct,
             const isOverLimit = !isUnallocated && fraction !== null && limitPct !== null && fraction * 100 > limitPct;
             return (
               <li key={label} className="list-group-item d-flex justify-content-between align-items-center px-0">
-                <span className={isUnallocated ? "text-muted" : ""}>{label}</span>
+                {labelKey === "symbol" && !isUnallocated && onSymbolClick ? (
+                  <button type="button" className="btn btn-link p-0 text-decoration-none fw-bold" onClick={() => onSymbolClick(label)}>
+                    {label}
+                  </button>
+                ) : (
+                  <span className={isUnallocated ? "text-muted" : ""}>{label}</span>
+                )}
                 <span className="d-flex align-items-center gap-2">
                   {isOverLimit && (
                     <span className="badge bg-danger-lt text-dark text-nowrap" title={`Over the ${formatPercentageValue(limitPct)} limit for the selected strategy`}>
@@ -156,6 +165,7 @@ export function RiskLimitsPage() {
   const [settingsError, setSettingsError] = useState<string | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [detailSymbol, setDetailSymbol] = useState<string | null>(null);
 
   useEffect(() => {
     fetchExposure()
@@ -259,6 +269,7 @@ export function RiskLimitsPage() {
                   totalAccountValue={exposure?.totalAccountValue ?? null}
                   limitPct={formState ? Number(formState.maxConcentrationPerTickerPct) : null}
                   unallocatedLabel="Unallocated"
+                  onSymbolClick={setDetailSymbol}
                 />
                 <ConcentrationList
                   title="Concentration by Sector"
@@ -399,6 +410,8 @@ export function RiskLimitsPage() {
           )}
         </div>
       </div>
+
+      {detailSymbol && <TickerDetailModal symbol={detailSymbol} onClose={() => setDetailSymbol(null)} />}
     </>
   );
 }

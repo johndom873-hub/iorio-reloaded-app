@@ -4,7 +4,6 @@ import { Spinner } from "../components/Spinner";
 import { ApexChart } from "../components/charts/ApexChart";
 import { CollapsibleCard } from "../components/CollapsibleCard";
 import { HelpTooltip } from "../components/HelpTooltip";
-import { PositionDetailModal } from "../components/PositionDetailModal";
 import { TickerDetailModal } from "../components/TickerDetailModal";
 import { useTheme } from "../contexts/ThemeContext";
 import { ApiError } from "../api/client";
@@ -354,8 +353,7 @@ export function DashboardPage() {
   const [needsAttention, setNeedsAttention] = useState<Position[]>([]);
   const [needsAttentionLoading, setNeedsAttentionLoading] = useState(true);
   const [needsAttentionError, setNeedsAttentionError] = useState<string | null>(null);
-  const [sellCallSymbol, setSellCallSymbol] = useState<string | null>(null);
-  const [needsAttentionDetailId, setNeedsAttentionDetailId] = useState<string | null>(null);
+  const [detailTicker, setDetailTicker] = useState<{ symbol: string; focusPositionId?: string } | null>(null);
 
   useEffect(() => {
     fetchDashboardSummary()
@@ -509,7 +507,7 @@ export function DashboardPage() {
                           <button
                             type="button"
                             className="btn btn-link px-0 py-0 text-decoration-none fw-bold"
-                            onClick={() => setNeedsAttentionDetailId(position.id)}
+                            onClick={() => setDetailTicker({ symbol: position.symbol, focusPositionId: position.id })}
                           >
                             {position.symbol}
                           </button>
@@ -519,7 +517,11 @@ export function DashboardPage() {
                           {(position.unstructuredReason && unstructuredReasonLabels[position.unstructuredReason]) ?? "cause unclear — flagged for review"}
                         </td>
                         <td className="text-end">
-                          <button type="button" className="btn btn-sm btn-outline-warning" onClick={() => setSellCallSymbol(position.symbol)}>
+                          <button
+                            type="button"
+                            className="btn btn-sm btn-outline-warning"
+                            onClick={() => setDetailTicker({ symbol: position.symbol, focusPositionId: position.id })}
+                          >
                             Sell Call
                           </button>
                         </td>
@@ -766,21 +768,14 @@ export function DashboardPage() {
         )}
       </CollapsibleCard>
 
-      {sellCallSymbol && (
+      {detailTicker && (
         <TickerDetailModal
-          symbol={sellCallSymbol}
+          symbol={detailTicker.symbol}
+          focusPositionId={detailTicker.focusPositionId}
           onClose={() => {
-            setSellCallSymbol(null);
+            setDetailTicker(null);
             loadNeedsAttention();
           }}
-        />
-      )}
-
-      {needsAttentionDetailId && (
-        <PositionDetailModal
-          positionId={needsAttentionDetailId}
-          onClose={() => setNeedsAttentionDetailId(null)}
-          onChanged={loadNeedsAttention}
         />
       )}
     </>

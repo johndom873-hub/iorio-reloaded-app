@@ -1,5 +1,6 @@
 import { apiRequest, apiBaseUrl } from "./client";
 import type { StrategyKey } from "./screener";
+import type { RollStructure } from "./tradeAlerts";
 
 export type PositionStatus = "open" | "closed";
 export type LegType = "stock" | "option";
@@ -68,6 +69,30 @@ export function fetchPositions(filters: PositionFilters): Promise<Position[]> {
 
 export function fetchPosition(id: string): Promise<Position> {
   return apiRequest<Position>(`/positions/${id}`);
+}
+
+// Both open (actionable) and closed (history) positions for one symbol, in a
+// single call — used by the consolidated ticker/position modal.
+export function fetchPositionsBySymbol(symbol: string): Promise<Position[]> {
+  return apiRequest<Position[]>(`/positions?symbol=${encodeURIComponent(symbol)}&status=all`);
+}
+
+export interface RollCandidate {
+  symbol: string;
+  relatedPositionId: string;
+  rationale: string;
+  suggestedStructure: RollStructure;
+}
+
+// On-demand equivalent of a scheduled roll alert, for one specific leg —
+// read-only, writes nothing (no trade_alerts/order_requests row). Feeds
+// straight into RollPositionModal the same way a real roll alert's
+// suggestedStructure does.
+export function fetchRollCandidate(positionId: string, legId: string): Promise<RollCandidate> {
+  return apiRequest<RollCandidate>(`/positions/${positionId}/roll-candidate`, {
+    method: "POST",
+    body: JSON.stringify({ legId }),
+  });
 }
 
 // Since 2026-08-24, iorio places real orders with IBKR instead of manually
@@ -164,7 +189,8 @@ export interface RollLegInput {
 }
 
 export interface RollOrderInput {
-  sourceAlertId: string;
+  /** Omitted for a roll built from an on-demand candidate (fetchRollCandidate), which has no backing trade_alerts row. */
+  sourceAlertId?: string;
   closeLegId: string;
   closeLimitPrice: number;
   newLeg: RollLegInput;

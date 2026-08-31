@@ -3,6 +3,7 @@ import { IconStar } from "@tabler/icons-react";
 import { Spinner } from "./Spinner";
 import { OrderReviewPanel } from "./OrderReviewPanel";
 import { TickerPriceChart } from "./charts/TickerPriceChart";
+import { PositionCard } from "./PositionCard";
 import {
   openTickerDetailStream,
   type OptionQuote,
@@ -10,17 +11,29 @@ import {
   type TickerOverview,
 } from "../api/tickerDetail";
 import { fetchTradeAlerts, isRollAlert, refreshTickerAlerts, type NewTradeCandidate, type TradeAlert } from "../api/tradeAlerts";
-import { buildOpenOrder, type OrderRequest } from "../api/positions";
+import {
+  buildOpenOrder,
+  fetchGreeks,
+  fetchPositionsBySymbol,
+  fetchUnrealizedPnl,
+  type Greeks,
+  type OrderRequest,
+  type Position,
+  type UnrealizedPnlResult,
+} from "../api/positions";
 import { ApiError } from "../api/client";
 import type { StrategyKey } from "../api/screener";
 import { computeAnnualizedYield, computePayoff, type PayoffLegInput } from "../lib/payoff";
-import { formatCurrency, formatCurrencyTrimmed, formatNumber, formatPercentage, formatSignedPnl, ibkrExpiryToIsoDate } from "../lib/formatters";
+import { formatCurrency, formatCurrencyTrimmed, formatDate, formatExpiryWithDte, formatNumber, formatPercentage, formatSignedPnl, ibkrExpiryToIsoDate } from "../lib/formatters";
+import { strategyBadgeClass, strategyLabel } from "../lib/positionPnl";
 
 interface TickerDetailModalProps {
   symbol: string;
   onClose: () => void;
   /** Set when opened via "View Details" on a Trade Alert — jumps to that alert's expiry on load. */
   initialAlertId?: string;
+  /** Set when opened from a specific position's row (e.g. Positions' symbol/notes columns) — scrolls that position's card into view when there's more than one for this symbol. */
+  focusPositionId?: string;
 }
 
 type NewTradeAlert = TradeAlert & { suggestedStructure: NewTradeCandidate };
@@ -250,7 +263,17 @@ function OptionSideCells({
   );
 }
 
-export function TickerDetailModal({ symbol, onClose, initialAlertId }: TickerDetailModalProps) {
+export function TickerDetailModal({ symbol, onClose, initialAlertId, focusPositionId }: TickerDetailModalProps) {
+  const [positions, setPositions] = useState<Position[] | null>(null);
+  const [positionsError, setPositionsError] = useState<string | null>(null);
+  const [greeksByLegId, setGreeksByLegId] = useState<Record<string, Greeks>>({});
+  const [greeksFetchFailed, setGreeksFetchFailed] = useState(false);
+  const [unrealizedPnlByPositionId, setUnrealizedPnlByPositionId] = useState<Record<string, UnrealizedPnlResult>>({});
+  const [unrealizedPnlFetchFailed, setUnrealizedPnlFetchFailed] = useState(false);
+  const [showHistory, setShowHistory] = useState(false);
+  const focusedPositionRef = useRef<HTMLDivElement | null>(null);
+  const hasScrolledToFocus = useRef(false);
+
   const [overview, setOverview] = useState<TickerOverview | null>(null);
   const [overviewError, setOverviewError] = useState<string | null>(null);
 
@@ -323,6 +346,11 @@ export function TickerDetailModal({ symbol, onClose, initialAlertId }: TickerDet
       .then(setAlerts)
       .catch((err) => setAlertsError(err instanceof ApiError ? err.message : "Failed to load trade alerts."));
 
+    setPositions(null);
+    setPositionsError(null);
+    hasScrolledToFocus.current = false;
+    loadPositions();
+
     return close;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [symbol]);
@@ -379,6 +407,17 @@ export function TickerDetailModal({ symbol, onClose, initialAlertId }: TickerDet
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialAlertId, relevantAlerts, expiryGroups]);
 
+  // Opened from a specific position's row (e.g. Positions' symbol/notes
+  // columns) — scrolls that position's card into view once positions have
+  // loaded, relevant only when a symbol has more than one open position.
+  useEffect(() => {
+    if (hasScrolledToFocus.current || !focusPositionId || !positions) return;
+    if (!focusedPositionRef.current) return;
+    hasScrolledToFocus.current = true;
+    focusedPositionRef.current.scrollIntoView({ behavior: "smooth", block: "start" });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [focusPositionId, positions]);
+
   function handleAlertRowClick(alert: NewTradeAlert) {
     const expiryYyyymmdd = alert.suggestedStructure.expiry.replaceAll("-", "");
     if (expiryGroups.some((g) => g.expiry === expiryYyyymmdd)) setActiveExpiry(expiryYyyymmdd);
@@ -422,6 +461,42 @@ export function TickerDetailModal({ symbol, onClose, initialAlertId }: TickerDet
   // chain fetches (one-sided by strategy vs. the chain's near-the-money both
   // sides). Label switches between "Scan for Alerts" (none yet) and
   // "Refresh" (some exist) but both call the same thing.
+  // Loads (or re-loads, after a Close/Roll/Save action) every position for
+  // this symbol — open ones drive the actionable PositionCards, closed ones
+  // the collapsed History list. Greeks/unrealized-P&L are fetched once here
+  // across ALL open positions rather than per-card, since both endpoints
+  // already accept arrays (see PositionCard's old standalone-modal ancestor,
+  // PositionDetailModal, which fetched per-position before this merge).
+  async function loadPositions() {
+    try {
+      setPositionsError(null);
+      const result = await fetchPositionsBySymbol(symbol);
+      setPositions(result);
+
+      const openPositions = result.filter((p) => p.status === "open");
+      const optionLegIds = openPositions.flatMap((p) => p.legs.filter((leg) => leg.legType === "option").map((leg) => leg.id));
+      if (optionLegIds.length > 0) {
+        setGreeksFetchFailed(false);
+        fetchGreeks(optionLegIds)
+          .then(setGreeksByLegId)
+          .catch(() => setGreeksFetchFailed(true));
+      } else {
+        setGreeksByLegId({});
+      }
+
+      if (openPositions.length > 0) {
+        setUnrealizedPnlFetchFailed(false);
+        fetchUnrealizedPnl(openPositions.map((p) => p.id))
+          .then(setUnrealizedPnlByPositionId)
+          .catch(() => setUnrealizedPnlFetchFailed(true));
+      } else {
+        setUnrealizedPnlByPositionId({});
+      }
+    } catch (err) {
+      setPositionsError(err instanceof ApiError ? err.message : "Failed to load positions.");
+    }
+  }
+
   async function handleScanOrRefresh() {
     setScanning(true);
     setScanError(null);
@@ -708,6 +783,92 @@ export function TickerDetailModal({ symbol, onClose, initialAlertId }: TickerDet
                       {overview.sector && <span className="badge bg-secondary-lt text-dark">{overview.sector}</span>}
                     </div>
                   )}
+
+                  {/* ---------- Positions (consolidated 2026-08-31 modal-wiring-audit merge) ---------- */}
+                  {positionsError && <div className="alert alert-danger">{positionsError}</div>}
+                  {positions === null && !positionsError && (
+                    <div className="d-flex justify-content-center py-2">
+                      <Spinner size="sm" label="Loading positions" />
+                    </div>
+                  )}
+                  {positions !== null && (() => {
+                    const openPositions = positions.filter((p) => p.status === "open");
+                    const closedPositions = positions.filter((p) => p.status === "closed");
+                    if (openPositions.length === 0 && closedPositions.length === 0) return null;
+                    return (
+                      <div className="mb-4">
+                        {openPositions.length > 0 && (
+                          <>
+                            <h4 className="mb-2" style={{ fontSize: "0.95rem" }}>
+                              {openPositions.length === 1 ? "Position" : `Positions (${openPositions.length})`}
+                            </h4>
+                            {openPositions.map((position) => (
+                              <div key={position.id} ref={position.id === focusPositionId ? focusedPositionRef : undefined}>
+                                <PositionCard
+                                  position={position}
+                                  greeksByLegId={greeksByLegId}
+                                  greeksFetchFailed={greeksFetchFailed}
+                                  unrealizedPnlByPositionId={unrealizedPnlByPositionId}
+                                  unrealizedPnlFetchFailed={unrealizedPnlFetchFailed}
+                                  currentPrice={spotPrice}
+                                  onChanged={loadPositions}
+                                />
+                              </div>
+                            ))}
+                          </>
+                        )}
+                        {closedPositions.length > 0 && (
+                          <div className="mt-2">
+                            <button
+                              type="button"
+                              className="btn btn-sm btn-outline-secondary"
+                              onClick={() => setShowHistory((prev) => !prev)}
+                            >
+                              {showHistory ? "Hide" : "Show"} History ({closedPositions.length})
+                            </button>
+                            {showHistory && (
+                              <div className="table-responsive mt-2 border rounded">
+                                <table className="table table-sm table-vcenter card-table mb-0">
+                                  <thead className="table-light">
+                                    <tr>
+                                      <th>Strategy</th>
+                                      <th>Structure</th>
+                                      <th>Opened</th>
+                                      <th>Closed</th>
+                                      <th className="text-end">Realized P&L</th>
+                                    </tr>
+                                  </thead>
+                                  <tbody>
+                                    {closedPositions.map((position) => (
+                                      <tr key={position.id}>
+                                        <td>
+                                          <span className={`badge ${strategyBadgeClass(position.strategyKey)}`}>
+                                            {strategyLabel(position.strategyKey)}
+                                          </span>
+                                        </td>
+                                        <td className="small">
+                                          {position.legs
+                                            .map((leg) =>
+                                              leg.legType === "stock"
+                                                ? `${leg.side} ${leg.quantity} sh`
+                                                : `${leg.side} ${leg.quantity}x ${leg.strikePrice ? formatCurrencyTrimmed(Number(leg.strikePrice)) : "—"}${leg.optionType === "call" ? "C" : "P"} exp ${formatExpiryWithDte(leg.expiryDate, position.openedAt)}`,
+                                            )
+                                            .join(" / ")}
+                                        </td>
+                                        <td>{formatDate(position.openedAt)}</td>
+                                        <td>{position.closedAt ? formatDate(position.closedAt) : "—"}</td>
+                                        <td className="text-end font-mono">{formatSignedPnl(Number(position.realizedPnl))}</td>
+                                      </tr>
+                                    ))}
+                                  </tbody>
+                                </table>
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })()}
 
                   {/* Trade Alerts + Option Chain share this row's left column;
                       the order panel (when open) spans the FULL height of both,
