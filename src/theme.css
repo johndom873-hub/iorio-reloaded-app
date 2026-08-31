@@ -427,6 +427,31 @@
   font-size: 0.8125rem;
 }
 
+/* Bootstrap's .btn sets its own explicit font-size (1rem, or 0.875rem for
+   .btn-sm) rather than inheriting from an ancestor, so any button sitting in
+   a dense table cell (a ticker-link button, an action-column button) ignored
+   the rule above and kept rendering at its own larger size — inflating that
+   row's height well past its text-only neighbors even though the visible
+   text looked the same size. Found 2026-08-31 comparing Dashboard's Needs
+   Attention (has a Sell Call button, 49px rows) against Latest Events right
+   below it (plain text/badges only, 28px rows).
+
+   Fixing font-size alone wasn't enough: Tabler's own .btn also enforces a
+   min-height via calc(--tblr-btn-line-height + --tblr-btn-padding-y*2 +
+   --tblr-btn-border-width*2) — a deliberate tap-target-size rule, not tied
+   to font-size at all. A plain (non-.btn-sm) button, e.g. a ticker-link
+   button with px-0/py-0, still floors out at 40px tall from these variables
+   alone. Rather than inventing a new smaller size, this reuses the values
+   .btn-sm itself already defines — the project's own designated "compact
+   table row" button size (see CLAUDE.md's Buttons convention) — so a table
+   row's height is governed by content, not by whichever button variant a
+   given call site happened to use. */
+.table.table-sm .btn {
+  font-size: inherit;
+  --tblr-btn-padding-y: 0.3125rem;
+  --tblr-btn-line-height: 1.25rem;
+}
+
 /* Roboto Mono's fixed digit widths read as sturdier, more "financial" than
    Inter's proportional numerals, and keep decimal points aligned down a
    column — the shared numeric treatment for the whole app (approved
