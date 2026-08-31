@@ -52,7 +52,7 @@ export function DataTable<TRow>({
         />
       </div>
       <div className="table-responsive">
-        <table className="table table-sm table-hover table-vcenter card-table" style={{ fontSize: "0.8125rem" }}>
+        <table className="table table-sm table-hover table-vcenter card-table">
           <thead className="table-light">
             <tr>
               {visibleColumns.map((column) => (

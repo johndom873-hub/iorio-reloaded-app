@@ -417,6 +417,16 @@
   font-size: 0.72rem;
 }
 
+/* Dense, trading-terminal-style tables app-wide (approved 2026-08-31) —
+   Bootstrap's table-sm only tightens cell padding, it doesn't shrink the
+   font, so this was previously hand-inlined only on the shared DataTable
+   component and every other table.table-sm in the app (TradeAlerts,
+   TickerDetailModal, PositionDetailModal) stayed at the larger base font.
+   One rule here instead of repeating the inline style at every call site. */
+.table.table-sm {
+  font-size: 0.8125rem;
+}
+
 /* Roboto Mono's fixed digit widths read as sturdier, more "financial" than
    Inter's proportional numerals, and keep decimal points aligned down a
    column — the shared numeric treatment for the whole app (approved

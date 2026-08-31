@@ -4,6 +4,7 @@ import { Spinner } from "../components/Spinner";
 import { ApexChart } from "../components/charts/ApexChart";
 import { CollapsibleCard } from "../components/CollapsibleCard";
 import { HelpTooltip } from "../components/HelpTooltip";
+import { PositionDetailModal } from "../components/PositionDetailModal";
 import { TickerDetailModal } from "../components/TickerDetailModal";
 import { useTheme } from "../contexts/ThemeContext";
 import { ApiError } from "../api/client";
@@ -354,6 +355,7 @@ export function DashboardPage() {
   const [needsAttentionLoading, setNeedsAttentionLoading] = useState(true);
   const [needsAttentionError, setNeedsAttentionError] = useState<string | null>(null);
   const [sellCallSymbol, setSellCallSymbol] = useState<string | null>(null);
+  const [needsAttentionDetailId, setNeedsAttentionDetailId] = useState<string | null>(null);
 
   useEffect(() => {
     fetchDashboardSummary()
@@ -489,7 +491,7 @@ export function DashboardPage() {
           {!needsAttentionError && needsAttentionLoading && <Spinner size="sm" label="Loading positions needing attention" />}
           {!needsAttentionError && !needsAttentionLoading && (
             <div className="table-responsive">
-              <table className="table table-vcenter mb-0">
+              <table className="table table-sm table-vcenter card-table mb-0">
                 <thead className="table-light">
                   <tr>
                     <th>Ticker</th>
@@ -503,7 +505,15 @@ export function DashboardPage() {
                     const stockLeg = position.legs.find((leg) => leg.legType === "stock" && !leg.exitAt);
                     return (
                       <tr key={position.id}>
-                        <td className="fw-semibold">{position.symbol}</td>
+                        <td>
+                          <button
+                            type="button"
+                            className="btn btn-link px-0 py-0 text-decoration-none fw-bold"
+                            onClick={() => setNeedsAttentionDetailId(position.id)}
+                          >
+                            {position.symbol}
+                          </button>
+                        </td>
                         <td className="font-mono">{stockLeg?.quantity ?? "—"}</td>
                         <td className="text-secondary">
                           {(position.unstructuredReason && unstructuredReasonLabels[position.unstructuredReason]) ?? "cause unclear — flagged for review"}
@@ -531,7 +541,7 @@ export function DashboardPage() {
           <div className="text-muted">No recent activity.</div>
         ) : (
           <div className="table-responsive" style={{ maxHeight: "26rem", overflowY: "auto" }}>
-            <table className="table table-vcenter mb-0">
+            <table className="table table-sm table-vcenter card-table mb-0">
               <thead className="table-light" style={{ position: "sticky", top: 0, zIndex: 1 }}>
                 <tr>
                   <th>Date</th>
@@ -560,7 +570,7 @@ export function DashboardPage() {
             {!periodPnlError && periodPnlLoading && <Spinner size="sm" label="Loading P&L" />}
             {!periodPnlError && !periodPnlLoading && periodPnl && (
               <div className="table-responsive">
-                <table className="table table-vcenter mb-0">
+                <table className="table table-sm table-vcenter card-table mb-0">
                   <thead className="table-light">
                     <tr>
                       <th>Strategy</th>
@@ -612,7 +622,7 @@ export function DashboardPage() {
 
                 return (
                   <div className="table-responsive">
-                    <table className="table table-vcenter mb-0">
+                    <table className="table table-sm table-vcenter card-table mb-0">
                       <thead className="table-light">
                         <tr>
                           <th>Strategy</th>
@@ -763,6 +773,14 @@ export function DashboardPage() {
             setSellCallSymbol(null);
             loadNeedsAttention();
           }}
+        />
+      )}
+
+      {needsAttentionDetailId && (
+        <PositionDetailModal
+          positionId={needsAttentionDetailId}
+          onClose={() => setNeedsAttentionDetailId(null)}
+          onChanged={loadNeedsAttention}
         />
       )}
     </>
