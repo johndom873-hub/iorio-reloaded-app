@@ -117,6 +117,18 @@ function newTradeAlerts(alerts: TradeAlert[]): NewTradeAlert[] {
   return alerts.filter((alert): alert is NewTradeAlert => !isRollAlert(alert));
 }
 
+// Only strategy/expiry/strike affect which strikes the option chain must
+// force-include — comparing on those (not full alert objects, which also
+// carry rationale/POP/IV text that changes without the strike set changing)
+// avoids reconnecting the chain for an alert refresh that didn't actually
+// move any strikes.
+function pendingAlertStrikeSignature(alerts: TradeAlert[]): string {
+  return newTradeAlerts(alerts)
+    .map((alert) => `${alert.strategyKey}|${alert.suggestedStructure.expiry}|${alert.suggestedStructure.strike}`)
+    .sort()
+    .join(",");
+}
+
 function midPrice(quote: OptionQuote): number | null {
   if (quote.bid !== null && quote.ask !== null) return (quote.bid + quote.ask) / 2;
   return quote.last;
@@ -323,6 +335,52 @@ export function TickerDetailModal({ symbol, onClose, initialAlertId, focusPositi
   // already-open connection, which left the chain showing strikes from
   // alerts that had since expired (found 2026-09-01 on SNDK).
   const [streamKey, setStreamKey] = useState(0);
+
+  // Set when a background poll (below) finds the pending-alert strike set has
+  // changed while the user has an order selection/review panel open — the
+  // chain isn't reconnected right away in that case (would blow away
+  // selection/pendingOrder mid-build), just flagged via a toast. Cleared,
+  // reconnecting the chain, once the user closes that panel — see the effect
+  // below the poll.
+  const [alertsStaleWhileBuilding, setAlertsStaleWhileBuilding] = useState(false);
+
+  // Catches the case the explicit Scan/Refresh and order-fill reconnects
+  // above don't: the scheduled trade-alert regeneration job (see
+  // runTradeAlertGeneration.ts) changing which alerts are pending while this
+  // modal just sits open with no user action. Polls rather than pushing over
+  // the existing SSE connection since only the alerts list needs checking,
+  // not the option chain itself.
+  const alertsRef = useRef<TradeAlert[] | null>(null);
+  alertsRef.current = alerts;
+  const isBuildingRef = useRef(false);
+  isBuildingRef.current = selection !== null || pendingOrder !== null;
+
+  useEffect(() => {
+    const pollIntervalMs = 60_000;
+    const interval = setInterval(async () => {
+      let updated: TradeAlert[];
+      try {
+        updated = await fetchTradeAlerts({ status: "pending", symbol });
+      } catch {
+        return; // transient poll failure — next tick retries
+      }
+      if (pendingAlertStrikeSignature(updated) === pendingAlertStrikeSignature(alertsRef.current ?? [])) return;
+
+      setAlerts(updated);
+      if (isBuildingRef.current) setAlertsStaleWhileBuilding(true);
+      else setStreamKey((key) => key + 1);
+    }, pollIntervalMs);
+    return () => clearInterval(interval);
+  }, [symbol]);
+
+  // Once the user closes their selection/order panel, it's safe to pick up
+  // the alert change that was deferred above.
+  useEffect(() => {
+    if (alertsStaleWhileBuilding && selection === null && pendingOrder === null) {
+      setAlertsStaleWhileBuilding(false);
+      setStreamKey((key) => key + 1);
+    }
+  }, [alertsStaleWhileBuilding, selection, pendingOrder]);
 
   useEffect(() => {
     setOverview(null);
@@ -759,6 +817,30 @@ export function TickerDetailModal({ symbol, onClose, initialAlertId, focusPositi
 
   return (
     <>
+      {alertsStaleWhileBuilding && (
+        <div className="toast-container position-fixed top-0 end-0 p-3" style={{ zIndex: 1100 }}>
+          <div className="toast show" role="status" aria-live="polite">
+            <div className="toast-header">
+              <strong className="me-auto">Trade alerts updated</strong>
+              <button type="button" className="btn-close" aria-label="Close" onClick={() => setAlertsStaleWhileBuilding(false)} />
+            </div>
+            <div className="toast-body d-flex align-items-center justify-content-between gap-3">
+              <span>New alerts came in for {symbol} — the chain will refresh once you finish this order.</span>
+              <button
+                type="button"
+                className="btn btn-primary btn-sm"
+                onClick={() => {
+                  setAlertsStaleWhileBuilding(false);
+                  closeOrderPanel();
+                  setStreamKey((key) => key + 1);
+                }}
+              >
+                Refresh now
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       <div className="modal-backdrop show" style={{ zIndex: 1050, backgroundColor: "rgba(0,0,0,0.5)", opacity: 1 }} />
       <div
         className="modal show d-block"
