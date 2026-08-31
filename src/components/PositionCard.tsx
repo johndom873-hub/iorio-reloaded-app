@@ -296,9 +296,25 @@ export function PositionCard({
                 },
                 annotations: {
                   xaxis: [
-                    { x: payoff.breakeven, borderColor: annotationColors.breakeven, label: { text: "Breakeven", style: { fontSize: "0.7rem" } } },
+                    {
+                      x: payoff.breakeven,
+                      borderColor: annotationColors.breakeven,
+                      label: {
+                        text: "Breakeven",
+                        style: { fontSize: "0.7rem", color: "#fff", background: annotationColors.breakeven },
+                      },
+                    },
                     ...(currentPrice !== null
-                      ? [{ x: currentPrice, borderColor: annotationColors.current, label: { text: "Current", style: { fontSize: "0.7rem" } } }]
+                      ? [
+                          {
+                            x: currentPrice,
+                            borderColor: annotationColors.current,
+                            label: {
+                              text: "Current",
+                              style: { fontSize: "0.7rem", color: "#fff", background: annotationColors.current },
+                            },
+                          },
+                        ]
                       : []),
                   ],
                   yaxis: [{ y: 0, borderColor: annotationColors.zero, strokeDashArray: 4 }],

@@ -781,7 +781,7 @@ export function TickerDetailModal({ symbol, onClose, initialAlertId, focusPositi
                         Day range {formatCurrency(pricing?.low ?? null)} – {formatCurrency(pricing?.high ?? null)}
                       </span>
                       <span className="text-secondary small">Volume {formatNumber(pricing?.volume ?? null)}</span>
-                      {overview.sector && <span className="badge bg-secondary-lt text-dark">{overview.sector}</span>}
+                      {overview.sector && <span className="badge bg-secondary-lt">{overview.sector}</span>}
                     </div>
                   )}
 

@@ -11,7 +11,7 @@ export function strategyLabel(strategyKey: PositionStrategyKey): string {
 }
 
 export function strategyBadgeClass(strategyKey: PositionStrategyKey): string {
-  return strategyKey === "unstructured" ? "bg-warning-lt text-dark" : "bg-azure-lt text-dark";
+  return strategyKey === "unstructured" ? "bg-warning-lt" : "bg-azure-lt";
 }
 
 // Whether Stock P&L is meaningful to show for this position — not just

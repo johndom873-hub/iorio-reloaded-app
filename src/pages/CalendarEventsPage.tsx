@@ -127,7 +127,7 @@ export function CalendarEventsPage() {
         row.importance === null ? (
           "—"
         ) : (
-          <span className={`badge ${importanceBadgeClass[row.importance] ?? "bg-secondary-lt"} text-dark`}>
+          <span className={`badge ${importanceBadgeClass[row.importance] ?? "bg-secondary-lt"}`}>
             {importanceLabel[row.importance] ?? row.importance}
           </span>
         ),

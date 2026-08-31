@@ -109,7 +109,7 @@ function ConcentrationList({ title, rows, labelKey, totalAccountValue, limitPct,
                 )}
                 <span className="d-flex align-items-center gap-2">
                   {isOverLimit && (
-                    <span className="badge bg-danger-lt text-dark text-nowrap" title={`Over the ${formatPercentageValue(limitPct)} limit for the selected strategy`}>
+                    <span className="badge bg-danger-lt text-nowrap" title={`Over the ${formatPercentageValue(limitPct)} limit for the selected strategy`}>
                       over limit
                     </span>
                   )}

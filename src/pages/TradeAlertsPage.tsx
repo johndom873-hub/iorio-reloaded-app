@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { Fragment, useCallback, useEffect, useState } from "react";
 import { PageHeader } from "../components/layout/PageHeader";
 import { Spinner } from "../components/Spinner";
 import { TickerDetailModal } from "../components/TickerDetailModal";
@@ -472,8 +472,8 @@ export function TradeAlertsPage() {
                             const rightLabel = closeLeg.right === "call" ? "C" : "P";
                             const triggerLabel = trigger === "decay" ? "Decayed ≤50%" : `≤21 DTE (${dte}d)`;
                             return (
-                              <>
-                                <tr key={alert.id}>
+                              <Fragment key={alert.id}>
+                                <tr>
                                   <td>
                                     {formatCurrencyTrimmed(closeLeg.strike)}
                                     {rightLabel} exp {formatDate(closeLeg.expiry)} ({dte} DTE)
@@ -534,13 +534,13 @@ export function TradeAlertsPage() {
                                   </td>
                                 </tr>
                                 {alert.rationale && (
-                                  <tr key={`${alert.id}-why`}>
+                                  <tr>
                                     <td colSpan={9} className="text-secondary pt-0" style={{ fontSize: "0.78rem" }}>
                                       {alert.rationale}
                                     </td>
                                   </tr>
                                 )}
-                              </>
+                              </Fragment>
                             );
                           })}
                         </tbody>

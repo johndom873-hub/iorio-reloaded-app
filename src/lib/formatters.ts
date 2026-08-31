@@ -30,9 +30,9 @@ export function orderRequestStatusLabel(status: OrderRequestStatus): string {
 }
 
 export function orderRequestStatusBadgeClass(status: OrderRequestStatus): string {
-  if (status === "filled") return "bg-success-lt text-dark";
-  if (status === "rejected" || status === "error" || status === "cancelled") return "bg-danger-lt text-dark";
-  return "bg-azure-lt text-dark";
+  if (status === "filled") return "bg-success-lt";
+  if (status === "rejected" || status === "error" || status === "cancelled") return "bg-danger-lt";
+  return "bg-azure-lt";
 }
 
 // A job_run can report status "success" while its details still carry a
@@ -48,10 +48,10 @@ export function jobRunStatusBadgeClass(
   status: JobRunStatus,
   details?: Record<string, unknown> | null,
 ): string {
-  if (status === "success" && jobRunHasProblems(details)) return "bg-warning-lt text-dark";
-  if (status === "success") return "bg-success-lt text-dark";
-  if (status === "failure") return "bg-danger-lt text-dark";
-  return "bg-azure-lt text-dark";
+  if (status === "success" && jobRunHasProblems(details)) return "bg-warning-lt";
+  if (status === "success") return "bg-success-lt";
+  if (status === "failure") return "bg-danger-lt";
+  return "bg-azure-lt";
 }
 
 export function jobRunStatusLabel(status: JobRunStatus, details?: Record<string, unknown> | null): string {
