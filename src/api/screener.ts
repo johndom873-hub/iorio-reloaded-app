@@ -17,7 +17,8 @@ export interface ScreenerRow {
   avgOptionVolume: string | null;
   capturedAt: string | null;
   ivRank: number | null;
-  ivRankWindowDays: number;
+  ivPercentile: number | null;
+  ivWindowDays: number;
 }
 
 export function fetchScreener(): Promise<ScreenerRow[]> {

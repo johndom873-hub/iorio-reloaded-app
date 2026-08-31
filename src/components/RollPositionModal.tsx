@@ -48,7 +48,7 @@ interface RollPositionModalProps {
 // button/Cancel/ESC, so an accidental outside click can't discard an
 // in-progress roll.
 export function RollPositionModal({ alert, onClose, onRolled }: RollPositionModalProps) {
-  const { closeLeg, replacement, trigger, dte } = alert.suggestedStructure;
+  const { closeLeg, replacement, trigger, dte, netCredit, requiredMinimumCredit } = alert.suggestedStructure;
 
   const [closeLimitPriceDraft, setCloseLimitPriceDraft] = useState(closeLeg.currentPrice.toFixed(2));
   const [newLegLimitPriceDraft, setNewLegLimitPriceDraft] = useState(replacement.premium.toFixed(2));
@@ -168,13 +168,22 @@ export function RollPositionModal({ alert, onClose, onRolled }: RollPositionModa
                   This leg hasn't actually hit the 50%-decay/21-DTE roll trigger yet — you're rolling early.
                 </div>
               )}
+              {alert.suggestedStructure.stillNetCredit === false && !pendingOrder && (
+                <div className="alert alert-warning">
+                  This roll has drifted into a net debit after commission/spread as of this refresh — re-check before acting.
+                </div>
+              )}
 
               {pendingOrder ? (
                 <OrderReviewPanel order={pendingOrder} onCancelled={onClose} onFilled={onRolled} />
               ) : (
                 <>
-                  <div className="text-secondary mb-3" style={{ fontSize: "0.8rem" }}>
+                  <div className="text-secondary mb-1" style={{ fontSize: "0.8rem" }}>
                     Trigger: {triggerLabel}
+                  </div>
+                  <div className="text-secondary mb-3" style={{ fontSize: "0.8rem" }}>
+                    Net credit: <span className="text-success">{formatCurrency(netCredit)}</span> (min. required after commission/spread:{" "}
+                    {formatCurrency(requiredMinimumCredit)})
                   </div>
 
                   <h6 className="text-secondary text-uppercase" style={{ fontSize: "0.72rem" }}>

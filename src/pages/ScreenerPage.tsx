@@ -214,13 +214,28 @@ export function ScreenerPage() {
     {
       key: "ivRank",
       header: "IV Rank",
+      headerTitle: "(today's IV − 1yr low) / (1yr high − 1yr low) × 100 — skewed by a single outlier day",
       align: "right",
       render: (row) =>
         row.ivRank === null ? (
           "—"
         ) : (
           <span>
-            {formatPercentageValue(row.ivRank)} <span className="text-muted small">({row.ivRankWindowDays}d)</span>
+            {formatPercentageValue(row.ivRank)} <span className="text-muted small">({row.ivWindowDays}d)</span>
+          </span>
+        ),
+    },
+    {
+      key: "ivPercentile",
+      header: "IV %ile",
+      headerTitle: "% of the last 1yr of trading days whose IV closed below today's",
+      align: "right",
+      render: (row) =>
+        row.ivPercentile === null ? (
+          "—"
+        ) : (
+          <span>
+            {formatPercentageValue(row.ivPercentile)} <span className="text-muted small">({row.ivWindowDays}d)</span>
           </span>
         ),
     },

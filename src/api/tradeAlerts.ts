@@ -14,6 +14,10 @@ export interface NewTradeCandidate {
   spotPrice: number;
   /** Black-Scholes N(d2) estimate, breakeven-adjusted — pending a manual validation pass against IBKR's own TWS-displayed POP. Null if the quote had no usable IV. */
   probabilityOfProfit: number | null;
+  /** (today's IV − 1yr low) / (1yr high − 1yr low) × 100. Null with under 2 days of IV history. */
+  ivRank: number | null;
+  /** % of the last 1yr of trading days whose IV closed below today's. Null with under 20 days of IV history. */
+  ivPercentile: number | null;
 }
 
 // Kept as an alias — most existing call sites refer to "SuggestedStructure"
@@ -34,9 +38,20 @@ export interface RollStructure {
   trigger: "decay" | "dte";
   dte: number;
   replacement: NewTradeCandidate;
+  // Credit collected by this specific roll (replacement.premium minus the
+  // close leg's current price) versus the real cost of executing it
+  // (commission + both legs' bid/ask spread) — approved 2026-08-31. A
+  // suggested roll is only ever generated when netCredit clears
+  // requiredMinimumCredit, so this pair exists mainly to show Juan the
+  // margin, not to gate anything client-side.
+  netCredit: number;
+  requiredMinimumCredit: number;
   // Only present after a refresh (see refreshTradeAlert) — false means the
   // position no longer meets either roll trigger as of the refreshed data.
   stillTriggered?: boolean;
+  // Only present after a refresh — false means the roll has drifted into a
+  // net debit (after commission/spread) as of the refreshed data.
+  stillNetCredit?: boolean;
 }
 
 export type TradeAlertType = "new_trade" | "roll";

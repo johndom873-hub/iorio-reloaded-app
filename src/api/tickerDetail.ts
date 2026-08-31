@@ -95,6 +95,19 @@ export function fetchTickerChart(symbol: string, range: ChartRange): Promise<Pri
   return apiRequest<PriceBar[]>(`/tickers/${encodeURIComponent(symbol)}/chart?range=${range}`);
 }
 
+// Daily-only, unlike ChartRange — IBKR's OPTION_IMPLIED_VOLATILITY history
+// is one blended value per day for the underlying, no intraday granularity.
+export type IvChartRange = "1Y" | "5Y" | "All";
+
+export interface IvChartPoint {
+  time: number; // Unix epoch seconds
+  value: number;
+}
+
+export function fetchTickerIvChart(symbol: string, range: IvChartRange): Promise<IvChartPoint[]> {
+  return apiRequest<IvChartPoint[]>(`/tickers/${encodeURIComponent(symbol)}/iv-chart?range=${range}`);
+}
+
 export type PositionQuoteStreamEvent =
   | { type: "overview"; data: { pricing: TickerPricing } }
   | { type: "optionChain"; data: OptionQuote[] }

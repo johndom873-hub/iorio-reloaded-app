@@ -3,6 +3,7 @@ import { IconStar } from "@tabler/icons-react";
 import { Spinner } from "./Spinner";
 import { OrderReviewPanel } from "./OrderReviewPanel";
 import { TickerPriceChart } from "./charts/TickerPriceChart";
+import { IvHistoryChart } from "./charts/IvHistoryChart";
 import { PositionCard } from "./PositionCard";
 import {
   openTickerDetailStream,
@@ -1169,6 +1170,11 @@ export function TickerDetailModal({ symbol, onClose, initialAlertId, focusPositi
                       </div>
                     )}
                     {chartBars && <TickerPriceChart symbol={symbol} initialBars={chartBars} />}
+                  </div>
+
+                  {/* ---------- IV History ---------- */}
+                  <div className="mt-3">
+                    <IvHistoryChart symbol={symbol} />
                   </div>
                 </>
               )}

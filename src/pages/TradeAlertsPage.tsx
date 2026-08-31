@@ -23,7 +23,22 @@ import {
   formatDateTime,
   formatNumber,
   formatPercentage,
+  formatPercentageValue,
 } from "../lib/formatters";
+
+// Compact combined IV Rank / IV Percentile display — one cell/line rather
+// than two separate columns, both metrics approved 2026-08-31 (see
+// PROGRESS.md, lib/ivMetrics.ts on the backend).
+function IvMetricsInline({ ivRank, ivPercentile }: { ivRank: number | null; ivPercentile: number | null }) {
+  if (ivRank === null && ivPercentile === null) return <span className="text-muted">—</span>;
+  return (
+    <span title="IV Rank / IV Percentile">
+      {ivRank === null ? "—" : formatPercentageValue(ivRank)}
+      <span className="text-secondary"> / </span>
+      {ivPercentile === null ? "—" : formatPercentageValue(ivPercentile)}
+    </span>
+  );
+}
 
 const strategyTabs: { key: StrategyKey | "all"; label: string }[] = [
   { key: "all", label: "All" },
@@ -317,6 +332,9 @@ export function TradeAlertsPage() {
                               >
                                 POP
                               </th>
+                              <th className="text-end" title="IV Rank / IV Percentile — see the header tooltip on Screener for each formula">
+                                IV Rk/%ile
+                              </th>
                               <th>Why</th>
                               <th style={{ width: 110 }}></th>
                             </tr>
@@ -347,6 +365,9 @@ export function TradeAlertsPage() {
                                     ) : (
                                       formatPercentage(s.probabilityOfProfit)
                                     )}
+                                  </td>
+                                  <td className="text-end font-mono">
+                                    <IvMetricsInline ivRank={s.ivRank} ivPercentile={s.ivPercentile} />
                                   </td>
                                   <td className="text-secondary" style={{ fontSize: "0.8rem", maxWidth: 260 }}>
                                     {alert.rationale}
@@ -383,6 +404,12 @@ export function TradeAlertsPage() {
                                   <div className="text-secondary font-mono" style={{ fontSize: "0.75rem" }}>
                                     Δ {formatNumber(s.delta, 2)} · Prem {formatCurrency(s.premium)}
                                     {s.probabilityOfProfit !== null && <> · POP {formatPercentage(s.probabilityOfProfit)}</>}
+                                    {(s.ivRank !== null || s.ivPercentile !== null) && (
+                                      <>
+                                        {" "}
+                                        · IV <IvMetricsInline ivRank={s.ivRank} ivPercentile={s.ivPercentile} />
+                                      </>
+                                    )}
                                   </div>
                                 </div>
                                 <span className="badge badge-change-pos font-mono text-nowrap">{formatPercentage(s.annualizedYield)}</span>
@@ -433,6 +460,9 @@ export function TradeAlertsPage() {
                             >
                               POP
                             </th>
+                            <th className="text-end" title="IV Rank / IV Percentile — see the header tooltip on Screener for each formula">
+                              IV Rk/%ile
+                            </th>
                             <th style={{ width: 170 }}></th>
                           </tr>
                         </thead>
@@ -478,6 +508,9 @@ export function TradeAlertsPage() {
                                       formatPercentage(replacement.probabilityOfProfit)
                                     )}
                                   </td>
+                                  <td className="text-end font-mono">
+                                    <IvMetricsInline ivRank={replacement.ivRank} ivPercentile={replacement.ivPercentile} />
+                                  </td>
                                   <td className="text-end">
                                     {alert.status === "pending" ? (
                                       <div className="d-flex gap-2 justify-content-end">
@@ -502,7 +535,7 @@ export function TradeAlertsPage() {
                                 </tr>
                                 {alert.rationale && (
                                   <tr key={`${alert.id}-why`}>
-                                    <td colSpan={8} className="text-secondary pt-0" style={{ fontSize: "0.78rem" }}>
+                                    <td colSpan={9} className="text-secondary pt-0" style={{ fontSize: "0.78rem" }}>
                                       {alert.rationale}
                                     </td>
                                   </tr>
@@ -564,6 +597,12 @@ export function TradeAlertsPage() {
                               <div className="col-6">
                                 <div className="text-secondary">POP</div>
                                 <div className="font-mono">{formatPercentage(replacement.probabilityOfProfit)}</div>
+                              </div>
+                              <div className="col-6">
+                                <div className="text-secondary">IV Rank / %ile</div>
+                                <div className="font-mono">
+                                  <IvMetricsInline ivRank={replacement.ivRank} ivPercentile={replacement.ivPercentile} />
+                                </div>
                               </div>
                             </div>
                             <div className="mt-2">
