@@ -31,6 +31,9 @@ const strategyDescriptions: Record<StrategyKey, string> = {
 interface SettingsFormState {
   deltaTargetMin: string;
   deltaTargetMax: string;
+  // covered_call only — "" for cash_secured_put, which has no fields for these.
+  deltaTargetMinExistingPosition: string;
+  deltaTargetMaxExistingPosition: string;
   dteTargetMin: string;
   dteTargetMax: string;
   maxPositionPctOfPortfolio: string;
@@ -44,6 +47,8 @@ function toFormState(settings: StrategySettings): SettingsFormState {
   return {
     deltaTargetMin: settings.deltaTargetMin,
     deltaTargetMax: settings.deltaTargetMax,
+    deltaTargetMinExistingPosition: settings.deltaTargetMinExistingPosition ?? "",
+    deltaTargetMaxExistingPosition: settings.deltaTargetMaxExistingPosition ?? "",
     dteTargetMin: String(settings.dteTargetMin),
     dteTargetMax: String(settings.dteTargetMax),
     maxPositionPctOfPortfolio: settings.maxPositionPctOfPortfolio,
@@ -54,10 +59,14 @@ function toFormState(settings: StrategySettings): SettingsFormState {
   };
 }
 
-function toUpdateInput(form: SettingsFormState): StrategySettingsInput {
+function toUpdateInput(form: SettingsFormState, strategy: StrategyKey): StrategySettingsInput {
   return {
     deltaTargetMin: Number(form.deltaTargetMin),
     deltaTargetMax: Number(form.deltaTargetMax),
+    ...(strategy === "covered_call" && {
+      deltaTargetMinExistingPosition: Number(form.deltaTargetMinExistingPosition),
+      deltaTargetMaxExistingPosition: Number(form.deltaTargetMaxExistingPosition),
+    }),
     dteTargetMin: Number(form.dteTargetMin),
     dteTargetMax: Number(form.dteTargetMax),
     maxPositionPctOfPortfolio: Number(form.maxPositionPctOfPortfolio),
@@ -204,7 +213,7 @@ export function RiskLimitsPage() {
     setSaving(true);
     setSaveError(null);
     try {
-      const updated = await updateStrategySettings(strategy, toUpdateInput(formState));
+      const updated = await updateStrategySettings(strategy, toUpdateInput(formState, strategy));
       setAllSettings((prev) => prev.map((row) => (row.strategyKey === strategy ? updated : row)));
     } catch (err) {
       setSaveError(err instanceof ApiError ? err.message : "Failed to save settings.");
@@ -348,6 +357,34 @@ export function RiskLimitsPage() {
                   help="Highest option delta (absolute value) the screener will consider. Higher = closer to the money, more premium, more assignment risk."
                   onChange={(value) => updateField("deltaTargetMax", value)}
                 />
+                {strategy === "covered_call" && (
+                  <>
+                    <div className="col-12">
+                      <h4 className="mb-0" style={{ fontSize: "0.85rem" }}>
+                        Delta target (existing position)
+                      </h4>
+                      <p className="text-muted mb-0" style={{ fontSize: "0.75rem" }}>
+                        Applies instead of the generic delta target above when you already own enough shares of the
+                        ticker (100+, uncommitted to another covered call) to write a real covered call against —
+                        otherwise the generic range above is used, as a buy-write/hypothetical scan.
+                      </p>
+                    </div>
+                    <NumberField
+                      label="Delta target min (existing position)"
+                      value={formState.deltaTargetMinExistingPosition}
+                      step="0.01"
+                      help="Lowest option delta (absolute value) the screener will consider when selling calls against shares you already own."
+                      onChange={(value) => updateField("deltaTargetMinExistingPosition", value)}
+                    />
+                    <NumberField
+                      label="Delta target max (existing position)"
+                      value={formState.deltaTargetMaxExistingPosition}
+                      step="0.01"
+                      help="Highest option delta (absolute value) the screener will consider when selling calls against shares you already own."
+                      onChange={(value) => updateField("deltaTargetMaxExistingPosition", value)}
+                    />
+                  </>
+                )}
                 <NumberField
                   label="DTE target min"
                   value={formState.dteTargetMin}

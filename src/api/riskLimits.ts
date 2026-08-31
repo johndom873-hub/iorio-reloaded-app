@@ -6,6 +6,11 @@ export interface StrategySettings {
   strategyKey: StrategyKey;
   deltaTargetMin: string;
   deltaTargetMax: string;
+  // covered_call only — governs delta selection instead of
+  // deltaTargetMin/Max when the account already owns enough shares of the
+  // ticker to write a real covered call against. Null for cash_secured_put.
+  deltaTargetMinExistingPosition: string | null;
+  deltaTargetMaxExistingPosition: string | null;
   dteTargetMin: number;
   dteTargetMax: number;
   maxPositionPctOfPortfolio: string;
@@ -26,6 +31,8 @@ function mapSettingsRow(row: Record<string, unknown>): StrategySettings {
     strategyKey: row.strategy_key as StrategyKey,
     deltaTargetMin: row.delta_target_min as string,
     deltaTargetMax: row.delta_target_max as string,
+    deltaTargetMinExistingPosition: (row.delta_target_min_existing_position as string | null) ?? null,
+    deltaTargetMaxExistingPosition: (row.delta_target_max_existing_position as string | null) ?? null,
     dteTargetMin: row.dte_target_min as number,
     dteTargetMax: row.dte_target_max as number,
     maxPositionPctOfPortfolio: row.max_position_pct_of_portfolio as string,
@@ -46,6 +53,9 @@ export async function fetchStrategySettings(): Promise<StrategySettings[]> {
 export interface StrategySettingsInput {
   deltaTargetMin: number;
   deltaTargetMax: number;
+  // Required for covered_call, omitted for cash_secured_put.
+  deltaTargetMinExistingPosition?: number;
+  deltaTargetMaxExistingPosition?: number;
   dteTargetMin: number;
   dteTargetMax: number;
   maxPositionPctOfPortfolio: number;
@@ -64,6 +74,12 @@ export async function updateStrategySettings(
     body: JSON.stringify({
       delta_target_min: input.deltaTargetMin,
       delta_target_max: input.deltaTargetMax,
+      ...(input.deltaTargetMinExistingPosition !== undefined && {
+        delta_target_min_existing_position: input.deltaTargetMinExistingPosition,
+      }),
+      ...(input.deltaTargetMaxExistingPosition !== undefined && {
+        delta_target_max_existing_position: input.deltaTargetMaxExistingPosition,
+      }),
       dte_target_min: input.dteTargetMin,
       dte_target_max: input.dteTargetMax,
       max_position_pct_of_portfolio: input.maxPositionPctOfPortfolio,
