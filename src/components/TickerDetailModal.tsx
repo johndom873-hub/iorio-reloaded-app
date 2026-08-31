@@ -27,6 +27,7 @@ import type { StrategyKey } from "../api/screener";
 import { computeAnnualizedYield, computePayoff, type PayoffLegInput } from "../lib/payoff";
 import { formatCurrency, formatCurrencyTrimmed, formatDate, formatExpiryWithDte, formatNumber, formatPercentage, formatSignedPnl, ibkrExpiryToIsoDate } from "../lib/formatters";
 import { strategyBadgeClass, strategyLabel } from "../lib/positionPnl";
+import { flashClassName, useFlashOnChange } from "../hooks/useFlashOnChange";
 
 interface TickerDetailModalProps {
   symbol: string;
@@ -230,6 +231,89 @@ function SpotPriceMarkerRow({
   );
 }
 
+// One row's own component (not inlined in the .map() below) so its flash
+// hooks are legal -- each alert's live.delta/premium/yieldValue recomputes
+// on every option chain tick (liveAlertMetrics), same live data the chain
+// table itself flashes.
+function TradeAlertTableRow({
+  alert,
+  optionChain,
+  expiryGroups,
+  spotPrice,
+  onRowClick,
+}: {
+  alert: NewTradeAlert;
+  optionChain: OptionQuote[] | null;
+  expiryGroups: ExpiryGroup[];
+  spotPrice: number | null;
+  onRowClick: (alert: NewTradeAlert) => void;
+}) {
+  const live = liveAlertMetrics(alert, optionChain, expiryGroups, spotPrice);
+  const deltaFlash = useFlashOnChange(live.delta);
+  const premiumFlash = useFlashOnChange(live.premium);
+  const yieldFlash = useFlashOnChange(live.yieldValue);
+
+  return (
+    <tr style={{ cursor: "pointer" }} onClick={() => onRowClick(alert)}>
+      <td>
+        <StrategyBadge strategyKey={alert.strategyKey} />
+      </td>
+      <td>
+        {formatExpiry(alert.suggestedStructure.expiry.replaceAll("-", ""))} <span className="text-secondary">({live.dte} DTE)</span>
+      </td>
+      <td className="text-end font-mono">{formatCurrencyTrimmed(alert.suggestedStructure.strike)}</td>
+      <td className={`text-end font-mono ${flashClassName(deltaFlash)}`}>{formatNumber(live.delta, 2)}</td>
+      <td className={`text-end font-mono ${flashClassName(premiumFlash)}`}>{formatCurrency(live.premium)}</td>
+      <td className={`text-end font-mono ${flashClassName(yieldFlash)}`}>
+        <span className="badge badge-change-pos">{formatPercentage(live.yieldValue)}</span>
+      </td>
+      <td className="text-secondary">›</td>
+    </tr>
+  );
+}
+
+function TradeAlertMobileCard({
+  alert,
+  optionChain,
+  expiryGroups,
+  spotPrice,
+  onCardClick,
+}: {
+  alert: NewTradeAlert;
+  optionChain: OptionQuote[] | null;
+  expiryGroups: ExpiryGroup[];
+  spotPrice: number | null;
+  onCardClick: (alert: NewTradeAlert) => void;
+}) {
+  const live = liveAlertMetrics(alert, optionChain, expiryGroups, spotPrice);
+  const deltaFlash = useFlashOnChange(live.delta);
+  const premiumFlash = useFlashOnChange(live.premium);
+  const yieldFlash = useFlashOnChange(live.yieldValue);
+
+  return (
+    <div
+      className="border rounded p-2 d-flex align-items-center justify-content-between gap-2"
+      style={{ cursor: "pointer" }}
+      onClick={() => onCardClick(alert)}
+    >
+      <div>
+        <StrategyBadge strategyKey={alert.strategyKey} />
+        <div className="fw-bold mt-1 font-mono">
+          {formatCurrencyTrimmed(alert.suggestedStructure.strike)} · {formatExpiry(alert.suggestedStructure.expiry.replaceAll("-", ""))}
+        </div>
+        <div className="text-secondary font-mono" style={{ fontSize: "0.75rem" }}>
+          Δ <span className={flashClassName(deltaFlash)}>{formatNumber(live.delta, 2)}</span> · Prem{" "}
+          <span className={flashClassName(premiumFlash)}>{formatCurrency(live.premium)}</span> · {live.dte} DTE
+        </div>
+      </div>
+      <div className="text-end d-flex flex-column align-items-end gap-1">
+        <span className={`badge badge-change-pos font-mono ${flashClassName(yieldFlash)}`}>{formatPercentage(live.yieldValue)}</span>
+        <span className="text-secondary">›</span>
+      </div>
+    </div>
+  );
+}
+
 function AlertPill({ onClick }: { onClick: () => void }) {
   return (
     <button
@@ -269,12 +353,20 @@ function OptionSideCells({
   // since it also carries the alert's rationale/frozen fallback values.
   const cellProps = quote ? { style: { cursor: "pointer" }, onClick: () => onQuoteClick(quote) } : {};
 
+  // The chain keeps ticking for as long as this modal stays open (see
+  // streamTickerDetail.ts) -- flashes whichever of these four actually moved
+  // on the latest tick, same convention as Order Review's Live Quote card.
+  const bidFlash = useFlashOnChange(quote?.bid ?? null);
+  const askFlash = useFlashOnChange(quote?.ask ?? null);
+  const deltaFlash = useFlashOnChange(quote?.delta ?? null);
+  const yieldFlash = useFlashOnChange(yieldValue);
+
   return (
     <>
-      <td className="text-end font-mono" {...cellProps}>{formatCurrency(quote?.bid ?? null)}</td>
-      <td className="text-end font-mono" {...cellProps}>{formatCurrency(quote?.ask ?? null)}</td>
-      <td className="text-end font-mono" {...cellProps}>{formatNumber(quote?.delta ?? null, 2)}</td>
-      <td className="text-end" {...(matchedAlert ? {} : cellProps)}>
+      <td className={`text-end font-mono ${flashClassName(bidFlash)}`} {...cellProps}>{formatCurrency(quote?.bid ?? null)}</td>
+      <td className={`text-end font-mono ${flashClassName(askFlash)}`} {...cellProps}>{formatCurrency(quote?.ask ?? null)}</td>
+      <td className={`text-end font-mono ${flashClassName(deltaFlash)}`} {...cellProps}>{formatNumber(quote?.delta ?? null, 2)}</td>
+      <td className={`text-end ${flashClassName(yieldFlash)}`} {...(matchedAlert ? {} : cellProps)}>
         <div className="d-inline-flex align-items-center gap-2">
           {matchedAlert && <AlertPill onClick={() => onAlertClick(matchedAlert)} />}
           <span className={`font-mono ${matchedAlert ? "text-success fw-semibold" : "text-secondary"}`}>{formatPercentage(yieldValue)}</span>
@@ -640,6 +732,15 @@ export function TickerDetailModal({ symbol, onClose, initialAlertId, focusPositi
   const change = pricing?.last != null && pricing?.previousClose != null ? pricing.last - pricing.previousClose : null;
   const changePercent = change != null && pricing?.previousClose ? change / pricing.previousClose : null;
 
+  // Pricing keeps ticking for as long as this modal stays open (see
+  // streamTickerDetail.ts) -- same flash convention as the option chain.
+  const spotPriceFlash = useFlashOnChange(pricing?.last ?? null);
+  const bidFlash = useFlashOnChange(pricing?.bid ?? null);
+  const askFlash = useFlashOnChange(pricing?.ask ?? null);
+  const lowFlash = useFlashOnChange(pricing?.low ?? null);
+  const highFlash = useFlashOnChange(pricing?.high ?? null);
+  const volumeFlash = useFlashOnChange(pricing?.volume ?? null);
+
   const activeGroup = expiryGroups.find((g) => g.expiry === activeExpiry) ?? null;
   const spotPriceMarkerIndex = activeGroup ? findSpotPriceMarkerIndex(activeGroup.strikes, spotPrice) : null;
 
@@ -668,6 +769,11 @@ export function TickerDetailModal({ symbol, onClose, initialAlertId, focusPositi
           spotPrice,
         })
       : selection?.sourceAlert?.suggestedStructure.annualizedYield ?? null;
+
+  // Selected strike's quote keeps ticking too, same as the chain row it came from.
+  const selectedDeltaFlash = useFlashOnChange(selectedDelta);
+  const selectedPremiumFlash = useFlashOnChange(selectedPremium);
+  const selectedYieldFlash = useFlashOnChange(selectedYield);
 
   // Same payoff math as OrderReviewPanel/Trade Alerts (computePayoff, pure
   // math on entry price/strike, no live data needed) -- built directly from
@@ -749,16 +855,16 @@ export function TickerDetailModal({ symbol, onClose, initialAlertId, focusPositi
             </div>
             <div className="d-flex justify-content-between py-1" style={{ fontSize: "0.85rem" }}>
               <span className="text-secondary">Delta</span>
-              <span className="fw-semibold font-mono">{formatNumber(selectedDelta, 2)}</span>
+              <span className={`fw-semibold font-mono ${flashClassName(selectedDeltaFlash)}`}>{formatNumber(selectedDelta, 2)}</span>
             </div>
             <div className="d-flex justify-content-between py-1" style={{ fontSize: "0.85rem" }}>
               <span className="text-secondary">Premium (mid)</span>
-              <span className="fw-semibold font-mono">{formatCurrency(selectedPremium)}</span>
+              <span className={`fw-semibold font-mono ${flashClassName(selectedPremiumFlash)}`}>{formatCurrency(selectedPremium)}</span>
             </div>
             <hr className="my-2" />
             <div className="d-flex justify-content-between py-1" style={{ fontSize: "0.85rem" }}>
               <span className="text-secondary">Annualized Yield</span>
-              <span className="fw-semibold font-mono text-success">{formatPercentage(selectedYield)}</span>
+              <span className={`fw-semibold font-mono text-success ${flashClassName(selectedYieldFlash)}`}>{formatPercentage(selectedYield)}</span>
             </div>
             {selectedPayoff && (
               <>
@@ -871,7 +977,7 @@ export function TickerDetailModal({ symbol, onClose, initialAlertId, focusPositi
                   )}
                   {overview && (
                     <div className="d-flex flex-wrap align-items-baseline gap-3 mb-3 font-mono">
-                      <span className="h2 mb-0">{formatCurrency(spotPrice)}</span>
+                      <span className={`h2 mb-0 ${flashClassName(spotPriceFlash)}`}>{formatCurrency(spotPrice)}</span>
                       {change != null && (
                         <strong className={change > 0 ? "text-success" : change < 0 ? "text-danger" : "text-secondary"}>
                           {change >= 0 ? "+" : ""}
@@ -880,12 +986,14 @@ export function TickerDetailModal({ symbol, onClose, initialAlertId, focusPositi
                         </strong>
                       )}
                       <span className="text-secondary small">
-                        Bid {formatCurrency(pricing?.bid ?? null)} &middot; Ask {formatCurrency(pricing?.ask ?? null)}
+                        Bid <span className={flashClassName(bidFlash)}>{formatCurrency(pricing?.bid ?? null)}</span> &middot; Ask{" "}
+                        <span className={flashClassName(askFlash)}>{formatCurrency(pricing?.ask ?? null)}</span>
                       </span>
                       <span className="text-secondary small">
-                        Day range {formatCurrency(pricing?.low ?? null)} – {formatCurrency(pricing?.high ?? null)}
+                        Day range <span className={flashClassName(lowFlash)}>{formatCurrency(pricing?.low ?? null)}</span> –{" "}
+                        <span className={flashClassName(highFlash)}>{formatCurrency(pricing?.high ?? null)}</span>
                       </span>
-                      <span className="text-secondary small">Volume {formatNumber(pricing?.volume ?? null)}</span>
+                      <span className={`text-secondary small ${flashClassName(volumeFlash)}`}>Volume {formatNumber(pricing?.volume ?? null)}</span>
                       {overview.sector && <span className="badge bg-secondary-lt">{overview.sector}</span>}
                     </div>
                   )}
@@ -1039,58 +1147,32 @@ export function TickerDetailModal({ symbol, onClose, initialAlertId, focusPositi
                             </tr>
                           </thead>
                           <tbody>
-                            {relevantAlerts.map((alert) => {
-                              const live = liveAlertMetrics(alert, optionChain, expiryGroups, spotPrice);
-                              return (
-                                <tr key={alert.id} style={{ cursor: "pointer" }} onClick={() => handleAlertRowClick(alert)}>
-                                  <td>
-                                    <StrategyBadge strategyKey={alert.strategyKey} />
-                                  </td>
-                                  <td>
-                                    {formatExpiry(alert.suggestedStructure.expiry.replaceAll("-", ""))}{" "}
-                                    <span className="text-secondary">({live.dte} DTE)</span>
-                                  </td>
-                                  <td className="text-end font-mono">{formatCurrencyTrimmed(alert.suggestedStructure.strike)}</td>
-                                  <td className="text-end font-mono">{formatNumber(live.delta, 2)}</td>
-                                  <td className="text-end font-mono">{formatCurrency(live.premium)}</td>
-                                  <td className="text-end font-mono">
-                                    <span className="badge badge-change-pos">{formatPercentage(live.yieldValue)}</span>
-                                  </td>
-                                  <td className="text-secondary">›</td>
-                                </tr>
-                              );
-                            })}
+                            {relevantAlerts.map((alert) => (
+                              <TradeAlertTableRow
+                                key={alert.id}
+                                alert={alert}
+                                optionChain={optionChain}
+                                expiryGroups={expiryGroups}
+                                spotPrice={spotPrice}
+                                onRowClick={handleAlertRowClick}
+                              />
+                            ))}
                           </tbody>
                         </table>
                       </div>
 
                       {/* Mobile: compact tappable cards instead of a squeezed table */}
                       <div className="d-md-none d-flex flex-column gap-2">
-                        {relevantAlerts.map((alert) => {
-                          const live = liveAlertMetrics(alert, optionChain, expiryGroups, spotPrice);
-                          return (
-                            <div
-                              key={alert.id}
-                              className="border rounded p-2 d-flex align-items-center justify-content-between gap-2"
-                              style={{ cursor: "pointer" }}
-                              onClick={() => handleAlertRowClick(alert)}
-                            >
-                              <div>
-                                <StrategyBadge strategyKey={alert.strategyKey} />
-                                <div className="fw-bold mt-1 font-mono">
-                                  {formatCurrencyTrimmed(alert.suggestedStructure.strike)} · {formatExpiry(alert.suggestedStructure.expiry.replaceAll("-", ""))}
-                                </div>
-                                <div className="text-secondary font-mono" style={{ fontSize: "0.75rem" }}>
-                                  Δ {formatNumber(live.delta, 2)} · Prem {formatCurrency(live.premium)} · {live.dte} DTE
-                                </div>
-                              </div>
-                              <div className="text-end d-flex flex-column align-items-end gap-1">
-                                <span className="badge badge-change-pos font-mono">{formatPercentage(live.yieldValue)}</span>
-                                <span className="text-secondary">›</span>
-                              </div>
-                            </div>
-                          );
-                        })}
+                        {relevantAlerts.map((alert) => (
+                          <TradeAlertMobileCard
+                            key={alert.id}
+                            alert={alert}
+                            optionChain={optionChain}
+                            expiryGroups={expiryGroups}
+                            spotPrice={spotPrice}
+                            onCardClick={handleAlertRowClick}
+                          />
+                        ))}
                       </div>
                         </>
                       )}

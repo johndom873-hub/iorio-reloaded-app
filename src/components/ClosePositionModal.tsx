@@ -12,6 +12,7 @@ import {
 } from "../api/positions";
 import { openPositionQuoteStream, type TickerPricing } from "../api/tickerDetail";
 import { formatCurrency, formatCurrencyTrimmed, formatExpiryWithDte } from "../lib/formatters";
+import { flashClassName, useFlashOnChange } from "../hooks/useFlashOnChange";
 
 interface ClosePositionModalProps {
   position: Position;
@@ -39,6 +40,12 @@ function midPrice(quote: LegQuote): number | null {
 // LiveLegQuote — shown under each leg's limit-price input so the prefilled
 // mid isn't a mystery number.
 function LiveMidQuote({ quote, error }: { quote: LegQuote | null; error: string | null }) {
+  // Option legs tick continuously for as long as this modal stays open (see
+  // openContractQuoteStream/streamOrderLegQuote) -- stock legs are a one-shot
+  // snapshot, so this just never flashes for those (no false flash on the
+  // initial null-to-loaded transition either, same as everywhere else this
+  // hook's used).
+  const midFlash = useFlashOnChange(quote ? midPrice(quote) : null);
   if (error) {
     return (
       <span className="text-muted" title={error}>
@@ -48,7 +55,7 @@ function LiveMidQuote({ quote, error }: { quote: LegQuote | null; error: string 
   }
   if (!quote) return <Spinner size="sm" label="Loading live quote" />;
   return (
-    <div className="font-mono" style={{ fontSize: "0.8rem" }}>
+    <div className={`font-mono ${flashClassName(midFlash)}`} style={{ fontSize: "0.8rem" }}>
       Bid {quote.bid !== null ? formatCurrency(quote.bid) : "—"} / Ask {quote.ask !== null ? formatCurrency(quote.ask) : "—"}
     </div>
   );

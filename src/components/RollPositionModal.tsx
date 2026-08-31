@@ -5,6 +5,7 @@ import { ApiError } from "../api/client";
 import { buildRollOrder, openContractQuoteStream, type OrderLegQuote, type OrderRequest } from "../api/positions";
 import type { RollStructure } from "../api/tradeAlerts";
 import { formatCurrency, formatCurrencyTrimmed, formatDate, formatNumber } from "../lib/formatters";
+import { flashClassName, useFlashOnChange } from "../hooks/useFlashOnChange";
 
 function midPrice(quote: OrderLegQuote): number | null {
   if (quote.bid !== null && quote.ask !== null) return (quote.bid + quote.ask) / 2;
@@ -15,6 +16,7 @@ function midPrice(quote: OrderLegQuote): number | null {
 // "Live Quote" card in spirit but compact enough for two of these to sit
 // side by side (close leg + replacement) instead of one full-width block.
 function LiveLegQuote({ quote, error }: { quote: OrderLegQuote | null; error: string | null }) {
+  const midFlash = useFlashOnChange(quote ? midPrice(quote) : null);
   if (error) {
     return (
       <span className="text-muted" title={error}>
@@ -24,7 +26,7 @@ function LiveLegQuote({ quote, error }: { quote: OrderLegQuote | null; error: st
   }
   if (!quote) return <Spinner size="sm" label="Loading live quote" />;
   return (
-    <div className="font-mono" style={{ fontSize: "0.8rem" }}>
+    <div className={`font-mono ${flashClassName(midFlash)}`} style={{ fontSize: "0.8rem" }}>
       Bid {quote.bid !== null ? formatCurrency(quote.bid) : "—"} / Ask {quote.ask !== null ? formatCurrency(quote.ask) : "—"}
       {" · "}Δ {formatNumber(quote.delta, 2)}
     </div>

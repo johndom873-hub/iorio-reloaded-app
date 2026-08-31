@@ -550,6 +550,31 @@
   font-weight: 700;
 }
 
+/* Flash effect for live-ticking quote values (Order Review / Roll Position
+   live quotes) — same green/red as the badge-change-* colors above, applied
+   as a transient background instead of a permanent one so a value visibly
+   updates without needing to be re-read as text. useFlashOnChange applies
+   these classes for one animation cycle each time a tracked value changes. */
+/* Neutral (not green/red) -- a changed IV/theta/vega isn't inherently good
+   or bad, so this just marks "this value just ticked" (Marcelo, 2026-08-31).
+   Holds at full color through the first third before fading -- a from/to
+   fade with ease-out (tried first) decayed almost all its opacity in the
+   opening moments, making the flash imperceptible on a small text cell
+   during a fast-moving quote (live-tested against real IBKR ticks). */
+@keyframes flash-bg-changed {
+  0%,
+  35% {
+    background-color: rgba(255, 193, 7, 0.45);
+  }
+  100% {
+    background-color: transparent;
+  }
+}
+
+.flash-changed {
+  animation: flash-bg-changed 1200ms ease-out;
+}
+
 /* Ticker Detail modal: a small inset + rounded corners instead of true
    edge-to-edge full-bleed, so the backdrop stays visible and it reads as a
    modal rather than a full-page view (Marcelo, 2026-08-27). Combined-class

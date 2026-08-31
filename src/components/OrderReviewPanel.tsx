@@ -18,6 +18,7 @@ import {
   orderRequestStatusBadgeClass,
 } from "../lib/formatters";
 import { computeAnnualizedYield, computeCapitalAtRiskFromOrderLegs, computePayoff, orderLegsToPayoffInput } from "../lib/payoff";
+import { flashClassName, useFlashOnChange } from "../hooks/useFlashOnChange";
 
 interface OrderReviewPanelProps {
   order: OrderRequest;
@@ -177,6 +178,19 @@ export function OrderReviewPanel({ order: initialOrder, onCancelled, onFilled }:
         })
       : null;
 
+  // Flashes a value's background briefly when the live quote stream ticks
+  // it to a new number, so an update is visible without re-reading the
+  // digits each time (approved 2026-09-01, Order Review + Roll Position only
+  // -- the two screens with a genuinely continuous quote stream).
+  const spreadValue = quote && quote.bid !== null && quote.ask !== null ? quote.ask - quote.bid : null;
+  const bidFlash = useFlashOnChange(quote?.bid ?? null);
+  const askFlash = useFlashOnChange(quote?.ask ?? null);
+  const spreadFlash = useFlashOnChange(spreadValue);
+  const ivFlash = useFlashOnChange(quote?.impliedVolatility ?? null);
+  const deltaFlash = useFlashOnChange(quote?.delta ?? null);
+  const thetaFlash = useFlashOnChange(quote?.theta ?? null);
+  const vegaFlash = useFlashOnChange(quote?.vega ?? null);
+
   async function handleConfirm() {
     setConfirming(true);
     setError(null);
@@ -293,29 +307,29 @@ export function OrderReviewPanel({ order: initialOrder, onCancelled, onFilled }:
             <div className="row g-3 font-mono" style={{ fontSize: "0.85rem" }}>
               <div className="col-4">
                 <div className="text-secondary text-uppercase" style={{ fontSize: "0.68rem" }}>Bid / Ask</div>
-                <div className="fw-semibold">
+                <div className={`fw-semibold ${flashClassName(bidFlash || askFlash)}`}>
                   {quote.bid !== null ? formatCurrency(quote.bid) : "—"} / {quote.ask !== null ? formatCurrency(quote.ask) : "—"}
                 </div>
               </div>
               <div className="col-4">
                 <div className="text-secondary text-uppercase" style={{ fontSize: "0.68rem" }}>Spread</div>
-                <div className="fw-semibold">{quote.bid !== null && quote.ask !== null ? formatCurrency(quote.ask - quote.bid) : "—"}</div>
+                <div className={`fw-semibold ${flashClassName(spreadFlash)}`}>{quote.bid !== null && quote.ask !== null ? formatCurrency(quote.ask - quote.bid) : "—"}</div>
               </div>
               <div className="col-4">
                 <div className="text-secondary text-uppercase" style={{ fontSize: "0.68rem" }}>IV</div>
-                <div className="fw-semibold">{formatPercentage(quote.impliedVolatility)}</div>
+                <div className={`fw-semibold ${flashClassName(ivFlash)}`}>{formatPercentage(quote.impliedVolatility)}</div>
               </div>
               <div className="col-4">
                 <div className="text-secondary text-uppercase" style={{ fontSize: "0.68rem" }}>Delta</div>
-                <div className="fw-semibold">{formatNumber(quote.delta, 2)}</div>
+                <div className={`fw-semibold ${flashClassName(deltaFlash)}`}>{formatNumber(quote.delta, 2)}</div>
               </div>
               <div className="col-4">
                 <div className="text-secondary text-uppercase" style={{ fontSize: "0.68rem" }}>Theta</div>
-                <div className="fw-semibold">{formatNumber(quote.theta, 2)}</div>
+                <div className={`fw-semibold ${flashClassName(thetaFlash)}`}>{formatNumber(quote.theta, 2)}</div>
               </div>
               <div className="col-4">
                 <div className="text-secondary text-uppercase" style={{ fontSize: "0.68rem" }}>Vega</div>
-                <div className="fw-semibold">{formatNumber(quote.vega, 2)}</div>
+                <div className={`fw-semibold ${flashClassName(vegaFlash)}`}>{formatNumber(quote.vega, 2)}</div>
               </div>
             </div>
           )}
