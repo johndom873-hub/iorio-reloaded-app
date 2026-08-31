@@ -95,6 +95,39 @@ export function fetchRollCandidate(positionId: string, legId: string): Promise<R
   });
 }
 
+export interface RecoveryPathCandidate {
+  expiry: string;
+  strike: number;
+  right: "call" | "put";
+  delta: number;
+  premium: number;
+  dte: number;
+  annualizedYield: number;
+  spotPrice: number;
+  probabilityOfProfit: number | null;
+  calendarUnverified: boolean;
+}
+
+export interface RecoveryPath {
+  symbol: string;
+  shares: number;
+  entryPrice: number;
+  currentPrice: number;
+  unrealizedLoss: number;
+  contractsAvailable: number;
+  candidate: RecoveryPathCandidate | null;
+  monthlyPremium: number | null;
+  monthsToRecover: number | null;
+  rationale: string;
+}
+
+// On-demand recovery-path projection for an unstructured bare-stock
+// position — "Recovery Path Formula" proposal, approved 2026-08-31.
+// Read-only, writes nothing.
+export function fetchRecoveryPath(positionId: string): Promise<RecoveryPath> {
+  return apiRequest<RecoveryPath>(`/positions/${positionId}/recovery-path`, { method: "POST" });
+}
+
 // Since 2026-08-24, iorio places real orders with IBKR instead of manually
 // recording fills — see PROGRESS.md's "IBKR is the source of truth"
 // decision. Every mutation below builds an OrderRequest (a preview of

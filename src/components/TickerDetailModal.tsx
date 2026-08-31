@@ -812,6 +812,7 @@ export function TickerDetailModal({ symbol, onClose, initialAlertId, focusPositi
                                   unrealizedPnlFetchFailed={unrealizedPnlFetchFailed}
                                   currentPrice={spotPrice}
                                   onChanged={loadPositions}
+                                  onSellCall={() => chainRef.current?.scrollIntoView({ behavior: "smooth", block: "start" })}
                                 />
                               </div>
                             ))}

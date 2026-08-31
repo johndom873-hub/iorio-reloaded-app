@@ -3,6 +3,7 @@ import { Spinner } from "./Spinner";
 import { ApexChart } from "./charts/ApexChart";
 import { ClosePositionModal } from "./ClosePositionModal";
 import { RollPositionModal } from "./RollPositionModal";
+import { RecoveryPathModal } from "./RecoveryPathModal";
 import { ApiError } from "../api/client";
 import { useTheme } from "../contexts/ThemeContext";
 import { fetchRollCandidate, updatePosition, type Greeks, type Position, type RollCandidate, type UnrealizedPnlResult } from "../api/positions";
@@ -38,6 +39,8 @@ interface PositionCardProps {
   unrealizedPnlFetchFailed: boolean;
   currentPrice: number | null;
   onChanged: () => void;
+  /** Scrolls to this ticker's option chain so the user can pick a strike to sell against held shares. */
+  onSellCall: () => void;
 }
 
 const annotationColorsByTheme = {
@@ -62,6 +65,7 @@ export function PositionCard({
   unrealizedPnlFetchFailed,
   currentPrice,
   onChanged,
+  onSellCall,
 }: PositionCardProps) {
   const { theme } = useTheme();
   const annotationColors = annotationColorsByTheme[theme];
@@ -73,6 +77,15 @@ export function PositionCard({
   const [saveError, setSaveError] = useState<string | null>(null);
 
   const [showClose, setShowClose] = useState(false);
+  const [showRecoveryPath, setShowRecoveryPath] = useState(false);
+
+  // Mirrors PositionsPage's action-column eligibility: an unstructured
+  // position (bare stock leftover from an expired covered call or an
+  // assigned CSP — not a strategy anyone chose) with an open stock leg can
+  // sell a call against it or check a recovery-path projection, regardless
+  // of whether it also happens to carry another open leg.
+  const isUnstructured = position.strategyKey === "unstructured";
+  const hasOpenStockLeg = position.legs.some((leg) => leg.legType === "stock" && !leg.exitAt);
 
   const [rollingLegId, setRollingLegId] = useState<string | null>(null);
   const [rollError, setRollError] = useState<string | null>(null);
@@ -297,36 +310,52 @@ export function PositionCard({
           </div>
         )}
 
-        <div className="mb-3">
-          {saveError && <div className="alert alert-danger">{saveError}</div>}
-          <div className="row g-3">
-            <div className="col-12 col-sm-6 col-md-3">
-              <label className="form-label" style={{ fontSize: "0.8rem" }}>
-                Price Target
-              </label>
-              <input type="number" step="0.01" className="form-control" value={priceTargetDraft} onChange={(event) => setPriceTargetDraft(event.target.value)} />
+        {/* Price Target/Close Trigger Notes/Notes are for a position being
+            actively managed toward a plan — an unstructured position is
+            leftover stock nobody chose to hold, so those fields are just
+            noise here; the relevant actions are Sell Call and Close. */}
+        {!isUnstructured && (
+          <div className="mb-3">
+            {saveError && <div className="alert alert-danger">{saveError}</div>}
+            <div className="row g-3">
+              <div className="col-12 col-sm-6 col-md-3">
+                <label className="form-label" style={{ fontSize: "0.8rem" }}>
+                  Price Target
+                </label>
+                <input type="number" step="0.01" className="form-control" value={priceTargetDraft} onChange={(event) => setPriceTargetDraft(event.target.value)} />
+              </div>
+              <div className="col-12 col-md-6">
+                <label className="form-label" style={{ fontSize: "0.8rem" }}>
+                  Close Trigger Notes
+                </label>
+                <input type="text" className="form-control" value={closeTriggerDraft} onChange={(event) => setCloseTriggerDraft(event.target.value)} />
+              </div>
+              <div className="col-12">
+                <label className="form-label" style={{ fontSize: "0.8rem" }}>
+                  Notes
+                </label>
+                <input type="text" className="form-control" value={notesDraft} onChange={(event) => setNotesDraft(event.target.value)} />
+              </div>
             </div>
-            <div className="col-12 col-md-6">
-              <label className="form-label" style={{ fontSize: "0.8rem" }}>
-                Close Trigger Notes
-              </label>
-              <input type="text" className="form-control" value={closeTriggerDraft} onChange={(event) => setCloseTriggerDraft(event.target.value)} />
-            </div>
-            <div className="col-12">
-              <label className="form-label" style={{ fontSize: "0.8rem" }}>
-                Notes
-              </label>
-              <input type="text" className="form-control" value={notesDraft} onChange={(event) => setNotesDraft(event.target.value)} />
-            </div>
+            <button type="button" className="btn btn-outline-primary mt-3 d-inline-flex align-items-center gap-1" disabled={savingFields} onClick={handleSaveFields}>
+              {savingFields && <Spinner size="sm" />}
+              Save
+            </button>
           </div>
-          <button type="button" className="btn btn-outline-primary mt-3 d-inline-flex align-items-center gap-1" disabled={savingFields} onClick={handleSaveFields}>
-            {savingFields && <Spinner size="sm" />}
-            Save
-          </button>
-        </div>
+        )}
 
         {position.status === "open" && (
-          <div className="border-top pt-3">
+          <div className="border-top pt-3 d-flex flex-wrap gap-2">
+            {isUnstructured && hasOpenStockLeg && (
+              <>
+                <button type="button" className="btn btn-outline-warning" onClick={onSellCall}>
+                  Sell Call
+                </button>
+                <button type="button" className="btn btn-outline-secondary" onClick={() => setShowRecoveryPath(true)}>
+                  Recovery Path
+                </button>
+              </>
+            )}
             <button type="button" className="btn btn-outline-danger" onClick={() => setShowClose(true)}>
               Close Position
             </button>
@@ -344,6 +373,8 @@ export function PositionCard({
           }}
         />
       )}
+
+      {showRecoveryPath && <RecoveryPathModal positionId={position.id} symbol={position.symbol} onClose={() => setShowRecoveryPath(false)} />}
 
       {rollCandidate && (
         <RollPositionModal
