@@ -10,6 +10,7 @@ import {
   type OptionQuote,
   type PriceBar,
   type TickerOverview,
+  type TickerTechnicals,
 } from "../api/tickerDetail";
 import { fetchTradeAlerts, isRollAlert, refreshTickerAlerts, type NewTradeCandidate, type TradeAlert } from "../api/tradeAlerts";
 import {
@@ -396,6 +397,9 @@ export function TickerDetailModal({ symbol, onClose, initialAlertId, focusPositi
   const [optionChain, setOptionChain] = useState<OptionQuote[] | null>(null);
   const [optionChainError, setOptionChainError] = useState<string | null>(null);
 
+  const [technicals, setTechnicals] = useState<TickerTechnicals | null>(null);
+  const [technicalsError, setTechnicalsError] = useState<string | null>(null);
+
   // Whole-connection failure (e.g. the IBKR Gateway connection itself never
   // opened) — distinct from a single section's error, since nothing else
   // will arrive either in that case.
@@ -481,6 +485,8 @@ export function TickerDetailModal({ symbol, onClose, initialAlertId, focusPositi
     setChartError(null);
     setOptionChain(null);
     setOptionChainError(null);
+    setTechnicals(null);
+    setTechnicalsError(null);
     setStreamError(null);
     setActiveExpiry(null);
     setSelection(null);
@@ -499,9 +505,13 @@ export function TickerDetailModal({ symbol, onClose, initialAlertId, focusPositi
         case "optionChain":
           setOptionChain(event.data);
           break;
+        case "technicals":
+          setTechnicals(event.data);
+          break;
         case "error":
           if (event.section === "overview") setOverviewError(event.message);
           else if (event.section === "chart") setChartError(event.message);
+          else if (event.section === "technicals") setTechnicalsError(event.message);
           else setOptionChainError(event.message);
           break;
         case "streamError":
@@ -1363,6 +1373,70 @@ export function TickerDetailModal({ symbol, onClose, initialAlertId, focusPositi
                     </div>
                   )}
 
+                  {/* ---------- Technicals ---------- */}
+                  <div className="mt-4">
+                    <h4 className="mb-2">Technicals</h4>
+                    {technicalsError && <div className="alert alert-danger">{technicalsError}</div>}
+                    {!technicalsError && !technicals && (
+                      <div className="d-flex justify-content-center py-3">
+                        <Spinner size="sm" label="Loading technicals" />
+                      </div>
+                    )}
+                    {technicals && (
+                      <div className="d-flex flex-column gap-1">
+                        <div className="d-flex flex-wrap align-items-center gap-3 font-mono" style={{ fontSize: "0.85rem" }}>
+                          <span>
+                            MA7 <strong>{formatCurrency(technicals.movingAverages.ma7)}</strong>
+                          </span>
+                          <span>
+                            MA25 <strong>{formatCurrency(technicals.movingAverages.ma25)}</strong>
+                          </span>
+                          <span>
+                            MA99 <strong>{formatCurrency(technicals.movingAverages.ma99)}</strong>
+                          </span>
+                          <span>
+                            RSI <strong>{formatNumber(technicals.rsi, 2)}</strong>
+                          </span>
+                          <span className="d-inline-flex align-items-center gap-1">
+                            MACD{" "}
+                            <span
+                              className={`badge ${
+                                technicals.macdSignal === "Bullish"
+                                  ? "badge-change-pos"
+                                  : technicals.macdSignal === "Bearish"
+                                    ? "badge-change-neg"
+                                    : "badge-change-flat"
+                              }`}
+                              style={{ fontSize: "0.72rem" }}
+                            >
+                              {technicals.macdSignal}
+                            </span>
+                          </span>
+                        </div>
+                        <div className="d-flex flex-wrap gap-3 text-secondary font-mono" style={{ fontSize: "0.8rem" }}>
+                          {technicals.supportResistance.support ? (
+                            <span>
+                              Support <strong className="text-body">{formatCurrency(technicals.supportResistance.support.price)}</strong>{" "}
+                              ({technicals.supportResistance.support.touches} touches, {technicals.supportResistance.support.qualityPct.toFixed(1)}% quality)
+                            </span>
+                          ) : (
+                            <span>Support —</span>
+                          )}
+                          {technicals.supportResistance.resistance ? (
+                            <span>
+                              Resistance{" "}
+                              <strong className="text-body">{formatCurrency(technicals.supportResistance.resistance.price)}</strong> (
+                              {technicals.supportResistance.resistance.touches} touches, {technicals.supportResistance.resistance.qualityPct.toFixed(1)}%
+                              quality)
+                            </span>
+                          ) : (
+                            <span>Resistance —</span>
+                          )}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
                   {/* ---------- Chart ---------- */}
                   <div className="mt-4">
                     {chartError && <div className="alert alert-danger">{chartError}</div>}
@@ -1371,7 +1445,7 @@ export function TickerDetailModal({ symbol, onClose, initialAlertId, focusPositi
                         <Spinner label="Loading chart" />
                       </div>
                     )}
-                    {chartBars && <TickerPriceChart symbol={symbol} initialBars={chartBars} />}
+                    {chartBars && <TickerPriceChart symbol={symbol} initialBars={chartBars} technicals={technicals} />}
                   </div>
 
                   {/* ---------- IV History ---------- */}

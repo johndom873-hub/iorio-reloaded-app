@@ -16,7 +16,7 @@ import {
 import { Spinner } from "../Spinner";
 import { useTheme } from "../../contexts/ThemeContext";
 import { ApiError } from "../../api/client";
-import { fetchTickerChart, type ChartRange, type PriceBar } from "../../api/tickerDetail";
+import { fetchTickerChart, type ChartRange, type PriceBar, type TickerTechnicals } from "../../api/tickerDetail";
 
 // Ported from menaris-admin-app's LwChart.js — same range set, bar
 // granularity, tick formatting, and hover header, stripped of Saxo-specific
@@ -260,7 +260,25 @@ interface TickerPriceChartProps {
   // redundant duplicate of data the stream already delivered — is skipped.
   // Only consulted on mount; switching ranges afterward always fetches.
   initialBars?: PriceBar[];
+  // MA7/25/99 and support/resistance, shown as horizontal reference lines
+  // (2026-09-01 indicator work) — these are daily-close values (see
+  // technicalIndicators.ts), so a flat reference line is the honest
+  // representation on this hourly-bar chart, same treatment as the existing
+  // last-close dashed line below; not a true rolling series recomputed per
+  // displayed bar.
+  technicals?: TickerTechnicals | null;
 }
+
+// Color semantics from the source indicator doc this work was adapted from
+// (see technicalIndicators.ts's header) — MA7 gold, MA25 pink, MA99 purple,
+// support light blue, resistance orange. Canvas-drawn chart lines, not
+// Bootstrap/Tabler components, so hardcoded hex is the existing convention
+// here (see candleSeries's upColor/downColor above).
+const ma7Color = "#f59f00";
+const ma25Color = "#d6336c";
+const ma99Color = "#7048e8";
+const supportColor = "#4dabf7";
+const resistanceColor = "#f76707";
 
 // White in dark mode, near-black in light mode — matches the app's own
 // theme rather than the hardcoded #000000 the original menaris chart used
@@ -272,13 +290,14 @@ const gridColorByTheme = { light: "rgba(0,0,0,0.08)", dark: "rgba(255,255,255,0.
 // lighter-than-background tint instead of the same black wash.
 const loadingOverlayColorByTheme = { light: "rgba(0,0,0,0.05)", dark: "rgba(249,250,251,0.08)" } as const;
 
-export function TickerPriceChart({ symbol, initialBars }: TickerPriceChartProps) {
+export function TickerPriceChart({ symbol, initialBars, technicals }: TickerPriceChartProps) {
   const { theme } = useTheme();
   const containerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
   const candleRef = useRef<ISeriesApi<"Candlestick"> | null>(null);
   const volumeRef = useRef<ISeriesApi<"Histogram"> | null>(null);
   const priceLineRef = useRef<ReturnType<ISeriesApi<"Candlestick">["createPriceLine"]> | null>(null);
+  const technicalLinesRef = useRef<ReturnType<ISeriesApi<"Candlestick">["createPriceLine"]>[]>([]);
   const gridPrimitiveRef = useRef<GridLinePrimitive | null>(null);
 
   const [range, setRange] = useState<ChartRange>("3M");
@@ -468,6 +487,39 @@ export function TickerPriceChart({ symbol, initialBars }: TickerPriceChartProps)
 
     chartRef.current?.timeScale().fitContent();
   }, [bars]);
+
+  useEffect(() => {
+    const candleSeries = candleRef.current;
+    if (!candleSeries) return;
+
+    for (const line of technicalLinesRef.current) candleSeries.removePriceLine(line);
+    technicalLinesRef.current = [];
+    if (!technicals) return;
+
+    const { ma7, ma25, ma99 } = technicals.movingAverages;
+    const { support, resistance } = technicals.supportResistance;
+    const lines: { price: number | null; color: string; title: string; dashed?: boolean }[] = [
+      { price: ma7, color: ma7Color, title: "MA7" },
+      { price: ma25, color: ma25Color, title: "MA25" },
+      { price: ma99, color: ma99Color, title: "MA99" },
+      { price: support?.price ?? null, color: supportColor, title: "Support", dashed: true },
+      { price: resistance?.price ?? null, color: resistanceColor, title: "Resistance", dashed: true },
+    ];
+
+    for (const { price, color, title, dashed } of lines) {
+      if (price === null) continue;
+      technicalLinesRef.current.push(
+        candleSeries.createPriceLine({
+          price,
+          color,
+          lineWidth: 1,
+          lineStyle: dashed ? LineStyle.Dashed : LineStyle.Solid,
+          axisLabelVisible: true,
+          title,
+        }),
+      );
+    }
+  }, [technicals]);
 
   const lastBar = bars?.[bars.length - 1];
   const prevBar = bars && bars.length > 1 ? bars[bars.length - 2] : null;

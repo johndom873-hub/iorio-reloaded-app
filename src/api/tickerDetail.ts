@@ -42,7 +42,34 @@ export interface PriceBar {
   volume: number;
 }
 
-export type TickerDetailSection = "overview" | "chart" | "optionChain";
+export type TickerDetailSection = "overview" | "chart" | "optionChain" | "technicals";
+
+export interface MovingAverages {
+  ma7: number | null;
+  ma25: number | null;
+  ma99: number | null;
+}
+
+export type MacdSignal = "Bullish" | "Bearish" | "Neutral";
+
+export interface SupportResistanceZone {
+  price: number;
+  qualityPct: number;
+  touches: number;
+  atr: number;
+}
+
+export interface SupportResistanceResult {
+  support: SupportResistanceZone | null;
+  resistance: SupportResistanceZone | null;
+}
+
+export interface TickerTechnicals {
+  movingAverages: MovingAverages;
+  rsi: number;
+  macdSignal: MacdSignal;
+  supportResistance: SupportResistanceResult;
+}
 
 // Mirrors the backend's TickerDetailStreamEvent (streamTickerDetail.ts) plus
 // the two stream-lifecycle events the route itself sends (done/streamError).
@@ -50,6 +77,7 @@ export type TickerDetailStreamEvent =
   | { type: "overview"; data: TickerOverview }
   | { type: "chart"; data: PriceBar[] }
   | { type: "optionChain"; data: OptionQuote[] }
+  | { type: "technicals"; data: TickerTechnicals }
   | { type: "error"; section: TickerDetailSection; message: string }
   | { type: "streamError"; message: string }
   | { type: "done" };
