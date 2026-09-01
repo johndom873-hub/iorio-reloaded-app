@@ -4,6 +4,7 @@ import type { LegSide, LegType, OptionType, OrderRequestStatus } from "./positio
 
 export interface Trade {
   id: string;
+  ibkrOrderId: string | null;
   side: "buy" | "sell";
   quantity: number;
   price: string;
@@ -20,6 +21,7 @@ export interface Trade {
   strikePrice: string | null;
   expiryDate: string | null;
   symbol: string;
+  requestedByDisplayName: string | null;
 }
 
 // An order_requests row that hasn't (yet, or ever will) produce a real fill

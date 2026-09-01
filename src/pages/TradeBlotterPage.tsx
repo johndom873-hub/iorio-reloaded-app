@@ -181,12 +181,11 @@ export function TradeBlotterPage() {
     {
       key: "requestedBy",
       header: "Requested by",
-      // Only meaningful for a still-open order_requests row — a filled
-      // Trade has no stored link back to the order that placed it (trades
-      // are matched to position_legs, not order_requests), so there's
-      // nothing to show once it's actually filled.
+      // A filled Trade shows a requester only if it was placed through the
+      // app (trades.source_order_request_id set) — a fill placed outside
+      // iorio has nothing to link to and correctly shows "—".
       render: (row) => {
-        if (row.kind !== "order") return "—";
+        if (row.kind === "trade") return row.requestedByDisplayName ?? "—";
         return (
           <div>
             <div>{row.requestedByDisplayName ?? "—"}</div>
@@ -219,7 +218,7 @@ export function TradeBlotterPage() {
     {
       key: "ibkrOrderId",
       header: "ID",
-      render: (row) => (row.kind === "order" && row.ibkrOrderId !== null ? row.ibkrOrderId : "—"),
+      render: (row) => (row.ibkrOrderId !== null && row.ibkrOrderId !== "" ? row.ibkrOrderId : "—"),
     },
     {
       key: "actions",
