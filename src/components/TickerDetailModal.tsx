@@ -249,7 +249,7 @@ function TradeAlertTableRow({
   onRowClick: (alert: NewTradeAlert) => void;
 }) {
   const live = liveAlertMetrics(alert, optionChain, expiryGroups, spotPrice);
-  const deltaFlash = useFlashOnChange(live.delta);
+  const deltaFlash = useFlashOnChange(live.delta, 1200, 2);
   const premiumFlash = useFlashOnChange(live.premium);
   const yieldFlash = useFlashOnChange(live.yieldValue);
 
@@ -286,7 +286,7 @@ function TradeAlertMobileCard({
   onCardClick: (alert: NewTradeAlert) => void;
 }) {
   const live = liveAlertMetrics(alert, optionChain, expiryGroups, spotPrice);
-  const deltaFlash = useFlashOnChange(live.delta);
+  const deltaFlash = useFlashOnChange(live.delta, 1200, 2);
   const premiumFlash = useFlashOnChange(live.premium);
   const yieldFlash = useFlashOnChange(live.yieldValue);
 
@@ -358,7 +358,7 @@ function OptionSideCells({
   // on the latest tick, same convention as Order Review's Live Quote card.
   const bidFlash = useFlashOnChange(quote?.bid ?? null);
   const askFlash = useFlashOnChange(quote?.ask ?? null);
-  const deltaFlash = useFlashOnChange(quote?.delta ?? null);
+  const deltaFlash = useFlashOnChange(quote?.delta ?? null, 1200, 2);
   const yieldFlash = useFlashOnChange(yieldValue);
 
   return (

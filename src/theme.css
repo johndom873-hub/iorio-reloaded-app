@@ -561,13 +561,19 @@
    fade with ease-out (tried first) decayed almost all its opacity in the
    opening moments, making the flash imperceptible on a small text cell
    during a fast-moving quote (live-tested against real IBKR ticks). */
+/* Animates box-shadow, not background-color: Tabler's row-state classes
+   (.table-active, .table-hover) tint every <td> via an inset box-shadow of
+   their own (see tabler.css's --tblr-table-bg-state trick) that paints on
+   top of a cell's background-color — a background-color-only flash was
+   invisible on any alert-highlighted row. box-shadow composites on the same
+   layer as that trick and stacks with it instead of being hidden under it. */
 @keyframes flash-bg-changed {
   0%,
   35% {
-    background-color: rgba(255, 193, 7, 0.45);
+    box-shadow: inset 0 0 0 9999px rgba(255, 193, 7, 0.45);
   }
   100% {
-    background-color: transparent;
+    box-shadow: inset 0 0 0 9999px rgba(255, 193, 7, 0);
   }
 }
 
