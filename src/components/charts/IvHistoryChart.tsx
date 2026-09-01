@@ -116,6 +116,7 @@ export function IvHistoryChart({ symbol }: IvHistoryChartProps) {
       if (width) {
         const newHeight = chartHeightForWidth(width);
         chart.applyOptions({ width, height: newHeight });
+        chart.timeScale().fitContent();
         setChartHeight(newHeight);
       }
     });
