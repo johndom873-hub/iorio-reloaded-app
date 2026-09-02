@@ -24,7 +24,23 @@ import {
   formatNumber,
   formatPercentage,
   formatPercentageValue,
+  formatRelativeDate,
 } from "../lib/formatters";
+
+// Juan's 2026-09-02 ask: "we do not know when the last refresh was done."
+// The data already existed end-to-end (last_refreshed_at, added 2026-08-24
+// for the per-alert Refresh button) but was never surfaced anywhere in this
+// UI. A group's overall freshness is the most recent of every alert's own
+// last_refreshed_at, falling back to createdAt for an alert that's never
+// been individually refreshed since the last full batch scan generated it.
+function latestRefreshTimestamp(alerts: { createdAt: string; lastRefreshedAt: string | null }[]): string | null {
+  let latest: string | null = null;
+  for (const alert of alerts) {
+    const candidate = alert.lastRefreshedAt ?? alert.createdAt;
+    if (latest === null || new Date(candidate).getTime() > new Date(latest).getTime()) latest = candidate;
+  }
+  return latest;
+}
 
 // Compact combined IV Rank / IV Percentile display — one cell/line rather
 // than two separate columns, both metrics approved 2026-08-31 (see
@@ -274,6 +290,7 @@ export function TradeAlertsPage() {
           const newTradeAlerts = tickerAlerts.filter((a): a is NewTradeAlert => !isRollAlert(a));
           const rollAlerts = tickerAlerts.filter((a): a is RollAlert => isRollAlert(a));
           const isTickerRefreshing = tickerRefreshingSymbol === symbol;
+          const lastRefreshed = latestRefreshTimestamp(tickerAlerts);
 
           return (
             <div className="card mb-3" key={tickerId}>
@@ -292,16 +309,23 @@ export function TradeAlertsPage() {
                   <span className="text-secondary ms-2">{companyName ?? "—"}</span>
                 </div>
                 {status === "pending" && (
-                  <button
-                    type="button"
-                    className="btn btn-sm btn-outline-primary d-inline-flex align-items-center gap-1"
-                    disabled={isTickerRefreshing}
-                    onClick={() => handleTickerRefresh(tickerId, symbol, companyName)}
-                    title="Rescan this ticker's new trade alerts (both strategies) against live IBKR data"
-                  >
-                    {isTickerRefreshing && <Spinner size="sm" />}
-                    Refresh
-                  </button>
+                  <div className="d-flex align-items-center gap-2">
+                    {lastRefreshed && (
+                      <span className="text-secondary" style={{ fontSize: "0.72rem" }} title={formatDateTime(lastRefreshed)}>
+                        Refreshed {formatRelativeDate(lastRefreshed)}
+                      </span>
+                    )}
+                    <button
+                      type="button"
+                      className="btn btn-sm btn-outline-primary d-inline-flex align-items-center gap-1"
+                      disabled={isTickerRefreshing}
+                      onClick={() => handleTickerRefresh(tickerId, symbol, companyName)}
+                      title="Rescan this ticker's new trade alerts (both strategies) against live IBKR data"
+                    >
+                      {isTickerRefreshing && <Spinner size="sm" />}
+                      Refresh
+                    </button>
+                  </div>
                 )}
               </div>
               <div className="card-body d-flex flex-column gap-4">

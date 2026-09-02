@@ -159,10 +159,12 @@ export interface OrderLeg {
   right?: "C" | "P";
 }
 
+export type AdaptivePriority = "Urgent" | "Normal" | "Patient";
+
 export interface OrderRequest {
   id: string;
   requestType: string;
-  payload: { symbol: string; strategyKey: string; legs: OrderLeg[] };
+  payload: { symbol: string; strategyKey: string; legs: OrderLeg[]; adaptivePriority?: AdaptivePriority };
   relatedPositionId: string | null;
   sourceAlertId: string | null;
   status: OrderRequestStatus;
@@ -233,8 +235,11 @@ export function buildRollOrder(positionId: string, input: RollOrderInput): Promi
   return apiRequest<OrderRequest>(`/positions/${positionId}/roll`, { method: "POST", body: JSON.stringify(input) });
 }
 
-export function confirmOrder(orderId: string): Promise<OrderRequest> {
-  return apiRequest<OrderRequest>(`/positions/orders/${orderId}/confirm`, { method: "POST" });
+export function confirmOrder(orderId: string, adaptivePriority?: AdaptivePriority): Promise<OrderRequest> {
+  return apiRequest<OrderRequest>(`/positions/orders/${orderId}/confirm`, {
+    method: "POST",
+    body: adaptivePriority ? JSON.stringify({ adaptivePriority }) : undefined,
+  });
 }
 
 export function cancelOrder(orderId: string): Promise<OrderRequest> {

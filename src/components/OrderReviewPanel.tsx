@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { Spinner } from "./Spinner";
 import { ApiError } from "../api/client";
 import { useBackgroundJobs, type OrderJob } from "../contexts/BackgroundJobsContext";
-import { cancelOrder, confirmOrder, openOrderLegQuoteStream, type OrderLegQuote, type OrderRequest } from "../api/positions";
+import { cancelOrder, confirmOrder, openOrderLegQuoteStream, type AdaptivePriority, type OrderLegQuote, type OrderRequest } from "../api/positions";
 import { fetchAccountValue, fetchAvailableCash } from "../api/dashboard";
 import type { StrategyKey } from "../api/screener";
 import {
@@ -18,6 +18,7 @@ import {
   orderRequestStatusBadgeClass,
 } from "../lib/formatters";
 import { computeAnnualizedYield, computeCapitalAtRiskFromOrderLegs, computePayoff, orderLegsToPayoffInput } from "../lib/payoff";
+import { computeProbabilityOfProfit } from "../lib/probabilityOfProfit";
 import { flashClassName, useFlashOnChange } from "../hooks/useFlashOnChange";
 
 interface OrderReviewPanelProps {
@@ -25,6 +26,20 @@ interface OrderReviewPanelProps {
   onCancelled: () => void;
   /** Fires once the order reaches a terminal, successful state (filled/partially_filled). */
   onFilled: () => void;
+  /**
+   * Real live underlying price, when the caller already has one streaming
+   * (TickerDetailModal's own overview stream) -- used for POP instead of the
+   * stockLeg-unitPrice-or-strike approximation below. Genuinely needed here
+   * (not just nice-to-have): a CSP or a covered call sold against
+   * already-held shares has no stock leg in the order at all, so without
+   * this the fallback would silently use the strike itself as "spot,"
+   * materially skewing POP for exactly the orders Juan flagged POP as most
+   * important for. Left undefined for Roll/Close (RollPositionModal/
+   * ClosePositionModal), which don't have a spot price already on hand --
+   * POP simply doesn't render there rather than opening a second live IBKR
+   * stream just for this one number.
+   */
+  liveSpotPrice?: number | null;
 }
 
 const terminalStatuses = new Set(["filled", "partially_filled", "cancelled", "rejected", "error"]);
@@ -66,7 +81,7 @@ function statusLabel(status: OrderRequest["status"]): string {
  * form only ever builds an OrderRequest (this component's `order` prop) —
  * nothing is sent to IBKR until the user clicks Confirm here.
  */
-export function OrderReviewPanel({ order: initialOrder, onCancelled, onFilled }: OrderReviewPanelProps) {
+export function OrderReviewPanel({ order: initialOrder, onCancelled, onFilled, liveSpotPrice }: OrderReviewPanelProps) {
   const { jobs, startOrderJob } = useBackgroundJobs();
   // Once confirmed or cancel-requested, status polling is owned by
   // BackgroundJobsContext (startOrderJob below) rather than a local
@@ -78,6 +93,13 @@ export function OrderReviewPanel({ order: initialOrder, onCancelled, onFilled }:
   const job = jobs.find((candidate): candidate is OrderJob => candidate.kind === "order" && candidate.id === localOrder.id);
   const order = job?.order ?? localOrder;
   const [confirming, setConfirming] = useState(false);
+  // Juan's 2026-09-02 ask: a per-order Urgent/Normal/Patient picker for the
+  // Adaptive algo, instead of the always-"Normal" default set 2026-08-31.
+  // Picked here (not at order-build time) so one control covers every order
+  // type -- open/close/roll all render this same panel. Only meaningful
+  // while pending (sent along with Confirm); a resumed/reloaded order
+  // that's already past pending_confirmation shows its actual stored value.
+  const [adaptivePriority, setAdaptivePriority] = useState<AdaptivePriority>("Normal");
   const [cancelling, setCancelling] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [quote, setQuote] = useState<OrderLegQuote | null>(null);
@@ -143,7 +165,16 @@ export function OrderReviewPanel({ order: initialOrder, onCancelled, onFilled }:
   const capitalAtRisk = isOpeningOrder ? computeCapitalAtRiskFromOrderLegs(order.payload.strategyKey as StrategyKey, order.payload.legs) : null;
   const optionLeg = order.payload.legs.find((leg) => leg.role === "option");
   const stockLeg = order.payload.legs.find((leg) => leg.role === "stock");
-  const dte = optionLeg?.expiry ? daysToExpiry(optionLeg.expiry) : null;
+  // Real bug found live-testing the POP addition below, 2026-09-02: this was
+  // passing optionLeg.expiry straight through in IBKR's raw YYYYMMDD form.
+  // daysToExpiry expects ISO "YYYY-MM-DD" (see its own doc comment) --
+  // `new Date("20260911")` is an Invalid Date, so dte silently came out NaN
+  // and every live-recomputed Ann. Yield below has shown "—" since the
+  // feature shipped 2026-08-27, never a real number. legDescription() above
+  // already converts correctly (ibkrExpiryToIsoDate) for its own display;
+  // this call site just never got the same treatment.
+  const optionLegExpiryIso = optionLeg?.expiry ? (optionLeg.expiry.length === 8 ? ibkrExpiryToIsoDate(optionLeg.expiry) : optionLeg.expiry) : null;
+  const dte = optionLegExpiryIso ? daysToExpiry(optionLegExpiryIso) : null;
 
   // Gates Confirm for opening orders only (approved 2026-08-27) -- Close/Roll
   // orders keep a live quote display but no compliance check, same
@@ -178,6 +209,31 @@ export function OrderReviewPanel({ order: initialOrder, onCancelled, onFilled }:
         })
       : null;
 
+  // Deliberately NOT using liveYield's strike-fallback convention here — a
+  // CSP or a covered call sold against already-held shares has no stock leg
+  // in this order, and POP is sensitive enough to spot-vs-breakeven distance
+  // that silently substituting the strike for spot would produce a visibly
+  // wrong number, not just an approximation (unlike yield, where the same
+  // fallback only loosely affects a capital-at-risk denominator). Only shown
+  // once a real spot price is available: the order's own stock leg (buy-write
+  // open) or the caller's already-live liveSpotPrice prop.
+  const popSpotPrice = stockLeg?.unitPrice ?? liveSpotPrice ?? null;
+  // Still the formula flagged "pending validation" in PROGRESS.md — Juan's
+  // own logged comparison against IBKR's number showed a consistent
+  // few-point gap, not yet resolved — so this is provisional, not a number
+  // to act on alone (see the tooltip below).
+  const livePop =
+    isOpeningOrder && popSpotPrice !== null && optionLeg?.strike !== undefined && optionLeg.right && dte !== null && quote?.impliedVolatility
+      ? computeProbabilityOfProfit({
+          spotPrice: popSpotPrice,
+          strike: optionLeg.strike,
+          premium: liveOptionMid ?? optionLeg.unitPrice,
+          impliedVolatility: quote.impliedVolatility,
+          daysToExpiry: dte,
+          right: optionLeg.right === "C" ? "call" : "put",
+        })
+      : null;
+
   // Flashes a value's background briefly when the live quote stream ticks
   // it to a new number, so an update is visible without re-reading the
   // digits each time (approved 2026-09-01, Order Review + Roll Position only
@@ -195,7 +251,7 @@ export function OrderReviewPanel({ order: initialOrder, onCancelled, onFilled }:
     setConfirming(true);
     setError(null);
     try {
-      const confirmed = await confirmOrder(localOrder.id);
+      const confirmed = await confirmOrder(localOrder.id, adaptivePriority);
       setLocalOrder(confirmed);
       startOrderJob(confirmed);
     } catch (err) {
@@ -251,7 +307,7 @@ export function OrderReviewPanel({ order: initialOrder, onCancelled, onFilled }:
         ))}
       </ul>
 
-      {(payoff || capitalAtRisk !== null || liveYield !== null) && (
+      {(payoff || capitalAtRisk !== null || liveYield !== null || livePop !== null) && (
         <div className="row g-3 font-mono" style={{ fontSize: "0.85rem" }}>
           {liveYield !== null && (
             <div className="col-4">
@@ -288,6 +344,30 @@ export function OrderReviewPanel({ order: initialOrder, onCancelled, onFilled }:
                 <div className="fw-semibold">{formatCurrency(payoff.breakeven)}</div>
               </div>
             </>
+          )}
+          {livePop !== null && (
+            <div className="col-4">
+              <div
+                className="text-secondary text-uppercase"
+                style={{ fontSize: "0.68rem" }}
+                title="Provisional -- Black-Scholes estimate, still being validated against IBKR's own number (PROGRESS.md). Not yet confirmed reliable enough to act on alone."
+              >
+                POP
+              </div>
+              <div className="fw-semibold">{formatPercentage(livePop)}</div>
+            </div>
+          )}
+          {payoff && payoff.maxLoss > 0 && (
+            <div className="col-4">
+              <div
+                className="text-secondary text-uppercase"
+                style={{ fontSize: "0.68rem" }}
+                title="Max Gain / Max Loss -- same ratio IBKR's own order ticket shows as Return/Risk."
+              >
+                Return/Risk
+              </div>
+              <div className="fw-semibold">{formatNumber(payoff.maxGain / payoff.maxLoss, 2)}</div>
+            </div>
           )}
         </div>
       )}
@@ -380,6 +460,23 @@ export function OrderReviewPanel({ order: initialOrder, onCancelled, onFilled }:
 
       {isPending && (
         <>
+          <div className="d-flex justify-content-between align-items-center">
+            <label htmlFor="adaptive-priority-select" className="text-secondary mb-0" style={{ fontSize: "0.8rem" }}>
+              Fill priority (IBKR Adaptive)
+            </label>
+            <select
+              id="adaptive-priority-select"
+              className="form-select form-select-sm"
+              style={{ width: "auto" }}
+              value={adaptivePriority}
+              onChange={(event) => setAdaptivePriority(event.target.value as AdaptivePriority)}
+              title="How aggressively IBKR works this order within your limit price. Urgent seeks the fastest fill; Patient waits longer for a better price. Never fills worse than the limit shown above."
+            >
+              <option value="Urgent">Urgent</option>
+              <option value="Normal">Normal</option>
+              <option value="Patient">Patient</option>
+            </select>
+          </div>
           <div className="d-flex gap-2">
             <button
               type="button"

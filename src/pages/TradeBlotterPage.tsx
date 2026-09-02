@@ -20,6 +20,9 @@ import {
   pnlBadgeClass,
 } from "../lib/formatters";
 
+// Kept in sync with positions.ts's /orders/:id/cancel eligibility.
+const cancellableStatuses = new Set(["pending_confirmation", "confirmed", "submitted", "partially_filled"]);
+
 const strategyTabs: { key: StrategyKey | "all"; label: string }[] = [
   { key: "all", label: "All" },
   { key: "covered_call", label: "Covered Calls" },
@@ -50,7 +53,7 @@ export function TradeBlotterPage() {
   const [error, setError] = useState<string | null>(null);
   const [detailSymbol, setDetailSymbol] = useState<string | null>(null);
   const [cancellingId, setCancellingId] = useState<string | null>(null);
-  const [cancelConfirm, setCancelConfirm] = useState<{ orderId: string; symbol: string } | null>(null);
+  const [cancelConfirm, setCancelConfirm] = useState<{ orderId: string; symbol: string; liveAtIbkr: boolean } | null>(null);
 
   const loadTrades = useCallback(async () => {
     try {
@@ -83,12 +86,15 @@ export function TradeBlotterPage() {
     loadTrades().finally(() => setLoading(false));
   }, [loadTrades]);
 
-  // Never gated on age — a "pending_confirmation" order was never sent to
-  // IBKR, so there's nothing external to worry about cancelling regardless
-  // of how old it is. The full timestamp + relative-time label below is
-  // what keeps this safe: Juan/Marcelo can see at a glance whether an order
-  // was just built moments ago (don't touch it) or has genuinely been
-  // sitting untouched, rather than the button carrying any built-in delay.
+  // Never gated on age. A "pending_confirmation"/"confirmed" order was never
+  // sent to IBKR, so there's nothing external to worry about cancelling
+  // regardless of how old it is. A "submitted"/"partially_filled" order is
+  // live at IBKR — cancelling it is only a request (see the confirm modal's
+  // liveAtIbkr message) — but there's still no reason to block the attempt
+  // based on age. The full timestamp + relative-time label below is what
+  // keeps this safe: Juan/Marcelo can see at a glance whether an order was
+  // just built moments ago (don't touch it) or has genuinely been sitting
+  // untouched, rather than the button carrying any built-in delay.
   async function handleCancel(orderId: string) {
     setCancellingId(orderId);
     try {
@@ -225,7 +231,14 @@ export function TradeBlotterPage() {
       header: "",
       align: "right",
       render: (row) => {
-        if (row.kind !== "order" || row.status !== "pending_confirmation") return null;
+        // Mirrors positions.ts's /orders/:id/cancel eligibility exactly:
+        // pending_confirmation/confirmed haven't reached IBKR yet (pure
+        // local cancel), submitted/partially_filled are live at IBKR
+        // (cancel is a request the worker forwards via ib.cancelOrder()).
+        // Every other status is terminal — cancel_requested is excluded on
+        // purpose so the button disappears the instant a cancel is in
+        // flight, instead of allowing a second request.
+        if (row.kind !== "order" || !cancellableStatuses.has(row.status)) return null;
         // row.id is "<order_requests.id>:<legOrdinality>" here — a multi-leg
         // order expands to one blotter row per leg, all sharing one real
         // order id (see tradeBlotter.ts's WITH ORDINALITY comment). Cancel
@@ -237,7 +250,9 @@ export function TradeBlotterPage() {
             type="button"
             className="btn btn-sm btn-outline-danger d-inline-flex align-items-center gap-1"
             disabled={cancellingId === orderId}
-            onClick={() => setCancelConfirm({ orderId, symbol: row.symbol })}
+            onClick={() =>
+              setCancelConfirm({ orderId, symbol: row.symbol, liveAtIbkr: row.status === "submitted" || row.status === "partially_filled" })
+            }
           >
             {cancellingId === orderId && <Spinner size="sm" />}
             Cancel
@@ -311,7 +326,18 @@ export function TradeBlotterPage() {
       {cancelConfirm && (
         <ConfirmModal
           title="Cancel Order"
-          message={<>Cancel the pending <strong>{cancelConfirm.symbol}</strong> order? This can't be undone.</>}
+          message={
+            cancelConfirm.liveAtIbkr ? (
+              <>
+                This <strong>{cancelConfirm.symbol}</strong> order is already at IBKR. Cancelling sends a cancel request — IBKR could still fill
+                it before the request is processed. This can't be undone.
+              </>
+            ) : (
+              <>
+                Cancel the pending <strong>{cancelConfirm.symbol}</strong> order? This can't be undone.
+              </>
+            )
+          }
           confirmLabel="Cancel Order"
           confirming={cancellingId === cancelConfirm.orderId}
           onConfirm={() => handleCancel(cancelConfirm.orderId)}
