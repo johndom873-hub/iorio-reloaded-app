@@ -118,7 +118,7 @@ export type TradeAlertRunStreamEvent =
   | { type: "rollScanStart"; positionCount: number }
   | { type: "rollCandidate"; symbol: string; triggered: boolean }
   | { type: "rollError"; symbol: string; message: string }
-  | { type: "tickerAlertsReady"; symbol: string; lines: string[] }
+  | { type: "tickerAlertsReady"; symbol: string; entries: { strategyKey: StrategyKey; line: string; annualizedYield: number }[] }
   | { type: "streamError"; message: string }
   | { type: "done" };
 
