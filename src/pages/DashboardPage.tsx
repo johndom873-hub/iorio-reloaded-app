@@ -203,15 +203,16 @@ function TopStat({ label, value, loading, valueClassName, tooltip }: TopStatProp
     <div className="col-12 col-sm-4">
       <div className="card">
         <div className="card-body">
-          {/* HelpTooltip's own hit-target padding (10px) is taller than a
+          {/* HelpTooltip's own hit-target padding (4px) is taller than a
               plain text line, which was making this card noticeably taller
               than its siblings — the negative margin below cancels the
               padding's layout contribution without shrinking the actual
-              hoverable target. */}
-          <div className="text-muted mb-1 d-flex align-items-center" style={{ fontSize: "0.75rem", lineHeight: 1 }}>
+              hoverable target. The gap-1 on the container supplies the
+              visible space between label and icon instead. */}
+          <div className="text-muted mb-1 d-flex align-items-center gap-1" style={{ fontSize: "0.75rem", lineHeight: 1 }}>
             {label}
             {tooltip && (
-              <span style={{ marginTop: "-10px", marginRight: "-10px", marginBottom: "-10px", marginLeft: "-6px" }}>
+              <span style={{ margin: "-4px" }}>
                 <HelpTooltip text={tooltip} />
               </span>
             )}
@@ -538,7 +539,7 @@ export function DashboardPage() {
           {needsAttentionError && <div className="alert alert-danger mb-0">{needsAttentionError}</div>}
           {!needsAttentionError && needsAttentionLoading && <Spinner size="sm" label="Loading positions needing attention" />}
           {!needsAttentionError && !needsAttentionLoading && (
-            <div className="table-responsive">
+            <div className="table-responsive table-flush">
               <table className="table table-sm table-vcenter card-table mb-0">
                 <thead className="table-light">
                   <tr>
@@ -592,7 +593,7 @@ export function DashboardPage() {
         ) : events.length === 0 ? (
           <div className="text-muted">No recent activity.</div>
         ) : (
-          <div className="table-responsive" style={{ maxHeight: "26rem", overflowY: "auto" }}>
+          <div className="table-responsive table-flush" style={{ maxHeight: "26rem", overflowY: "auto" }}>
             <table className="table table-sm table-vcenter card-table mb-0" style={{ tableLayout: "fixed" }}>
               <colgroup>
                 <col style={{ width: "5.5rem" }} />
@@ -630,7 +631,7 @@ export function DashboardPage() {
             {periodPnlError && <div className="alert alert-danger mb-0">{periodPnlError}</div>}
             {!periodPnlError && periodPnlLoading && <Spinner size="sm" label="Loading P&L" />}
             {!periodPnlError && !periodPnlLoading && periodPnl && (
-              <div className="table-responsive">
+              <div className="table-responsive table-flush">
                 <table className="table table-sm table-vcenter card-table mb-0">
                   <thead className="table-light">
                     <tr>
@@ -682,7 +683,7 @@ export function DashboardPage() {
                 const residual = cumulativeRealized + cumulativeUnrealized - knownTotal;
 
                 return (
-                  <div className="table-responsive">
+                  <div className="table-responsive table-flush">
                     <table className="table table-sm table-vcenter card-table mb-0">
                       <thead className="table-light">
                         <tr>

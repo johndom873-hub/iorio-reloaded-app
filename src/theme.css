@@ -609,3 +609,17 @@
 .iorio-new-version-toast {
   --tblr-toast-header-color: var(--tblr-body-color);
 }
+
+/* Tabler's .card-table gives its first/last cells 1.25rem of left/right
+   padding so the table can bleed flush to a card's edges -- but that only
+   works when the table sits as a sibling of .card-body, not nested inside
+   it. CollapsibleCard always wraps children in a padded .card-body, so a
+   table dropped straight in there stacks both paddings (card-body's own
+   1.25rem/1rem plus card-table's own 1.25rem horizontally), wasting a lot
+   of space -- worst on mobile where the card is narrow to begin with. This
+   class goes on the .table-responsive wrapper to cancel the outer
+   .card-body padding on all four sides with a matching negative margin,
+   restoring the intended flush look. */
+.table-flush {
+  margin: calc(var(--tblr-card-spacer-y) * -1) calc(var(--tblr-card-spacer-x) * -1);
+}
