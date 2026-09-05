@@ -1,5 +1,5 @@
 import type { OrderLeg } from "../api/positions";
-import type { StrategyKey } from "../api/screener";
+import type { StrategyKey } from "../api/strategy";
 
 export interface PayoffPoint {
   price: number;

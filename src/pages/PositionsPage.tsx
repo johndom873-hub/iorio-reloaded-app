@@ -15,7 +15,7 @@ import {
   type UnrealizedPnlResult,
 } from "../api/positions";
 import { fetchAccountValue } from "../api/dashboard";
-import type { StrategyKey } from "../api/screener";
+import type { StrategyKey } from "../api/strategy";
 import {
   daysAgo,
   daysToExpiry,

@@ -31,6 +31,7 @@ export interface TickerOverview {
   companyName: string | null;
   sector: string | null;
   pricing: TickerPricing;
+  isShortlisted: boolean;
 }
 
 export interface PriceBar {

@@ -24,7 +24,8 @@ import {
   type UnrealizedPnlResult,
 } from "../api/positions";
 import { ApiError } from "../api/client";
-import type { StrategyKey } from "../api/screener";
+import { addToShortlist } from "../api/shortlist";
+import type { StrategyKey } from "../api/strategy";
 import { computeAnnualizedYield, computePayoff, type PayoffLegInput } from "../lib/payoff";
 import { formatCurrency, formatCurrencyTrimmed, formatDate, formatExpiryWithDte, formatNumber, formatPercentage, formatSignedPnl, ibkrExpiryToIsoDate } from "../lib/formatters";
 import { strategyBadgeClass, strategyLabel } from "../lib/positionPnl";
@@ -390,6 +391,8 @@ export function TickerDetailModal({ symbol, onClose, initialAlertId, focusPositi
 
   const [overview, setOverview] = useState<TickerOverview | null>(null);
   const [overviewError, setOverviewError] = useState<string | null>(null);
+  const [isAddingToShortlist, setIsAddingToShortlist] = useState(false);
+  const [addToShortlistError, setAddToShortlistError] = useState<string | null>(null);
 
   const [chartBars, setChartBars] = useState<PriceBar[] | null>(null);
   const [chartError, setChartError] = useState<string | null>(null);
@@ -674,6 +677,19 @@ export function TickerDetailModal({ symbol, onClose, initialAlertId, focusPositi
       }
     } catch (err) {
       setPositionsError(err instanceof ApiError ? err.message : "Failed to load positions.");
+    }
+  }
+
+  async function handleAddToShortlist() {
+    setIsAddingToShortlist(true);
+    setAddToShortlistError(null);
+    try {
+      await addToShortlist(symbol);
+      setOverview((prev) => (prev ? { ...prev, isShortlisted: true } : prev));
+    } catch (err) {
+      setAddToShortlistError(err instanceof ApiError ? err.message : "Failed to add ticker to shortlist.");
+    } finally {
+      setIsAddingToShortlist(false);
     }
   }
 
@@ -987,6 +1003,7 @@ export function TickerDetailModal({ symbol, onClose, initialAlertId, focusPositi
                     </div>
                   )}
                   {overview && (
+                    <Fragment>
                     <div className="d-flex flex-wrap align-items-baseline gap-3 mb-3 font-mono">
                       <span className={`h2 mb-0 ${flashClassName(spotPriceFlash)}`}>{formatCurrency(spotPrice)}</span>
                       {change != null && (
@@ -1006,7 +1023,20 @@ export function TickerDetailModal({ symbol, onClose, initialAlertId, focusPositi
                       </span>
                       <span className={`text-secondary small ${flashClassName(volumeFlash)}`}>Volume {formatNumber(pricing?.volume ?? null)}</span>
                       {overview.sector && <span className="badge bg-secondary-lt">{overview.sector}</span>}
+                      {!overview.isShortlisted && (
+                        <button
+                          type="button"
+                          className="btn btn-outline-primary d-inline-flex align-items-center gap-1"
+                          disabled={isAddingToShortlist}
+                          onClick={handleAddToShortlist}
+                        >
+                          {isAddingToShortlist && <Spinner size="sm" />}
+                          Add to Shortlist
+                        </button>
+                      )}
                     </div>
+                    {addToShortlistError && <div className="alert alert-danger">{addToShortlistError}</div>}
+                    </Fragment>
                   )}
 
                   {/* ---------- Positions (consolidated 2026-08-31 modal-wiring-audit merge) ---------- */}

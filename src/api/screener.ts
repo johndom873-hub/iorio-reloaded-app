@@ -1,53 +1,47 @@
 import { apiRequest } from "./client";
 
-// Used across positions/trade-alerts/risk-limits — not tied to the
-// (now strategy-agnostic) screener shortlist itself.
-export type StrategyKey = "covered_call" | "cash_secured_put";
-
-export interface ScreenerRow {
+export interface ScreenerScanRow {
   id: string;
-  addedAt: string;
-  notes: string | null;
-  tickerId: string;
   symbol: string;
   companyName: string | null;
   sector: string | null;
-  snapshotDate: string | null;
-  impliedVolatility: string | null;
+  scanCodes: string[];
+  bestRank: number;
+  lastPrice: string | null;
+  avgShareVolume: string | null;
   avgOptionVolume: string | null;
-  capturedAt: string | null;
-  ivRank: number | null;
-  ivPercentile: number | null;
-  ivWindowDays: number;
+  callOpenInterest: string | null;
+  putOpenInterest: string | null;
+  bidAskSpreadPct: string | null;
+  ivVsHistRatio: string | null;
+  impliedVolatility: string | null;
+  scanDate: string;
+  firstSeenDate: string;
+  isShortlisted: boolean;
 }
 
-export function fetchScreener(): Promise<ScreenerRow[]> {
-  return apiRequest<ScreenerRow[]>("/screener");
+export interface ScreenerFilters {
+  maxPrice?: number;
+  minIvRatio?: number;
+  maxIvRatio?: number;
+  minAvgOptionVolume?: number;
+  minAvgShareVolume?: number;
+  maxBidAskSpreadPct?: number;
+  sector?: string;
 }
 
-export function addToScreener(symbol: string, notes?: string): Promise<ScreenerRow> {
-  return apiRequest<ScreenerRow>("/screener", {
+export function fetchScreenerResults(filters: ScreenerFilters): Promise<ScreenerScanRow[]> {
+  const params = new URLSearchParams();
+  for (const [key, value] of Object.entries(filters)) {
+    if (value !== undefined && value !== "") params.set(key, String(value));
+  }
+  const query = params.toString();
+  return apiRequest<ScreenerScanRow[]>(`/screener${query ? `?${query}` : ""}`);
+}
+
+export function addScreenerResultToShortlist(symbol: string, notes?: string): Promise<void> {
+  return apiRequest<void>(`/screener/${symbol}/shortlist`, {
     method: "POST",
-    body: JSON.stringify({ symbol, notes }),
+    body: JSON.stringify({ notes }),
   });
-}
-
-export function removeFromScreener(entryId: string): Promise<void> {
-  return apiRequest<void>(`/screener/${entryId}`, { method: "DELETE" });
-}
-
-export function updateScreenerNotes(entryId: string, notes: string): Promise<{ notes: string | null }> {
-  return apiRequest<{ notes: string | null }>(`/screener/${entryId}`, {
-    method: "PATCH",
-    body: JSON.stringify({ notes: notes.trim() || null }),
-  });
-}
-
-export interface TickerSearchResult {
-  symbol: string;
-  companyName: string | null;
-}
-
-export function searchTickers(query: string): Promise<TickerSearchResult[]> {
-  return apiRequest<TickerSearchResult[]>(`/screener/search?q=${encodeURIComponent(query)}`);
 }

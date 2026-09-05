@@ -1,5 +1,5 @@
 import { apiRequest } from "./client";
-import type { StrategyKey } from "./screener";
+import type { StrategyKey } from "./strategy";
 
 export interface StrategySettings {
   id: string;

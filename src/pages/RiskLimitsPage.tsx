@@ -13,7 +13,7 @@ import {
   type StrategySettings,
   type StrategySettingsInput,
 } from "../api/riskLimits";
-import type { StrategyKey } from "../api/screener";
+import type { StrategyKey } from "../api/strategy";
 import { formatCurrency, formatDateTime, formatPercentage, formatPercentageValue, formatRelativeTime } from "../lib/formatters";
 
 const strategyTabs: { key: StrategyKey; label: string }[] = [

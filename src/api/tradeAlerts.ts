@@ -1,5 +1,5 @@
 import { apiRequest, apiBaseUrl } from "./client";
-import type { StrategyKey } from "./screener";
+import type { StrategyKey } from "./strategy";
 
 export type TradeAlertStatus = "pending" | "approved" | "rejected" | "modified" | "expired";
 
@@ -18,6 +18,10 @@ export interface NewTradeCandidate {
   ivRank: number | null;
   /** % of the last 1yr of trading days whose IV closed below today's. Null with under 20 days of IV history. */
   ivPercentile: number | null;
+  /** (ask − bid) / premium × 100, on a 0-100 scale (see formatPercentageValue). Null when bid/ask aren't both available. */
+  bidAskSpreadPct: number | null;
+  /** Ticker-level daily-MA trend context (spot vs MA25 vs MA99). Null with under 99 days of daily bar history. */
+  trendLabel: "uptrend" | "downtrend" | "mixed" | null;
 }
 
 // Kept as an alias — most existing call sites refer to "SuggestedStructure"

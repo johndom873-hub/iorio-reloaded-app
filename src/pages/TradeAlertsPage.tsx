@@ -15,7 +15,7 @@ import {
   type TradeAlert,
   type TradeAlertStatus,
 } from "../api/tradeAlerts";
-import type { StrategyKey } from "../api/screener";
+import type { StrategyKey } from "../api/strategy";
 import {
   formatCurrency,
   formatCurrencyTrimmed,
@@ -52,6 +52,31 @@ function IvMetricsInline({ ivRank, ivPercentile }: { ivRank: number | null; ivPe
       {ivRank === null ? "—" : formatPercentageValue(ivRank)}
       <span className="text-secondary"> / </span>
       {ivPercentile === null ? "—" : formatPercentageValue(ivPercentile)}
+    </span>
+  );
+}
+
+// Ticker-level daily-MA trend context, informational only — approved
+// 2026-09-05 alongside the bid-ask spread% column (see
+// generateTradeAlertCandidates.ts's buildTrendLabel on the backend).
+const trendBadgeClass: Record<"uptrend" | "downtrend" | "mixed", string> = {
+  uptrend: "bg-success-lt",
+  downtrend: "bg-danger-lt",
+  mixed: "bg-secondary-lt",
+};
+const trendBadgeLabel: Record<"uptrend" | "downtrend" | "mixed", string> = {
+  uptrend: "Uptrend",
+  downtrend: "Downtrend",
+  mixed: "Mixed",
+};
+function TrendBadge({ trendLabel }: { trendLabel: "uptrend" | "downtrend" | "mixed" | null }) {
+  if (trendLabel === null) return <span className="text-muted">—</span>;
+  return (
+    <span
+      className={`badge ${trendBadgeClass[trendLabel]} text-nowrap`}
+      title="Spot vs 25-day and 99-day moving averages — informational only, does not affect ranking"
+    >
+      {trendBadgeLabel[trendLabel]}
     </span>
   );
 }
@@ -359,6 +384,10 @@ export function TradeAlertsPage() {
                               <th className="text-end" title="IV Rank / IV Percentile — see the header tooltip on Screener for each formula">
                                 IV Rk/%ile
                               </th>
+                              <th className="text-end" title="(Ask − Bid) ÷ Premium — how much of the quoted mid premium is spread risk if the real fill lands away from the mid">
+                                Spread
+                              </th>
+                              <th title="Spot vs 25-day and 99-day moving averages — informational only, does not affect ranking">Trend</th>
                               <th>Why</th>
                               <th style={{ width: 110 }}></th>
                             </tr>
@@ -392,6 +421,10 @@ export function TradeAlertsPage() {
                                   </td>
                                   <td className="text-end font-mono">
                                     <IvMetricsInline ivRank={s.ivRank} ivPercentile={s.ivPercentile} />
+                                  </td>
+                                  <td className="text-end font-mono">{formatPercentageValue(s.bidAskSpreadPct)}</td>
+                                  <td>
+                                    <TrendBadge trendLabel={s.trendLabel} />
                                   </td>
                                   <td className="text-secondary" style={{ fontSize: "0.8rem", maxWidth: 260 }}>
                                     {alert.rationale}
@@ -434,9 +467,13 @@ export function TradeAlertsPage() {
                                         · IV <IvMetricsInline ivRank={s.ivRank} ivPercentile={s.ivPercentile} />
                                       </>
                                     )}
+                                    {s.bidAskSpreadPct !== null && <> · Spread {formatPercentageValue(s.bidAskSpreadPct)}</>}
                                   </div>
                                 </div>
-                                <span className="badge badge-change-pos font-mono text-nowrap">{formatPercentage(s.annualizedYield)}</span>
+                                <div className="d-flex flex-column align-items-end gap-1">
+                                  <span className="badge badge-change-pos font-mono text-nowrap">{formatPercentage(s.annualizedYield)}</span>
+                                  <TrendBadge trendLabel={s.trendLabel} />
+                                </div>
                               </div>
                               {alert.rationale && (
                                 <div className="text-secondary mt-2" style={{ fontSize: "0.78rem" }}>
@@ -487,6 +524,10 @@ export function TradeAlertsPage() {
                             <th className="text-end" title="IV Rank / IV Percentile — see the header tooltip on Screener for each formula">
                               IV Rk/%ile
                             </th>
+                            <th className="text-end" title="(Ask − Bid) ÷ Premium — how much of the quoted mid premium is spread risk if the real fill lands away from the mid">
+                              Spread
+                            </th>
+                            <th title="Spot vs 25-day and 99-day moving averages — informational only, does not affect ranking">Trend</th>
                             <th style={{ width: 170 }}></th>
                           </tr>
                         </thead>
@@ -535,6 +576,10 @@ export function TradeAlertsPage() {
                                   <td className="text-end font-mono">
                                     <IvMetricsInline ivRank={replacement.ivRank} ivPercentile={replacement.ivPercentile} />
                                   </td>
+                                  <td className="text-end font-mono">{formatPercentageValue(replacement.bidAskSpreadPct)}</td>
+                                  <td>
+                                    <TrendBadge trendLabel={replacement.trendLabel} />
+                                  </td>
                                   <td className="text-end">
                                     {alert.status === "pending" ? (
                                       <div className="d-flex gap-2 justify-content-end">
@@ -559,7 +604,7 @@ export function TradeAlertsPage() {
                                 </tr>
                                 {alert.rationale && (
                                   <tr>
-                                    <td colSpan={9} className="text-secondary pt-0" style={{ fontSize: "0.78rem" }}>
+                                    <td colSpan={11} className="text-secondary pt-0" style={{ fontSize: "0.78rem" }}>
                                       {alert.rationale}
                                     </td>
                                   </tr>
@@ -620,13 +665,27 @@ export function TradeAlertsPage() {
                               </div>
                               <div className="col-6">
                                 <div className="text-secondary">POP</div>
-                                <div className="font-mono">{formatPercentage(replacement.probabilityOfProfit)}</div>
+                                <div className="font-mono">
+                                  {replacement.probabilityOfProfit === null ? (
+                                    <span className="text-muted">—</span>
+                                  ) : (
+                                    formatPercentage(replacement.probabilityOfProfit)
+                                  )}
+                                </div>
                               </div>
                               <div className="col-6">
                                 <div className="text-secondary">IV Rank / %ile</div>
                                 <div className="font-mono">
                                   <IvMetricsInline ivRank={replacement.ivRank} ivPercentile={replacement.ivPercentile} />
                                 </div>
+                              </div>
+                              <div className="col-6">
+                                <div className="text-secondary">Spread</div>
+                                <div className="font-mono">{formatPercentageValue(replacement.bidAskSpreadPct)}</div>
+                              </div>
+                              <div className="col-6">
+                                <div className="text-secondary">Trend</div>
+                                <TrendBadge trendLabel={replacement.trendLabel} />
                               </div>
                             </div>
                             <div className="mt-2">

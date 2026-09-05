@@ -4,7 +4,7 @@ import { ApiError } from "../api/client";
 import { useBackgroundJobs, type OrderJob } from "../contexts/BackgroundJobsContext";
 import { cancelOrder, confirmOrder, openOrderLegQuoteStream, type AdaptivePriority, type OrderLegQuote, type OrderRequest } from "../api/positions";
 import { fetchAccountValue, fetchAvailableCash } from "../api/dashboard";
-import type { StrategyKey } from "../api/screener";
+import type { StrategyKey } from "../api/strategy";
 import {
   daysToExpiry,
   formatCurrency,

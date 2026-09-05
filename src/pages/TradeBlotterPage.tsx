@@ -7,7 +7,7 @@ import { ConfirmModal } from "../components/ConfirmModal";
 import { ApiError } from "../api/client";
 import { cancelOrder } from "../api/positions";
 import { fetchTradeBlotter, type PendingOrder, type Trade } from "../api/tradeBlotter";
-import type { StrategyKey } from "../api/screener";
+import type { StrategyKey } from "../api/strategy";
 import {
   formatCurrency,
   formatCurrencyTrimmed,

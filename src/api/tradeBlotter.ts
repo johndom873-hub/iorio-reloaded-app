@@ -1,5 +1,5 @@
 import { apiRequest } from "./client";
-import type { StrategyKey } from "./screener";
+import type { StrategyKey } from "./strategy";
 import type { LegSide, LegType, OptionType, OrderRequestStatus } from "./positions";
 
 export interface Trade {

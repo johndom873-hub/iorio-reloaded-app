@@ -1,5 +1,5 @@
 import { apiRequest, apiBaseUrl } from "./client";
-import type { StrategyKey } from "./screener";
+import type { StrategyKey } from "./strategy";
 import type { RollStructure } from "./tradeAlerts";
 
 export type PositionStatus = "open" | "closed";
