@@ -69,8 +69,12 @@ const trendBadgeLabel: Record<"uptrend" | "downtrend" | "mixed", string> = {
   downtrend: "Downtrend",
   mixed: "Mixed",
 };
-function TrendBadge({ trendLabel }: { trendLabel: "uptrend" | "downtrend" | "mixed" | null }) {
-  if (trendLabel === null) return <span className="text-muted">—</span>;
+// trendLabel is typed as required, but a pending alert generated before this
+// field existed has no such key in its stored suggested_structure JSON at
+// all -- comes back undefined, not null, until the next regen/refresh
+// replaces it. Guard both.
+function TrendBadge({ trendLabel }: { trendLabel: "uptrend" | "downtrend" | "mixed" | null | undefined }) {
+  if (trendLabel !== "uptrend" && trendLabel !== "downtrend" && trendLabel !== "mixed") return <span className="text-muted">—</span>;
   return (
     <span
       className={`badge ${trendBadgeClass[trendLabel]} text-nowrap`}
@@ -467,7 +471,7 @@ export function TradeAlertsPage() {
                                         · IV <IvMetricsInline ivRank={s.ivRank} ivPercentile={s.ivPercentile} />
                                       </>
                                     )}
-                                    {s.bidAskSpreadPct !== null && <> · Spread {formatPercentageValue(s.bidAskSpreadPct)}</>}
+                                    {s.bidAskSpreadPct != null && <> · Spread {formatPercentageValue(s.bidAskSpreadPct)}</>}
                                   </div>
                                 </div>
                                 <div className="d-flex flex-column align-items-end gap-1">
