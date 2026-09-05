@@ -87,7 +87,11 @@ export function SystemHealthPage() {
       render: (row) => {
         if (row.status === "failure") {
           return (
-            <span className="text-danger" title={row.errorMessage ?? undefined}>
+            <span
+              className="text-danger text-truncate d-inline-block align-bottom"
+              style={{ maxWidth: "20rem" }}
+              title={row.errorMessage ?? undefined}
+            >
               {row.errorMessage ?? "Failed"}
             </span>
           );
@@ -103,7 +107,15 @@ export function SystemHealthPage() {
             </details>
           );
         }
-        return row.details ? <span className="text-muted small">{JSON.stringify(row.details)}</span> : "—";
+        if (!row.details) return "—";
+        return (
+          <details>
+            <summary className="text-muted small" style={{ cursor: "pointer" }}>
+              View output
+            </summary>
+            <pre className="text-muted small mb-0 mt-1">{JSON.stringify(row.details, null, 2)}</pre>
+          </details>
+        );
       },
     },
   ];

@@ -213,7 +213,7 @@ export function TradeBlotterPage() {
           <div>
             <span className={`badge ${orderRequestStatusBadgeClass(row.status)}`}>{orderRequestStatusLabel(row.status)}</span>
             {row.errorMessage && (
-              <div className="text-danger" style={{ fontSize: "0.72rem" }}>
+              <div className="text-danger text-truncate" style={{ fontSize: "0.72rem", maxWidth: "12rem" }} title={row.errorMessage}>
                 {row.errorMessage}
               </div>
             )}

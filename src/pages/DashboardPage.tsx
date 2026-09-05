@@ -344,7 +344,17 @@ function EventRow({ event, onSymbolClick }: { event: PositionEvent; onSymbolClic
           {strategyLabel}
         </span>
       </td>
-      <td style={{ fontSize: "0.8rem", whiteSpace: "normal" }}>
+      <td
+        style={{
+          fontSize: "0.8rem",
+          whiteSpace: "normal",
+          display: "-webkit-box",
+          WebkitLineClamp: 3,
+          WebkitBoxOrient: "vertical",
+          overflow: "hidden",
+        }}
+        title={description}
+      >
         {description}
         {event.eventType === "unstructured" && event.unstructuredReason && (
           <span className="text-muted" style={{ fontSize: "0.75rem" }}>
