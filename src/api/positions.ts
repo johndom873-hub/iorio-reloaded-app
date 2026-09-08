@@ -349,6 +349,11 @@ export interface Greeks {
   gamma: number | null;
   vega: number | null;
   theta: number | null;
+  // Set only when these came from the last nightly snapshot instead of a
+  // live IBKR quote (outside market hours, or the Gateway is down) — the
+  // date that snapshot was captured. null when live, or when neither a live
+  // value nor a snapshot is available.
+  asOfDate: string | null;
 }
 
 export function fetchGreeks(legIds: string[]): Promise<Record<string, Greeks>> {

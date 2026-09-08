@@ -98,8 +98,24 @@ export function ibkrExpiryToIsoDate(expiryYyyymmdd: string): string {
   return `${expiryYyyymmdd.slice(0, 4)}-${expiryYyyymmdd.slice(4, 6)}-${expiryYyyymmdd.slice(6, 8)}`;
 }
 
+const plainIsoDatePattern = /^\d{4}-\d{2}-\d{2}$/;
+
 export function formatDate(dateInput: string | Date | null | undefined): string {
   if (!dateInput) return "—";
+  // A plain "YYYY-MM-DD" (no time/offset) names a calendar date, not an
+  // instant — `new Date("2026-09-08")` parses it as UTC midnight, which
+  // Intl.DateTimeFormat then renders in the browser's local zone, landing
+  // on the day before in any zone behind UTC (found 2026-09-08: a snapshot
+  // dated 2026-09-08 in the DB displayed as "Sep 7" in the UI). Parsing via
+  // the Date(year, month, day) constructor instead builds local midnight
+  // for that same calendar date, so formatting it locally can't shift days.
+  // Anything else (a real timestamp, or already a Date) keeps the old
+  // instant-based parsing — correct there, since it's a real point in time.
+  if (typeof dateInput === "string" && plainIsoDatePattern.test(dateInput)) {
+    const [year, month, day] = dateInput.split("-").map(Number);
+    const date = new Date(year, month - 1, day);
+    return new Intl.DateTimeFormat("en-US", { year: "numeric", month: "short", day: "numeric" }).format(date);
+  }
   const date = typeof dateInput === "string" ? new Date(dateInput) : dateInput;
   if (Number.isNaN(date.getTime())) return "—";
   return new Intl.DateTimeFormat("en-US", { year: "numeric", month: "short", day: "numeric" }).format(date);

@@ -316,7 +316,8 @@ export function PositionsPage() {
           }
           return <Spinner size="sm" label="Loading delta" />;
         }
-        return formatNumber(greeks.delta, 2);
+        if (greeks.delta === null) return <span className="text-muted">—</span>;
+        return <span title={greeks.asOfDate ? `As of ${formatDate(greeks.asOfDate)} close` : undefined}>{formatNumber(greeks.delta, 2)}</span>;
       },
     },
     {
@@ -339,7 +340,8 @@ export function PositionsPage() {
           }
           return <Spinner size="sm" label="Loading gamma" />;
         }
-        return formatNumber(greeks.gamma, 3);
+        if (greeks.gamma === null) return <span className="text-muted">—</span>;
+        return <span title={greeks.asOfDate ? `As of ${formatDate(greeks.asOfDate)} close` : undefined}>{formatNumber(greeks.gamma, 3)}</span>;
       },
     },
     {
