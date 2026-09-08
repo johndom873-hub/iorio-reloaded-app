@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { IconChevronDown } from "@tabler/icons-react";
 
 // No Bootstrap collapse JS is loaded in this app (see
@@ -8,12 +8,37 @@ interface CollapsibleCardProps {
   title: ReactNode;
   subtitle?: ReactNode;
   defaultOpen?: boolean;
+  storageKey?: string;
   className?: string;
   children: ReactNode;
 }
 
-export function CollapsibleCard({ title, subtitle, defaultOpen = true, className, children }: CollapsibleCardProps) {
-  const [isOpen, setIsOpen] = useState(defaultOpen);
+function storageKeyFor(storageKey: string): string {
+  return `iorio-card-collapsed-${storageKey}`;
+}
+
+export function CollapsibleCard({
+  title,
+  subtitle,
+  defaultOpen = true,
+  storageKey,
+  className,
+  children,
+}: CollapsibleCardProps) {
+  const [isOpen, setIsOpen] = useState(() => {
+    if (!storageKey) return defaultOpen;
+    try {
+      const stored = localStorage.getItem(storageKeyFor(storageKey));
+      return stored === null ? defaultOpen : stored === "open";
+    } catch {
+      return defaultOpen;
+    }
+  });
+
+  useEffect(() => {
+    if (!storageKey) return;
+    localStorage.setItem(storageKeyFor(storageKey), isOpen ? "open" : "closed");
+  }, [storageKey, isOpen]);
 
   return (
     <div className={`card ${className ?? ""}`}>
