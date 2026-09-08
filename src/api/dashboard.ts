@@ -12,15 +12,18 @@ export interface DashboardPeriods {
 // "unstructured" positions, so this is deliberately string here.
 export interface StrategyPnlBreakdown {
   strategyKey: string;
-  realizedPnl: string | null;
-  unrealizedPnl: string | null;
+  realizedPnl: number;
+  unrealizedPnl: number;
 }
 
 export interface DashboardSummary {
   asOf: string | null;
   netLiquidationValue: string | null;
-  cumulativeRealizedPnl: string | null;
-  cumulativeUnrealizedPnl: string | null;
+  // YTD account-level realized/unrealized (rescoped 2026-09-08 from
+  // all-time cumulative ledger figures — see strategyBreakdown, which is
+  // YTD-scoped the same way).
+  accountRealizedYtd: number;
+  accountUnrealizedYtd: number;
   dayPnlPercent: number | null;
   periods: DashboardPeriods;
   strategyBreakdown: StrategyPnlBreakdown[];

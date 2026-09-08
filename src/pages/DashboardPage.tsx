@@ -29,6 +29,7 @@ import {
   formatDateTime,
   formatExpiryWithDte,
   formatPercentage,
+  formatPercentageValue,
   formatRelativeDate,
   formatSignedPercentageValue,
   formatSignedPnl,
@@ -107,7 +108,15 @@ function allocationColors(rows: AllocationListProps["rows"], theme: "light" | "d
   return rows.map((row) => (row.isUnallocated ? unallocatedGrayByTheme[theme] : categorical[nextSlot++ % categorical.length]));
 }
 
-function AllocationDonut({ rows, colors, totalLabel = "Total" }: { rows: AllocationListProps["rows"]; colors: string[]; totalLabel?: string }) {
+function AllocationDonut({
+  rows,
+  colors,
+  totalLabel = "Total",
+}: {
+  rows: AllocationListProps["rows"];
+  colors: string[];
+  totalLabel?: string;
+}) {
   const series = rows.map((row) => Number(row.notionalValue));
   const total = series.reduce((sum, value) => sum + value, 0);
 
@@ -120,7 +129,10 @@ function AllocationDonut({ rows, colors, totalLabel = "Total" }: { rows: Allocat
         labels: rows.map((row) => row.label),
         colors,
         stroke: { show: true, width: 2 }, // surface gap between slices
-        dataLabels: { enabled: rows.length <= 4, formatter: (val: number) => `${val.toFixed(0)}%` },
+        // val is the slice's share of THIS donut's own series sum -- the same
+        // basis as the wedge angles themselves, so labels always add up to
+        // 100% (matches the legend rows below, which use the same basis).
+        dataLabels: { enabled: rows.length <= 4, formatter: (val: number) => formatPercentageValue(val, 0) },
         legend: { show: false }, // the list below doubles as the legend (label + swatch)
         tooltip: { y: { formatter: (val: number) => formatCurrency(val, 0) } },
         plotOptions: {
@@ -140,9 +152,12 @@ function AllocationDonut({ rows, colors, totalLabel = "Total" }: { rows: Allocat
   );
 }
 
-function AllocationList({ title, emptyMessage, totalAccountValue, rows, donutTotalLabel, onTickerClick }: AllocationListProps) {
+function AllocationList({ title, emptyMessage, rows, donutTotalLabel, onTickerClick }: AllocationListProps) {
   const { theme } = useTheme();
   const colors = allocationColors(rows, theme);
+  // Same basis as the donut's wedge angles (that section's own total, not
+  // the whole account) so the two always agree and add up to 100%.
+  const sectionTotal = rows.reduce((sum, row) => sum + Number(row.notionalValue), 0);
   return (
     <div className="col-12 col-md-4">
       <h4 style={{ fontSize: "0.9rem" }}>{title}</h4>
@@ -155,7 +170,7 @@ function AllocationList({ title, emptyMessage, totalAccountValue, rows, donutTot
           <AllocationDonut rows={rows} colors={colors} totalLabel={donutTotalLabel} />
           <ul className="list-group list-group-flush">
             {rows.map((row, index) => {
-              const fraction = totalAccountValue ? Number(row.notionalValue) / totalAccountValue : null;
+              const fraction = sectionTotal ? Number(row.notionalValue) / sectionTotal : null;
               return (
                 <li key={row.key} className="list-group-item d-flex justify-content-between align-items-center px-0">
                   <span className={`d-inline-flex align-items-center gap-2 ${row.isUnallocated ? "text-muted" : ""}`}>
@@ -178,7 +193,7 @@ function AllocationList({ title, emptyMessage, totalAccountValue, rows, donutTot
                   </span>
                   <span className="text-muted text-nowrap font-mono" style={{ fontSize: "0.8rem" }}>
                     {formatCurrency(Number(row.notionalValue), 0)}
-                    {fraction !== null && ` (${formatPercentage(fraction)})`}
+                    {fraction !== null && ` (${formatPercentage(fraction, 0)})`}
                   </span>
                 </li>
               );
@@ -521,7 +536,7 @@ export function DashboardPage() {
         />
       </div>
 
-      <CollapsibleCard title="Portfolio" className="mb-3">
+      <CollapsibleCard title="Portfolio" storageKey="portfolio" className="mb-3">
         {portfolioError && <div className="alert alert-danger mb-0">{portfolioError}</div>}
         {!portfolioError && portfolioLoading && <Spinner size="sm" label="Loading portfolio" />}
         {!portfolioError && !portfolioLoading && (
@@ -535,7 +550,7 @@ export function DashboardPage() {
       </CollapsibleCard>
 
       {needsAttentionLoading || needsAttentionError || needsAttention.length > 0 ? (
-        <CollapsibleCard title="Needs Attention" className="mb-3">
+        <CollapsibleCard title="Needs Attention" storageKey="needs-attention" className="mb-3">
           {needsAttentionError && <div className="alert alert-danger mb-0">{needsAttentionError}</div>}
           {!needsAttentionError && needsAttentionLoading && <Spinner size="sm" label="Loading positions needing attention" />}
           {!needsAttentionError && !needsAttentionLoading && (
@@ -586,7 +601,7 @@ export function DashboardPage() {
         </CollapsibleCard>
       ) : null}
 
-      <CollapsibleCard title="Latest Events" className="mb-3">
+      <CollapsibleCard title="Latest Events" storageKey="latest-events" className="mb-3">
         {eventsError && <div className="alert alert-danger">{eventsError}</div>}
         {eventsLoading ? (
           <Spinner size="sm" label="Loading events" />
@@ -627,7 +642,7 @@ export function DashboardPage() {
 
       <div className="row g-3 mb-3">
         <div className="col-12 col-lg-8">
-          <CollapsibleCard title="P&L by Period">
+          <CollapsibleCard title="P&L by Period" storageKey="pnl-by-period">
             {periodPnlError && <div className="alert alert-danger mb-0">{periodPnlError}</div>}
             {!periodPnlError && periodPnlLoading && <Spinner size="sm" label="Loading P&L" />}
             {!periodPnlError && !periodPnlLoading && periodPnl && (
@@ -656,7 +671,7 @@ export function DashboardPage() {
           </CollapsibleCard>
         </div>
         <div className="col-12 col-lg-4">
-          <CollapsibleCard title="P&L by Strategy">
+          <CollapsibleCard title="P&L by Strategy (YTD)" storageKey="pnl-by-strategy">
             {summaryLoading ? (
               <Spinner size="sm" label="Loading breakdown" />
             ) : !summary ? (
@@ -675,12 +690,10 @@ export function DashboardPage() {
                     unrealizedPnl: found ? Number(found.unrealizedPnl) : 0,
                   };
                 });
-                const cumulativeRealized = summary.cumulativeRealizedPnl ? Number(summary.cumulativeRealizedPnl) : 0;
-                const cumulativeUnrealized = summary.cumulativeUnrealizedPnl ? Number(summary.cumulativeUnrealizedPnl) : 0;
-                const knownTotal = summary.strategyBreakdown
-                  .filter((row) => row.strategyKey !== "unallocated")
-                  .reduce((sum, row) => sum + Number(row.realizedPnl ?? 0) + Number(row.unrealizedPnl ?? 0), 0);
-                const residual = cumulativeRealized + cumulativeUnrealized - knownTotal;
+                const knownRealizedTotal = knownRows.reduce((sum, row) => sum + row.realizedPnl, 0);
+                const knownUnrealizedTotal = knownRows.reduce((sum, row) => sum + row.unrealizedPnl, 0);
+                const residualRealized = summary.accountRealizedYtd - knownRealizedTotal;
+                const residualUnrealized = summary.accountUnrealizedYtd - knownUnrealizedTotal;
 
                 return (
                   <div className="table-responsive table-flush">
@@ -702,17 +715,20 @@ export function DashboardPage() {
                         ))}
                         <tr>
                           <td className="fw-bold">Residual</td>
-                          <td className={`text-end font-mono fw-bold ${pnlTextClass(residual)}`} colSpan={2}>
-                            {formatSignedPnl(residual, 0)}
+                          <td className={`text-end font-mono fw-bold ${pnlTextClass(residualRealized)}`}>
+                            {formatSignedPnl(residualRealized, 0)}
+                          </td>
+                          <td className={`text-end font-mono fw-bold ${pnlTextClass(residualUnrealized)}`}>
+                            {formatSignedPnl(residualUnrealized, 0)}
                           </td>
                         </tr>
                         <tr>
                           <td className="fw-bold">Total</td>
-                          <td className={`text-end font-mono fw-bold ${pnlTextClass(cumulativeRealized)}`}>
-                            {formatSignedPnl(cumulativeRealized, 0)}
+                          <td className={`text-end font-mono fw-bold ${pnlTextClass(summary.accountRealizedYtd)}`}>
+                            {formatSignedPnl(summary.accountRealizedYtd, 0)}
                           </td>
-                          <td className={`text-end font-mono fw-bold ${pnlTextClass(cumulativeUnrealized)}`}>
-                            {formatSignedPnl(cumulativeUnrealized, 0)}
+                          <td className={`text-end font-mono fw-bold ${pnlTextClass(summary.accountUnrealizedYtd)}`}>
+                            {formatSignedPnl(summary.accountUnrealizedYtd, 0)}
                           </td>
                         </tr>
                       </tbody>
@@ -725,7 +741,7 @@ export function DashboardPage() {
         </div>
       </div>
 
-      <CollapsibleCard title="Allocation" className="mb-3">
+      <CollapsibleCard title="Allocation" storageKey="allocation" className="mb-3">
         {exposureLoading ? (
           <Spinner size="sm" label="Loading allocation" />
         ) : (
@@ -789,7 +805,7 @@ export function DashboardPage() {
         )}
       </CollapsibleCard>
 
-      <CollapsibleCard title="P&L Over Time" className="mb-3">
+      <CollapsibleCard title="P&L Over Time" storageKey="pnl-over-time" className="mb-3">
         {historyError && <div className="alert alert-danger">{historyError}</div>}
 
         {historyLoading ? (
