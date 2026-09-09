@@ -13,8 +13,10 @@ import {
   type Time,
   type UTCTimestamp,
 } from "lightweight-charts";
+import { IconChevronDown } from "@tabler/icons-react";
 import { Spinner } from "../Spinner";
 import { useTheme } from "../../contexts/ThemeContext";
+import { useCollapsibleCard } from "../../hooks/useCollapsibleCard";
 import { ApiError } from "../../api/client";
 import { fetchTickerChart, type ChartRange, type PriceBar, type TickerTechnicals } from "../../api/tickerDetail";
 
@@ -307,6 +309,7 @@ export function TickerPriceChart({ symbol, initialBars, technicals }: TickerPric
   );
   const [hoveredBar, setHoveredBar] = useState<HoveredBar | null>(null);
   const [chartHeight, setChartHeight] = useState(desktopChartHeight);
+  const [isOpen, setIsOpen] = useCollapsibleCard("ticker-detail-chart", true);
 
   // Only the very first range effect run should be skipped when seeded —
   // every later run (a real range switch) must fetch normally.
@@ -535,6 +538,10 @@ export function TickerPriceChart({ symbol, initialBars, technicals }: TickerPric
         className="card-header py-2 d-flex flex-column-reverse flex-md-row align-items-md-center justify-content-md-between"
         style={{ gap: "0.5rem" }}
       >
+        <div className="d-flex align-items-center flex-wrap" style={{ gap: "0.5rem" }}>
+        <h3 className="card-title mb-0" style={{ fontSize: "1rem" }}>
+          Chart
+        </h3>
         <div
           className="d-flex align-items-center flex-wrap"
           style={{ fontSize: "0.72rem", fontVariantNumeric: "tabular-nums", gap: "0.5rem" }}
@@ -568,7 +575,8 @@ export function TickerPriceChart({ symbol, initialBars, technicals }: TickerPric
             <span className="text-muted">—</span>
           )}
         </div>
-        <div className="d-flex gap-1 flex-wrap flex-shrink-0">
+        </div>
+        <div className="d-flex align-items-center gap-1 flex-wrap flex-shrink-0">
           {ranges.map((r) => (
             <button
               key={r}
@@ -581,10 +589,19 @@ export function TickerPriceChart({ symbol, initialBars, technicals }: TickerPric
               {r}
             </button>
           ))}
+          <button
+            type="button"
+            className="btn btn-icon"
+            aria-label={isOpen ? "Collapse price chart" : "Expand price chart"}
+            aria-expanded={isOpen}
+            onClick={() => setIsOpen((open) => !open)}
+          >
+            <IconChevronDown size={18} style={{ transform: isOpen ? "rotate(180deg)" : "none", transition: "transform 0.15s ease" }} />
+          </button>
         </div>
       </div>
 
-      <div className="card-body p-0" style={{ position: "relative" }}>
+      <div className="card-body p-0" style={{ position: "relative", display: isOpen ? undefined : "none" }}>
         {status === "loading" && (
           <div
             className="d-flex align-items-center justify-content-center"

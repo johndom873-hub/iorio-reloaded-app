@@ -132,8 +132,8 @@ export function PositionCard({
   }
 
   return (
-    <div className="card mb-3">
-      <div className="card-header d-flex flex-wrap align-items-center gap-2">
+    <div>
+      <div className="d-flex flex-wrap align-items-center gap-2 mb-3">
         <span className={`badge ${strategyBadgeClass(position.strategyKey)}`}>{strategyLabel(position.strategyKey)}</span>
         {(() => {
           const pnl = positionTotalPnl(position, unrealizedPnlByPositionId);
@@ -199,7 +199,7 @@ export function PositionCard({
             );
           })()}
       </div>
-      <div className="card-body">
+      <div>
         <div className="table-responsive mb-3">
           <table className="table table-sm table-vcenter card-table mb-0">
             <thead className="table-light">

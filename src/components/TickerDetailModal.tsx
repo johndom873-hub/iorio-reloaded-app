@@ -1,6 +1,7 @@
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { IconStar } from "@tabler/icons-react";
 import { Spinner } from "./Spinner";
+import { CollapsibleCard } from "./CollapsibleCard";
 import { OrderReviewPanel } from "./OrderReviewPanel";
 import { TickerPriceChart } from "./charts/TickerPriceChart";
 import { IvHistoryChart } from "./charts/IvHistoryChart";
@@ -385,9 +386,14 @@ export function TickerDetailModal({ symbol, onClose, initialAlertId, focusPositi
   const [greeksFetchFailed, setGreeksFetchFailed] = useState(false);
   const [unrealizedPnlByPositionId, setUnrealizedPnlByPositionId] = useState<Record<string, UnrealizedPnlResult>>({});
   const [unrealizedPnlFetchFailed, setUnrealizedPnlFetchFailed] = useState(false);
-  const [showHistory, setShowHistory] = useState(false);
   const focusedPositionRef = useRef<HTMLDivElement | null>(null);
   const hasScrolledToFocus = useRef(false);
+  // Bumped to force the Positions/Option Chain cards open when something
+  // scrolls to a specific position or the chain from elsewhere in this
+  // modal (an alert click, a "Sell Call" prefill, focusPositionId) — see
+  // CollapsibleCard's forceOpenSignal prop.
+  const [positionsForceOpenSignal, setPositionsForceOpenSignal] = useState(0);
+  const [chainForceOpenSignal, setChainForceOpenSignal] = useState(0);
 
   const [overview, setOverview] = useState<TickerOverview | null>(null);
   const [overviewError, setOverviewError] = useState<string | null>(null);
@@ -585,6 +591,7 @@ export function TickerDetailModal({ symbol, onClose, initialAlertId, focusPositi
     appliedInitialAlert.current = true;
     const expiryYyyymmdd = alert.suggestedStructure.expiry.replaceAll("-", "");
     if (expiryGroups.some((g) => g.expiry === expiryYyyymmdd)) setActiveExpiry(expiryYyyymmdd);
+    setChainForceOpenSignal((n) => n + 1);
     chainRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
     selectAlert(alert);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -595,15 +602,40 @@ export function TickerDetailModal({ symbol, onClose, initialAlertId, focusPositi
   // loaded, relevant only when a symbol has more than one open position.
   useEffect(() => {
     if (hasScrolledToFocus.current || !focusPositionId || !positions) return;
-    if (!focusedPositionRef.current) return;
-    hasScrolledToFocus.current = true;
-    focusedPositionRef.current.scrollIntoView({ behavior: "smooth", block: "start" });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // Only worth forcing the (possibly user-collapsed) Positions card open
+    // and scrolling within it when there's more than one open position to
+    // disambiguate between — with just one, it's already the only thing
+    // shown there, and force-opening every time would override a
+    // deliberately collapsed card on every navigation to this ticker.
+    if (positions.filter((p) => p.status === "open").length <= 1) {
+      hasScrolledToFocus.current = true;
+      return;
+    }
+    setPositionsForceOpenSignal((n) => n + 1);
+
+    // The Positions card may still be collapsed and its body (and this ref)
+    // unmounted at this point — CollapsibleCard's forced-open state update
+    // lands on a later render than this effect. Poll a few frames for the
+    // ref to appear rather than giving up immediately.
+    let rafId: number;
+    let attempts = 0;
+    function tryScroll() {
+      if (focusedPositionRef.current) {
+        hasScrolledToFocus.current = true;
+        focusedPositionRef.current.scrollIntoView({ behavior: "smooth", block: "start" });
+        return;
+      }
+      attempts += 1;
+      if (attempts < 20) rafId = requestAnimationFrame(tryScroll);
+    }
+    tryScroll();
+    return () => cancelAnimationFrame(rafId);
   }, [focusPositionId, positions]);
 
   function handleAlertRowClick(alert: NewTradeAlert) {
     const expiryYyyymmdd = alert.suggestedStructure.expiry.replaceAll("-", "");
     if (expiryGroups.some((g) => g.expiry === expiryYyyymmdd)) setActiveExpiry(expiryYyyymmdd);
+    setChainForceOpenSignal((n) => n + 1);
     chainRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
     selectAlert(alert);
   }
@@ -1051,14 +1083,19 @@ export function TickerDetailModal({ symbol, onClose, initialAlertId, focusPositi
                     const closedPositions = positions.filter((p) => p.status === "closed");
                     if (openPositions.length === 0 && closedPositions.length === 0) return null;
                     return (
-                      <div className="mb-4">
+                      <div className="mb-4 d-flex flex-column gap-3">
                         {openPositions.length > 0 && (
-                          <>
-                            <h4 className="mb-2" style={{ fontSize: "0.95rem" }}>
-                              {openPositions.length === 1 ? "Position" : `Positions (${openPositions.length})`}
-                            </h4>
-                            {openPositions.map((position) => (
-                              <div key={position.id} ref={position.id === focusPositionId ? focusedPositionRef : undefined}>
+                          <CollapsibleCard
+                            title={openPositions.length === 1 ? "Position" : `Positions (${openPositions.length})`}
+                            storageKey="ticker-detail-positions"
+                            forceOpenSignal={positionsForceOpenSignal}
+                          >
+                            {openPositions.map((position, index) => (
+                              <div
+                                key={position.id}
+                                ref={position.id === focusPositionId ? focusedPositionRef : undefined}
+                                className={index < openPositions.length - 1 ? "border-bottom pb-4 mb-4" : undefined}
+                              >
                                 <PositionCard
                                   position={position}
                                   greeksByLegId={greeksByLegId}
@@ -1081,61 +1118,53 @@ export function TickerDetailModal({ symbol, onClose, initialAlertId, focusPositi
                                       setPendingOrder(null);
                                       setBuildError(null);
                                     }
+                                    setChainForceOpenSignal((n) => n + 1);
                                     chainRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
                                   }}
                                 />
                               </div>
                             ))}
-                          </>
+                          </CollapsibleCard>
                         )}
                         {closedPositions.length > 0 && (
-                          <div className="mt-2">
-                            <button
-                              type="button"
-                              className="btn btn-sm btn-outline-secondary"
-                              onClick={() => setShowHistory((prev) => !prev)}
-                            >
-                              {showHistory ? "Hide" : "Show"} History ({closedPositions.length})
-                            </button>
-                            {showHistory && (
-                              <div className="table-responsive mt-2 border rounded">
-                                <table className="table table-sm table-vcenter card-table mb-0">
-                                  <thead className="table-light">
-                                    <tr>
-                                      <th>Strategy</th>
-                                      <th>Structure</th>
-                                      <th>Opened</th>
-                                      <th>Closed</th>
-                                      <th className="text-end">Realized P&L</th>
+                          <CollapsibleCard title={`History (${closedPositions.length})`} storageKey="ticker-detail-history" defaultOpen={false}>
+                            <div className="table-responsive border rounded">
+                              <table className="table table-sm table-vcenter card-table mb-0">
+                                <thead className="table-light">
+                                  <tr>
+                                    <th>Strategy</th>
+                                    <th>Structure</th>
+                                    <th>Opened</th>
+                                    <th>Closed</th>
+                                    <th className="text-end">Realized P&L</th>
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  {closedPositions.map((position) => (
+                                    <tr key={position.id}>
+                                      <td>
+                                        <span className={`badge ${strategyBadgeClass(position.strategyKey)}`}>
+                                          {strategyLabel(position.strategyKey)}
+                                        </span>
+                                      </td>
+                                      <td className="small">
+                                        {position.legs
+                                          .map((leg) =>
+                                            leg.legType === "stock"
+                                              ? `${leg.side} ${leg.quantity} sh`
+                                              : `${leg.side} ${leg.quantity}x ${leg.strikePrice ? formatCurrencyTrimmed(Number(leg.strikePrice)) : "—"}${leg.optionType === "call" ? "C" : "P"} exp ${formatExpiryWithDte(leg.expiryDate, position.openedAt)}`,
+                                          )
+                                          .join(" / ")}
+                                      </td>
+                                      <td>{formatDate(position.openedAt)}</td>
+                                      <td>{position.closedAt ? formatDate(position.closedAt) : "—"}</td>
+                                      <td className="text-end font-mono">{formatSignedPnl(Number(position.realizedPnl))}</td>
                                     </tr>
-                                  </thead>
-                                  <tbody>
-                                    {closedPositions.map((position) => (
-                                      <tr key={position.id}>
-                                        <td>
-                                          <span className={`badge ${strategyBadgeClass(position.strategyKey)}`}>
-                                            {strategyLabel(position.strategyKey)}
-                                          </span>
-                                        </td>
-                                        <td className="small">
-                                          {position.legs
-                                            .map((leg) =>
-                                              leg.legType === "stock"
-                                                ? `${leg.side} ${leg.quantity} sh`
-                                                : `${leg.side} ${leg.quantity}x ${leg.strikePrice ? formatCurrencyTrimmed(Number(leg.strikePrice)) : "—"}${leg.optionType === "call" ? "C" : "P"} exp ${formatExpiryWithDte(leg.expiryDate, position.openedAt)}`,
-                                            )
-                                            .join(" / ")}
-                                        </td>
-                                        <td>{formatDate(position.openedAt)}</td>
-                                        <td>{position.closedAt ? formatDate(position.closedAt) : "—"}</td>
-                                        <td className="text-end font-mono">{formatSignedPnl(Number(position.realizedPnl))}</td>
-                                      </tr>
-                                    ))}
-                                  </tbody>
-                                </table>
-                              </div>
-                            )}
-                          </div>
+                                  ))}
+                                </tbody>
+                              </table>
+                            </div>
+                          </CollapsibleCard>
                         )}
                       </div>
                     );
@@ -1149,22 +1178,25 @@ export function TickerDetailModal({ symbol, onClose, initialAlertId, focusPositi
                   {/* ---------- Trade Alerts ---------- */}
                   {alertsError && <div className="alert alert-danger">{alertsError}</div>}
                   {alerts !== null && !alertsError && (
-                    <div className="mb-4">
-                      <div className="d-flex align-items-center gap-2 mb-1">
-                        <h4 className="mb-0" style={{ fontSize: "0.95rem" }}>
-                          Trade Alerts{" "}
-                          {relevantAlerts.length > 0 && <span className="text-secondary fw-normal">({relevantAlerts.length})</span>}
-                        </h4>
+                    <CollapsibleCard
+                      title={<>Trade Alerts {relevantAlerts.length > 0 && <span className="text-secondary fw-normal">({relevantAlerts.length})</span>}</>}
+                      subtitle={
                         <button
                           type="button"
                           className="btn btn-sm btn-outline-primary d-inline-flex align-items-center gap-1"
                           disabled={scanning}
-                          onClick={handleScanOrRefresh}
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            handleScanOrRefresh();
+                          }}
                         >
                           {scanning && <Spinner size="sm" />}
                           {relevantAlerts.length > 0 ? "Refresh" : "Scan for Alerts"}
                         </button>
-                      </div>
+                      }
+                      storageKey="ticker-detail-trade-alerts"
+                      className="mb-4"
+                    >
                       {scanError && <div className="alert alert-danger">{scanError}</div>}
 
                       {relevantAlerts.length === 0 && !scanning && <p className="text-secondary mb-0">No active trade alerts.</p>}
@@ -1217,12 +1249,12 @@ export function TickerDetailModal({ symbol, onClose, initialAlertId, focusPositi
                       </div>
                         </>
                       )}
-                    </div>
+                    </CollapsibleCard>
                   )}
 
                   {/* ---------- Option Chain ---------- */}
                   <div ref={chainRef}>
-                    <h4 className="mb-2">Option Chain</h4>
+                  <CollapsibleCard title="Option Chain" storageKey="ticker-detail-option-chain" forceOpenSignal={chainForceOpenSignal}>
                     <p className="text-secondary small mb-3">
                       Near-the-money strikes for the nearest expiries in the strategies' trading window. Yield shown for every strike;
                       flagged strikes match an open trade alert.
@@ -1378,6 +1410,7 @@ export function TickerDetailModal({ symbol, onClose, initialAlertId, focusPositi
                           )}
                       </>
                     )}
+                  </CollapsibleCard>
                   </div>
                   </div>
 
@@ -1406,7 +1439,7 @@ export function TickerDetailModal({ symbol, onClose, initialAlertId, focusPositi
 
                   {/* ---------- Technicals ---------- */}
                   <div className="mt-4">
-                    <h4 className="mb-2">Technicals</h4>
+                  <CollapsibleCard title="Technicals" storageKey="ticker-detail-technicals">
                     {technicalsError && <div className="alert alert-danger">{technicalsError}</div>}
                     {!technicalsError && !technicals && (
                       <div className="d-flex justify-content-center py-3">
@@ -1466,6 +1499,7 @@ export function TickerDetailModal({ symbol, onClose, initialAlertId, focusPositi
                         </div>
                       </div>
                     )}
+                  </CollapsibleCard>
                   </div>
 
                   {/* ---------- Chart ---------- */}

@@ -1,5 +1,6 @@
-import { useEffect, useState, type ReactNode } from "react";
+import type { ReactNode } from "react";
 import { IconChevronDown } from "@tabler/icons-react";
+import { useCollapsibleCard } from "../hooks/useCollapsibleCard";
 
 // No Bootstrap collapse JS is loaded in this app (see
 // ColumnVisibilityPopover.tsx's comment) -- driven manually here the same
@@ -10,11 +11,9 @@ interface CollapsibleCardProps {
   defaultOpen?: boolean;
   storageKey?: string;
   className?: string;
+  /** Bump this to force the card open programmatically (e.g. scrolling to it from elsewhere), even if the user had collapsed it. */
+  forceOpenSignal?: number;
   children: ReactNode;
-}
-
-function storageKeyFor(storageKey: string): string {
-  return `iorio-card-collapsed-${storageKey}`;
 }
 
 export function CollapsibleCard({
@@ -23,22 +22,10 @@ export function CollapsibleCard({
   defaultOpen = true,
   storageKey,
   className,
+  forceOpenSignal,
   children,
 }: CollapsibleCardProps) {
-  const [isOpen, setIsOpen] = useState(() => {
-    if (!storageKey) return defaultOpen;
-    try {
-      const stored = localStorage.getItem(storageKeyFor(storageKey));
-      return stored === null ? defaultOpen : stored === "open";
-    } catch {
-      return defaultOpen;
-    }
-  });
-
-  useEffect(() => {
-    if (!storageKey) return;
-    localStorage.setItem(storageKeyFor(storageKey), isOpen ? "open" : "closed");
-  }, [storageKey, isOpen]);
+  const [isOpen, setIsOpen] = useCollapsibleCard(storageKey, defaultOpen, forceOpenSignal);
 
   return (
     <div className={`card ${className ?? ""}`}>

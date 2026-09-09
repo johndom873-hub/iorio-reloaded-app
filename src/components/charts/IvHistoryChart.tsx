@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createChart, LineSeries, CrosshairMode, LineStyle, type IChartApi, type ISeriesApi, type UTCTimestamp } from "lightweight-charts";
+import { IconChevronDown } from "@tabler/icons-react";
 import { Spinner } from "../Spinner";
 import { useTheme } from "../../contexts/ThemeContext";
+import { useCollapsibleCard } from "../../hooks/useCollapsibleCard";
 import { ApiError } from "../../api/client";
 import { fetchTickerIvChart, type IvChartRange } from "../../api/tickerDetail";
 import { formatPercentageValue } from "../../lib/formatters";
@@ -42,6 +44,7 @@ export function IvHistoryChart({ symbol }: IvHistoryChartProps) {
   const [hoveredValue, setHoveredValue] = useState<number | null>(null);
   const [latestValue, setLatestValue] = useState<number | null>(null);
   const [chartHeight, setChartHeight] = useState(desktopChartHeight);
+  const [isOpen, setIsOpen] = useCollapsibleCard("ticker-detail-iv-history", true);
 
   const loadChart = useCallback(
     async (r: IvChartRange) => {
@@ -149,11 +152,13 @@ export function IvHistoryChart({ symbol }: IvHistoryChartProps) {
         className="card-header py-2 d-flex flex-column-reverse flex-md-row align-items-md-center justify-content-md-between"
         style={{ gap: "0.5rem" }}
       >
-        <div className="d-flex align-items-center gap-2" style={{ fontSize: "0.72rem" }}>
-          <strong>IV History</strong>
-          {displayValue !== null && <span className="font-mono">{formatPercentageValue(displayValue)}</span>}
+        <div className="d-flex align-items-center gap-2">
+          <h3 className="card-title mb-0" style={{ fontSize: "1rem" }}>
+            IV History
+          </h3>
+          {displayValue !== null && <span className="font-mono" style={{ fontSize: "0.72rem" }}>{formatPercentageValue(displayValue)}</span>}
         </div>
-        <div className="d-flex gap-1 flex-wrap flex-shrink-0">
+        <div className="d-flex align-items-center gap-1 flex-wrap flex-shrink-0">
           {ranges.map((r) => (
             <button
               key={r}
@@ -166,10 +171,19 @@ export function IvHistoryChart({ symbol }: IvHistoryChartProps) {
               {r}
             </button>
           ))}
+          <button
+            type="button"
+            className="btn btn-icon"
+            aria-label={isOpen ? "Collapse IV history" : "Expand IV history"}
+            aria-expanded={isOpen}
+            onClick={() => setIsOpen((open) => !open)}
+          >
+            <IconChevronDown size={18} style={{ transform: isOpen ? "rotate(180deg)" : "none", transition: "transform 0.15s ease" }} />
+          </button>
         </div>
       </div>
 
-      <div className="card-body p-0" style={{ position: "relative" }}>
+      <div className="card-body p-0" style={{ position: "relative", display: isOpen ? undefined : "none" }}>
         {status === "loading" && (
           <div className="d-flex align-items-center justify-content-center" style={{ height: chartHeight }}>
             <Spinner size="sm" label="Loading IV history" />
