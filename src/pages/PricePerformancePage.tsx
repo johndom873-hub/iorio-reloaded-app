@@ -6,6 +6,7 @@ import { TickerDetailModal } from "../components/TickerDetailModal";
 import { ApiError } from "../api/client";
 import { fetchCurrentPrices, fetchPricePerformance, type PricePerformanceRow } from "../api/pricePerformance";
 import { formatCurrency, formatDate, pnlBadgeClass, pnlTextClass } from "../lib/formatters";
+import { useTickerDetailSymbol } from "../hooks/useTickerDetailSymbol";
 
 function ChangeBadge({ value }: { value: number | null }) {
   if (value === null) return <span className="text-muted">—</span>;
@@ -21,7 +22,7 @@ export function PricePerformancePage() {
   const [rows, setRows] = useState<PricePerformanceRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [detailSymbol, setDetailSymbol] = useState<string | null>(null);
+  const [detailSymbol, setDetailSymbol] = useTickerDetailSymbol();
   // Loaded separately from `rows` (undefined = still loading) so the table
   // itself keeps rendering instantly from stored daily bars while the live
   // snapshot price fills in asynchronously — see fetchCurrentPrices.

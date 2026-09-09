@@ -9,6 +9,7 @@ import {
   type TickerCalendarEvent,
 } from "../api/calendarEvents";
 import { daysToExpiry, formatCurrency, formatDate, formatDaysToExpiry, todayInEasternIso } from "../lib/formatters";
+import { useTickerDetailSymbol } from "../hooks/useTickerDetailSymbol";
 
 function DateWithCountdown({ isoDate }: { isoDate: string }) {
   return (
@@ -53,7 +54,7 @@ export function CalendarEventsPage() {
   const [economicEvents, setEconomicEvents] = useState<EconomicCalendarEvent[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [detailSymbol, setDetailSymbol] = useState<string | null>(null);
+  const [detailSymbol, setDetailSymbol] = useTickerDetailSymbol();
 
   const loadEvents = useCallback(async () => {
     try {

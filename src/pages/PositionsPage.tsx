@@ -31,6 +31,7 @@ import {
   formatSignedPnl,
   pnlTextClass,
 } from "../lib/formatters";
+import { useTickerDetailSymbol } from "../hooks/useTickerDetailSymbol";
 import {
   positionExpiryDate,
   positionHasStockLeg,
@@ -79,7 +80,17 @@ export function PositionsPage() {
   const [greeksFetchFailed, setGreeksFetchFailed] = useState(false);
   const [unrealizedPnlByPositionId, setUnrealizedPnlByPositionId] = useState<Record<string, UnrealizedPnlResult>>({});
   const [unrealizedPnlFetchFailed, setUnrealizedPnlFetchFailed] = useState(false);
-  const [detailTicker, setDetailTicker] = useState<{ symbol: string; focusPositionId?: string } | null>(null);
+  const [detailSymbol, setDetailSymbol] = useTickerDetailSymbol();
+  // Not persisted across a refresh (unlike detailSymbol) -- it's a one-shot
+  // "scroll to this position" aid, not state worth surviving a reload.
+  const [focusPositionId, setFocusPositionId] = useState<string | undefined>(undefined);
+  const openTickerDetail = useCallback(
+    (ticker: { symbol: string; focusPositionId?: string }) => {
+      setDetailSymbol(ticker.symbol);
+      setFocusPositionId(ticker.focusPositionId);
+    },
+    [setDetailSymbol],
+  );
   const [closePosition, setClosePosition] = useState<Position | null>(null);
 
   const loadPositions = useCallback(async () => {
@@ -131,7 +142,7 @@ export function PositionsPage() {
         <button
           type="button"
           className="btn btn-link px-2 py-1 text-decoration-none fw-bold"
-          onClick={() => setDetailTicker({ symbol: row.symbol, focusPositionId: row.id })}
+          onClick={() => openTickerDetail({ symbol: row.symbol, focusPositionId: row.id })}
         >
           {row.symbol}
         </button>
@@ -352,7 +363,7 @@ export function PositionsPage() {
         <button
           type="button"
           className="btn btn-link px-2 py-1 text-decoration-none text-body text-start"
-          onClick={() => setDetailTicker({ symbol: row.symbol, focusPositionId: row.id })}
+          onClick={() => openTickerDetail({ symbol: row.symbol, focusPositionId: row.id })}
         >
           {row.notes ?? "—"}
         </button>
@@ -384,7 +395,7 @@ export function PositionsPage() {
                 <button
                   type="button"
                   className="btn btn-sm btn-outline-warning"
-                  onClick={() => setDetailTicker({ symbol: row.symbol, focusPositionId: row.id })}
+                  onClick={() => openTickerDetail({ symbol: row.symbol, focusPositionId: row.id })}
                 >
                   Sell Call
                 </button>
@@ -467,12 +478,13 @@ export function PositionsPage() {
         />
       )}
 
-      {detailTicker && (
+      {detailSymbol && (
         <TickerDetailModal
-          symbol={detailTicker.symbol}
-          focusPositionId={detailTicker.focusPositionId}
+          symbol={detailSymbol}
+          focusPositionId={focusPositionId}
           onClose={() => {
-            setDetailTicker(null);
+            setDetailSymbol(null);
+            setFocusPositionId(undefined);
             loadPositions();
           }}
         />

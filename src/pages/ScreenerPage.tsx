@@ -3,6 +3,7 @@ import { PageHeader } from "../components/layout/PageHeader";
 import { TickerDetailModal } from "../components/TickerDetailModal";
 import { ShortlistTab } from "../components/shortlist/ShortlistTab";
 import { ScreenerTab } from "../components/screener/ScreenerTab";
+import { useTickerDetailSymbol } from "../hooks/useTickerDetailSymbol";
 
 type ScreenerPageTab = "screener" | "shortlist";
 
@@ -13,7 +14,7 @@ const tabs: { key: ScreenerPageTab; label: string }[] = [
 
 export function ScreenerPage() {
   const [activeTab, setActiveTab] = useState<ScreenerPageTab>("shortlist");
-  const [detailSymbol, setDetailSymbol] = useState<string | null>(null);
+  const [detailSymbol, setDetailSymbol] = useTickerDetailSymbol();
 
   return (
     <>

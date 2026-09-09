@@ -222,6 +222,37 @@ export function formatNumber(value: number | string | null | undefined, maximumF
   return new Intl.NumberFormat("en-US", { maximumFractionDigits }).format(numericValue);
 }
 
+// Compact "k"/"M" volume-style formatting, capped at 3 significant digits
+// (1234 -> "1.23k", 123456 -> "123k", 1234567 -> "1.23M"). Below 1000, the
+// value is shown as-is. Only two magnitudes since callers are share-volume
+// figures, which don't reach billions (Marcelo, 2026-09-09).
+export function formatCompactNumber(value: number | null | undefined): string {
+  if (value === null || value === undefined || Number.isNaN(value)) return "—";
+  const sign = value < 0 ? "-" : "";
+  const absValue = Math.abs(value);
+  if (absValue < 1000) return `${sign}${Math.round(absValue)}`;
+
+  const units: { threshold: number; suffix: string }[] = [
+    { threshold: 1_000_000, suffix: "M" },
+    { threshold: 1_000, suffix: "k" },
+  ];
+  for (let i = 0; i < units.length; i++) {
+    const { threshold, suffix } = units[i];
+    if (absValue < threshold) continue;
+    const scaled = absValue / threshold;
+    const integerDigits = Math.floor(scaled).toString().length;
+    const decimalPlaces = Math.max(0, 3 - integerDigits);
+    const rounded = Number(scaled.toFixed(decimalPlaces));
+    // Rounding can carry the value into the next unit's range (e.g. 999.5k -> "1000k")
+    if (rounded >= 1000 && i > 0) {
+      const bumped = units[i - 1];
+      return `${sign}${(absValue / bumped.threshold).toFixed(2)}${bumped.suffix}`;
+    }
+    return `${sign}${rounded.toFixed(decimalPlaces)}${suffix}`;
+  }
+  return `${sign}${Math.round(absValue)}`;
+}
+
 // "x minutes/hours ago" for anything within the last 24h, otherwise null —
 // callers pair this with formatDateTime's full timestamp rather than using
 // it alone, so nothing older just silently has no relative label.

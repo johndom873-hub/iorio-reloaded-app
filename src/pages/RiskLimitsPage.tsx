@@ -15,6 +15,7 @@ import {
 } from "../api/riskLimits";
 import type { StrategyKey } from "../api/strategy";
 import { formatCurrency, formatDateTime, formatPercentage, formatPercentageValue, formatRelativeTime } from "../lib/formatters";
+import { useTickerDetailSymbol } from "../hooks/useTickerDetailSymbol";
 
 const strategyTabs: { key: StrategyKey; label: string }[] = [
   { key: "covered_call", label: "Covered Calls" },
@@ -175,7 +176,7 @@ export function RiskLimitsPage() {
   const [settingsError, setSettingsError] = useState<string | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
-  const [detailSymbol, setDetailSymbol] = useState<string | null>(null);
+  const [detailSymbol, setDetailSymbol] = useTickerDetailSymbol();
 
   useEffect(() => {
     fetchExposure()

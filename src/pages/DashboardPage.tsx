@@ -35,6 +35,7 @@ import {
   formatSignedPnl,
   pnlTextClass,
 } from "../lib/formatters";
+import { useTickerDetailSymbol } from "../hooks/useTickerDetailSymbol";
 
 const strategyLabels: Record<string, string> = {
   covered_call: "Covered Calls",
@@ -419,7 +420,17 @@ export function DashboardPage() {
   const [needsAttention, setNeedsAttention] = useState<Position[]>([]);
   const [needsAttentionLoading, setNeedsAttentionLoading] = useState(true);
   const [needsAttentionError, setNeedsAttentionError] = useState<string | null>(null);
-  const [detailTicker, setDetailTicker] = useState<{ symbol: string; focusPositionId?: string } | null>(null);
+  const [detailSymbol, setDetailSymbol] = useTickerDetailSymbol();
+  // Not persisted across a refresh (unlike detailSymbol) -- it's a one-shot
+  // "scroll to this position" aid, not state worth surviving a reload.
+  const [focusPositionId, setFocusPositionId] = useState<string | undefined>(undefined);
+  const openTickerDetail = useCallback(
+    (ticker: { symbol: string; focusPositionId?: string }) => {
+      setDetailSymbol(ticker.symbol);
+      setFocusPositionId(ticker.focusPositionId);
+    },
+    [setDetailSymbol],
+  );
 
   useEffect(() => {
     fetchDashboardSummary()
@@ -573,7 +584,7 @@ export function DashboardPage() {
                           <button
                             type="button"
                             className="btn btn-link px-0 py-0 text-decoration-none fw-bold"
-                            onClick={() => setDetailTicker({ symbol: position.symbol, focusPositionId: position.id })}
+                            onClick={() => openTickerDetail({ symbol: position.symbol, focusPositionId: position.id })}
                           >
                             {position.symbol}
                           </button>
@@ -586,7 +597,7 @@ export function DashboardPage() {
                           <button
                             type="button"
                             className="btn btn-sm btn-outline-warning"
-                            onClick={() => setDetailTicker({ symbol: position.symbol, focusPositionId: position.id })}
+                            onClick={() => openTickerDetail({ symbol: position.symbol, focusPositionId: position.id })}
                           >
                             Sell Call
                           </button>
@@ -632,7 +643,7 @@ export function DashboardPage() {
               </thead>
               <tbody>
                 {events.map((event) => (
-                  <EventRow key={`${event.positionId}-${event.eventType}-${event.eventAt}`} event={event} onSymbolClick={setDetailTicker} />
+                  <EventRow key={`${event.positionId}-${event.eventType}-${event.eventAt}`} event={event} onSymbolClick={openTickerDetail} />
                 ))}
               </tbody>
             </table>
@@ -766,7 +777,7 @@ export function DashboardPage() {
                 title="Top Positions"
                 emptyMessage="No open positions yet."
                 totalAccountValue={exposure?.totalAccountValue ?? null}
-                onTickerClick={setDetailTicker}
+                onTickerClick={openTickerDetail}
                 rows={(() => {
                   const topRows = (exposure?.topPositions ?? []).map((row: TopPositionRow) => ({
                     key: row.positionId,
@@ -847,12 +858,13 @@ export function DashboardPage() {
         )}
       </CollapsibleCard>
 
-      {detailTicker && (
+      {detailSymbol && (
         <TickerDetailModal
-          symbol={detailTicker.symbol}
-          focusPositionId={detailTicker.focusPositionId}
+          symbol={detailSymbol}
+          focusPositionId={focusPositionId}
           onClose={() => {
-            setDetailTicker(null);
+            setDetailSymbol(null);
+            setFocusPositionId(undefined);
             loadNeedsAttention();
           }}
         />

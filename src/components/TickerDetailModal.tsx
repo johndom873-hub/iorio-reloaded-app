@@ -26,9 +26,20 @@ import {
 } from "../api/positions";
 import { ApiError } from "../api/client";
 import { addToShortlist } from "../api/shortlist";
+import { fetchNextTickerCalendarEvents, type NextTickerCalendarEvents } from "../api/calendarEvents";
 import type { StrategyKey } from "../api/strategy";
 import { computeAnnualizedYield, computePayoff, type PayoffLegInput } from "../lib/payoff";
-import { formatCurrency, formatCurrencyTrimmed, formatDate, formatExpiryWithDte, formatNumber, formatPercentage, formatSignedPnl, ibkrExpiryToIsoDate } from "../lib/formatters";
+import {
+  formatCompactNumber,
+  formatCurrency,
+  formatCurrencyTrimmed,
+  formatDate,
+  formatExpiryWithDte,
+  formatNumber,
+  formatPercentage,
+  formatSignedPnl,
+  ibkrExpiryToIsoDate,
+} from "../lib/formatters";
 import { strategyBadgeClass, strategyLabel } from "../lib/positionPnl";
 import { flashClassName, useFlashOnChange } from "../hooks/useFlashOnChange";
 
@@ -265,10 +276,14 @@ function TradeAlertTableRow({
         {formatExpiry(alert.suggestedStructure.expiry.replaceAll("-", ""))} <span className="text-secondary">({live.dte} DTE)</span>
       </td>
       <td className="text-end font-mono">{formatCurrencyTrimmed(alert.suggestedStructure.strike)}</td>
-      <td className={`text-end font-mono ${flashClassName(deltaFlash)}`}>{formatNumber(live.delta, 2)}</td>
-      <td className={`text-end font-mono ${flashClassName(premiumFlash)}`}>{formatCurrency(live.premium)}</td>
-      <td className={`text-end font-mono ${flashClassName(yieldFlash)}`}>
-        <span className="badge badge-change-pos">{formatPercentage(live.yieldValue)}</span>
+      <td className="text-end font-mono">
+        <span className={flashClassName(deltaFlash)}>{formatNumber(live.delta, 2)}</span>
+      </td>
+      <td className="text-end font-mono">
+        <span className={flashClassName(premiumFlash)}>{formatCurrency(live.premium)}</span>
+      </td>
+      <td className="text-end font-mono">
+        <span className={`badge badge-change-pos ${flashClassName(yieldFlash)}`}>{formatPercentage(live.yieldValue)}</span>
       </td>
       <td className="text-secondary">›</td>
     </tr>
@@ -366,13 +381,21 @@ function OptionSideCells({
 
   return (
     <>
-      <td className={`text-end font-mono ${flashClassName(bidFlash)}`} {...cellProps}>{formatCurrency(quote?.bid ?? null)}</td>
-      <td className={`text-end font-mono ${flashClassName(askFlash)}`} {...cellProps}>{formatCurrency(quote?.ask ?? null)}</td>
-      <td className={`text-end font-mono ${flashClassName(deltaFlash)}`} {...cellProps}>{formatNumber(quote?.delta ?? null, 2)}</td>
-      <td className={`text-end ${flashClassName(yieldFlash)}`} {...(matchedAlert ? {} : cellProps)}>
+      <td className="text-end font-mono" {...cellProps}>
+        <span className={flashClassName(bidFlash)}>{formatCurrency(quote?.bid ?? null)}</span>
+      </td>
+      <td className="text-end font-mono" {...cellProps}>
+        <span className={flashClassName(askFlash)}>{formatCurrency(quote?.ask ?? null)}</span>
+      </td>
+      <td className="text-end font-mono" {...cellProps}>
+        <span className={flashClassName(deltaFlash)}>{formatNumber(quote?.delta ?? null, 2)}</span>
+      </td>
+      <td className="text-end" {...(matchedAlert ? {} : cellProps)}>
         <div className="d-inline-flex align-items-center gap-2">
           {matchedAlert && <AlertPill onClick={() => onAlertClick(matchedAlert)} />}
-          <span className={`font-mono ${matchedAlert ? "text-success fw-semibold" : "text-secondary"}`}>{formatPercentage(yieldValue)}</span>
+          <span className={`font-mono ${matchedAlert ? "text-success fw-semibold" : "text-secondary"} ${flashClassName(yieldFlash)}`}>
+            {formatPercentage(yieldValue)}
+          </span>
         </div>
       </td>
     </>
@@ -399,6 +422,11 @@ export function TickerDetailModal({ symbol, onClose, initialAlertId, focusPositi
   const [overviewError, setOverviewError] = useState<string | null>(null);
   const [isAddingToShortlist, setIsAddingToShortlist] = useState(false);
   const [addToShortlistError, setAddToShortlistError] = useState<string | null>(null);
+
+  // Fetched separately from the SSE overview -- this hits ticker_calendar_events
+  // (nightly-captured for shortlisted/position tickers, fetched on-demand
+  // otherwise) rather than anything IBKR streams live.
+  const [nextCalendarEvents, setNextCalendarEvents] = useState<NextTickerCalendarEvents | null>(null);
 
   const [chartBars, setChartBars] = useState<PriceBar[] | null>(null);
   const [chartError, setChartError] = useState<string | null>(null);
@@ -476,6 +504,22 @@ export function TickerDetailModal({ symbol, onClose, initialAlertId, focusPositi
       else setStreamKey((key) => key + 1);
     }, pollIntervalMs);
     return () => clearInterval(interval);
+  }, [symbol]);
+
+  useEffect(() => {
+    let cancelled = false;
+    setNextCalendarEvents(null);
+    fetchNextTickerCalendarEvents(symbol)
+      .then((result) => {
+        if (!cancelled) setNextCalendarEvents(result);
+      })
+      .catch(() => {
+        // Non-critical -- the price bar just shows "—" for these two fields.
+        if (!cancelled) setNextCalendarEvents({ nextEarningsDate: null, nextExDividendDate: null });
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [symbol]);
 
   // Once the user closes their selection/order panel, it's safe to pick up
@@ -793,8 +837,6 @@ export function TickerDetailModal({ symbol, onClose, initialAlertId, focusPositi
   // Pricing keeps ticking for as long as this modal stays open (see
   // streamTickerDetail.ts) -- same flash convention as the option chain.
   const spotPriceFlash = useFlashOnChange(pricing?.last ?? null);
-  const bidFlash = useFlashOnChange(pricing?.bid ?? null);
-  const askFlash = useFlashOnChange(pricing?.ask ?? null);
   const lowFlash = useFlashOnChange(pricing?.low ?? null);
   const highFlash = useFlashOnChange(pricing?.high ?? null);
   const volumeFlash = useFlashOnChange(pricing?.volume ?? null);
@@ -1046,14 +1088,18 @@ export function TickerDetailModal({ symbol, onClose, initialAlertId, focusPositi
                         </strong>
                       )}
                       <span className="text-secondary small">
-                        Bid <span className={flashClassName(bidFlash)}>{formatCurrency(pricing?.bid ?? null)}</span> &middot; Ask{" "}
-                        <span className={flashClassName(askFlash)}>{formatCurrency(pricing?.ask ?? null)}</span>
+                        <strong>Day range</strong> $<span className={flashClassName(lowFlash)}>{formatNumber(pricing?.low ?? null, 2)}</span>-
+                        <span className={flashClassName(highFlash)}>{formatNumber(pricing?.high ?? null, 2)}</span>
                       </span>
                       <span className="text-secondary small">
-                        Day range <span className={flashClassName(lowFlash)}>{formatCurrency(pricing?.low ?? null)}</span> –{" "}
-                        <span className={flashClassName(highFlash)}>{formatCurrency(pricing?.high ?? null)}</span>
+                        <strong>Volume</strong> <span className={flashClassName(volumeFlash)}>{formatCompactNumber(pricing?.volume ?? null)}</span>
                       </span>
-                      <span className={`text-secondary small ${flashClassName(volumeFlash)}`}>Volume {formatNumber(pricing?.volume ?? null)}</span>
+                      <span className="text-secondary small">
+                        <strong>Ex-Div</strong> {formatDate(nextCalendarEvents?.nextExDividendDate ?? null)}
+                      </span>
+                      <span className="text-secondary small">
+                        <strong>Earnings</strong> {formatDate(nextCalendarEvents?.nextEarningsDate ?? null)}
+                      </span>
                       {overview.sector && <span className="badge bg-secondary-lt">{overview.sector}</span>}
                       {!overview.isShortlisted && (
                         <button

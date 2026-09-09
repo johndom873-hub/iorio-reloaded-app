@@ -29,3 +29,12 @@ export interface CalendarEventsData {
 export function fetchCalendarEvents(): Promise<CalendarEventsData> {
   return apiRequest<CalendarEventsData>("/calendar-events");
 }
+
+export interface NextTickerCalendarEvents {
+  nextEarningsDate: string | null; // YYYY-MM-DD
+  nextExDividendDate: string | null; // YYYY-MM-DD
+}
+
+export function fetchNextTickerCalendarEvents(symbol: string): Promise<NextTickerCalendarEvents> {
+  return apiRequest<NextTickerCalendarEvents>(`/calendar-events/next/${encodeURIComponent(symbol)}`);
+}

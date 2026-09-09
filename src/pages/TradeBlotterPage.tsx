@@ -8,6 +8,7 @@ import { ApiError } from "../api/client";
 import { cancelOrder } from "../api/positions";
 import { fetchTradeBlotter, type PendingOrder, type Trade } from "../api/tradeBlotter";
 import type { StrategyKey } from "../api/strategy";
+import { useTickerDetailSymbol } from "../hooks/useTickerDetailSymbol";
 import {
   formatCurrency,
   formatCurrencyTrimmed,
@@ -51,7 +52,7 @@ export function TradeBlotterPage() {
   const [rows, setRows] = useState<BlotterRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [detailSymbol, setDetailSymbol] = useState<string | null>(null);
+  const [detailSymbol, setDetailSymbol] = useTickerDetailSymbol();
   const [cancellingId, setCancellingId] = useState<string | null>(null);
   const [cancelConfirm, setCancelConfirm] = useState<{ orderId: string; symbol: string; liveAtIbkr: boolean } | null>(null);
 

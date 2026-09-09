@@ -16,6 +16,7 @@ import {
   type TradeAlertStatus,
 } from "../api/tradeAlerts";
 import type { StrategyKey } from "../api/strategy";
+import { useTickerDetailSymbol } from "../hooks/useTickerDetailSymbol";
 import {
   formatCurrency,
   formatCurrencyTrimmed,
@@ -157,7 +158,7 @@ export function TradeAlertsPage() {
   // the slate, at which point a ticker with genuinely zero alerts correctly
   // stops appearing at all, matching this page's normal behavior.
   const [keptEmptyTickers, setKeptEmptyTickers] = useState<Map<string, { symbol: string; companyName: string | null }>>(new Map());
-  const [detailSymbol, setDetailSymbol] = useState<string | null>(null);
+  const [detailSymbol, setDetailSymbol] = useTickerDetailSymbol();
   const [detailAlertId, setDetailAlertId] = useState<string | undefined>(undefined);
   const [rollAlert, setRollAlert] = useState<RollAlert | null>(null);
   const { jobs, startTradeAlertScan } = useBackgroundJobs();
