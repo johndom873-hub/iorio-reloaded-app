@@ -26,6 +26,7 @@ import {
 } from "../api/positions";
 import { ApiError } from "../api/client";
 import { addToShortlist } from "../api/shortlist";
+import { openNotificationStream } from "../api/notifications";
 import { fetchNextTickerCalendarEvents, type NextTickerCalendarEvents } from "../api/calendarEvents";
 import type { StrategyKey } from "../api/strategy";
 import { computeAnnualizedYield, computePayoff, type PayoffLegInput } from "../lib/payoff";
@@ -487,6 +488,23 @@ export function TickerDetailModal({ symbol, onClose, initialAlertId, focusPositi
   alertsRef.current = alerts;
   const isBuildingRef = useRef(false);
   isBuildingRef.current = selection !== null || pendingOrder !== null;
+
+  // Closes the gap where an order-fill's onFilled (above) fires loadPositions
+  // before reconcilePositionsFromIbkr has actually created the new position
+  // row — that reconciliation pass runs async, seconds after the fill status
+  // flips, so the fetch above can land empty and nothing re-triggers it
+  // afterward (found 2026-09-09: a real SPCX CSP fill left the modal showing
+  // no position until it was closed and reopened). The worker now publishes
+  // "position_opened" once that pass actually creates the row — refetch then
+  // rather than guessing at a delay.
+  useEffect(() => {
+    return openNotificationStream((notification) => {
+      if (notification.type === "position_opened" && notification.symbol === symbol) {
+        loadPositions();
+      }
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [symbol]);
 
   useEffect(() => {
     const pollIntervalMs = 60_000;

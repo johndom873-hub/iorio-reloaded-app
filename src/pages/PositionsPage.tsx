@@ -15,6 +15,7 @@ import {
   type UnrealizedPnlResult,
 } from "../api/positions";
 import { fetchAccountValue } from "../api/dashboard";
+import { openNotificationStream } from "../api/notifications";
 import type { StrategyKey } from "../api/strategy";
 import {
   daysAgo,
@@ -106,6 +107,17 @@ export function PositionsPage() {
   useEffect(() => {
     setLoading(true);
     loadPositions().finally(() => setLoading(false));
+  }, [loadPositions]);
+
+  // Same race as TickerDetailModal (see its matching comment): a fill flips
+  // order_requests.status to "filled" well before reconcilePositionsFromIbkr
+  // actually creates the position row, and nothing else here re-fetches once
+  // it does. Refetch on the worker's "position_opened" push instead of
+  // relying on this page's own poll/mount timing to catch up eventually.
+  useEffect(() => {
+    return openNotificationStream((notification) => {
+      if (notification.type === "position_opened") loadPositions();
+    });
   }, [loadPositions]);
 
   useEffect(() => {

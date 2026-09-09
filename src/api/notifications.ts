@@ -2,7 +2,8 @@ import { apiBaseUrl } from "./client";
 
 export type AppNotification =
   | { type: "order_status"; orderId: string }
-  | { type: "position_closed"; positionId: string; symbol: string; message: string };
+  | { type: "position_closed"; positionId: string; symbol: string; message: string }
+  | { type: "position_opened"; positionId: string; symbol: string };
 
 // One long-lived connection for the whole app session (BackgroundJobsContext
 // opens it once, at provider mount) — replaces the old per-order 2s client
