@@ -5,6 +5,7 @@ import { ApiError } from "../../api/client";
 import {
   addScreenerResultToShortlist,
   fetchScreenerResults,
+  fetchScreenerSectors,
   type ScreenerFilters,
   type ScreenerScanRow,
 } from "../../api/screener";
@@ -30,6 +31,29 @@ const emptyFilterForm: FilterFormState = {
   sector: "",
 };
 
+// Hint text only — never applied unless the user actually types a value.
+const filterPlaceholders: Record<keyof FilterFormState, string> = {
+  maxPrice: "e.g. 200",
+  minIvRatio: "e.g. 1.0",
+  maxIvRatio: "e.g. 3.0",
+  minAvgOptionVolume: "e.g. 500",
+  minAvgShareVolume: "e.g. 1,000,000",
+  maxBidAskSpreadPct: "e.g. 5",
+  sector: "",
+};
+
+const filterStorageKey = "iorio-screener-last-filters";
+
+function loadStoredFilters(): FilterFormState {
+  try {
+    const stored = localStorage.getItem(filterStorageKey);
+    if (!stored) return emptyFilterForm;
+    return { ...emptyFilterForm, ...(JSON.parse(stored) as Partial<FilterFormState>) };
+  } catch {
+    return emptyFilterForm;
+  }
+}
+
 function toFilters(form: FilterFormState): ScreenerFilters {
   const num = (value: string) => (value.trim() === "" ? undefined : Number(value));
   return {
@@ -48,30 +72,42 @@ interface ScreenerTabProps {
 }
 
 export function ScreenerTab({ onOpenTickerDetail }: ScreenerTabProps) {
-  const [form, setForm] = useState<FilterFormState>(emptyFilterForm);
+  const [form, setForm] = useState<FilterFormState>(loadStoredFilters);
   const [rows, setRows] = useState<ScreenerScanRow[]>([]);
+  const [sectorOptions, setSectorOptions] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
   const [hasSearched, setHasSearched] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [addingSymbol, setAddingSymbol] = useState<string | null>(null);
 
   useEffect(() => {
+    fetchScreenerSectors()
+      .then(setSectorOptions)
+      .catch(() => setSectorOptions([]));
     runSearch();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  async function runSearch() {
+  async function runSearch(filtersOverride?: FilterFormState) {
+    const activeForm = filtersOverride ?? form;
     setLoading(true);
     setError(null);
     try {
-      const results = await fetchScreenerResults(toFilters(form));
+      const results = await fetchScreenerResults(toFilters(activeForm));
       setRows(results);
       setHasSearched(true);
+      localStorage.setItem(filterStorageKey, JSON.stringify(activeForm));
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Failed to load screener results.");
     } finally {
       setLoading(false);
     }
+  }
+
+  function resetFilters() {
+    setForm(emptyFilterForm);
+    localStorage.removeItem(filterStorageKey);
+    runSearch(emptyFilterForm);
   }
 
   async function handleAddToShortlist(symbol: string) {
@@ -86,8 +122,6 @@ export function ScreenerTab({ onOpenTickerDetail }: ScreenerTabProps) {
       setAddingSymbol(null);
     }
   }
-
-  const sectorOptions = [...new Set(rows.map((row) => row.sector).filter((sector): sector is string => Boolean(sector)))].sort();
 
   const columns: DataTableColumn<ScreenerScanRow>[] = [
     {
@@ -185,65 +219,78 @@ export function ScreenerTab({ onOpenTickerDetail }: ScreenerTabProps) {
 
       <div className="card mb-3">
         <div className="card-body">
-          <div className="row g-2">
-            <div className="col-6 col-md-2">
+          <div className="row g-2 align-items-end">
+            <div className="col-auto">
               <label className="form-label">Max Price</label>
               <input
                 type="number"
                 className="form-control"
+                style={{ width: "5.5rem" }}
+                placeholder={filterPlaceholders.maxPrice}
                 value={form.maxPrice}
                 onChange={(event) => setForm((prev) => ({ ...prev, maxPrice: event.target.value }))}
               />
             </div>
-            <div className="col-6 col-md-2">
+            <div className="col-auto">
               <label className="form-label">Min IV vs Hist</label>
               <input
                 type="number"
                 className="form-control"
+                style={{ width: "5.5rem" }}
+                placeholder={filterPlaceholders.minIvRatio}
                 value={form.minIvRatio}
                 onChange={(event) => setForm((prev) => ({ ...prev, minIvRatio: event.target.value }))}
               />
             </div>
-            <div className="col-6 col-md-2">
+            <div className="col-auto">
               <label className="form-label">Max IV vs Hist</label>
               <input
                 type="number"
                 className="form-control"
+                style={{ width: "5.5rem" }}
+                placeholder={filterPlaceholders.maxIvRatio}
                 value={form.maxIvRatio}
                 onChange={(event) => setForm((prev) => ({ ...prev, maxIvRatio: event.target.value }))}
               />
             </div>
-            <div className="col-6 col-md-2">
+            <div className="col-auto">
               <label className="form-label">Min Avg Opt Vol</label>
               <input
                 type="number"
                 className="form-control"
+                style={{ width: "6.5rem" }}
+                placeholder={filterPlaceholders.minAvgOptionVolume}
                 value={form.minAvgOptionVolume}
                 onChange={(event) => setForm((prev) => ({ ...prev, minAvgOptionVolume: event.target.value }))}
               />
             </div>
-            <div className="col-6 col-md-2">
+            <div className="col-auto">
               <label className="form-label">Min Avg Share Vol</label>
               <input
                 type="number"
                 className="form-control"
+                style={{ width: "7.5rem" }}
+                placeholder={filterPlaceholders.minAvgShareVolume}
                 value={form.minAvgShareVolume}
                 onChange={(event) => setForm((prev) => ({ ...prev, minAvgShareVolume: event.target.value }))}
               />
             </div>
-            <div className="col-6 col-md-2">
+            <div className="col-auto">
               <label className="form-label">Max Spread %</label>
               <input
                 type="number"
                 className="form-control"
+                style={{ width: "5.5rem" }}
+                placeholder={filterPlaceholders.maxBidAskSpreadPct}
                 value={form.maxBidAskSpreadPct}
                 onChange={(event) => setForm((prev) => ({ ...prev, maxBidAskSpreadPct: event.target.value }))}
               />
             </div>
-            <div className="col-6 col-md-3">
+            <div className="col-auto">
               <label className="form-label">Sector</label>
               <select
                 className="form-select"
+                style={{ width: "10rem" }}
                 value={form.sector}
                 onChange={(event) => setForm((prev) => ({ ...prev, sector: event.target.value }))}
               >
@@ -255,15 +302,18 @@ export function ScreenerTab({ onOpenTickerDetail }: ScreenerTabProps) {
                 ))}
               </select>
             </div>
-            <div className="col-6 col-md-3 d-flex align-items-end">
+            <div className="col-auto d-flex gap-2">
               <button
                 type="button"
-                className="btn btn-primary d-inline-flex align-items-center justify-content-center gap-1 w-100"
+                className="btn btn-primary d-inline-flex align-items-center gap-1"
                 disabled={loading}
-                onClick={runSearch}
+                onClick={() => runSearch()}
               >
                 {loading && <Spinner size="sm" />}
-                Apply Filters
+                Search
+              </button>
+              <button type="button" className="btn btn-outline-secondary" disabled={loading} onClick={resetFilters}>
+                Reset
               </button>
             </div>
           </div>

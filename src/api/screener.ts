@@ -39,6 +39,10 @@ export function fetchScreenerResults(filters: ScreenerFilters): Promise<Screener
   return apiRequest<ScreenerScanRow[]>(`/screener${query ? `?${query}` : ""}`);
 }
 
+export function fetchScreenerSectors(): Promise<string[]> {
+  return apiRequest<string[]>("/screener/sectors");
+}
+
 export function addScreenerResultToShortlist(symbol: string, notes?: string): Promise<void> {
   return apiRequest<void>(`/screener/${symbol}/shortlist`, {
     method: "POST",
