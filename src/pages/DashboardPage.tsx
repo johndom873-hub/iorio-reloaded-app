@@ -45,7 +45,7 @@ const strategyLabels: Record<string, string> = {
 
 const closeReasonLabels: Record<string, string> = {
   assigned: "assigned",
-  expired_worthless: "expired worthless",
+  expired_worthless: "Expired",
   closed_via_app: "closed",
   closed_via_external_trade: "closed outside the app",
   unknown: "closed (reason unclear)",
