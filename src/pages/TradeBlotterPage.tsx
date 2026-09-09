@@ -222,9 +222,29 @@ export function TradeBlotterPage() {
       },
     },
     {
-      key: "ibkrOrderId",
+      key: "id",
       header: "ID",
-      render: (row) => (row.ibkrOrderId !== null && row.ibkrOrderId !== "" ? row.ibkrOrderId : "—"),
+      render: (row) => {
+        // row.id is "<order_requests.id>:<legOrdinality>" for order rows (see
+        // the cancel handler below) — strip the leg suffix so every leg of
+        // one order shows the same ID, and shorten the UUID for display.
+        const orderId = row.id.split(":")[0]!;
+        return (
+          <span title={orderId} style={{ fontFamily: "monospace", fontSize: "0.8rem" }}>
+            {orderId.slice(0, 8)}
+          </span>
+        );
+      },
+    },
+    {
+      // ibkrOrderId is IBKR's per-connection order id — it resets/repeats
+      // across Gateway reconnects, so it's not usable as a stable
+      // cross-reference. ibkrPermId ("Perm ID") is IBKR's permanent,
+      // globally-unique order identifier that never resets — it's also
+      // what appears in IBKR's own trade confirmations and Flex reports.
+      key: "ibkrPermId",
+      header: "IBKR Order #",
+      render: (row) => (row.ibkrPermId !== null ? row.ibkrPermId : "—"),
     },
     {
       key: "actions",
@@ -283,7 +303,7 @@ export function TradeBlotterPage() {
       </ul>
 
       <div className="row g-2 mb-3">
-        <div className="col-12 col-sm-4 col-md-3">
+        <div className="col-6 col-sm-3" style={{ maxWidth: "10rem" }}>
           <input
             type="text"
             className="form-control"
@@ -292,7 +312,7 @@ export function TradeBlotterPage() {
             onChange={(event) => setSymbol(event.target.value)}
           />
         </div>
-        <div className="col-6 col-sm-4 col-md-3">
+        <div className="col-6 col-sm-3" style={{ maxWidth: "10.5rem" }}>
           <input
             type="date"
             className="form-control"
@@ -301,7 +321,7 @@ export function TradeBlotterPage() {
             onChange={(event) => setFrom(event.target.value)}
           />
         </div>
-        <div className="col-6 col-sm-4 col-md-3">
+        <div className="col-6 col-sm-3" style={{ maxWidth: "10.5rem" }}>
           <input
             type="date"
             className="form-control"

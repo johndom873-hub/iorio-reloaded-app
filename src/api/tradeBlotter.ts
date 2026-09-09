@@ -5,6 +5,7 @@ import type { LegSide, LegType, OptionType, OrderRequestStatus } from "./positio
 export interface Trade {
   id: string;
   ibkrOrderId: string | null;
+  ibkrPermId: number | null;
   side: "buy" | "sell";
   quantity: number;
   price: string;
@@ -34,6 +35,7 @@ export interface PendingOrder {
   id: string;
   status: OrderRequestStatus;
   ibkrOrderId: number | null;
+  ibkrPermId: number | null;
   errorMessage: string | null;
   requestType: string;
   createdAt: string;
