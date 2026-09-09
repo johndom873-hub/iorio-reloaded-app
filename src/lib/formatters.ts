@@ -133,6 +133,24 @@ export function daysToExpiry(expiryIsoDate: string, asOf: string | Date = new Da
   return Math.round((new Date(expiryIsoDate).getTime() - asOfTime) / 86_400_000);
 }
 
+// Today's calendar date in US/Eastern, as "YYYY-MM-DD" — the timezone
+// option expiries are actually defined in, regardless of the viewer's own
+// timezone. Used to anchor the Expiry column's "expired"/"today"/"tomorrow"
+// label (see formatDaysToExpiry) so a position expiring today doesn't flip
+// to "expired" hours early just because the viewer is ahead of US market
+// time (found 2026-09-09: daysToExpiry's default asOf is local wall-clock
+// time diffed against expiryIsoDate parsed as UTC midnight, so a viewer in
+// WITA, UTC+8, sees "expired" for a same-US-trading-day expiry well before
+// the market has even closed).
+export function todayInEasternIso(): string {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/New_York",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date());
+}
+
 // Platform-wide convention (approved 2026-08-28): every plain expiry date
 // shown anywhere always carries its DTE alongside it, so "when does this
 // expire" and "how soon" are never split across a hover/lookup. Takes an

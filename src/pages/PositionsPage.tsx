@@ -19,6 +19,7 @@ import type { StrategyKey } from "../api/strategy";
 import {
   daysAgo,
   daysToExpiry,
+  todayInEasternIso,
   formatCurrency,
   formatCurrencyTrimmed,
   formatDate,
@@ -291,7 +292,7 @@ export function PositionsPage() {
       render: (row) => {
         const expiryDate = positionExpiryDate(row);
         if (!expiryDate) return "—";
-        return <span title={formatDate(expiryDate)}>{formatDaysToExpiry(daysToExpiry(expiryDate))}</span>;
+        return <span title={formatDate(expiryDate)}>{formatDaysToExpiry(daysToExpiry(expiryDate, todayInEasternIso()))}</span>;
       },
     },
     {

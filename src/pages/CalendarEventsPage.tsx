@@ -8,14 +8,14 @@ import {
   type EconomicCalendarEvent,
   type TickerCalendarEvent,
 } from "../api/calendarEvents";
-import { daysToExpiry, formatCurrency, formatDate, formatDaysToExpiry } from "../lib/formatters";
+import { daysToExpiry, formatCurrency, formatDate, formatDaysToExpiry, todayInEasternIso } from "../lib/formatters";
 
 function DateWithCountdown({ isoDate }: { isoDate: string }) {
   return (
     <span className="text-nowrap">
       {formatDate(isoDate)}{" "}
       <span className="text-secondary" style={{ fontSize: "0.72rem" }}>
-        ({formatDaysToExpiry(daysToExpiry(isoDate))})
+        ({formatDaysToExpiry(daysToExpiry(isoDate, todayInEasternIso()))})
       </span>
     </span>
   );
