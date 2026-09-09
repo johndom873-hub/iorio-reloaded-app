@@ -51,11 +51,11 @@ function toFormState(settings: StrategySettings): SettingsFormState {
     deltaTargetMaxExistingPosition: settings.deltaTargetMaxExistingPosition ?? "",
     dteTargetMin: String(settings.dteTargetMin),
     dteTargetMax: String(settings.dteTargetMax),
-    maxPositionPctOfPortfolio: settings.maxPositionPctOfPortfolio,
-    maxAggregateCollateralPct: settings.maxAggregateCollateralPct,
-    maxConcentrationPerTickerPct: settings.maxConcentrationPerTickerPct,
-    maxConcentrationPerSectorPct: settings.maxConcentrationPerSectorPct,
-    minCashReservePct: settings.minCashReservePct,
+    maxPositionPctOfPortfolio: String(Math.round(Number(settings.maxPositionPctOfPortfolio))),
+    maxAggregateCollateralPct: String(Math.round(Number(settings.maxAggregateCollateralPct))),
+    maxConcentrationPerTickerPct: String(Math.round(Number(settings.maxConcentrationPerTickerPct))),
+    maxConcentrationPerSectorPct: String(Math.round(Number(settings.maxConcentrationPerSectorPct))),
+    minCashReservePct: String(Math.round(Number(settings.minCashReservePct))),
   };
 }
 
@@ -146,7 +146,7 @@ interface NumberFieldProps {
 
 function NumberField({ label, value, step = "1", help, onChange }: NumberFieldProps) {
   return (
-    <div className="col-12 col-sm-6 col-md-3">
+    <div className="col">
       <label className="form-label d-inline-flex align-items-center" style={{ fontSize: "0.8rem" }}>
         {label}
         <HelpTooltip text={help} />
@@ -154,6 +154,7 @@ function NumberField({ label, value, step = "1", help, onChange }: NumberFieldPr
       <input
         type="number"
         className="form-control"
+        style={{ maxWidth: "9rem" }}
         step={step}
         value={value}
         onChange={(event) => onChange(event.target.value)}
@@ -248,25 +249,25 @@ export function RiskLimitsPage() {
                   <div className="text-muted" style={{ fontSize: "0.75rem" }}>
                     Net Liquidation Value
                   </div>
-                  <div className="fw-bold">{formatCurrency(exposure?.account?.netLiquidationValue ?? null)}</div>
+                  <div className="fw-bold">{formatCurrency(exposure?.account?.netLiquidationValue ?? null, 0)}</div>
                 </div>
                 <div className="col-12 col-sm-6 col-md-3">
                   <div className="text-muted" style={{ fontSize: "0.75rem" }}>
-                    Buying Power
+                    Total Cash
                   </div>
-                  <div className="fw-bold">{formatCurrency(exposure?.account?.buyingPower ?? null)}</div>
+                  <div className="fw-bold">{formatCurrency(exposure?.account?.totalCashValue ?? null, 0)}</div>
                 </div>
                 <div className="col-12 col-sm-6 col-md-3">
                   <div className="text-muted" style={{ fontSize: "0.75rem" }}>
-                    Total Cash Value
+                    Available Cash
                   </div>
-                  <div className="fw-bold">{formatCurrency(exposure?.account?.totalCashValue ?? null)}</div>
+                  <div className="fw-bold">{formatCurrency(exposure?.availableCash ?? null, 0)}</div>
                 </div>
                 <div className="col-12 col-sm-6 col-md-3">
                   <div className="text-muted" style={{ fontSize: "0.75rem" }}>
                     Gross Position Value
                   </div>
-                  <div className="fw-bold">{formatCurrency(exposure?.account?.grossPositionValue ?? null)}</div>
+                  <div className="fw-bold">{formatCurrency(exposure?.account?.grossPositionValue ?? null, 0)}</div>
                 </div>
               </div>
 
@@ -342,7 +343,7 @@ export function RiskLimitsPage() {
                 );
               })()}
 
-              <div className="row g-3">
+              <div className="row g-3 row-cols-1 row-cols-sm-2 row-cols-md-3 row-cols-lg-5">
                 <NumberField
                   label="Delta target min"
                   value={formState.deltaTargetMin}
@@ -359,9 +360,9 @@ export function RiskLimitsPage() {
                 />
                 {strategy === "covered_call" && (
                   <>
-                    <div className="col-12">
+                    <div className="col-12" style={{ flex: "0 0 100%", maxWidth: "100%" }}>
                       <h4 className="mb-0" style={{ fontSize: "0.85rem" }}>
-                        Delta target (existing position)
+                        Delta target (existing pos.)
                       </h4>
                       <p className="text-muted mb-0" style={{ fontSize: "0.75rem" }}>
                         Applies instead of the generic delta target above when you already own enough shares of the
@@ -370,14 +371,14 @@ export function RiskLimitsPage() {
                       </p>
                     </div>
                     <NumberField
-                      label="Delta target min (existing position)"
+                      label="Delta target min (existing pos.)"
                       value={formState.deltaTargetMinExistingPosition}
                       step="0.01"
                       help="Lowest option delta (absolute value) the screener will consider when selling calls against shares you already own."
                       onChange={(value) => updateField("deltaTargetMinExistingPosition", value)}
                     />
                     <NumberField
-                      label="Delta target max (existing position)"
+                      label="Delta target max (existing pos.)"
                       value={formState.deltaTargetMaxExistingPosition}
                       step="0.01"
                       help="Highest option delta (absolute value) the screener will consider when selling calls against shares you already own."
@@ -400,35 +401,35 @@ export function RiskLimitsPage() {
                 <NumberField
                   label="Max position % of portfolio"
                   value={formState.maxPositionPctOfPortfolio}
-                  step="0.1"
+                  step="1"
                   help="Target ceiling on how large a single position can be, as % of total portfolio value. Not yet auto-enforced — reference only."
                   onChange={(value) => updateField("maxPositionPctOfPortfolio", value)}
                 />
                 <NumberField
                   label="Max aggregate collateral %"
                   value={formState.maxAggregateCollateralPct}
-                  step="0.1"
+                  step="1"
                   help="Target ceiling on total collateral tied up across all open positions in this strategy, as % of portfolio. Not yet auto-enforced."
                   onChange={(value) => updateField("maxAggregateCollateralPct", value)}
                 />
                 <NumberField
                   label="Max concentration per ticker %"
                   value={formState.maxConcentrationPerTickerPct}
-                  step="0.1"
+                  step="1"
                   help="Target ceiling on how much of the portfolio (by notional value) can sit in one ticker. Shown for reference against the Concentration by Ticker table above; not yet auto-enforced."
                   onChange={(value) => updateField("maxConcentrationPerTickerPct", value)}
                 />
                 <NumberField
                   label="Max concentration per sector %"
                   value={formState.maxConcentrationPerSectorPct}
-                  step="0.1"
+                  step="1"
                   help="Target ceiling on how much of the portfolio (by notional value) can sit in one sector. Shown for reference against the Concentration by Sector table above; not yet auto-enforced."
                   onChange={(value) => updateField("maxConcentrationPerSectorPct", value)}
                 />
                 <NumberField
                   label="Min cash reserve %"
                   value={formState.minCashReservePct}
-                  step="0.1"
+                  step="1"
                   help="Target floor on how much of the portfolio should stay as uncommitted cash. Not yet auto-enforced."
                   onChange={(value) => updateField("minCashReservePct", value)}
                 />

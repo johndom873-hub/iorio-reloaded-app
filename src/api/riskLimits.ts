@@ -94,7 +94,6 @@ export async function updateStrategySettings(
 
 export interface AccountSummary {
   netLiquidationValue: number | null;
-  buyingPower: number | null;
   totalCashValue: number | null;
   grossPositionValue: number | null;
 }
@@ -125,6 +124,10 @@ export interface ExposureData {
   // against, approved 2026-08-25 so an under-deployed account doesn't read
   // as "concentrated" just because whatever's invested happens to cluster.
   totalAccountValue: number | null;
+  // Total cash minus cash committed to open cash-secured puts (their
+  // collateral never leaves the account balance, so raw cash overstates
+  // what's genuinely free) — same figure as Dashboard's available cash.
+  availableCash: number | null;
   concentrationByTicker: ConcentrationRow[];
   // Includes a synthetic "Unallocated" row for account value not sitting
   // in any open position, when totalAccountValue is known.
