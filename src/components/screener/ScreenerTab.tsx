@@ -219,78 +219,77 @@ export function ScreenerTab({ onOpenTickerDetail }: ScreenerTabProps) {
 
       <div className="card mb-3">
         <div className="card-body">
-          <div className="row g-2 align-items-end">
-            <div className="col-auto">
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))",
+              gap: "1rem",
+            }}
+          >
+            <div>
               <label className="form-label">Max Price</label>
               <input
                 type="number"
                 className="form-control"
-                style={{ width: "5.5rem" }}
                 placeholder={filterPlaceholders.maxPrice}
                 value={form.maxPrice}
                 onChange={(event) => setForm((prev) => ({ ...prev, maxPrice: event.target.value }))}
               />
             </div>
-            <div className="col-auto">
+            <div>
               <label className="form-label">Min IV vs Hist</label>
               <input
                 type="number"
                 className="form-control"
-                style={{ width: "5.5rem" }}
                 placeholder={filterPlaceholders.minIvRatio}
                 value={form.minIvRatio}
                 onChange={(event) => setForm((prev) => ({ ...prev, minIvRatio: event.target.value }))}
               />
             </div>
-            <div className="col-auto">
+            <div>
               <label className="form-label">Max IV vs Hist</label>
               <input
                 type="number"
                 className="form-control"
-                style={{ width: "5.5rem" }}
                 placeholder={filterPlaceholders.maxIvRatio}
                 value={form.maxIvRatio}
                 onChange={(event) => setForm((prev) => ({ ...prev, maxIvRatio: event.target.value }))}
               />
             </div>
-            <div className="col-auto">
+            <div>
               <label className="form-label">Min Avg Opt Vol</label>
               <input
                 type="number"
                 className="form-control"
-                style={{ width: "6.5rem" }}
                 placeholder={filterPlaceholders.minAvgOptionVolume}
                 value={form.minAvgOptionVolume}
                 onChange={(event) => setForm((prev) => ({ ...prev, minAvgOptionVolume: event.target.value }))}
               />
             </div>
-            <div className="col-auto">
+            <div>
               <label className="form-label">Min Avg Share Vol</label>
               <input
                 type="number"
                 className="form-control"
-                style={{ width: "7.5rem" }}
                 placeholder={filterPlaceholders.minAvgShareVolume}
                 value={form.minAvgShareVolume}
                 onChange={(event) => setForm((prev) => ({ ...prev, minAvgShareVolume: event.target.value }))}
               />
             </div>
-            <div className="col-auto">
+            <div>
               <label className="form-label">Max Spread %</label>
               <input
                 type="number"
                 className="form-control"
-                style={{ width: "5.5rem" }}
                 placeholder={filterPlaceholders.maxBidAskSpreadPct}
                 value={form.maxBidAskSpreadPct}
                 onChange={(event) => setForm((prev) => ({ ...prev, maxBidAskSpreadPct: event.target.value }))}
               />
             </div>
-            <div className="col-auto">
+            <div>
               <label className="form-label">Sector</label>
               <select
                 className="form-select"
-                style={{ width: "10rem" }}
                 value={form.sector}
                 onChange={(event) => setForm((prev) => ({ ...prev, sector: event.target.value }))}
               >
@@ -302,20 +301,20 @@ export function ScreenerTab({ onOpenTickerDetail }: ScreenerTabProps) {
                 ))}
               </select>
             </div>
-            <div className="col-auto d-flex gap-2">
-              <button
-                type="button"
-                className="btn btn-primary d-inline-flex align-items-center gap-1"
-                disabled={loading}
-                onClick={() => runSearch()}
-              >
-                {loading && <Spinner size="sm" />}
-                Search
-              </button>
-              <button type="button" className="btn btn-outline-secondary" disabled={loading} onClick={resetFilters}>
-                Reset
-              </button>
-            </div>
+          </div>
+          <div className="d-flex justify-content-end gap-2 mt-3">
+            <button type="button" className="btn btn-outline-secondary" disabled={loading} onClick={resetFilters}>
+              Reset
+            </button>
+            <button
+              type="button"
+              className="btn btn-primary d-inline-flex align-items-center gap-1"
+              disabled={loading}
+              onClick={() => runSearch()}
+            >
+              {loading && <Spinner size="sm" />}
+              Search
+            </button>
           </div>
         </div>
       </div>
