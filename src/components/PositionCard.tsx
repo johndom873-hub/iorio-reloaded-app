@@ -7,6 +7,7 @@ import { RecoveryPathModal } from "./RecoveryPathModal";
 import { ApiError } from "../api/client";
 import { useTheme } from "../contexts/ThemeContext";
 import { fetchRollCandidate, updatePosition, type Greeks, type Position, type RollCandidate, type UnrealizedPnlResult } from "../api/positions";
+import type { RollStructure, TradeAlert } from "../api/tradeAlerts";
 import { computePayoff } from "../lib/payoff";
 import {
   formatCurrency,
@@ -38,6 +39,8 @@ interface PositionCardProps {
   unrealizedPnlByPositionId: Record<string, UnrealizedPnlResult>;
   unrealizedPnlFetchFailed: boolean;
   currentPrice: number | null;
+  /** This position's pending roll alert, if any — drives the roll-alert banner and the enhanced Roll button on its leg. */
+  rollAlert?: TradeAlert & { suggestedStructure: RollStructure };
   onChanged: () => void;
   /**
    * Scrolls to this ticker's option chain so the user can pick a strike to
@@ -69,6 +72,7 @@ export function PositionCard({
   unrealizedPnlByPositionId,
   unrealizedPnlFetchFailed,
   currentPrice,
+  rollAlert,
   onChanged,
   onSellCall,
 }: PositionCardProps) {
@@ -95,6 +99,11 @@ export function PositionCard({
   const [rollingLegId, setRollingLegId] = useState<string | null>(null);
   const [rollError, setRollError] = useState<string | null>(null);
   const [rollCandidate, setRollCandidate] = useState<RollCandidate | null>(null);
+  // Set when the user opens the roll flow off a real pending roll alert
+  // (banner or the leg's alert-aware Roll button) rather than the on-demand
+  // fetchRollCandidate path — keeps its id so the roll gets submitted as
+  // sourceAlertId instead of a bare on-demand roll.
+  const [selectedRollAlert, setSelectedRollAlert] = useState<(TradeAlert & { suggestedStructure: RollStructure }) | null>(null);
 
   const payoff = useMemo(
     () => (position.strategyKey !== "unstructured" ? computePayoff(position.strategyKey, position.legs) : null),
@@ -199,6 +208,16 @@ export function PositionCard({
             );
           })()}
       </div>
+      {rollAlert && (
+        <div className="alert alert-warning d-flex flex-wrap align-items-center justify-content-between gap-2">
+          <div>
+            <strong>Roll alert:</strong> {rollAlert.rationale ?? "This position is ready to roll."}
+          </div>
+          <button type="button" className="btn btn-outline-secondary" onClick={() => setSelectedRollAlert(rollAlert)}>
+            Review Roll
+          </button>
+        </div>
+      )}
       <div>
         <div className="table-responsive mb-3">
           <table className="table table-sm table-vcenter card-table mb-0">
@@ -218,6 +237,7 @@ export function PositionCard({
             <tbody>
               {position.legs.map((leg) => {
                 const rollEligible = position.status === "open" && leg.legType === "option" && leg.side === "short" && !leg.exitAt;
+                const legRollAlert = rollAlert && rollAlert.suggestedStructure.closeLeg.legId === leg.id ? rollAlert : undefined;
                 return (
                   <tr key={leg.id}>
                     <td>{leg.legType === "stock" ? "Stock" : leg.optionType === "call" ? "Call" : "Put"}</td>
@@ -243,7 +263,17 @@ export function PositionCard({
                     </td>
                     <td className="text-end">{leg.exitAt ? formatCurrency(Number(leg.exitPrice)) : "—"}</td>
                     <td className="text-end">
-                      {rollEligible && (
+                      {rollEligible && legRollAlert && (
+                        <button
+                          type="button"
+                          className="btn btn-sm btn-warning"
+                          title={legRollAlert.rationale ?? "Roll alert pending"}
+                          onClick={() => setSelectedRollAlert(legRollAlert)}
+                        >
+                          Roll Alert
+                        </button>
+                      )}
+                      {rollEligible && !legRollAlert && (
                         <button
                           type="button"
                           className="btn btn-sm btn-outline-primary d-inline-flex align-items-center gap-1"
@@ -407,16 +437,29 @@ export function PositionCard({
         />
       )}
 
-      {rollCandidate && (
+      {(rollCandidate || selectedRollAlert) && (
         <RollPositionModal
-          alert={{
-            symbol: rollCandidate.symbol,
-            relatedPositionId: rollCandidate.relatedPositionId,
-            suggestedStructure: rollCandidate.suggestedStructure,
+          alert={
+            selectedRollAlert
+              ? {
+                  id: selectedRollAlert.id,
+                  symbol: selectedRollAlert.symbol,
+                  relatedPositionId: selectedRollAlert.relatedPositionId,
+                  suggestedStructure: selectedRollAlert.suggestedStructure,
+                }
+              : {
+                  symbol: rollCandidate!.symbol,
+                  relatedPositionId: rollCandidate!.relatedPositionId,
+                  suggestedStructure: rollCandidate!.suggestedStructure,
+                }
+          }
+          onClose={() => {
+            setRollCandidate(null);
+            setSelectedRollAlert(null);
           }}
-          onClose={() => setRollCandidate(null)}
           onRolled={() => {
             setRollCandidate(null);
+            setSelectedRollAlert(null);
             onChanged();
           }}
         />

@@ -3,6 +3,7 @@ import { PageHeader } from "../components/layout/PageHeader";
 import { DataTable, type DataTableColumn } from "../components/DataTable/DataTable";
 import { Spinner } from "../components/Spinner";
 import { ClosePositionModal } from "../components/ClosePositionModal";
+import { RollPositionModal } from "../components/RollPositionModal";
 import { TickerDetailModal } from "../components/TickerDetailModal";
 import { ApiError } from "../api/client";
 import {
@@ -14,6 +15,7 @@ import {
   type PositionStatus,
   type UnrealizedPnlResult,
 } from "../api/positions";
+import { fetchTradeAlerts, isRollAlert, type RollStructure, type TradeAlert } from "../api/tradeAlerts";
 import { fetchAccountValue } from "../api/dashboard";
 import { openNotificationStream } from "../api/notifications";
 import type { StrategyKey } from "../api/strategy";
@@ -44,6 +46,8 @@ import {
   strategyBadgeClass,
   strategyLabel,
 } from "../lib/positionPnl";
+
+type RollAlert = TradeAlert & { suggestedStructure: RollStructure };
 
 const strategyTabs: { key: StrategyKey | "all"; label: string }[] = [
   { key: "all", label: "All" },
@@ -93,6 +97,12 @@ export function PositionsPage() {
     [setDetailSymbol],
   );
   const [closePosition, setClosePosition] = useState<Position | null>(null);
+  // Pending roll alerts, keyed by the position they'd roll — drives the
+  // Roll button in the actions column. Not tied to the status/strategy
+  // filters above: a roll alert only ever exists for an open position, so
+  // fetching the full pending set unfiltered is simplest.
+  const [rollAlertsByPositionId, setRollAlertsByPositionId] = useState<Record<string, RollAlert>>({});
+  const [rollAlert, setRollAlert] = useState<RollAlert | null>(null);
 
   const loadPositions = useCallback(async () => {
     try {
@@ -104,10 +114,23 @@ export function PositionsPage() {
     }
   }, [status, strategy]);
 
+  const loadRollAlerts = useCallback(async () => {
+    try {
+      const result = await fetchTradeAlerts({ status: "pending" });
+      const byPositionId: Record<string, RollAlert> = {};
+      for (const alert of result) {
+        if (isRollAlert(alert) && alert.relatedPositionId) byPositionId[alert.relatedPositionId] = alert;
+      }
+      setRollAlertsByPositionId(byPositionId);
+    } catch {
+      // Non-critical — the Roll button just won't show if this fails.
+    }
+  }, []);
+
   useEffect(() => {
     setLoading(true);
-    loadPositions().finally(() => setLoading(false));
-  }, [loadPositions]);
+    Promise.all([loadPositions(), loadRollAlerts()]).finally(() => setLoading(false));
+  }, [loadPositions, loadRollAlerts]);
 
   // Same race as TickerDetailModal (see its matching comment): a fill flips
   // order_requests.status to "filled" well before reconcilePositionsFromIbkr
@@ -420,10 +443,23 @@ export function PositionsPage() {
         }
 
         if (openOptionLeg) {
+          const alert = rollAlertsByPositionId[row.id];
           return (
-            <button type="button" className="btn btn-sm btn-outline-secondary" onClick={() => setClosePosition(row)}>
-              Close
-            </button>
+            <div className="d-flex gap-1 justify-content-end">
+              {alert && (
+                <button
+                  type="button"
+                  className="btn btn-sm btn-warning"
+                  title={alert.rationale ?? "Roll alert pending for this position"}
+                  onClick={() => setRollAlert(alert)}
+                >
+                  Roll
+                </button>
+              )}
+              <button type="button" className="btn btn-sm btn-outline-secondary" onClick={() => setClosePosition(row)}>
+                Close
+              </button>
+            </div>
           );
         }
         return null;
@@ -498,6 +534,23 @@ export function PositionsPage() {
             setDetailSymbol(null);
             setFocusPositionId(undefined);
             loadPositions();
+          }}
+        />
+      )}
+
+      {rollAlert && (
+        <RollPositionModal
+          alert={{
+            id: rollAlert.id,
+            symbol: rollAlert.symbol,
+            relatedPositionId: rollAlert.relatedPositionId,
+            suggestedStructure: rollAlert.suggestedStructure,
+          }}
+          onClose={() => setRollAlert(null)}
+          onRolled={() => {
+            setRollAlert(null);
+            loadPositions();
+            loadRollAlerts();
           }}
         />
       )}

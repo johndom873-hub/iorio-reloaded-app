@@ -13,7 +13,7 @@ import {
   type TickerOverview,
   type TickerTechnicals,
 } from "../api/tickerDetail";
-import { fetchTradeAlerts, isRollAlert, refreshTickerAlerts, type NewTradeCandidate, type TradeAlert } from "../api/tradeAlerts";
+import { fetchTradeAlerts, isRollAlert, refreshTickerAlerts, type NewTradeCandidate, type RollStructure, type TradeAlert } from "../api/tradeAlerts";
 import {
   buildOpenOrder,
   fetchGreeks,
@@ -627,6 +627,13 @@ export function TickerDetailModal({ symbol, onClose, initialAlertId, focusPositi
 
   const expiryGroups = useMemo(() => groupOptionChain(optionChain ?? []), [optionChain]);
   const relevantAlerts = useMemo(() => newTradeAlerts(alerts ?? []), [alerts]);
+  const rollAlertsByPositionId = useMemo(() => {
+    const byPositionId: Record<string, TradeAlert & { suggestedStructure: RollStructure }> = {};
+    for (const alert of alerts ?? []) {
+      if (isRollAlert(alert) && alert.relatedPositionId) byPositionId[alert.relatedPositionId] = alert;
+    }
+    return byPositionId;
+  }, [alerts]);
   const alertExpiries = useMemo(
     () => new Set(relevantAlerts.map((alert) => alert.suggestedStructure.expiry.replaceAll("-", ""))),
     [relevantAlerts],
@@ -1167,6 +1174,7 @@ export function TickerDetailModal({ symbol, onClose, initialAlertId, focusPositi
                                   unrealizedPnlByPositionId={unrealizedPnlByPositionId}
                                   unrealizedPnlFetchFailed={unrealizedPnlFetchFailed}
                                   currentPrice={spotPrice}
+                                  rollAlert={rollAlertsByPositionId[position.id]}
                                   onChanged={loadPositions}
                                   onSellCall={(prefill) => {
                                     if (prefill) {
