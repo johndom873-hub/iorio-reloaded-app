@@ -350,6 +350,7 @@ export function PositionCard({
               options={{
                 xaxis: { type: "numeric", labels: { formatter: (value: string) => formatCurrency(Number(value)) } },
                 yaxis: { labels: { formatter: (value: number) => formatCurrency(value) } },
+                grid: { padding: { top: 24 } },
                 tooltip: {
                   x: { formatter: (value: number) => formatCurrency(value) },
                   y: { formatter: (value: number) => formatSignedPnl(value) },
@@ -362,6 +363,7 @@ export function PositionCard({
                       label: {
                         text: "Breakeven",
                         style: { fontSize: "0.7rem", color: "#fff", background: annotationColors.breakeven },
+                        offsetY: 4,
                       },
                     },
                     ...(currentPrice !== null
@@ -372,6 +374,7 @@ export function PositionCard({
                             label: {
                               text: "Current",
                               style: { fontSize: "0.7rem", color: "#fff", background: annotationColors.current },
+                              offsetY: 65,
                             },
                           },
                         ]

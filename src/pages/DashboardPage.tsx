@@ -626,7 +626,7 @@ export function DashboardPage() {
                 <col style={{ width: "6rem" }} />
                 <col style={{ width: "4.5rem" }} />
                 <col style={{ width: "17rem" }} />
-                <col style={{ width: "auto" }} />
+                <col style={{ width: "18rem" }} />
                 <col style={{ width: "6rem" }} />
                 <col style={{ width: "5.5rem" }} />
               </colgroup>

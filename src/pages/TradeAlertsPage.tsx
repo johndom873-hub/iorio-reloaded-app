@@ -487,7 +487,7 @@ export function TradeAlertsPage() {
                               )}
                               <div className="mt-2">
                                 {alert.status === "pending" ? (
-                                  <button type="button" className="btn btn-sm btn-primary w-100" onClick={() => handleReview(alert)}>
+                                  <button type="button" className="btn btn-primary w-100" onClick={() => handleReview(alert)}>
                                     Review
                                   </button>
                                 ) : (
@@ -696,12 +696,12 @@ export function TradeAlertsPage() {
                             <div className="mt-2">
                               {alert.status === "pending" ? (
                                 <div className="d-flex gap-2">
-                                  <button type="button" className="btn btn-sm btn-primary flex-fill" onClick={() => setRollAlert(alert)}>
+                                  <button type="button" className="btn btn-primary flex-fill" onClick={() => setRollAlert(alert)}>
                                     Roll
                                   </button>
                                   <button
                                     type="button"
-                                    className="btn btn-sm btn-outline-secondary flex-fill d-inline-flex align-items-center justify-content-center gap-1"
+                                    className="btn btn-outline-secondary flex-fill d-inline-flex align-items-center justify-content-center gap-1"
                                     disabled={refreshingId === alert.id}
                                     onClick={() => handleRefresh(alert.id)}
                                   >

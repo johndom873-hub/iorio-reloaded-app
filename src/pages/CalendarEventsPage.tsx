@@ -8,7 +8,7 @@ import {
   type EconomicCalendarEvent,
   type TickerCalendarEvent,
 } from "../api/calendarEvents";
-import { daysToExpiry, formatCurrency, formatDate, formatDaysToExpiry, todayInEasternIso } from "../lib/formatters";
+import { daysToExpiry, formatCurrency, formatDate, formatDaysToExpiry, formatNumber, todayInEasternIso } from "../lib/formatters";
 import { useTickerDetailSymbol } from "../hooks/useTickerDetailSymbol";
 
 function DateWithCountdown({ isoDate }: { isoDate: string }) {
@@ -137,19 +137,19 @@ export function CalendarEventsPage() {
       key: "actual",
       header: "Actual",
       align: "right",
-      render: (row) => row.actual ?? "—",
+      render: (row) => (row.actual === null ? "—" : formatNumber(row.actual, 2)),
     },
     {
       key: "forecast",
       header: "Forecast",
       align: "right",
-      render: (row) => row.forecast ?? "—",
+      render: (row) => (row.forecast === null ? "—" : formatNumber(row.forecast, 2)),
     },
     {
       key: "previous",
       header: "Previous",
       align: "right",
-      render: (row) => row.previous ?? "—",
+      render: (row) => (row.previous === null ? "—" : formatNumber(row.previous, 2)),
     },
   ];
 

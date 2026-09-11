@@ -103,7 +103,9 @@ export function SystemHealthPage() {
               <summary className="text-warning" style={{ cursor: "pointer" }}>
                 {problems.length} issue(s) found — see below
               </summary>
-              <pre className="text-muted small mb-0 mt-1">{JSON.stringify(row.details, null, 2)}</pre>
+              <pre className="text-muted small mb-0 mt-1" style={{ maxWidth: "100%", overflowX: "auto", whiteSpace: "pre-wrap", wordBreak: "break-word" }}>
+                {JSON.stringify(row.details, null, 2)}
+              </pre>
             </details>
           );
         }
