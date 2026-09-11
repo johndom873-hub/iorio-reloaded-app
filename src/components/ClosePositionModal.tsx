@@ -11,7 +11,7 @@ import {
   type PositionLeg,
 } from "../api/positions";
 import { openPositionQuoteStream, type TickerPricing } from "../api/tickerDetail";
-import { formatCurrency, formatCurrencyTrimmed, formatExpiryWithDte } from "../lib/formatters";
+import { formatCurrency, formatCurrencyTrimmed, formatExpiryWithDte, todayInEasternIso } from "../lib/formatters";
 import { flashClassName, useFlashOnChange } from "../hooks/useFlashOnChange";
 
 interface ClosePositionModalProps {
@@ -24,7 +24,7 @@ function legLabel(leg: PositionLeg): string {
   if (leg.legType === "option") {
     const right = leg.optionType === "call" ? "C" : "P";
     const strike = leg.strikePrice ? formatCurrencyTrimmed(Number(leg.strikePrice)) : "—";
-    return `${leg.side} ${leg.quantity}x ${strike}${right} exp ${formatExpiryWithDte(leg.expiryDate)}`;
+    return `${leg.side} ${leg.quantity}x ${strike}${right} exp ${formatExpiryWithDte(leg.expiryDate, todayInEasternIso())}`;
   }
   return `${leg.side} ${leg.quantity} sh`;
 }
@@ -357,7 +357,7 @@ export function ClosePositionModal({ position, onClose, onClosed }: ClosePositio
                       </div>
                       <div>
                         {optionLeg.quantity}x {optionLeg.strikePrice ? formatCurrencyTrimmed(Number(optionLeg.strikePrice)) : "—"}
-                        {rightLabel} exp {formatExpiryWithDte(optionLeg.expiryDate)}
+                        {rightLabel} exp {formatExpiryWithDte(optionLeg.expiryDate, todayInEasternIso())}
                       </div>
                     </div>
                     {stockLeg && (

@@ -16,6 +16,7 @@ import {
   formatSignedPnl,
   ibkrExpiryToIsoDate,
   orderRequestStatusBadgeClass,
+  todayInEasternIso,
 } from "../lib/formatters";
 import { computeAnnualizedYield, computeCapitalAtRiskFromOrderLegs, computePayoff, orderLegsToPayoffInput } from "../lib/payoff";
 import { computeProbabilityOfProfit } from "../lib/probabilityOfProfit";
@@ -48,7 +49,7 @@ function legDescription(leg: OrderRequest["payload"]["legs"][number]): string {
   if (leg.role === "stock") return `${leg.action} ${leg.quantity} sh @ ${formatCurrency(leg.unitPrice)}`;
   const right = leg.right === "C" ? "Call" : "Put";
   const expiryIsoDate = leg.expiry ? (leg.expiry.length === 8 ? ibkrExpiryToIsoDate(leg.expiry) : leg.expiry) : null;
-  const expiryLabel = formatExpiryWithDte(expiryIsoDate);
+  const expiryLabel = formatExpiryWithDte(expiryIsoDate, todayInEasternIso());
   return `${leg.action} ${leg.quantity}x ${leg.strike ? formatCurrencyTrimmed(leg.strike) : "—"} ${right} exp ${expiryLabel} @ ${formatCurrency(leg.unitPrice)}`;
 }
 
@@ -174,7 +175,7 @@ export function OrderReviewPanel({ order: initialOrder, onCancelled, onFilled, l
   // already converts correctly (ibkrExpiryToIsoDate) for its own display;
   // this call site just never got the same treatment.
   const optionLegExpiryIso = optionLeg?.expiry ? (optionLeg.expiry.length === 8 ? ibkrExpiryToIsoDate(optionLeg.expiry) : optionLeg.expiry) : null;
-  const dte = optionLegExpiryIso ? daysToExpiry(optionLegExpiryIso) : null;
+  const dte = optionLegExpiryIso ? daysToExpiry(optionLegExpiryIso, todayInEasternIso()) : null;
 
   // Gates Confirm for opening orders only (approved 2026-08-27) -- Close/Roll
   // orders keep a live quote display but no compliance check, same
