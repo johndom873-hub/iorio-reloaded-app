@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { NavLink, Outlet } from "react-router-dom";
+import { Collapse } from "@tabler/core/dist/js/tabler.esm.min.js";
 import {
   IconCalendarEvent,
   IconChartCandle,
@@ -142,7 +143,19 @@ export function AppLayout() {
             </button>
           </div>
           <div className="collapse navbar-collapse" id="sidebar-menu">
-            <ul className="navbar-nav">
+            <ul
+              className="navbar-nav"
+              onClick={() => {
+                // Bootstrap's Collapse never auto-closes on a nav-link
+                // click — only relevant on mobile, where the collapse is
+                // actually toggleable; on desktop it's always visible via
+                // navbar-expand-lg's CSS regardless of the "show" class.
+                const menu = document.getElementById("sidebar-menu");
+                if (menu?.classList.contains("show")) {
+                  Collapse.getOrCreateInstance(menu, { toggle: false }).hide();
+                }
+              }}
+            >
               {navigationItems.map(({ to, label, icon: Icon, end }, index) => (
                 <li className="nav-item" key={to}>
                   <NavLink to={to} end={end} className="nav-link">
