@@ -361,6 +361,28 @@ export function fetchGreeks(legIds: string[]): Promise<Record<string, Greeks>> {
   return apiRequest<Record<string, Greeks>>(`/positions/greeks?legIds=${legIds.join(",")}`);
 }
 
+// Live-upgrading variant of fetchGreeks for the Positions table — same
+// FROZEN-then-live mechanics and lifetime as openUnrealizedPnlStream above,
+// backed by GET /positions/greeks/stream.
+export function openGreeksStream(legIds: string[], onUpdate: (result: Record<string, Greeks>) => void, onError?: () => void): () => void {
+  if (legIds.length === 0) return () => {};
+  const source = new EventSource(`${apiBaseUrl}/positions/greeks/stream?legIds=${legIds.join(",")}`, { withCredentials: true });
+
+  source.onmessage = (message) => {
+    try {
+      onUpdate(JSON.parse(message.data));
+    } catch {
+      // Malformed/heartbeat frame — ignore.
+    }
+  };
+
+  source.onerror = () => {
+    onError?.();
+  };
+
+  return () => source.close();
+}
+
 export interface UnrealizedPnlResult {
   unrealizedPnl: number | null;
   // unrealizedPnl's option-leg-only / stock-leg-only components. Both null
@@ -384,4 +406,42 @@ export interface UnrealizedPnlResult {
 export function fetchUnrealizedPnl(positionIds: string[]): Promise<Record<string, UnrealizedPnlResult>> {
   if (positionIds.length === 0) return Promise.resolve({});
   return apiRequest<Record<string, UnrealizedPnlResult>>(`/positions/pnl?positionIds=${positionIds.join(",")}`);
+}
+
+// Live-upgrading variant of fetchUnrealizedPnl for the Positions table
+// (approved 2026-09-11): the backend's GET /positions/pnl/stream sends a
+// FROZEN/snapshot-fallback reading immediately, then re-sends the whole
+// map (never regressing a position that already has a real number back to
+// null) as each leg's live price actually ticks in — same
+// FROZEN-then-live mechanics as streamLivePrices.ts on the backend.
+// Payload shape is the raw Record, no {type,...} envelope — same as
+// openNotificationStream, not the typed-event order-quote streams below.
+// Held open until the caller's cleanup fn is called (positions list
+// changing, or the page unmounting) — mirrors the pnl/stream endpoint's
+// own lifetime, which streams for as long as the connection stays open.
+export function openUnrealizedPnlStream(
+  positionIds: string[],
+  onUpdate: (result: Record<string, UnrealizedPnlResult>) => void,
+  onError?: () => void,
+): () => void {
+  if (positionIds.length === 0) return () => {};
+  const source = new EventSource(`${apiBaseUrl}/positions/pnl/stream?positionIds=${positionIds.join(",")}`, { withCredentials: true });
+
+  source.onmessage = (message) => {
+    try {
+      onUpdate(JSON.parse(message.data));
+    } catch {
+      // Malformed/heartbeat frame — ignore.
+    }
+  };
+
+  // EventSource auto-reconnects on its own after a drop; onError just lets
+  // the caller flag it in the meantime (e.g. swap a spinner for "failed to
+  // load" rather than spinning forever), same as the old one-shot fetch's
+  // .catch used to.
+  source.onerror = () => {
+    onError?.();
+  };
+
+  return () => source.close();
 }

@@ -7,9 +7,9 @@ import { RollPositionModal } from "../components/RollPositionModal";
 import { TickerDetailModal } from "../components/TickerDetailModal";
 import { ApiError } from "../api/client";
 import {
-  fetchGreeks,
   fetchPositions,
-  fetchUnrealizedPnl,
+  openGreeksStream,
+  openUnrealizedPnlStream,
   type Greeks,
   type Position,
   type PositionStatus,
@@ -155,18 +155,28 @@ export function PositionsPage() {
       .flatMap((position) => position.legs.filter((leg) => leg.legType === "option").map((leg) => leg.id));
     if (optionLegIds.length === 0) return;
     setGreeksFetchFailed(false);
-    fetchGreeks(optionLegIds)
-      .then(setGreeksByLegId)
-      .catch(() => setGreeksFetchFailed(true));
+    return openGreeksStream(
+      optionLegIds,
+      (result) => {
+        setGreeksFetchFailed(false);
+        setGreeksByLegId(result);
+      },
+      () => setGreeksFetchFailed(true),
+    );
   }, [positions]);
 
   useEffect(() => {
     const openPositionIds = positions.filter((position) => position.status === "open").map((position) => position.id);
     if (openPositionIds.length === 0) return;
     setUnrealizedPnlFetchFailed(false);
-    fetchUnrealizedPnl(openPositionIds)
-      .then(setUnrealizedPnlByPositionId)
-      .catch(() => setUnrealizedPnlFetchFailed(true));
+    return openUnrealizedPnlStream(
+      openPositionIds,
+      (result) => {
+        setUnrealizedPnlFetchFailed(false);
+        setUnrealizedPnlByPositionId(result);
+      },
+      () => setUnrealizedPnlFetchFailed(true),
+    );
   }, [positions]);
 
   const columns: DataTableColumn<Position>[] = [
