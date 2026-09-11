@@ -462,16 +462,18 @@ export function TickerDetailModal({ symbol, onClose, initialAlertId, focusPositi
   const chainRef = useRef<HTMLDivElement | null>(null);
   const appliedInitialAlert = useRef(false);
   const appliedDefaultExpiry = useRef(false);
+  const previousStreamSymbolRef = useRef<string | null>(null);
 
   // Bumped after Scan/Refresh or an order fill changes which alerts are
   // pending — included in the connection effect's deps below so it tears
-  // down and reopens the whole ticker-detail stream (overview/chart/option
-  // chain together, one shared IBKR connection, same as the initial open).
-  // Necessary because prepareOptionChainStrikes (fetchOptionChain.ts) only
-  // computes the option chain's must-include alert strikes once, at connection
-  // open — it doesn't notice the alerts list changing underneath an
-  // already-open connection, which left the chain showing strikes from
-  // alerts that had since expired (found 2026-09-01 on SNDK).
+  // down and reopens the ticker-detail stream to recompute the option
+  // chain's must-include alert strikes (prepareOptionChainStrikes in
+  // fetchOptionChain.ts only computes those once, at connection open — it
+  // doesn't notice the alerts list changing underneath an already-open
+  // connection, which left the chain showing strikes from alerts that had
+  // since expired, found 2026-09-01 on SNDK). Only the option chain resets
+  // on this reconnect, not overview/chart/technicals — see the connection
+  // effect below.
   const [streamKey, setStreamKey] = useState(0);
 
   // Set when a background poll (below) finds the pending-alert strike set has
@@ -554,20 +556,44 @@ export function TickerDetailModal({ symbol, onClose, initialAlertId, focusPositi
   }, [alertsStaleWhileBuilding, selection, pendingOrder]);
 
   useEffect(() => {
-    setOverview(null);
-    setOverviewError(null);
-    setChartBars(null);
-    setChartError(null);
+    const symbolChanged = previousStreamSymbolRef.current !== symbol;
+    previousStreamSymbolRef.current = symbol;
+
+    if (symbolChanged) {
+      setOverview(null);
+      setOverviewError(null);
+      setChartBars(null);
+      setChartError(null);
+      setTechnicals(null);
+      setTechnicalsError(null);
+      setActiveExpiry(null);
+      setSelection(null);
+      setPendingOrder(null);
+      appliedInitialAlert.current = false;
+      appliedDefaultExpiry.current = false;
+
+      setPositions(null);
+      setPositionsError(null);
+      hasScrolledToFocus.current = false;
+      loadPositions();
+
+      fetchTradeAlerts({ status: "pending", symbol })
+        .then(setAlerts)
+        .catch((err) => setAlertsError(err instanceof ApiError ? err.message : "Failed to load trade alerts."));
+    }
+
+    // Only the option chain needs to reset on a streamKey-only bump (an
+    // alert-freshness reconnect, not a symbol change) -- prepareOptionChainStrikes
+    // (fetchOptionChain.ts) computes must-include alert strikes once, at
+    // connection open, so the chain must reconnect to pick up new/expired
+    // alerts. The price header, chart, and technicals keep showing their
+    // last-known values across that reconnect instead of blanking out --
+    // found 2026-09-11: the 60s alert-freshness poll below was nulling and
+    // rebuilding the whole modal, including fully unmounting the candlestick
+    // chart, just to refresh option-chain strikes.
     setOptionChain(null);
     setOptionChainError(null);
-    setTechnicals(null);
-    setTechnicalsError(null);
     setStreamError(null);
-    setActiveExpiry(null);
-    setSelection(null);
-    setPendingOrder(null);
-    appliedInitialAlert.current = false;
-    appliedDefaultExpiry.current = false;
 
     const close = openTickerDetailStream(symbol, (event) => {
       switch (event.type) {
@@ -596,15 +622,6 @@ export function TickerDetailModal({ symbol, onClose, initialAlertId, focusPositi
           break;
       }
     });
-
-    fetchTradeAlerts({ status: "pending", symbol })
-      .then(setAlerts)
-      .catch((err) => setAlertsError(err instanceof ApiError ? err.message : "Failed to load trade alerts."));
-
-    setPositions(null);
-    setPositionsError(null);
-    hasScrolledToFocus.current = false;
-    loadPositions();
 
     return close;
     // eslint-disable-next-line react-hooks/exhaustive-deps
