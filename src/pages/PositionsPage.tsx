@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { PageHeader } from "../components/layout/PageHeader";
 import { DataTable, type DataTableColumn } from "../components/DataTable/DataTable";
 import { Spinner } from "../components/Spinner";
+import { FlashingNumber } from "../components/FlashingNumber";
 import { ClosePositionModal } from "../components/ClosePositionModal";
 import { RollPositionModal } from "../components/RollPositionModal";
 import { TickerDetailModal } from "../components/TickerDetailModal";
@@ -225,9 +226,9 @@ export function PositionsPage() {
           );
         const asOfDate = positionPnlAsOfDate(row, unrealizedPnlByPositionId);
         return (
-          <span className={pnlTextClass(pnl)} title={asOfDate ? `As of ${formatDate(asOfDate)} close` : undefined}>
+          <FlashingNumber value={pnl} className={pnlTextClass(pnl)} title={asOfDate ? `As of ${formatDate(asOfDate)} close` : undefined}>
             {formatSignedPnl(pnl)}
-          </span>
+          </FlashingNumber>
         );
       },
     },
@@ -256,10 +257,10 @@ export function PositionsPage() {
           );
         const asOfDate = positionPnlAsOfDate(row, unrealizedPnlByPositionId);
         return (
-          <span className={pnlTextClass(pct)} title={asOfDate ? `As of ${formatDate(asOfDate)} close` : undefined}>
+          <FlashingNumber value={pct} precision={2} className={pnlTextClass(pct)} title={asOfDate ? `As of ${formatDate(asOfDate)} close` : undefined}>
             {pct > 0 ? "+" : ""}
             {formatPercentageValue(pct, 2)}
-          </span>
+          </FlashingNumber>
         );
       },
     },
@@ -277,7 +278,11 @@ export function PositionsPage() {
               —
             </span>
           );
-        return <span className={pnlTextClass(pnl)}>{formatSignedPnl(pnl)}</span>;
+        return (
+          <FlashingNumber value={pnl} className={pnlTextClass(pnl)}>
+            {formatSignedPnl(pnl)}
+          </FlashingNumber>
+        );
       },
     },
     {
@@ -295,7 +300,11 @@ export function PositionsPage() {
               —
             </span>
           );
-        return <span className={pnlTextClass(pnl)}>{formatSignedPnl(pnl)}</span>;
+        return (
+          <FlashingNumber value={pnl} className={pnlTextClass(pnl)}>
+            {formatSignedPnl(pnl)}
+          </FlashingNumber>
+        );
       },
     },
     {
@@ -334,7 +343,8 @@ export function PositionsPage() {
           return <Spinner size="sm" label="Loading market value" />;
         }
         if (pnl === null) return "—";
-        return formatCurrency(Number(row.capitalAtRisk) + pnl, 0);
+        const marketValue = Number(row.capitalAtRisk) + pnl;
+        return <FlashingNumber value={marketValue}>{formatCurrency(marketValue, 0)}</FlashingNumber>;
       },
     },
     {
@@ -374,7 +384,11 @@ export function PositionsPage() {
           return <Spinner size="sm" label="Loading delta" />;
         }
         if (greeks.delta === null) return <span className="text-muted">—</span>;
-        return <span title={greeks.asOfDate ? `As of ${formatDate(greeks.asOfDate)} close` : undefined}>{formatNumber(greeks.delta, 2)}</span>;
+        return (
+          <FlashingNumber value={greeks.delta} precision={2} title={greeks.asOfDate ? `As of ${formatDate(greeks.asOfDate)} close` : undefined}>
+            {formatNumber(greeks.delta, 2)}
+          </FlashingNumber>
+        );
       },
     },
     {
@@ -398,7 +412,11 @@ export function PositionsPage() {
           return <Spinner size="sm" label="Loading gamma" />;
         }
         if (greeks.gamma === null) return <span className="text-muted">—</span>;
-        return <span title={greeks.asOfDate ? `As of ${formatDate(greeks.asOfDate)} close` : undefined}>{formatNumber(greeks.gamma, 3)}</span>;
+        return (
+          <FlashingNumber value={greeks.gamma} precision={3} title={greeks.asOfDate ? `As of ${formatDate(greeks.asOfDate)} close` : undefined}>
+            {formatNumber(greeks.gamma, 3)}
+          </FlashingNumber>
+        );
       },
     },
     {
