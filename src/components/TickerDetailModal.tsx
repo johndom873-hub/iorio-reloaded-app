@@ -16,15 +16,16 @@ import {
 import { fetchTradeAlerts, isRollAlert, refreshTickerAlerts, type NewTradeCandidate, type RollStructure, type TradeAlert } from "../api/tradeAlerts";
 import {
   buildOpenOrder,
-  fetchGreeks,
   fetchPositionsBySymbol,
-  fetchUnrealizedPnl,
+  openGreeksStream,
+  openUnrealizedPnlStream,
   type Greeks,
   type OrderRequest,
   type Position,
   type UnrealizedPnlResult,
 } from "../api/positions";
 import { ApiError } from "../api/client";
+import { fetchAccountValue } from "../api/dashboard";
 import { addToShortlist } from "../api/shortlist";
 import { openNotificationStream } from "../api/notifications";
 import { fetchNextTickerCalendarEvents, type NextTickerCalendarEvents } from "../api/calendarEvents";
@@ -410,6 +411,9 @@ export function TickerDetailModal({ symbol, onClose, initialAlertId, focusPositi
   const [greeksFetchFailed, setGreeksFetchFailed] = useState(false);
   const [unrealizedPnlByPositionId, setUnrealizedPnlByPositionId] = useState<Record<string, UnrealizedPnlResult>>({});
   const [unrealizedPnlFetchFailed, setUnrealizedPnlFetchFailed] = useState(false);
+  // Last-known (not live) total account value, same source/reasoning as
+  // PositionsPage's EXP% column — see fetchAccountValue's own comment.
+  const [totalAccountValue, setTotalAccountValue] = useState<number | null>(null);
   const focusedPositionRef = useRef<HTMLDivElement | null>(null);
   const hasScrolledToFocus = useRef(false);
   // Bumped to force the Positions/Option Chain cards open when something
@@ -756,30 +760,57 @@ export function TickerDetailModal({ symbol, onClose, initialAlertId, focusPositi
       setPositionsError(null);
       const result = await fetchPositionsBySymbol(symbol);
       setPositions(result);
-
-      const openPositions = result.filter((p) => p.status === "open");
-      const optionLegIds = openPositions.flatMap((p) => p.legs.filter((leg) => leg.legType === "option").map((leg) => leg.id));
-      if (optionLegIds.length > 0) {
-        setGreeksFetchFailed(false);
-        fetchGreeks(optionLegIds)
-          .then(setGreeksByLegId)
-          .catch(() => setGreeksFetchFailed(true));
-      } else {
-        setGreeksByLegId({});
-      }
-
-      if (openPositions.length > 0) {
-        setUnrealizedPnlFetchFailed(false);
-        fetchUnrealizedPnl(openPositions.map((p) => p.id))
-          .then(setUnrealizedPnlByPositionId)
-          .catch(() => setUnrealizedPnlFetchFailed(true));
-      } else {
-        setUnrealizedPnlByPositionId({});
-      }
     } catch (err) {
       setPositionsError(err instanceof ApiError ? err.message : "Failed to load positions.");
     }
   }
+
+  // Live-upgrading Greeks/P&L for this symbol's open positions — streamed
+  // (FROZEN-then-live) rather than one-shot fetched, same as PositionsPage
+  // (approved 2026-09-11). Re-opens whenever the position list changes
+  // (Close/Roll/a new fill), same as PositionsPage's [positions]-keyed
+  // effects; the returned cleanup closes the previous stream first.
+  useEffect(() => {
+    const optionLegIds = (positions ?? [])
+      .filter((position) => position.status === "open")
+      .flatMap((position) => position.legs.filter((leg) => leg.legType === "option").map((leg) => leg.id));
+    if (optionLegIds.length === 0) {
+      setGreeksByLegId({});
+      return;
+    }
+    setGreeksFetchFailed(false);
+    return openGreeksStream(
+      optionLegIds,
+      (result) => {
+        setGreeksFetchFailed(false);
+        setGreeksByLegId(result);
+      },
+      () => setGreeksFetchFailed(true),
+    );
+  }, [positions]);
+
+  useEffect(() => {
+    const openPositionIds = (positions ?? []).filter((position) => position.status === "open").map((position) => position.id);
+    if (openPositionIds.length === 0) {
+      setUnrealizedPnlByPositionId({});
+      return;
+    }
+    setUnrealizedPnlFetchFailed(false);
+    return openUnrealizedPnlStream(
+      openPositionIds,
+      (result) => {
+        setUnrealizedPnlFetchFailed(false);
+        setUnrealizedPnlByPositionId(result);
+      },
+      () => setUnrealizedPnlFetchFailed(true),
+    );
+  }, [positions]);
+
+  useEffect(() => {
+    fetchAccountValue()
+      .then((result) => setTotalAccountValue(result.netLiquidationValue))
+      .catch(() => setTotalAccountValue(null));
+  }, []);
 
   async function handleAddToShortlist() {
     setIsAddingToShortlist(true);
@@ -1173,6 +1204,7 @@ export function TickerDetailModal({ symbol, onClose, initialAlertId, focusPositi
                                   greeksFetchFailed={greeksFetchFailed}
                                   unrealizedPnlByPositionId={unrealizedPnlByPositionId}
                                   unrealizedPnlFetchFailed={unrealizedPnlFetchFailed}
+                                  totalAccountValue={totalAccountValue}
                                   currentPrice={spotPrice}
                                   rollAlert={rollAlertsByPositionId[position.id]}
                                   onChanged={loadPositions}

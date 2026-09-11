@@ -6,19 +6,23 @@ import { RollPositionModal } from "./RollPositionModal";
 import { RecoveryPathModal } from "./RecoveryPathModal";
 import { ApiError } from "../api/client";
 import { useTheme } from "../contexts/ThemeContext";
-import { fetchRollCandidate, updatePosition, type Greeks, type Position, type RollCandidate, type UnrealizedPnlResult } from "../api/positions";
+import { fetchRollCandidate, type Greeks, type Position, type RollCandidate, type UnrealizedPnlResult } from "../api/positions";
 import type { RollStructure, TradeAlert } from "../api/tradeAlerts";
 import { computePayoff } from "../lib/payoff";
 import {
+  daysAgo,
   formatCurrency,
   formatCurrencyTrimmed,
   formatDate,
+  formatDateTime,
+  formatDaysAgo,
   formatExpiryWithDte,
   formatNumber,
   formatPercentageValue,
   formatSignedPnl,
   pnlBadgeClass,
   pnlTextClass,
+  todayInEasternIso,
 } from "../lib/formatters";
 import {
   positionHasOptionLeg,
@@ -38,6 +42,8 @@ interface PositionCardProps {
   greeksFetchFailed: boolean;
   unrealizedPnlByPositionId: Record<string, UnrealizedPnlResult>;
   unrealizedPnlFetchFailed: boolean;
+  /** Last-known total account value, for EXP% — see PositionsPage's own prop of the same name. */
+  totalAccountValue: number | null;
   currentPrice: number | null;
   /** This position's pending roll alert, if any — drives the roll-alert banner and the enhanced Roll button on its leg. */
   rollAlert?: TradeAlert & { suggestedStructure: RollStructure };
@@ -71,6 +77,7 @@ export function PositionCard({
   greeksFetchFailed,
   unrealizedPnlByPositionId,
   unrealizedPnlFetchFailed,
+  totalAccountValue,
   currentPrice,
   rollAlert,
   onChanged,
@@ -78,12 +85,6 @@ export function PositionCard({
 }: PositionCardProps) {
   const { theme } = useTheme();
   const annotationColors = annotationColorsByTheme[theme];
-
-  const [notesDraft, setNotesDraft] = useState(position.notes ?? "");
-  const [priceTargetDraft, setPriceTargetDraft] = useState(position.priceTarget ?? "");
-  const [closeTriggerDraft, setCloseTriggerDraft] = useState(position.closeTriggerNotes ?? "");
-  const [savingFields, setSavingFields] = useState(false);
-  const [saveError, setSaveError] = useState<string | null>(null);
 
   const [showClose, setShowClose] = useState(false);
   const [showRecoveryPath, setShowRecoveryPath] = useState(false);
@@ -109,23 +110,6 @@ export function PositionCard({
     () => (position.strategyKey !== "unstructured" ? computePayoff(position.strategyKey, position.legs) : null),
     [position],
   );
-
-  async function handleSaveFields() {
-    setSavingFields(true);
-    setSaveError(null);
-    try {
-      await updatePosition(position.id, {
-        notes: notesDraft.trim() || null,
-        priceTarget: priceTargetDraft ? Number(priceTargetDraft) : null,
-        closeTriggerNotes: closeTriggerDraft.trim() || null,
-      });
-      onChanged();
-    } catch (err) {
-      setSaveError(err instanceof ApiError ? err.message : "Failed to save.");
-    } finally {
-      setSavingFields(false);
-    }
-  }
 
   async function handleRollClick(legId: string) {
     setRollingLegId(legId);
@@ -207,6 +191,29 @@ export function PositionCard({
               </span>
             );
           })()}
+        {position.capitalAtRisk !== null && (
+          <span className="small" title="Capital committed to this position — stock cost for covered calls, strike collateral for cash-secured puts">
+            <span className="text-muted">EXP $:</span> {formatCurrency(Number(position.capitalAtRisk), 0)}
+          </span>
+        )}
+        {position.capitalAtRisk !== null && totalAccountValue !== null && (
+          <span className="small" title="This position's capital as a share of total account value (positions + cash)">
+            <span className="text-muted">EXP %:</span> {formatPercentageValue((Number(position.capitalAtRisk) / totalAccountValue) * 100, 1)}
+          </span>
+        )}
+        {position.capitalAtRisk !== null &&
+          (() => {
+            const pnl = positionTotalPnl(position, unrealizedPnlByPositionId);
+            if (pnl === "loading" || pnl === null) return null;
+            return (
+              <span className="small" title="Market value — capital committed to this position plus its unrealized P&L">
+                <span className="text-muted">MV:</span> {formatCurrency(Number(position.capitalAtRisk) + pnl, 0)}
+              </span>
+            );
+          })()}
+        <span className="small" title={formatDateTime(position.openedAt)}>
+          <span className="text-muted">Opened:</span> {formatDaysAgo(daysAgo(position.openedAt))}
+        </span>
       </div>
       {rollAlert && (
         <div className="alert alert-warning d-flex flex-wrap align-items-center justify-content-between gap-2">
@@ -230,6 +237,9 @@ export function PositionCard({
                 <th>Expiry</th>
                 <th className="text-end">Entry</th>
                 <th className="text-end">Delta</th>
+                <th className="text-end" title="Rate of change of delta per $1 move in the underlying — higher gamma means delta (and assignment risk) can shift faster">
+                  Gamma
+                </th>
                 <th className="text-end">Exit</th>
                 <th></th>
               </tr>
@@ -244,7 +254,7 @@ export function PositionCard({
                     <td>{leg.side}</td>
                     <td className="text-end">{leg.quantity}</td>
                     <td className="text-end">{leg.strikePrice ? formatCurrencyTrimmed(Number(leg.strikePrice)) : "—"}</td>
-                    <td>{formatExpiryWithDte(leg.expiryDate, position.status === "closed" ? position.openedAt : undefined)}</td>
+                    <td>{formatExpiryWithDte(leg.expiryDate, position.status === "closed" ? position.openedAt : todayInEasternIso())}</td>
                     <td className="text-end">{formatCurrency(Number(leg.entryPrice))}</td>
                     <td className="text-end">
                       {leg.legType === "option" ? (
@@ -261,12 +271,27 @@ export function PositionCard({
                         "—"
                       )}
                     </td>
+                    <td className="text-end">
+                      {leg.legType === "option" ? (
+                        leg.id in greeksByLegId ? (
+                          formatNumber(greeksByLegId[leg.id].gamma, 3)
+                        ) : greeksFetchFailed ? (
+                          <span className="text-muted" title="Failed to load gamma">
+                            —
+                          </span>
+                        ) : (
+                          "—"
+                        )
+                      ) : (
+                        "—"
+                      )}
+                    </td>
                     <td className="text-end">{leg.exitAt ? formatCurrency(Number(leg.exitPrice)) : "—"}</td>
                     <td className="text-end">
                       {rollEligible && legRollAlert && (
                         <button
                           type="button"
-                          className="btn btn-sm btn-warning"
+                          className="btn btn-sm btn-outline-warning"
                           title={legRollAlert.rationale ?? "Roll alert pending"}
                           onClick={() => setSelectedRollAlert(legRollAlert)}
                         >
@@ -358,40 +383,6 @@ export function PositionCard({
                 stroke: { curve: "straight", width: 2 },
               }}
             />
-          </div>
-        )}
-
-        {/* Price Target/Close Trigger Notes/Notes are for a position being
-            actively managed toward a plan — an unstructured position is
-            leftover stock nobody chose to hold, so those fields are just
-            noise here; the relevant actions are Sell Call and Close. */}
-        {!isUnstructured && (
-          <div className="mb-3">
-            {saveError && <div className="alert alert-danger">{saveError}</div>}
-            <div className="row g-3">
-              <div className="col-12 col-sm-6 col-md-3">
-                <label className="form-label" style={{ fontSize: "0.8rem" }}>
-                  Price Target
-                </label>
-                <input type="number" step="0.01" className="form-control" value={priceTargetDraft} onChange={(event) => setPriceTargetDraft(event.target.value)} />
-              </div>
-              <div className="col-12 col-md-6">
-                <label className="form-label" style={{ fontSize: "0.8rem" }}>
-                  Close Trigger Notes
-                </label>
-                <input type="text" className="form-control" value={closeTriggerDraft} onChange={(event) => setCloseTriggerDraft(event.target.value)} />
-              </div>
-              <div className="col-12">
-                <label className="form-label" style={{ fontSize: "0.8rem" }}>
-                  Notes
-                </label>
-                <input type="text" className="form-control" value={notesDraft} onChange={(event) => setNotesDraft(event.target.value)} />
-              </div>
-            </div>
-            <button type="button" className="btn btn-outline-primary mt-3 d-inline-flex align-items-center gap-1" disabled={savingFields} onClick={handleSaveFields}>
-              {savingFields && <Spinner size="sm" />}
-              Save
-            </button>
           </div>
         )}
 

@@ -36,9 +36,6 @@ export interface Position {
   status: PositionStatus;
   openedAt: string;
   closedAt: string | null;
-  notes: string | null;
-  priceTarget: string | null;
-  closeTriggerNotes: string | null;
   closeReason: string | null;
   unstructuredReason: string | null;
   tickerId: string;
@@ -183,24 +180,12 @@ export interface OpenOrderInput {
   strategyKey: StrategyKey;
   stock?: { quantity: number; limitPrice: number };
   option: { quantity: number; limitPrice: number; strikePrice: number; expiryDate: string };
-  notes?: string;
-  priceTarget?: number;
   /** Links this order back to the Trade Alert it was created from, if any — see tradeAlerts.ts. */
   sourceAlertId?: string;
 }
 
 export function buildOpenOrder(input: OpenOrderInput): Promise<OrderRequest> {
   return apiRequest<OrderRequest>("/positions/orders", { method: "POST", body: JSON.stringify(input) });
-}
-
-export interface PositionPatch {
-  notes?: string | null;
-  priceTarget?: number | null;
-  closeTriggerNotes?: string | null;
-}
-
-export function updatePosition(id: string, patch: PositionPatch): Promise<Position> {
-  return apiRequest<Position>(`/positions/${id}`, { method: "PATCH", body: JSON.stringify(patch) });
 }
 
 export interface LegCloseInput {

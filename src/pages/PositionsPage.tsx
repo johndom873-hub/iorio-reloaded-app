@@ -402,19 +402,6 @@ export function PositionsPage() {
       },
     },
     {
-      key: "notes",
-      header: "Notes",
-      render: (row) => (
-        <button
-          type="button"
-          className="btn btn-link px-2 py-1 text-decoration-none text-body text-start"
-          onClick={() => openTickerDetail({ symbol: row.symbol, focusPositionId: row.id })}
-        >
-          {row.notes ?? "—"}
-        </button>
-      ),
-    },
-    {
       key: "actions",
       header: "",
       align: "right",
@@ -459,7 +446,7 @@ export function PositionsPage() {
               {alert && (
                 <button
                   type="button"
-                  className="btn btn-sm btn-warning"
+                  className="btn btn-sm btn-outline-warning"
                   title={alert.rationale ?? "Roll alert pending for this position"}
                   onClick={() => setRollAlert(alert)}
                 >
