@@ -2,18 +2,69 @@ import { useCallback, useEffect, useState } from "react";
 import { PageHeader } from "../components/layout/PageHeader";
 import { DataTable, type DataTableColumn } from "../components/DataTable/DataTable";
 import { Spinner } from "../components/Spinner";
+import { FlashingNumber } from "../components/FlashingNumber";
+import { TickColoredPrice } from "../components/TickColoredPrice";
 import { TickerDetailModal } from "../components/TickerDetailModal";
 import { ApiError } from "../api/client";
-import { fetchCurrentPrices, fetchPricePerformance, type PricePerformanceRow } from "../api/pricePerformance";
-import { formatCurrency, formatDate, pnlBadgeClass, pnlTextClass } from "../lib/formatters";
+import {
+  fetchPricePerformance,
+  fetchPricePerformanceTrends,
+  openPricePerformanceStream,
+  type MacdSignal,
+  type MaTrend,
+  type PricePerformanceLiveRow,
+  type PricePerformanceRow,
+  type PricePerformanceTrend,
+} from "../api/pricePerformance";
+import { formatCurrency, formatNumber, formatPercentage, formatPercentageValue, pnlBadgeClass } from "../lib/formatters";
 import { useTickerDetailSymbol } from "../hooks/useTickerDetailSymbol";
 
+// Flashes on every live-streamed update, same mechanism as Positions'
+// P&L/Greeks columns — see FlashingNumber's own comment for why it's a
+// component (not a bare useFlashOnChange call) here in a DataTable render().
 function ChangeBadge({ value }: { value: number | null }) {
   if (value === null) return <span className="text-muted">—</span>;
   return (
-    <span className={`badge ${pnlBadgeClass(value)}`}>
+    <FlashingNumber value={value} precision={2} className={`badge ${pnlBadgeClass(value)}`}>
       {value > 0 ? "+" : ""}
       {value.toFixed(2)}%
+    </FlashingNumber>
+  );
+}
+
+const macdBadgeClass: Record<MacdSignal, string> = {
+  Bullish: "badge-change-pos",
+  Bearish: "badge-change-neg",
+  Neutral: "badge-change-flat",
+};
+
+function MacdTrendBadge({ trend, loading }: { trend: MacdSignal | null | undefined; loading: boolean }) {
+  if (trend === undefined) return loading ? <Spinner size="sm" label="Loading MACD trend" /> : <span className="text-muted">—</span>;
+  if (trend === null) return <span className="text-muted">—</span>;
+  return (
+    <span className={`badge ${macdBadgeClass[trend]}`} style={{ fontSize: "0.72rem" }} title="EMA12/EMA26 MACD line vs. its 9-period signal line">
+      {trend}
+    </span>
+  );
+}
+
+const maTrendBadgeClass: Record<MaTrend, string> = {
+  uptrend: "badge-change-pos",
+  downtrend: "badge-change-neg",
+  mixed: "badge-change-flat",
+};
+const maTrendBadgeLabel: Record<MaTrend, string> = {
+  uptrend: "Uptrend",
+  downtrend: "Downtrend",
+  mixed: "Mixed",
+};
+
+function MaTrendBadge({ trend, loading }: { trend: MaTrend | null | undefined; loading: boolean }) {
+  if (trend === undefined) return loading ? <Spinner size="sm" label="Loading MA trend" /> : <span className="text-muted">—</span>;
+  if (trend === null) return <span className="text-muted">—</span>;
+  return (
+    <span className={`badge ${maTrendBadgeClass[trend]} text-nowrap`} style={{ fontSize: "0.72rem" }} title="Spot vs. 25-day and 99-day moving averages">
+      {maTrendBadgeLabel[trend]}
     </span>
   );
 }
@@ -25,9 +76,15 @@ export function PricePerformancePage() {
   const [detailSymbol, setDetailSymbol] = useTickerDetailSymbol();
   // Loaded separately from `rows` (undefined = still loading) so the table
   // itself keeps rendering instantly from stored daily bars while the live
-  // snapshot price fills in asynchronously — see fetchCurrentPrices.
-  const [currentPriceBySymbol, setCurrentPriceBySymbol] = useState<Record<string, number | null>>({});
-  const [currentPriceFetchFailed, setCurrentPriceFetchFailed] = useState(false);
+  // stream fills in current price + recomputed % changes — see
+  // openPricePerformanceStream.
+  const [liveBySymbol, setLiveBySymbol] = useState<Record<string, PricePerformanceLiveRow>>({});
+  const [liveStreamFailed, setLiveStreamFailed] = useState(false);
+  // Same "loaded separately, undefined = still loading" pattern as
+  // liveBySymbol above — MACD/MA trend can fall through to a live
+  // IBKR call, so it fills in after the table's already showing.
+  const [trendBySymbol, setTrendBySymbol] = useState<Record<string, PricePerformanceTrend>>({});
+  const [trendFetchFailed, setTrendFetchFailed] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -44,10 +101,22 @@ export function PricePerformancePage() {
   }, [load]);
 
   useEffect(() => {
-    setCurrentPriceFetchFailed(false);
-    fetchCurrentPrices()
-      .then(setCurrentPriceBySymbol)
-      .catch(() => setCurrentPriceFetchFailed(true));
+    if (rows.length === 0) return;
+    setLiveStreamFailed(false);
+    return openPricePerformanceStream(
+      (result) => {
+        setLiveStreamFailed(false);
+        setLiveBySymbol(result);
+      },
+      () => setLiveStreamFailed(true),
+    );
+  }, [rows]);
+
+  useEffect(() => {
+    setTrendFetchFailed(false);
+    fetchPricePerformanceTrends()
+      .then(setTrendBySymbol)
+      .catch(() => setTrendFetchFailed(true));
   }, [rows]);
 
   const columns: DataTableColumn<PricePerformanceRow>[] = [
@@ -75,11 +144,12 @@ export function PricePerformancePage() {
     {
       key: "currentPrice",
       header: "Current",
-      headerTitle: "Live snapshot price — blank when markets are closed or a live quote isn't available right now",
+      headerTitle: "Live streamed price — blank when markets are closed or a live quote isn't available right now",
       align: "right",
       render: (row) => {
-        if (!(row.symbol in currentPriceBySymbol)) {
-          if (currentPriceFetchFailed) {
+        const live = liveBySymbol[row.symbol];
+        if (!live) {
+          if (liveStreamFailed) {
             return (
               <span className="text-muted" title="Failed to load live prices">
                 —
@@ -88,65 +158,115 @@ export function PricePerformancePage() {
           }
           return <Spinner size="sm" label="Loading current price" />;
         }
-        const currentPrice = currentPriceBySymbol[row.symbol];
-        if (currentPrice === null)
+        if (live.currentPrice === null)
           return (
             <span className="text-muted" title="Live price unavailable right now (outside market hours or IBKR pacing)">
               —
             </span>
           );
-        const vsClose = row.latestClose == null ? null : currentPrice - Number(row.latestClose);
-        return <span className={vsClose === null ? "" : pnlTextClass(vsClose)}>{formatCurrency(currentPrice)}</span>;
+        return (
+          <TickColoredPrice
+            value={live.currentPrice}
+            initialReference={row.latestClose == null ? null : Number(row.latestClose)}
+            precision={2}
+            title="Colored vs. the previous tick, not the last daily close"
+          >
+            {formatCurrency(live.currentPrice)}
+          </TickColoredPrice>
+        );
       },
     },
-    { key: "change24h", header: "24hr", headerTitle: "vs. 1 trading day back", align: "right", render: (row) => <ChangeBadge value={row.change24h} /> },
-    { key: "change48h", header: "48hr", headerTitle: "vs. 2 trading days back", align: "right", render: (row) => <ChangeBadge value={row.change48h} /> },
-    { key: "change72h", header: "72hr", headerTitle: "vs. 3 trading days back", align: "right", render: (row) => <ChangeBadge value={row.change72h} /> },
-    { key: "change1w", header: "1W", headerTitle: "vs. ~7 calendar days back", align: "right", render: (row) => <ChangeBadge value={row.change1w} /> },
-    { key: "change1m", header: "1M", headerTitle: "vs. ~30 calendar days back", align: "right", render: (row) => <ChangeBadge value={row.change1m} /> },
     {
-      key: "dailyHigh",
-      header: "1D HI",
-      headerTitle: "Daily High",
+      key: "change24h",
+      header: "24hr",
+      headerTitle: "vs. 1 trading day back — live once the price stream connects",
       align: "right",
-      render: (row) => formatCurrency(row.dailyHigh == null ? null : Number(row.dailyHigh)),
+      render: (row) => <ChangeBadge value={liveBySymbol[row.symbol]?.change24h ?? row.change24h} />,
     },
     {
-      key: "dailyLow",
-      header: "1D LO",
-      headerTitle: "Daily Low",
+      key: "change48h",
+      header: "48hr",
+      headerTitle: "vs. 2 trading days back — live once the price stream connects",
       align: "right",
-      render: (row) => formatCurrency(row.dailyLow == null ? null : Number(row.dailyLow)),
+      render: (row) => <ChangeBadge value={liveBySymbol[row.symbol]?.change48h ?? row.change48h} />,
     },
     {
-      key: "weeklyHigh",
-      header: "1W HI",
-      headerTitle: "Weekly High — rolling 7 calendar days",
+      key: "change72h",
+      header: "72hr",
+      headerTitle: "vs. 3 trading days back — live once the price stream connects",
       align: "right",
-      render: (row) => formatCurrency(row.weeklyHigh == null ? null : Number(row.weeklyHigh)),
+      render: (row) => <ChangeBadge value={liveBySymbol[row.symbol]?.change72h ?? row.change72h} />,
     },
     {
-      key: "weeklyLow",
-      header: "1W LO",
-      headerTitle: "Weekly Low — rolling 7 calendar days",
+      key: "change1w",
+      header: "1W",
+      headerTitle: "vs. ~7 calendar days back — live once the price stream connects",
       align: "right",
-      render: (row) => formatCurrency(row.weeklyLow == null ? null : Number(row.weeklyLow)),
+      render: (row) => <ChangeBadge value={liveBySymbol[row.symbol]?.change1w ?? row.change1w} />,
     },
     {
-      key: "monthlyHigh",
-      header: "1M HI",
-      headerTitle: "Monthly High — rolling 30 calendar days",
+      key: "change1m",
+      header: "1M",
+      headerTitle: "vs. ~30 calendar days back — live once the price stream connects",
       align: "right",
-      render: (row) => formatCurrency(row.monthlyHigh == null ? null : Number(row.monthlyHigh)),
+      render: (row) => <ChangeBadge value={liveBySymbol[row.symbol]?.change1m ?? row.change1m} />,
     },
     {
-      key: "monthlyLow",
-      header: "1M LO",
-      headerTitle: "Monthly Low — rolling 30 calendar days",
+      key: "macdTrend",
+      header: "MACD Trend",
+      headerTitle: "EMA12/EMA26 MACD line vs. its 9-period signal line",
       align: "right",
-      render: (row) => formatCurrency(row.monthlyLow == null ? null : Number(row.monthlyLow)),
+      render: (row) => <MacdTrendBadge trend={trendBySymbol[row.symbol]?.macdTrend} loading={!trendFetchFailed} />,
     },
-    { key: "latestDate", header: "As Of", render: (row) => formatDate(row.latestDate) },
+    {
+      key: "maTrend",
+      header: "MA Trend",
+      headerTitle: "Spot vs. 25-day and 99-day moving averages",
+      align: "right",
+      render: (row) => <MaTrendBadge trend={trendBySymbol[row.symbol]?.maTrend} loading={!trendFetchFailed} />,
+    },
+    {
+      key: "impliedVolatility",
+      header: "IV %",
+      headerTitle: "Implied Volatility",
+      align: "right",
+      render: (row) => formatPercentage(row.impliedVolatility === null ? null : Number(row.impliedVolatility)),
+    },
+    {
+      key: "ivRank",
+      header: "IV Rank",
+      headerTitle: "(today's IV − 1yr low) / (1yr high − 1yr low) × 100 — skewed by a single outlier day",
+      align: "right",
+      render: (row) =>
+        row.ivRank === null ? (
+          "—"
+        ) : (
+          <span>
+            {formatPercentageValue(row.ivRank)} <span className="text-muted small">({row.ivWindowDays}d)</span>
+          </span>
+        ),
+    },
+    {
+      key: "ivPercentile",
+      header: "IV %ile",
+      headerTitle: "% of the last 1yr of trading days whose IV closed below today's",
+      align: "right",
+      render: (row) =>
+        row.ivPercentile === null ? (
+          "—"
+        ) : (
+          <span>
+            {formatPercentageValue(row.ivPercentile)} <span className="text-muted small">({row.ivWindowDays}d)</span>
+          </span>
+        ),
+    },
+    {
+      key: "avgOptionVolume",
+      header: "Avg Vol",
+      headerTitle: "Average Option Volume",
+      align: "right",
+      render: (row) => formatNumber(row.avgOptionVolume),
+    },
   ];
 
   return (
