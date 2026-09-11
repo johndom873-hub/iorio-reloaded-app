@@ -361,7 +361,19 @@ export function openGreeksStream(legIds: string[], onUpdate: (result: Record<str
     }
   };
 
+  // Close instead of letting EventSource auto-reconnect (unlike
+  // openNotificationStream, which deliberately leaves that on) — each
+  // reconnect here re-opens a brand-new one-shot IBKR Gateway connection
+  // server-side (see streamLiveGreeks.ts), so under sustained IBKR/Gateway
+  // trouble this would otherwise keep piling on more concurrent connection
+  // attempts forever instead of failing once. Found 2026-09-11: opening
+  // Ticker Detail (which already holds several of its own one-shot
+  // connections — chart/chain/technicals/overview) on top of the Positions
+  // table's own greeks/pnl streams could leave IBKR/the SSH tunnel
+  // saturated, and this stream would retry into that pile-up indefinitely
+  // rather than ever settling into a visible "failed to load" state.
   source.onerror = () => {
+    source.close();
     onError?.();
   };
 
@@ -420,11 +432,13 @@ export function openUnrealizedPnlStream(
     }
   };
 
-  // EventSource auto-reconnects on its own after a drop; onError just lets
-  // the caller flag it in the meantime (e.g. swap a spinner for "failed to
-  // load" rather than spinning forever), same as the old one-shot fetch's
-  // .catch used to.
+  // Close instead of letting EventSource auto-reconnect — see
+  // openGreeksStream's matching comment above for why (each retry opens a
+  // fresh one-shot IBKR connection server-side; letting that retry forever
+  // under sustained trouble was found 2026-09-11 to leave this spinning
+  // indefinitely instead of ever showing "failed to load").
   source.onerror = () => {
+    source.close();
     onError?.();
   };
 

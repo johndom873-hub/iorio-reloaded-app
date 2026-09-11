@@ -139,17 +139,28 @@ export function BackgroundJobsProvider({ children }: { children: ReactNode }) {
       dismissed: false,
     });
 
+    // The backend fires one strategyStart event per configured strategy,
+    // back-to-back, before any per-ticker scanning begins (it evaluates
+    // every configured strategy together for each ticker, not as separate
+    // sequential phases) — so if this only showed the latest event's label,
+    // whichever strategy fires last (cash_secured_put) would silently
+    // clobber the first before the user ever saw it. Accumulate every
+    // label seen this run instead, so the toast reflects everything
+    // actually being scanned.
+    const strategyLabelsSeen: string[] = [];
+
     openTradeAlertRunStream((event) => {
       emitJobEvent(tradeAlertScanJobId, event);
 
       if (event.type === "strategyStart") {
         const label = event.strategyKey === "covered_call" ? "Covered Calls" : "Cash-Secured Puts";
+        if (!strategyLabelsSeen.includes(label)) strategyLabelsSeen.push(label);
         upsertJob({
           id: tradeAlertScanJobId,
           kind: "trade-alert-scan",
           label: "Trade Alert Scan",
           status: "running",
-          message: `Scanning ${event.tickerCount} shortlisted ticker(s) for ${label}...`,
+          message: `Scanning ${event.tickerCount} shortlisted ticker(s) for ${strategyLabelsSeen.join(" and ")}...`,
           dismissed: false,
         });
       } else if (event.type === "ticker") {
