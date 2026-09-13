@@ -191,6 +191,10 @@ export function AppLayout() {
           <h1 className="navbar-brand mb-0">
             <BrandMark />
           </h1>
+          <a href="/pulse" target="_blank" rel="noopener noreferrer" className="iorio-pulse-nav-link">
+            <span className="iorio-pulse-dot" aria-hidden="true" />
+            IORIO Pulse
+          </a>
           <div className="ms-auto d-flex align-items-center gap-3">
             <button
               type="button"

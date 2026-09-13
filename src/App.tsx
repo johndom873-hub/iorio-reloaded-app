@@ -14,6 +14,7 @@ import { TradeBlotterPage } from "./pages/TradeBlotterPage";
 import { RiskLimitsPage } from "./pages/RiskLimitsPage";
 import { SystemHealthPage } from "./pages/SystemHealthPage";
 import { CalendarEventsPage } from "./pages/CalendarEventsPage";
+import { PulsePage } from "./pages/PulsePage";
 
 function App() {
   return (
@@ -24,6 +25,10 @@ function App() {
             <Routes>
               <Route path="/login" element={<LoginPage />} />
               <Route element={<ProtectedRoute />}>
+                {/* Full-bleed, chromeless — deliberately a sibling of the
+                    AppLayout-wrapped block below, not nested in it, so it
+                    still gets auth-gating without the sidebar/topbar. */}
+                <Route path="/pulse" element={<PulsePage />} />
                 <Route element={<AppLayout />}>
                   <Route path="/" element={<DashboardPage />} />
                   <Route path="/positions" element={<PositionsPage />} />

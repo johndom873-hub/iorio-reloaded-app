@@ -1,0 +1,825 @@
+/*
+ * Iorio Pulse — a deliberately atypical, single-screen, force-dark ops
+ * dashboard, exempted from the app's normal Tabler/Bootstrap conventions
+ * per the approved mockup design. Every selector is scoped under
+ * .iorio-pulse-page (the page's root element) so Tabler's global styles
+ * (imported app-wide in main.tsx, and still active on this route even
+ * though it skips AppLayout) don't bleed in, and so nothing here leaks
+ * into other pages. Ported from the approved mission-control.html mockup —
+ * see PulsePage.tsx for how each static value there became a real data
+ * binding.
+ */
+
+.iorio-pulse-page {
+  --bg-canvas: #0b0f17;
+  --bg-surface: #121826;
+  --bg-surface-raised: #1a2233;
+  --border: #242e42;
+  --border-strong: #37455e;
+  --accent: #0ea5e9;
+  --accent-glow: #7dd3fc;
+  --accent-dim: rgba(14, 165, 233, 0.4);
+  --success: #34d399;
+  --danger: #f0554f;
+  --warning: #f5a524;
+  --ibkr-red: #a6192e;
+  --text-primary: #f1f5f9;
+  --text-secondary: #a9b7cc;
+  --text-muted: #65738b;
+  --font-display: "IBM Plex Sans", -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  position: fixed;
+  inset: 0;
+  background:
+    radial-gradient(ellipse 1000px 560px at 50% 40%, rgba(14, 165, 233, 0.055), transparent 68%),
+    var(--bg-canvas);
+  color: var(--text-primary);
+  font-family: var(--font-display);
+  font-size: 14px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  padding: 0.85rem 1.1rem 0.9rem;
+  gap: 0.6rem;
+  z-index: 1000;
+}
+.iorio-pulse-page * {
+  box-sizing: border-box;
+}
+.iorio-pulse-page a {
+  color: inherit;
+}
+
+/* ---------- header ---------- */
+.iorio-pulse-page .pulse-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-shrink: 0;
+}
+.iorio-pulse-page .pulse-header-left {
+  display: flex;
+  align-items: baseline;
+  gap: 0.6rem;
+}
+.iorio-pulse-page .brand-eyebrow {
+  font-family: var(--font-mono);
+  font-size: 0.65rem;
+  letter-spacing: 0.13em;
+  color: var(--text-muted);
+  text-transform: uppercase;
+}
+.iorio-pulse-page .brand-title {
+  font-size: 1.12rem;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+}
+.iorio-pulse-page .brand-title .dot {
+  color: var(--accent);
+}
+.iorio-pulse-page .pulse-header-right {
+  display: flex;
+  align-items: center;
+  gap: 0.8rem;
+}
+.iorio-pulse-page .status-pill {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: 100px;
+  padding: 0.3rem 0.72rem;
+  font-family: var(--font-mono);
+  font-size: 0.66rem;
+  color: var(--text-secondary);
+  letter-spacing: 0.03em;
+}
+.iorio-pulse-page .led {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--success);
+  box-shadow: 0 0 7px 1px var(--success);
+  animation: pulse-led 2.4s ease-in-out infinite;
+}
+.iorio-pulse-page .led.led-off {
+  background: var(--text-muted);
+  box-shadow: none;
+  animation: none;
+}
+@keyframes pulse-led {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.4;
+  }
+}
+.iorio-pulse-page .clock {
+  font-family: var(--font-mono);
+  font-size: 0.76rem;
+  color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+  min-width: 6em;
+  text-align: right;
+}
+
+/* ---------- KPI strip ---------- */
+.iorio-pulse-page .kpi-strip {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 0.55rem;
+  flex-shrink: 0;
+}
+.iorio-pulse-page .kpi-tile {
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  padding: 0.46rem 0.8rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.16rem;
+  min-width: 0;
+}
+.iorio-pulse-page .kpi-label {
+  font-size: 0.62rem;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--text-muted);
+  font-weight: 600;
+}
+.iorio-pulse-page .kpi-value-row {
+  display: flex;
+  align-items: baseline;
+  gap: 0.42rem;
+  min-width: 0;
+}
+.iorio-pulse-page .kpi-value {
+  font-family: var(--font-mono);
+  font-size: 1.15rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.iorio-pulse-page .kpi-delta {
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  font-weight: 500;
+  white-space: nowrap;
+}
+.iorio-pulse-page .kpi-delta.up {
+  color: var(--success);
+}
+.iorio-pulse-page .kpi-delta.down {
+  color: var(--danger);
+}
+.iorio-pulse-page .flash-changed {
+  animation: pulse-flash 1200ms ease-out;
+}
+@keyframes pulse-flash {
+  0% {
+    text-shadow: 0 0 8px currentColor;
+  }
+  100% {
+    text-shadow: none;
+  }
+}
+.iorio-pulse-page .alloc-bar {
+  display: flex;
+  height: 15px;
+  border-radius: 5px;
+  overflow: visible;
+  margin-top: 0.4rem;
+}
+.iorio-pulse-page .alloc-seg {
+  height: 100%;
+  display: block;
+  position: relative;
+  overflow: visible;
+}
+.iorio-pulse-page .alloc-seg:first-child {
+  border-top-left-radius: 5px;
+  border-bottom-left-radius: 5px;
+}
+.iorio-pulse-page .alloc-seg:last-child {
+  border-top-right-radius: 5px;
+  border-bottom-right-radius: 5px;
+}
+.iorio-pulse-page .alloc-seg::after {
+  content: attr(data-label);
+  position: absolute;
+  bottom: calc(100% + 7px);
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--bg-surface-raised);
+  border: 1px solid var(--border-strong);
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+  font-size: 0.62rem;
+  padding: 0.22rem 0.55rem;
+  border-radius: 5px;
+  white-space: nowrap;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.15s ease;
+  z-index: 20;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.45);
+}
+.iorio-pulse-page .alloc-seg:hover::after {
+  opacity: 1;
+}
+
+/* ---------- main grid ---------- */
+.iorio-pulse-page .main-grid {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: 292px 1fr 292px;
+  gap: 0.6rem;
+}
+.iorio-pulse-page .rail {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  min-height: 0;
+}
+.iorio-pulse-page .panel {
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 0.5rem 0.68rem 0.36rem;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+  flex: 1;
+}
+.iorio-pulse-page .panel-title {
+  font-size: 0.65rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  margin-bottom: 0.4rem;
+  flex-shrink: 0;
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.4rem;
+}
+.iorio-pulse-page .panel-title .count {
+  font-family: var(--font-mono);
+  color: var(--text-secondary);
+  text-transform: none;
+  letter-spacing: 0;
+  font-weight: 600;
+}
+.iorio-pulse-page .panel-subtitle {
+  font-size: 0.58rem;
+  color: var(--text-muted);
+  text-transform: none;
+  letter-spacing: 0.02em;
+  font-weight: 500;
+}
+
+/* positions table */
+.iorio-pulse-page .pos-head,
+.iorio-pulse-page .pos-row {
+  display: grid;
+  grid-template-columns: 2.3rem 2.2rem 1.5rem 3rem 2.2rem 1fr;
+  column-gap: 0.3rem;
+  align-items: center;
+}
+.iorio-pulse-page .pos-head {
+  font-size: 0.57rem;
+  color: var(--text-muted);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  padding-bottom: 0.28rem;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 0.1rem;
+}
+.iorio-pulse-page .pos-row {
+  font-size: 0.69rem;
+  padding: 0.2rem 0;
+  border-bottom: 1px dashed var(--border);
+}
+.iorio-pulse-page .pos-row:last-child {
+  border-bottom: none;
+}
+.iorio-pulse-page .pos-sym {
+  font-weight: 600;
+  font-family: var(--font-mono);
+}
+.iorio-pulse-page .strat-badge {
+  font-family: var(--font-mono);
+  font-size: 0.57rem;
+  font-weight: 600;
+  padding: 0.03rem 0.26rem;
+  border-radius: 4px;
+  width: fit-content;
+  letter-spacing: 0.02em;
+}
+.iorio-pulse-page .strat-badge.cc {
+  background: rgba(14, 165, 233, 0.14);
+  color: var(--accent-glow);
+}
+.iorio-pulse-page .strat-badge.csp {
+  background: rgba(245, 165, 36, 0.14);
+  color: var(--warning);
+}
+.iorio-pulse-page .pos-num,
+.iorio-pulse-page .pos-exp {
+  font-family: var(--font-mono);
+  color: var(--text-secondary);
+  text-align: right;
+}
+.iorio-pulse-page .pos-pct {
+  font-family: var(--font-mono);
+  color: var(--text-muted);
+  text-align: right;
+  font-size: 0.62rem;
+}
+.iorio-pulse-page .pos-pnl {
+  font-family: var(--font-mono);
+  font-weight: 600;
+  text-align: right;
+}
+.iorio-pulse-page .pos-pnl.pos {
+  color: var(--success);
+}
+.iorio-pulse-page .pos-pnl.neg {
+  color: var(--danger);
+}
+
+/* top alerts by yield */
+.iorio-pulse-page .yield-head,
+.iorio-pulse-page .yield-row {
+  display: grid;
+  grid-template-columns: 2.7rem 2.4rem 1fr 3.1rem;
+  column-gap: 0.4rem;
+  align-items: center;
+}
+.iorio-pulse-page .yield-head {
+  font-size: 0.58rem;
+  color: var(--text-muted);
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  padding-bottom: 0.28rem;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 0.1rem;
+}
+.iorio-pulse-page .yield-row {
+  font-size: 0.71rem;
+  padding: 0.22rem 0;
+  border-bottom: 1px dashed var(--border);
+}
+.iorio-pulse-page .yield-row:last-child {
+  border-bottom: none;
+}
+.iorio-pulse-page .yield-sym {
+  font-weight: 600;
+  font-family: var(--font-mono);
+}
+.iorio-pulse-page .yield-strike {
+  font-family: var(--font-mono);
+  color: var(--text-secondary);
+  font-size: 0.64rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.iorio-pulse-page .yield-pct {
+  font-family: var(--font-mono);
+  font-weight: 700;
+  text-align: right;
+  color: var(--success);
+}
+.iorio-pulse-page .panel-empty {
+  color: var(--text-muted);
+  font-size: 0.72rem;
+  padding: 0.4rem 0;
+}
+
+/* trades */
+.iorio-pulse-page .fill-row {
+  display: flex;
+  gap: 0.5rem;
+  padding: 0.24rem 0;
+  border-bottom: 1px dashed var(--border);
+  font-size: 0.7rem;
+  align-items: baseline;
+}
+.iorio-pulse-page .fill-row:last-child {
+  border-bottom: none;
+}
+.iorio-pulse-page .fill-time {
+  font-family: var(--font-mono);
+  color: var(--text-muted);
+  flex-shrink: 0;
+  font-size: 0.64rem;
+}
+.iorio-pulse-page .fill-desc {
+  flex: 1;
+  color: var(--text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.iorio-pulse-page .fill-desc b {
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+/* events */
+.iorio-pulse-page .events-list {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.iorio-pulse-page .event-row {
+  display: flex;
+  align-items: baseline;
+  gap: 0.45rem;
+  padding: 0.22rem 0;
+  border-bottom: 1px dashed var(--border);
+  font-size: 0.69rem;
+  opacity: 1;
+  transform: translateY(0);
+  transition: opacity 0.5s ease, transform 0.5s ease;
+}
+.iorio-pulse-page .event-row:last-child {
+  border-bottom: none;
+}
+.iorio-pulse-page .event-row.event-new {
+  opacity: 0;
+  transform: translateY(-5px);
+}
+.iorio-pulse-page .event-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  margin-top: 0.3rem;
+}
+.iorio-pulse-page .event-time {
+  font-family: var(--font-mono);
+  color: var(--text-muted);
+  font-size: 0.6rem;
+  flex-shrink: 0;
+}
+.iorio-pulse-page .event-text {
+  color: var(--text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ---------- map ---------- */
+.iorio-pulse-page .map-wrap {
+  position: relative;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: linear-gradient(rgba(255, 255, 255, 0.016) 1px, transparent 1px) 0 0/34px 34px,
+    linear-gradient(90deg, rgba(255, 255, 255, 0.016) 1px, transparent 1px) 0 0/34px 34px, var(--bg-surface);
+  display: grid;
+  grid-template-columns: repeat(4, minmax(128px, 1fr));
+  grid-template-rows: auto minmax(270px, auto) auto;
+  align-content: center;
+  align-items: start;
+  row-gap: 1.1rem;
+  column-gap: 0.75rem;
+  padding: 1.1rem 1.4rem;
+  overflow: hidden;
+}
+.iorio-pulse-page .map-svg {
+  grid-column: 1 / -1;
+  grid-row: 1 / -1;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+.iorio-pulse-page .edge {
+  fill: none;
+  stroke: var(--border-strong);
+  transition: stroke 0.25s ease, opacity 0.25s ease, filter 0.25s ease;
+}
+.iorio-pulse-page .edge.spine {
+  stroke-width: 1.5;
+  opacity: 0.6;
+}
+.iorio-pulse-page .edge.secondary {
+  stroke-width: 1.1;
+  opacity: 0.4;
+}
+.iorio-pulse-page .edge.edge-active {
+  stroke: var(--accent-glow);
+  opacity: 1;
+  filter: drop-shadow(0 0 3px var(--accent-dim));
+}
+.iorio-pulse-page .packet-dot {
+  filter: drop-shadow(0 0 2.5px currentColor);
+}
+.iorio-pulse-page .node {
+  background: var(--bg-surface-raised);
+  border: 1px solid var(--border-strong);
+  border-radius: 11px;
+  padding: 0.5rem 0.66rem;
+  box-shadow: 0 6px 18px -8px rgba(0, 0, 0, 0.55);
+  z-index: 2;
+  width: 100%;
+  justify-self: center;
+  align-self: start;
+}
+.iorio-pulse-page .node-header {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin-bottom: 0.36rem;
+  padding-bottom: 0.34rem;
+  border-bottom: 1px solid var(--border);
+}
+.iorio-pulse-page .node-icon {
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(14, 165, 233, 0.12);
+  border: 1px solid rgba(14, 165, 233, 0.28);
+  flex-shrink: 0;
+}
+.iorio-pulse-page .node-icon svg {
+  width: 13px;
+  height: 13px;
+  stroke: var(--accent-glow);
+}
+.iorio-pulse-page .node-icon.ibkr-mark {
+  background: rgba(166, 25, 46, 0.16);
+  border-color: rgba(166, 25, 46, 0.45);
+}
+.iorio-pulse-page .node-icon.ibkr-mark span {
+  font-family: var(--font-mono);
+  font-weight: 700;
+  font-size: 0.56rem;
+  color: var(--ibkr-red);
+  letter-spacing: -0.01em;
+}
+.iorio-pulse-page .node-title {
+  font-size: 0.77rem;
+  font-weight: 600;
+  line-height: 1.1;
+}
+.iorio-pulse-page .node-sub {
+  font-size: 0.59rem;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  letter-spacing: 0.01em;
+}
+.iorio-pulse-page .sub-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.7rem;
+  padding: 0.15rem 0;
+  font-size: 0.67rem;
+}
+.iorio-pulse-page .sub-name {
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+.iorio-pulse-page .sub-value {
+  font-family: var(--font-mono);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  color: var(--text-primary);
+}
+.iorio-pulse-page .sub-value.warn {
+  color: var(--warning);
+}
+.iorio-pulse-page .sub-value.ok {
+  color: var(--success);
+}
+.iorio-pulse-page .sub-value.err {
+  color: var(--danger);
+}
+
+.iorio-pulse-page .grid-market {
+  grid-column: 1;
+  grid-row: 1;
+}
+.iorio-pulse-page .grid-db {
+  grid-column: 2;
+  grid-row: 1;
+}
+.iorio-pulse-page .grid-genosuke {
+  grid-column: 3;
+  grid-row: 1;
+}
+.iorio-pulse-page .grid-llm {
+  grid-column: 4;
+  grid-row: 1;
+}
+.iorio-pulse-page .grid-ibkr {
+  grid-column: 1;
+  grid-row: 3;
+}
+.iorio-pulse-page .grid-gateway {
+  grid-column: 2;
+  grid-row: 3;
+}
+.iorio-pulse-page .grid-heroku {
+  grid-column: 3;
+  grid-row: 3;
+}
+.iorio-pulse-page .grid-frontend {
+  grid-column: 4;
+  grid-row: 3;
+}
+
+.iorio-pulse-page .market-chip {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 0.46rem 0.62rem;
+  font-family: var(--font-mono);
+  font-size: 0.6rem;
+  color: var(--text-secondary);
+  display: flex;
+  flex-direction: column;
+  gap: 0.26rem;
+  justify-self: center;
+  align-self: start;
+  width: 100%;
+}
+.iorio-pulse-page .mk-name {
+  color: var(--text-muted);
+  letter-spacing: 0.08em;
+  font-size: 0.56rem;
+}
+.iorio-pulse-page .mk-status {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  color: var(--success);
+  font-weight: 600;
+}
+.iorio-pulse-page .mk-close {
+  color: var(--text-muted);
+}
+
+.iorio-pulse-page .tg-tag {
+  margin-top: 0.32rem;
+  padding-top: 0.3rem;
+  border-top: 1px solid var(--border);
+  font-family: var(--font-mono);
+  font-size: 0.58rem;
+  color: var(--text-muted);
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  transition: color 0.3s ease;
+}
+.iorio-pulse-page .tg-tag svg {
+  width: 10px;
+  height: 10px;
+  stroke: var(--text-muted);
+  transition: stroke 0.3s ease;
+  flex-shrink: 0;
+}
+.iorio-pulse-page .tg-tag.flash {
+  color: var(--accent-glow);
+}
+.iorio-pulse-page .tg-tag.flash svg {
+  stroke: var(--accent-glow);
+}
+
+.iorio-pulse-page .avatar-row {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+.iorio-pulse-page .avatar-item {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+.iorio-pulse-page .avatar-circle {
+  width: 19px;
+  height: 19px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-mono);
+  font-size: 0.58rem;
+  font-weight: 700;
+  color: #0b0f17;
+  flex-shrink: 0;
+}
+.iorio-pulse-page .avatar-name {
+  font-size: 0.72rem;
+  color: var(--text-secondary);
+  flex: 1;
+}
+.iorio-pulse-page .avatar-status {
+  font-family: var(--font-mono);
+  font-size: 0.58rem;
+  display: flex;
+  align-items: center;
+  gap: 0.28rem;
+  color: var(--success);
+}
+.iorio-pulse-page .avatar-status.offline {
+  color: var(--text-muted);
+}
+
+/* ---------- charts ---------- */
+.iorio-pulse-page .charts-row {
+  grid-column: 1 / -1;
+  grid-row: 2;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+  padding: 0.55rem 0.2rem;
+  height: 100%;
+}
+.iorio-pulse-page .chart-panel {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.iorio-pulse-page .chart-panel-title {
+  font-family: var(--font-mono);
+  font-size: 0.58rem;
+  color: var(--text-muted);
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  margin-bottom: 0.25rem;
+  display: flex;
+  justify-content: space-between;
+  flex-shrink: 0;
+}
+.iorio-pulse-page .chart-panel-title .cur-val {
+  color: var(--text-secondary);
+  font-weight: 600;
+}
+.iorio-pulse-page .chart-svg-wrap {
+  flex: 1;
+  min-height: 0;
+}
+.iorio-pulse-page .chart-svg-wrap svg {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+.iorio-pulse-page .chart-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+.iorio-pulse-page .delta-legend {
+  display: flex;
+  flex-wrap: wrap;
+  column-gap: 0.7rem;
+  row-gap: 0.15rem;
+  flex-shrink: 0;
+  max-height: 2.2rem;
+  overflow: hidden;
+}
+.iorio-pulse-page .legend-item {
+  display: flex;
+  align-items: center;
+  gap: 0.28rem;
+}
+.iorio-pulse-page .legend-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.iorio-pulse-page .legend-tkr {
+  font-family: var(--font-mono);
+  font-size: 0.6rem;
+  color: var(--text-secondary);
+  letter-spacing: 0.01em;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .iorio-pulse-page .led {
+    animation: none !important;
+  }
+  .iorio-pulse-page .flash-changed {
+    animation: none !important;
+  }
+}

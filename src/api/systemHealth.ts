@@ -23,3 +23,61 @@ export function fetchJobStatuses(): Promise<JobRun[]> {
 export function triggerIbkrHealthCheck(): Promise<JobRun | null> {
   return apiRequest<JobRun | null>("/system-health/check-ibkr", { method: "POST" });
 }
+
+// --- Iorio Pulse node stats (2026-09-13) ---
+
+export interface PresenceUser {
+  id: string;
+  displayName: string;
+}
+
+export function fetchPresence(): Promise<{ online: PresenceUser[] }> {
+  return apiRequest<{ online: PresenceUser[] }>("/system-health/presence");
+}
+
+export interface DbHealth {
+  activeConnections: string;
+  maxConnections: number;
+  databaseSizeBytes: string;
+  openPositionCount: string;
+}
+
+export function fetchDbHealth(): Promise<DbHealth> {
+  return apiRequest<DbHealth>("/system-health/db");
+}
+
+export interface GenosukeHealth {
+  messagesToday: string;
+  activeSessions: string;
+  llm: { model: string | null; callsPerMinute: number; avgLatencyMs: number | null };
+}
+
+export function fetchGenosukeHealth(): Promise<GenosukeHealth> {
+  return apiRequest<GenosukeHealth>("/system-health/genosuke");
+}
+
+export interface WebDynoHealth {
+  requestsPerMinute: number;
+  uptimeSeconds: number;
+  processStartedAt: string;
+  notificationStreamConnections: number;
+}
+
+export function fetchWebDynoHealth(): Promise<WebDynoHealth> {
+  return apiRequest<WebDynoHealth>("/system-health/web-dyno");
+}
+
+export interface GatewayHealth {
+  connected: boolean;
+  staleOrMissing: boolean;
+  uptimeMs?: number | null;
+  totalReconnects?: number;
+  lastSystemStatusCode?: number | null;
+  clientId?: number | null;
+  updatedAt?: string;
+  inFlightOrderCount: number;
+}
+
+export function fetchGatewayHealth(): Promise<GatewayHealth> {
+  return apiRequest<GatewayHealth>("/system-health/gateway");
+}

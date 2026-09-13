@@ -78,6 +78,18 @@ export function formatCurrencyTrimmed(amountInDollars: number | null | undefined
   return formatCurrency(amountInDollars, Number.isInteger(amountInDollars) ? 0 : decimalPlaces);
 }
 
+// "$18.2k" style — for Iorio Pulse's Positions panel, whose fixed 292px
+// column width can't fit a full formatCurrency figure alongside Strat/DTE/
+// Exp%/P&L in the same row. Not used anywhere space isn't this tight.
+export function formatCompactDollars(amountInDollars: number | null | undefined): string {
+  if (amountInDollars === null || amountInDollars === undefined) return "—";
+  if (Number.isNaN(amountInDollars)) return "—";
+  const abs = Math.abs(amountInDollars);
+  const sign = amountInDollars < 0 ? "-" : "";
+  if (abs >= 1000) return `${sign}$${(abs / 1000).toFixed(1)}k`;
+  return `${sign}$${abs.toFixed(0)}`;
+}
+
 export function formatPercentage(fractionOrNull: number | null | undefined, decimalPlaces = 1): string {
   if (fractionOrNull === null || fractionOrNull === undefined) return "—";
   if (Number.isNaN(fractionOrNull)) return "—";

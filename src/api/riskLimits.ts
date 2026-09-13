@@ -96,6 +96,9 @@ export interface AccountSummary {
   netLiquidationValue: number | null;
   totalCashValue: number | null;
   grossPositionValue: number | null;
+  // Added for Iorio Pulse's IBKR node ("Margin excess") — see
+  // fetchAccountSummary.ts on the backend.
+  excessLiquidity: number | null;
 }
 
 export interface ConcentrationRow {

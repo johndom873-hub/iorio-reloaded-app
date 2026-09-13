@@ -158,6 +158,63 @@
   box-shadow: none;
 }
 
+/* Iorio Pulse's topbar nav link (2026-09-13) — centered via auto margins
+   (Bootstrap's navbar .container-fluid is already a flex row, and the icon
+   group to its right already claims margin-left: auto, so this link's own
+   margin: 0 auto centers it in the remaining space between the brand mark
+   and that group). Brand blue glow, not a semantic status color — this is
+   decoration, not an alert. The dot pulses independently of the flash
+   system elsewhere in the app (useFlashOnChange/.flash-changed is for a
+   value that just changed; this is a permanent "live" indicator, always
+   animating, not tied to any data change). */
+.iorio-pulse-nav-link {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0 auto;
+  padding: 0.35rem 0.9rem;
+  border-radius: 100px;
+  color: #0ea5e9;
+  font-weight: 600;
+  font-size: 0.9rem;
+  letter-spacing: 0.02em;
+  text-decoration: none;
+  text-shadow:
+    0 0 6px rgba(14, 165, 233, 0.6),
+    0 0 16px rgba(14, 165, 233, 0.3);
+  border: 1px solid rgba(14, 165, 233, 0.35);
+  transition: background-color 0.15s ease, border-color 0.15s ease;
+}
+.iorio-pulse-nav-link:hover {
+  color: #38bdf8;
+  background-color: rgba(14, 165, 233, 0.08);
+  border-color: rgba(14, 165, 233, 0.6);
+}
+.iorio-pulse-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #0ea5e9;
+  box-shadow: 0 0 7px 1px #0ea5e9;
+  animation: iorio-pulse-dot-beat 2s ease-in-out infinite;
+}
+@keyframes iorio-pulse-dot-beat {
+  0%,
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.35;
+    transform: scale(0.7);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .iorio-pulse-dot {
+    animation: none;
+  }
+}
+
 /* Every page renders <PageHeader> as the first child inside .page-body
    (not as Tabler's intended sibling .page-header region outside
    .page-body), so Tabler's own spacing rules double up in the wrong

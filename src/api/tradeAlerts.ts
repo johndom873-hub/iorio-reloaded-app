@@ -87,6 +87,9 @@ export interface TradeAlertFilters {
   status?: TradeAlertStatus;
   strategyKey?: StrategyKey;
   symbol?: string;
+  /** Ranks purely by annualized yield instead of the default per-ticker grouping — for Iorio Pulse's "Top Alerts" panel. */
+  sort?: "yield";
+  limit?: number;
 }
 
 export function fetchTradeAlerts(filters: TradeAlertFilters = {}): Promise<TradeAlert[]> {
@@ -94,6 +97,8 @@ export function fetchTradeAlerts(filters: TradeAlertFilters = {}): Promise<Trade
   if (filters.status) params.set("status", filters.status);
   if (filters.strategyKey) params.set("strategy", filters.strategyKey);
   if (filters.symbol) params.set("symbol", filters.symbol);
+  if (filters.sort) params.set("sort", filters.sort);
+  if (filters.limit) params.set("limit", String(filters.limit));
   const query = params.toString();
   return apiRequest<TradeAlert[]>(`/trade-alerts${query ? `?${query}` : ""}`);
 }
