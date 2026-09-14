@@ -35,11 +35,21 @@ export function fetchPresence(): Promise<{ online: PresenceUser[] }> {
   return apiRequest<{ online: PresenceUser[] }>("/system-health/presence");
 }
 
+export type MarketSessionState = "pre-market" | "open" | "after-hours" | "closed";
+
+export interface MarketStatus {
+  exchanges: string[];
+  state: MarketSessionState;
+  label: string;
+}
+
+export function fetchMarketStatus(): Promise<MarketStatus> {
+  return apiRequest<MarketStatus>("/system-health/market-status");
+}
+
 export interface DbHealth {
   activeConnections: string;
-  maxConnections: number;
   databaseSizeBytes: string;
-  openPositionCount: string;
 }
 
 export function fetchDbHealth(): Promise<DbHealth> {

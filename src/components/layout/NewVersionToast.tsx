@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { IconRefresh } from "@tabler/icons-react";
+import { Spinner } from "../Spinner";
 
 // Polls the served index.html for its bundled script's hashed filename and
 // compares it against the one this tab loaded with -- a mismatch means a
@@ -16,6 +17,7 @@ function extractBundleSrc(html: string): string | null {
 
 export function NewVersionToast() {
   const [newVersionAvailable, setNewVersionAvailable] = useState(false);
+  const [isReloading, setIsReloading] = useState(false);
   const loadedBundleSrc = useRef<string | null>(null);
 
   useEffect(() => {
@@ -62,8 +64,23 @@ export function NewVersionToast() {
         </div>
         <div className="toast-body d-flex align-items-center justify-content-between gap-3">
           <span>A new version of Iorio is ready.</span>
-          <button type="button" className="btn btn-primary btn-sm" onClick={() => window.location.reload()}>
-            Reload
+          <button
+            type="button"
+            className="btn btn-primary btn-sm"
+            disabled={isReloading}
+            onClick={() => {
+              setIsReloading(true);
+              window.location.reload();
+            }}
+          >
+            {isReloading ? (
+              <>
+                <Spinner size="sm" className="me-2" />
+                Reloading…
+              </>
+            ) : (
+              "Reload"
+            )}
           </button>
         </div>
       </div>

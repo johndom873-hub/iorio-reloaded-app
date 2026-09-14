@@ -158,20 +158,28 @@
   box-shadow: none;
 }
 
-/* Iorio Pulse's topbar nav link (2026-09-13) — centered via auto margins
-   (Bootstrap's navbar .container-fluid is already a flex row, and the icon
-   group to its right already claims margin-left: auto, so this link's own
-   margin: 0 auto centers it in the remaining space between the brand mark
-   and that group). Brand blue glow, not a semantic status color — this is
-   decoration, not an alert. The dot pulses independently of the flash
-   system elsewhere in the app (useFlashOnChange/.flash-changed is for a
-   value that just changed; this is a permanent "live" indicator, always
-   animating, not tied to any data change). */
+/* Iorio Pulse's topbar nav link (2026-09-13, re-centered 2026-09-14) —
+   absolutely positioned at true screen-center (left: 50% + translateX), not
+   just centered in the leftover flex space. The old `margin: 0 auto`
+   approach only centered it between the brand mark and the icon group's
+   `margin-left: auto`, which are different widths, so the pill's midpoint
+   drifted off true center. `.iorio-topbar .container-fluid` gets
+   `position: relative` below so this anchors to the topbar, not some
+   further-up positioned ancestor. Brand blue glow, not a semantic status
+   color — this is decoration, not an alert. The dot pulses independently of
+   the flash system elsewhere in the app (useFlashOnChange/.flash-changed is
+   for a value that just changed; this is a permanent "live" indicator,
+   always animating, not tied to any data change). */
+.iorio-topbar .container-fluid {
+  position: relative;
+}
 .iorio-pulse-nav-link {
   display: flex;
   align-items: center;
   gap: 0.5rem;
-  margin: 0 auto;
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
   padding: 0.35rem 0.9rem;
   border-radius: 100px;
   color: #0ea5e9;

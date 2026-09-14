@@ -227,6 +227,13 @@ export function formatDateTime(dateInput: string | Date | null | undefined): str
   }).format(date);
 }
 
+// 24-hour local time, e.g. "14:32:05" — matches the clock/event-log
+// convention already used across Iorio Pulse (PulsePage.tsx).
+export function formatLocalTime(dateInput: string | Date | number): string {
+  const date = typeof dateInput === "object" ? dateInput : new Date(dateInput);
+  return date.toLocaleTimeString("en-US", { hour12: false });
+}
+
 export function formatNumber(value: number | string | null | undefined, maximumFractionDigits = 0): string {
   if (value === null || value === undefined) return "—";
   const numericValue = typeof value === "string" ? Number(value) : value;

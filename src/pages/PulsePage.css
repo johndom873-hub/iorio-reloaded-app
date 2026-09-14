@@ -113,6 +113,10 @@
   background: var(--danger);
   box-shadow: 0 0 7px 1px var(--danger);
 }
+.iorio-pulse-page .led.led-amber {
+  background: var(--warning);
+  box-shadow: 0 0 7px 1px var(--warning);
+}
 .iorio-pulse-page .status-pill-degraded {
   color: var(--danger);
   border-color: rgba(240, 85, 79, 0.45);
@@ -632,7 +636,7 @@
 }
 .iorio-pulse-page .grid-llm {
   grid-column: 4;
-  grid-row: 1;
+  grid-row: 3;
 }
 .iorio-pulse-page .grid-ibkr {
   grid-column: 1;
@@ -648,7 +652,7 @@
 }
 .iorio-pulse-page .grid-frontend {
   grid-column: 4;
-  grid-row: 3;
+  grid-row: 1;
 }
 
 .iorio-pulse-page .market-chip {
@@ -674,8 +678,16 @@
   display: flex;
   align-items: center;
   gap: 0.35rem;
-  color: var(--success);
   font-weight: 600;
+}
+.iorio-pulse-page .mk-status.mk-status-open {
+  color: var(--success);
+}
+.iorio-pulse-page .mk-status.mk-status-amber {
+  color: var(--warning);
+}
+.iorio-pulse-page .mk-status.mk-status-closed {
+  color: var(--danger);
 }
 .iorio-pulse-page .mk-close {
   color: var(--text-muted);
@@ -852,6 +864,11 @@
   margin-left: auto;
   font-weight: 600;
   padding-left: 0.6rem;
+}
+.iorio-pulse-page .chart-tooltip-time {
+  margin-top: 0.12rem;
+  font-size: 0.56rem;
+  color: var(--text-secondary);
 }
 
 @media (prefers-reduced-motion: reduce) {

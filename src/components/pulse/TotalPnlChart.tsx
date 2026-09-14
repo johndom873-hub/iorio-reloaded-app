@@ -6,10 +6,12 @@ import { useRef, useState } from "react";
 // P&L history exists on the backend (approved tradeoff, 2026-09-13).
 interface TotalPnlChartProps {
   series: number[];
+  timestamps: number[];
   formatValue: (value: number) => string;
+  formatTime: (timestamp: number) => string;
 }
 
-export function TotalPnlChart({ series, formatValue }: TotalPnlChartProps) {
+export function TotalPnlChart({ series, timestamps, formatValue, formatTime }: TotalPnlChartProps) {
   const wrapRef = useRef<HTMLDivElement>(null);
   const [hoverIndex, setHoverIndex] = useState<number | null>(null);
   const [hoverX, setHoverX] = useState(0);
@@ -61,12 +63,13 @@ export function TotalPnlChart({ series, formatValue }: TotalPnlChartProps) {
           </>
         )}
       </svg>
-      {hoverValue !== null && (
+      {hoverValue !== null && hoverIndex !== null && (
         <div
           className="chart-tooltip"
           style={{ left: `${hoverX}%`, transform: hoverX > 80 ? "translateX(-100%)" : hoverX < 5 ? "translateX(0)" : "translateX(-50%)" }}
         >
-          {formatValue(hoverValue)}
+          <div>{formatValue(hoverValue)}</div>
+          <div className="chart-tooltip-time">{formatTime(timestamps[hoverIndex]!)}</div>
         </div>
       )}
     </div>

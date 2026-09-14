@@ -20,13 +20,16 @@ import {
   fetchGenosukeHealth,
   fetchWebDynoHealth,
   fetchGatewayHealth,
+  fetchMarketStatus,
   type PresenceUser,
   type DbHealth,
   type GenosukeHealth,
   type WebDynoHealth,
   type GatewayHealth,
+  type MarketStatus,
+  type MarketSessionState,
 } from "../api/systemHealth";
-import { daysToExpiry, todayInEasternIso, formatSignedPnl, formatSignedPercentageValue, formatCompactDollars, formatDate } from "../lib/formatters";
+import { daysToExpiry, todayInEasternIso, formatSignedPnl, formatSignedPercentageValue, formatCompactDollars, formatDate, formatLocalTime } from "../lib/formatters";
 import { positionExpiryDate } from "../lib/positionPnl";
 import { FlashingNumber } from "../components/FlashingNumber";
 import { TopologyMap, type PulseEvent } from "../components/pulse/TopologyMap";
@@ -75,7 +78,9 @@ function alertStrikeLabel(alert: TradeAlert): string {
 function formatBytes(bytesText: string | null | undefined): string {
   const bytes = Number(bytesText ?? 0);
   if (!bytes) return "—";
-  return `${(bytes / 1024 ** 3).toFixed(1)} GB`;
+  const gb = bytes / 1024 ** 3;
+  if (gb < 1) return `${(bytes / 1024 ** 2).toFixed(1)} MB`;
+  return `${gb.toFixed(1)} GB`;
 }
 
 function formatDurationShort(ms: number | null | undefined): string {
@@ -86,31 +91,44 @@ function formatDurationShort(ms: number | null | undefined): string {
   return hours > 0 ? `${hours}h ${minutes}m` : `${minutes}m`;
 }
 
-// Fixed 9:30-16:00 America/New_York assumption — no intraday market-hours
-// data exists anywhere in the app (market_calendar is day-granular only),
-// so this is a deliberately approximate decorative chip, wrong on
-// early-close days (approved tradeoff, 2026-09-13).
+function marketStatusStyle(state: MarketSessionState | undefined): { badgeLabel: string; ledClass: string; textClass: string } {
+  switch (state) {
+    case "open":
+      return { badgeLabel: "OPEN", ledClass: "", textClass: "mk-status-open" };
+    case "pre-market":
+      return { badgeLabel: "PRE-MARKET", ledClass: "led-amber", textClass: "mk-status-amber" };
+    case "after-hours":
+      return { badgeLabel: "AFTER-HOURS", ledClass: "led-amber", textClass: "mk-status-amber" };
+    case "closed":
+    default:
+      return { badgeLabel: "CLOSED", ledClass: "led-warn", textClass: "mk-status-closed" };
+  }
+}
+
+const MARKET_STATUS_POLL_INTERVAL_MS = 60_000;
+
+// Server-computed from the real exchanges the book actually trades on
+// (tickers.primary_exchange) plus market_calendar's holiday coverage — see
+// src/lib/marketSessionStatus.ts in the API repo. Polled rather than
+// computed client-side since it depends on that DB state, not just the
+// current time.
 function useMarketStatus() {
-  const [status, setStatus] = useState({ open: false, label: "closed" });
+  const [status, setStatus] = useState<MarketStatus | null>(null);
   useEffect(() => {
-    function compute() {
-      const nowEastern = new Date(new Date().toLocaleString("en-US", { timeZone: "America/New_York" }));
-      const day = nowEastern.getDay();
-      const minutesSinceMidnight = nowEastern.getHours() * 60 + nowEastern.getMinutes();
-      const isWeekday = day >= 1 && day <= 5;
-      const open = isWeekday && minutesSinceMidnight >= 9 * 60 + 30 && minutesSinceMidnight < 16 * 60;
-      if (!open) {
-        setStatus({ open: false, label: "closed" });
-        return;
-      }
-      const minutesToClose = 16 * 60 - minutesSinceMidnight;
-      const hours = Math.floor(minutesToClose / 60);
-      const minutes = minutesToClose % 60;
-      setStatus({ open: true, label: hours > 0 ? `closes in ${hours}h ${minutes}m` : `closes in ${minutes}m` });
+    let cancelled = false;
+    function poll() {
+      fetchMarketStatus()
+        .then((result) => {
+          if (!cancelled) setStatus(result);
+        })
+        .catch(() => {});
     }
-    compute();
-    const interval = window.setInterval(compute, 60_000);
-    return () => window.clearInterval(interval);
+    poll();
+    const interval = window.setInterval(poll, MARKET_STATUS_POLL_INTERVAL_MS);
+    return () => {
+      cancelled = true;
+      window.clearInterval(interval);
+    };
   }, []);
   return status;
 }
@@ -224,7 +242,11 @@ export function PulsePage() {
   useEffect(() => {
     fetchTradeAlerts({ status: "pending", sort: "yield" }).then(setPendingAlerts).catch(() => {});
   }, []);
-  const topAlerts = pendingAlerts.slice(0, 5);
+  // One alert per ticker (the highest-yield one, since pendingAlerts is
+  // already server-sorted by yield) rather than the top 5 overall, which
+  // could all be the same handful of tickers. No length cap — mirrors the
+  // Trades panel's "fetch generously, let overflow:hidden clip" design.
+  const topAlerts = Array.from(new Map(pendingAlerts.map((alert) => [alert.tickerId, alert])).values());
 
   // --- Trades: fetch generously and let the panel's own overflow:hidden
   // clip whatever doesn't fit — no scroll, per the panel design. ---
@@ -351,6 +373,7 @@ export function PulsePage() {
   // (approved tradeoff, 2026-09-13). Starts empty and fills in as the tab
   // stays open. ---
   const [pnlSeries, setPnlSeries] = useState<number[]>([]);
+  const [pnlTimestamps, setPnlTimestamps] = useState<number[]>([]);
   // Keyed by position id, not symbol — a rolled position can leave two
   // distinct open positions sharing one ticker (confirmed in dev data: two
   // separate SPCX positions), which would otherwise collide.
@@ -365,6 +388,7 @@ export function PulsePage() {
       const { unrealizedPnlByPositionId: pnlMap, greeksByLegId: greeksMap, positions: posList } = latestDataRef.current;
       const totalPnl = Object.values(pnlMap).reduce((sum, row) => sum + (row.unrealizedPnl ?? 0), 0);
       setPnlSeries((prev) => [...prev, totalPnl].slice(-CHART_MAX_SAMPLES));
+      setPnlTimestamps((prev) => [...prev, Date.now()].slice(-CHART_MAX_SAMPLES));
 
       setDeltaSeriesByPositionId((prev) => {
         const next = { ...prev };
@@ -541,12 +565,12 @@ export function PulsePage() {
 
         <TopologyMap pulses={pulses} activeEdgeIds={activeEdgeIds}>
           <div className="market-chip grid-market">
-            <span className="mk-name">NASDAQ · NYSE</span>
-            <span className="mk-status">
-              <span className={`led${marketStatus.open ? "" : " led-off"}`} />
-              {marketStatus.open ? "OPEN" : "CLOSED"}
+            <span className="mk-name">{marketStatus ? marketStatus.exchanges.join(" · ") : "—"}</span>
+            <span className={`mk-status ${marketStatusStyle(marketStatus?.state).textClass}`}>
+              <span className={`led ${marketStatusStyle(marketStatus?.state).ledClass}`} />
+              {marketStatusStyle(marketStatus?.state).badgeLabel}
             </span>
-            <span className="mk-close">{marketStatus.label}</span>
+            <span className="mk-close">{marketStatus?.label ?? "—"}</span>
           </div>
 
           <div className="node grid-db" data-node-id="db">
@@ -564,15 +588,9 @@ export function PulsePage() {
               </div>
             </div>
             <div className="sub-row">
-              <span className="sub-name">Connections</span>
+              <span className="sub-name">Active connections</span>
               <FlashingNumber value={dbHealth ? Number(dbHealth.activeConnections) : null} className="sub-value">
-                {dbHealth ? `${dbHealth.activeConnections} / ${dbHealth.maxConnections}` : "—"}
-              </FlashingNumber>
-            </div>
-            <div className="sub-row">
-              <span className="sub-name">Open positions</span>
-              <FlashingNumber value={dbHealth ? Number(dbHealth.openPositionCount) : null} className="sub-value">
-                {dbHealth?.openPositionCount ?? "—"}
+                {dbHealth?.activeConnections ?? "—"}
               </FlashingNumber>
             </div>
             <div className="sub-row">
@@ -662,7 +680,12 @@ export function PulsePage() {
                 </span>
               </div>
               <div className="chart-svg-wrap">
-                <TotalPnlChart series={pnlSeries} formatValue={(value) => formatSignedPnl(value, 0)} />
+                <TotalPnlChart
+                  series={pnlSeries}
+                  timestamps={pnlTimestamps}
+                  formatValue={(value) => formatSignedPnl(value, 0)}
+                  formatTime={formatLocalTime}
+                />
               </div>
             </div>
             <div className="chart-panel">
@@ -685,21 +708,15 @@ export function PulsePage() {
               </div>
             </div>
             <div className="sub-row">
-              <span className="sub-name">Buying power</span>
-              <FlashingNumber value={exposure?.account?.netLiquidationValue ?? null} className="sub-value">
-                {formatSignedPnl(exposure?.account?.netLiquidationValue ?? null, 0).replace("+", "")}
-              </FlashingNumber>
-            </div>
-            <div className="sub-row">
-              <span className="sub-name">Margin excess</span>
-              <FlashingNumber value={exposure?.account?.excessLiquidity ?? null} className="sub-value ok">
-                {exposure?.account?.excessLiquidity ? formatCompactDollars(exposure.account.excessLiquidity) : "—"}
-              </FlashingNumber>
-            </div>
-            <div className="sub-row">
-              <span className="sub-name">Cash</span>
+              <span className="sub-name">Total cash</span>
               <FlashingNumber value={availableCash?.totalCashValue ?? null} className="sub-value">
                 {availableCash?.totalCashValue ? formatCompactDollars(availableCash.totalCashValue) : "—"}
+              </FlashingNumber>
+            </div>
+            <div className="sub-row">
+              <span className="sub-name">Reserved cash</span>
+              <FlashingNumber value={availableCash?.cashLockedInCsps ?? null} className="sub-value">
+                {availableCash?.cashLockedInCsps ? formatCompactDollars(availableCash.cashLockedInCsps) : "—"}
               </FlashingNumber>
             </div>
           </div>
