@@ -28,6 +28,7 @@ import {
 } from "../api/systemHealth";
 import { daysToExpiry, todayInEasternIso, formatSignedPnl, formatSignedPercentageValue, formatCompactDollars, formatDate } from "../lib/formatters";
 import { positionExpiryDate } from "../lib/positionPnl";
+import { FlashingNumber } from "../components/FlashingNumber";
 import { TopologyMap, type PulseEvent } from "../components/pulse/TopologyMap";
 import { TotalPnlChart } from "../components/pulse/TotalPnlChart";
 import { PositionDeltasChart, type DeltaSeries } from "../components/pulse/PositionDeltasChart";
@@ -35,6 +36,8 @@ import { PositionDeltasChart, type DeltaSeries } from "../components/pulse/Posit
 const CHART_SAMPLE_INTERVAL_MS = 75_000;
 const CHART_MAX_SAMPLES = 40;
 const HEALTH_POLL_INTERVAL_MS = 30_000;
+const TRADES_LIMIT = 30;
+const EVENTS_LIMIT = 30;
 
 function strategyAbbrev(strategyKey: string): "CC" | "CSP" {
   return strategyKey === "covered_call" ? "CC" : "CSP";
@@ -174,11 +177,11 @@ export function PulsePage() {
     fetchStrategySettings().then(setStrategySettings).catch(() => {});
   }, []);
 
-  // Today's P&L (KPI) and the Total P&L chart are intentionally different
-  // numbers: this is day-over-day snapshot delta, the chart is a live
-  // mark-to-market sum of currently-open positions since each one's own
-  // entry. Don't "fix" them to agree.
-  const todaysPnl = summary?.periods.day !== null && summary?.periods.day !== undefined ? Number(summary.periods.day) : null;
+  // Yesterday's P&L (KPI) and the Today's P&L chart are intentionally
+  // different numbers: this is day-over-day snapshot delta, the chart is a
+  // live mark-to-market sum of currently-open positions since each one's
+  // own entry. Don't "fix" them to agree.
+  const yesterdaysPnl = summary?.periods.day !== null && summary?.periods.day !== undefined ? Number(summary.periods.day) : null;
 
   const strategyPct = useCallback(
     (key: string) => {
@@ -191,6 +194,7 @@ export function PulsePage() {
   );
   const ccPct = strategyPct("covered_call");
   const cspPct = strategyPct("cash_secured_put");
+  const unstructuredPct = strategyPct("unstructured");
   const cashPct = strategyPct("unallocated");
 
   // --- Positions: same fetch + live SSE idiom as PositionsPage.tsx. ---
@@ -222,11 +226,18 @@ export function PulsePage() {
   }, []);
   const topAlerts = pendingAlerts.slice(0, 5);
 
-  // --- Trades ---
+  // --- Trades: fetch generously and let the panel's own overflow:hidden
+  // clip whatever doesn't fit — no scroll, per the panel design. ---
   const [trades, setTrades] = useState<Trade[]>([]);
-  useEffect(() => {
-    fetchTradeBlotter({}).then((data) => setTrades(data.trades.slice(0, 6))).catch(() => {});
+  const loadTrades = useCallback(() => {
+    fetchTradeBlotter({})
+      .then((data) => {
+        const sorted = [...data.trades].sort((a, b) => new Date(b.executedAt).getTime() - new Date(a.executedAt).getTime());
+        setTrades(sorted.slice(0, TRADES_LIMIT));
+      })
+      .catch(() => {});
   }, []);
+  useEffect(() => loadTrades(), [loadTrades]);
 
   // --- System health (30s poll) ---
   const [dbHealth, setDbHealth] = useState<DbHealth | null>(null);
@@ -272,7 +283,7 @@ export function PulsePage() {
 
   const appendEvent = useCallback((text: string, color: string) => {
     eventIdRef.current += 1;
-    setEvents((prev) => [{ id: eventIdRef.current, time: new Date().toLocaleTimeString("en-US", { hour12: false }), text, color }, ...prev].slice(0, 17));
+    setEvents((prev) => [{ id: eventIdRef.current, time: new Date().toLocaleTimeString("en-US", { hour12: false }), text, color }, ...prev].slice(0, EVENTS_LIMIT));
   }, []);
 
   useEffect(() => {
@@ -281,7 +292,11 @@ export function PulsePage() {
         case "job_completed": {
           const color = notification.status === "success" ? "var(--accent-glow)" : "var(--danger)";
           firePulse("heroku-gateway", color);
-          appendEvent(`Job ${notification.status === "success" ? "done" : "failed"} — ${notification.jobName}`, color);
+          // Runs every 10 minutes — logging it here would crowd out every other
+          // event; its own status already surfaces on the Gateway node/status pill.
+          if (notification.jobName !== "ibkr_health_check") {
+            appendEvent(`Job ${notification.status === "success" ? "done" : "failed"} — ${notification.jobName}`, color);
+          }
           break;
         }
         case "alert_generated": {
@@ -296,7 +311,7 @@ export function PulsePage() {
               firePulse("heroku-gateway", "var(--success)", { reverse: true });
               appendEvent(`Order ${order.status.replace(/_/g, " ")} — ${order.payload.symbol}`, "var(--success)");
               if (order.status === "filled" || order.status === "partially_filled") {
-                fetchTradeBlotter({}).then((data) => setTrades(data.trades.slice(0, 6))).catch(() => {});
+                loadTrades();
               }
             })
             .catch(() => {});
@@ -327,7 +342,7 @@ export function PulsePage() {
         }
       }
     });
-  }, [appendEvent, firePulse, loadPositions]);
+  }, [appendEvent, firePulse, loadPositions, loadTrades]);
 
   const activeEdgeIds = useMemo(() => new Set(pulses.map((pulse) => pulse.edgeId)), [pulses]);
 
@@ -354,6 +369,7 @@ export function PulsePage() {
       setDeltaSeriesByPositionId((prev) => {
         const next = { ...prev };
         for (const position of posList) {
+          if (position.strategyKey !== "covered_call" && position.strategyKey !== "cash_secured_put") continue;
           const optionLeg = position.legs.find((leg) => leg.legType === "option");
           if (!optionLeg) continue;
           const delta = greeksMap[optionLeg.id]?.delta;
@@ -368,6 +384,7 @@ export function PulsePage() {
 
   const deltaLimit = strategySettings.length > 0 ? Math.max(...strategySettings.map((row) => Number(row.deltaTargetMax))) : 0.3;
   const deltaSeriesForChart: DeltaSeries[] = positions
+    .filter((position) => position.strategyKey === "covered_call" || position.strategyKey === "cash_secured_put")
     .filter((position) => (deltaSeriesByPositionId[position.id]?.length ?? 0) >= 2)
     .map((position, index, arr) => ({
       id: position.id,
@@ -375,6 +392,17 @@ export function PulsePage() {
       color: colorForIndex(index, arr.length),
       values: deltaSeriesByPositionId[position.id]!,
     }));
+
+  // Real, computed status — not decorative. "Degraded" whenever the Gateway
+  // node has no live connection (staleOrMissing means the worker hasn't
+  // written a worker_health row recently, connected:false means it has but
+  // reports no IBKR connection) or the live IBKR account-data round trip
+  // (exposure.accountDataError, from GET /risk-limits/exposure) is failing.
+  // Database/Heroku/Genosuke aren't gated on — if the page loaded at all,
+  // those are already up.
+  const gatewayDown = gatewayHealth ? gatewayHealth.staleOrMissing || !gatewayHealth.connected : false;
+  const ibkrDataError = Boolean(exposure?.accountDataError);
+  const systemDegraded = gatewayDown || ibkrDataError;
 
   return (
     <div className="iorio-pulse-page">
@@ -386,9 +414,9 @@ export function PulsePage() {
           <span className="brand-eyebrow">REALTIME SYSTEM MONITORING</span>
         </div>
         <div className="pulse-header-right">
-          <div className="status-pill">
-            <span className="led" />
-            ALL SYSTEMS NOMINAL
+          <div className={`status-pill${systemDegraded ? " status-pill-degraded" : ""}`}>
+            <span className={`led${systemDegraded ? " led-warn" : ""}`} />
+            {systemDegraded ? "ATTENTION NEEDED" : "ALL SYSTEMS NOMINAL"}
           </div>
           <div className="clock">{clock}</div>
         </div>
@@ -398,21 +426,29 @@ export function PulsePage() {
         <div className="kpi-tile">
           <span className="kpi-label">Account Value</span>
           <div className="kpi-value-row">
-            <span className="kpi-value">{formatSignedPnl(accountValue?.netLiquidationValue ?? null, 0).replace("+", "")}</span>
+            <FlashingNumber value={accountValue?.netLiquidationValue ?? null} className="kpi-value">
+              {formatSignedPnl(accountValue?.netLiquidationValue ?? null, 0).replace("+", "")}
+            </FlashingNumber>
           </div>
         </div>
         <div className="kpi-tile">
           <span className="kpi-label">Available Cash</span>
           <div className="kpi-value-row">
-            <span className="kpi-value">{formatSignedPnl(availableCash?.availableCashToTrade ?? null, 0).replace("+", "")}</span>
+            <FlashingNumber value={availableCash?.availableCashToTrade ?? null} className="kpi-value">
+              {formatSignedPnl(availableCash?.availableCashToTrade ?? null, 0).replace("+", "")}
+            </FlashingNumber>
           </div>
         </div>
         <div className="kpi-tile">
-          <span className="kpi-label">Today&apos;s P&amp;L</span>
+          <span className="kpi-label">Yesterday&apos;s P&amp;L</span>
           <div className="kpi-value-row">
-            <span className="kpi-value" style={{ color: todaysPnl === null ? undefined : todaysPnl >= 0 ? "var(--success)" : "var(--danger)" }}>
-              {formatSignedPnl(todaysPnl, 0)}
-            </span>
+            <FlashingNumber
+              value={yesterdaysPnl}
+              className="kpi-value"
+              style={{ color: yesterdaysPnl === null ? undefined : yesterdaysPnl >= 0 ? "var(--success)" : "var(--danger)" }}
+            >
+              {formatSignedPnl(yesterdaysPnl, 0)}
+            </FlashingNumber>
             <span className={`kpi-delta ${summary?.dayPnlPercent && summary.dayPnlPercent >= 0 ? "up" : "down"}`}>
               {formatSignedPercentageValue(summary?.dayPnlPercent ?? null, 2)}
             </span>
@@ -423,6 +459,11 @@ export function PulsePage() {
           <div className="alloc-bar">
             <span className="alloc-seg" style={{ width: `${ccPct}%`, background: "var(--accent)" }} data-label={`Covered Calls — ${ccPct.toFixed(0)}%`} />
             <span className="alloc-seg" style={{ width: `${cspPct}%`, background: "var(--warning)" }} data-label={`Cash-Secured Puts — ${cspPct.toFixed(0)}%`} />
+            <span
+              className="alloc-seg"
+              style={{ width: `${unstructuredPct}%`, background: "var(--danger)" }}
+              data-label={`Unstructured — ${unstructuredPct.toFixed(0)}%`}
+            />
             <span className="alloc-seg" style={{ width: `${cashPct}%`, background: "var(--border-strong)" }} data-label={`Cash — ${cashPct.toFixed(0)}%`} />
           </div>
         </div>
@@ -460,9 +501,15 @@ export function PulsePage() {
                     <span className={`strat-badge ${position.strategyKey === "covered_call" ? "cc" : "csp"}`}>{strategyAbbrev(position.strategyKey)}</span>
                   )}
                   <span className="pos-num">{dte ?? "—"}</span>
-                  <span className="pos-exp">{formatCompactDollars(capitalAtRisk)}</span>
-                  <span className="pos-pct">{expPct !== null ? `${expPct.toFixed(1)}%` : "—"}</span>
-                  <span className={`pos-pnl ${pnl !== null && pnl < 0 ? "neg" : "pos"}`}>{formatSignedPnl(pnl, 0)}</span>
+                  <FlashingNumber value={capitalAtRisk} className="pos-exp">
+                    {formatCompactDollars(capitalAtRisk)}
+                  </FlashingNumber>
+                  <FlashingNumber value={expPct} precision={1} className="pos-pct">
+                    {expPct !== null ? `${expPct.toFixed(1)}%` : "—"}
+                  </FlashingNumber>
+                  <FlashingNumber value={pnl} className={`pos-pnl ${pnl !== null && pnl < 0 ? "neg" : "pos"}`}>
+                    {formatSignedPnl(pnl, 0)}
+                  </FlashingNumber>
                 </div>
               );
             })}
@@ -518,15 +565,21 @@ export function PulsePage() {
             </div>
             <div className="sub-row">
               <span className="sub-name">Connections</span>
-              <span className="sub-value">{dbHealth ? `${dbHealth.activeConnections} / ${dbHealth.maxConnections}` : "—"}</span>
+              <FlashingNumber value={dbHealth ? Number(dbHealth.activeConnections) : null} className="sub-value">
+                {dbHealth ? `${dbHealth.activeConnections} / ${dbHealth.maxConnections}` : "—"}
+              </FlashingNumber>
             </div>
             <div className="sub-row">
               <span className="sub-name">Open positions</span>
-              <span className="sub-value">{dbHealth?.openPositionCount ?? "—"}</span>
+              <FlashingNumber value={dbHealth ? Number(dbHealth.openPositionCount) : null} className="sub-value">
+                {dbHealth?.openPositionCount ?? "—"}
+              </FlashingNumber>
             </div>
             <div className="sub-row">
               <span className="sub-name">DB size</span>
-              <span className="sub-value">{formatBytes(dbHealth?.databaseSizeBytes)}</span>
+              <FlashingNumber value={dbHealth ? Number(dbHealth.databaseSizeBytes) : null} className="sub-value">
+                {formatBytes(dbHealth?.databaseSizeBytes)}
+              </FlashingNumber>
             </div>
           </div>
 
@@ -545,11 +598,15 @@ export function PulsePage() {
             </div>
             <div className="sub-row">
               <span className="sub-name">Messages today</span>
-              <span className="sub-value">{genosukeHealth?.messagesToday ?? "—"}</span>
+              <FlashingNumber value={genosukeHealth ? Number(genosukeHealth.messagesToday) : null} className="sub-value">
+                {genosukeHealth?.messagesToday ?? "—"}
+              </FlashingNumber>
             </div>
             <div className="sub-row">
               <span className="sub-name">Chat sessions</span>
-              <span className="sub-value ok">{genosukeHealth ? `${genosukeHealth.activeSessions} active` : "—"}</span>
+              <FlashingNumber value={genosukeHealth ? Number(genosukeHealth.activeSessions) : null} className="sub-value ok">
+                {genosukeHealth ? `${genosukeHealth.activeSessions} active` : "—"}
+              </FlashingNumber>
             </div>
             <div className={`tg-tag${telegramFlash ? " flash" : ""}`}>
               <svg viewBox="0 0 24 24" fill="none" strokeWidth={1.6}>
@@ -579,22 +636,33 @@ export function PulsePage() {
             </div>
             <div className="sub-row">
               <span className="sub-name">Calls</span>
-              <span className="sub-value">{genosukeHealth ? `${genosukeHealth.llm.callsPerMinute} / min` : "—"}</span>
+              <FlashingNumber value={genosukeHealth?.llm.callsPerMinute ?? null} className="sub-value">
+                {genosukeHealth ? `${genosukeHealth.llm.callsPerMinute} / min` : "—"}
+              </FlashingNumber>
             </div>
             <div className="sub-row">
               <span className="sub-name">Avg latency</span>
-              <span className="sub-value">{genosukeHealth?.llm.avgLatencyMs ? `${(genosukeHealth.llm.avgLatencyMs / 1000).toFixed(1)}s` : "—"}</span>
+              <FlashingNumber value={genosukeHealth?.llm.avgLatencyMs ?? null} className="sub-value">
+                {genosukeHealth?.llm.avgLatencyMs ? `${(genosukeHealth.llm.avgLatencyMs / 1000).toFixed(1)}s` : "—"}
+              </FlashingNumber>
             </div>
           </div>
 
           <div className="charts-row">
             <div className="chart-panel">
               <div className="chart-panel-title">
-                <span>Total P&amp;L · live</span>
-                <span className="cur-val">{formatSignedPnl(pnlSeries.at(-1) ?? null, 0)}</span>
+                <span>Today&apos;s P&amp;L · live</span>
+                <span
+                  className="cur-val"
+                  style={{
+                    color: pnlSeries.length === 0 ? undefined : (pnlSeries.at(-1) ?? 0) >= 0 ? "var(--success)" : "var(--danger)",
+                  }}
+                >
+                  {formatSignedPnl(pnlSeries.at(-1) ?? null, 0)}
+                </span>
               </div>
               <div className="chart-svg-wrap">
-                <TotalPnlChart series={pnlSeries} />
+                <TotalPnlChart series={pnlSeries} formatValue={(value) => formatSignedPnl(value, 0)} />
               </div>
             </div>
             <div className="chart-panel">
@@ -618,15 +686,21 @@ export function PulsePage() {
             </div>
             <div className="sub-row">
               <span className="sub-name">Buying power</span>
-              <span className="sub-value">{formatSignedPnl(exposure?.account?.netLiquidationValue ?? null, 0).replace("+", "")}</span>
+              <FlashingNumber value={exposure?.account?.netLiquidationValue ?? null} className="sub-value">
+                {formatSignedPnl(exposure?.account?.netLiquidationValue ?? null, 0).replace("+", "")}
+              </FlashingNumber>
             </div>
             <div className="sub-row">
               <span className="sub-name">Margin excess</span>
-              <span className="sub-value ok">{exposure?.account?.excessLiquidity ? formatCompactDollars(exposure.account.excessLiquidity) : "—"}</span>
+              <FlashingNumber value={exposure?.account?.excessLiquidity ?? null} className="sub-value ok">
+                {exposure?.account?.excessLiquidity ? formatCompactDollars(exposure.account.excessLiquidity) : "—"}
+              </FlashingNumber>
             </div>
             <div className="sub-row">
               <span className="sub-name">Cash</span>
-              <span className="sub-value">{availableCash?.totalCashValue ? formatCompactDollars(availableCash.totalCashValue) : "—"}</span>
+              <FlashingNumber value={availableCash?.totalCashValue ?? null} className="sub-value">
+                {availableCash?.totalCashValue ? formatCompactDollars(availableCash.totalCashValue) : "—"}
+              </FlashingNumber>
             </div>
           </div>
 
@@ -653,11 +727,15 @@ export function PulsePage() {
               <>
                 <div className="sub-row">
                   <span className="sub-name">In flight</span>
-                  <span className="sub-value warn">{gatewayHealth ? `${gatewayHealth.inFlightOrderCount} orders` : "—"}</span>
+                  <FlashingNumber value={gatewayHealth?.inFlightOrderCount ?? null} className="sub-value warn">
+                    {gatewayHealth ? `${gatewayHealth.inFlightOrderCount} orders` : "—"}
+                  </FlashingNumber>
                 </div>
                 <div className="sub-row">
                   <span className="sub-name">Reconnects</span>
-                  <span className="sub-value">{gatewayHealth?.totalReconnects ?? "—"} lifetime</span>
+                  <FlashingNumber value={gatewayHealth?.totalReconnects ?? null} className="sub-value">
+                    {gatewayHealth?.totalReconnects ?? "—"} lifetime
+                  </FlashingNumber>
                 </div>
                 <div className="sub-row">
                   <span className="sub-name">Uptime</span>
@@ -682,11 +760,15 @@ export function PulsePage() {
             </div>
             <div className="sub-row">
               <span className="sub-name">Requests</span>
-              <span className="sub-value">{webDynoHealth ? `${webDynoHealth.requestsPerMinute} / min` : "—"}</span>
+              <FlashingNumber value={webDynoHealth?.requestsPerMinute ?? null} className="sub-value">
+                {webDynoHealth ? `${webDynoHealth.requestsPerMinute} / min` : "—"}
+              </FlashingNumber>
             </div>
             <div className="sub-row">
               <span className="sub-name">Connections</span>
-              <span className="sub-value ok">{webDynoHealth?.notificationStreamConnections ?? "—"}</span>
+              <FlashingNumber value={webDynoHealth?.notificationStreamConnections ?? null} className="sub-value ok">
+                {webDynoHealth?.notificationStreamConnections ?? "—"}
+              </FlashingNumber>
             </div>
             <div className="sub-row">
               <span className="sub-name">Uptime</span>
@@ -746,7 +828,7 @@ export function PulsePage() {
             ))}
           </div>
           <div className="panel">
-            <div className="panel-title">System Events</div>
+            <div className="panel-title">Latest Events</div>
             <div className="events-list">
               {events.length === 0 && <div className="panel-empty">No events yet.</div>}
               {events.map((event) => (

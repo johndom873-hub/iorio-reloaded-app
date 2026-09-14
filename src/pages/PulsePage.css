@@ -109,6 +109,14 @@
   box-shadow: none;
   animation: none;
 }
+.iorio-pulse-page .led.led-warn {
+  background: var(--danger);
+  box-shadow: 0 0 7px 1px var(--danger);
+}
+.iorio-pulse-page .status-pill-degraded {
+  color: var(--danger);
+  border-color: rgba(240, 85, 79, 0.45);
+}
 @keyframes pulse-led {
   0%,
   100% {
@@ -813,6 +821,37 @@
   font-size: 0.6rem;
   color: var(--text-secondary);
   letter-spacing: 0.01em;
+}
+.iorio-pulse-page .chart-tooltip {
+  position: absolute;
+  top: 4px;
+  background: var(--bg-surface-raised);
+  border: 1px solid var(--border-strong);
+  border-radius: 5px;
+  padding: 0.22rem 0.5rem;
+  font-family: var(--font-mono);
+  font-size: 0.64rem;
+  color: var(--text-primary);
+  white-space: nowrap;
+  pointer-events: none;
+  z-index: 5;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.45);
+}
+.iorio-pulse-page .chart-tooltip-multi {
+  display: flex;
+  flex-direction: column;
+  gap: 0.18rem;
+  padding: 0.32rem 0.5rem;
+}
+.iorio-pulse-page .chart-tooltip-row {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+.iorio-pulse-page .chart-tooltip-value {
+  margin-left: auto;
+  font-weight: 600;
+  padding-left: 0.6rem;
 }
 
 @media (prefers-reduced-motion: reduce) {

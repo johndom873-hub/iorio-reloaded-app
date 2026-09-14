@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import type { CSSProperties, ReactNode } from "react";
 import { flashClassName, useFlashOnChange } from "../hooks/useFlashOnChange";
 
 interface FlashingNumberProps {
@@ -8,6 +8,7 @@ interface FlashingNumberProps {
   precision?: number;
   className?: string;
   title?: string;
+  style?: CSSProperties;
   children: ReactNode;
 }
 
@@ -18,10 +19,10 @@ interface FlashingNumberProps {
 // component itself — see DataTable.tsx) can still get one flashing
 // component instance per cell rather than calling the hook directly, which
 // would violate the Rules of Hooks once called from inside a loop over rows.
-export function FlashingNumber({ value, precision, className, title, children }: FlashingNumberProps) {
+export function FlashingNumber({ value, precision, className, title, style, children }: FlashingNumberProps) {
   const flashing = useFlashOnChange(value, 1200, precision);
   return (
-    <span className={[className, flashClassName(flashing)].filter(Boolean).join(" ")} title={title}>
+    <span className={[className, flashClassName(flashing)].filter(Boolean).join(" ")} title={title} style={style}>
       {children}
     </span>
   );
