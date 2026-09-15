@@ -42,6 +42,8 @@ import {
   formatPercentage,
   formatSignedPnl,
   ibkrExpiryToIsoDate,
+  daysToExpiry,
+  todayInEasternIso,
 } from "../lib/formatters";
 import { strategyBadgeClass, strategyLabel } from "../lib/positionPnl";
 import { flashClassName, useFlashOnChange } from "../hooks/useFlashOnChange";
@@ -116,12 +118,20 @@ function groupOptionChain(quotes: OptionQuote[]): ExpiryGroup[] {
     else row.put = quote;
   }
 
-  const today = new Date();
+  // Calendar-date diff (via the shared daysToExpiry/todayInEasternIso pair —
+  // see their doc comments in formatters.ts), not a raw now-vs-midnight
+  // millisecond diff: found 2026-09-15 that Math.round((expiryMidnightUtc -
+  // Date.now()) / 86_400_000) rounds down to 0 DTE for an expiry that's
+  // still a full calendar day out whenever less than 24h of wall-clock time
+  // remains until that UTC midnight (e.g. any afternoon/evening ET on the
+  // day before expiry) — annualized yield then goes blank everywhere on
+  // that tab, since computeAnnualizedYield treats dte<=0 as un-annualizable.
+  const todayIso = todayInEasternIso();
   return Array.from(byExpiry.entries())
     .sort(([a], [b]) => a.localeCompare(b))
     .map(([expiry, strikes]) => ({
       expiry,
-      daysToExpiry: Math.round((parseIbkrExpiry(expiry).getTime() - today.getTime()) / 86_400_000),
+      daysToExpiry: daysToExpiry(ibkrExpiryToIsoDate(expiry), todayIso),
       strikes: Array.from(strikes.values()).sort((a, b) => a.strike - b.strike),
     }));
 }
