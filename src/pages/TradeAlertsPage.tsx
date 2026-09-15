@@ -2,7 +2,6 @@ import { Fragment, useCallback, useEffect, useState } from "react";
 import { PageHeader } from "../components/layout/PageHeader";
 import { Spinner } from "../components/Spinner";
 import { TickerDetailModal } from "../components/TickerDetailModal";
-import { RollPositionModal } from "../components/RollPositionModal";
 import { ApiError } from "../api/client";
 import { useBackgroundJobs, useJobEvents } from "../contexts/BackgroundJobsContext";
 import {
@@ -160,7 +159,6 @@ export function TradeAlertsPage() {
   const [keptEmptyTickers, setKeptEmptyTickers] = useState<Map<string, { symbol: string; companyName: string | null }>>(new Map());
   const [detailSymbol, setDetailSymbol] = useTickerDetailSymbol();
   const [detailAlertId, setDetailAlertId] = useState<string | undefined>(undefined);
-  const [rollAlert, setRollAlert] = useState<RollAlert | null>(null);
   const { jobs, startTradeAlertScan } = useBackgroundJobs();
   const scanJob = jobs.find((job) => job.id === "trade-alert-scan");
   const running = scanJob?.status === "running";
@@ -228,7 +226,7 @@ export function TradeAlertsPage() {
     }
   }
 
-  function handleReview(alert: NewTradeAlert) {
+  function handleReview(alert: { symbol: string; id: string }) {
     setDetailSymbol(alert.symbol);
     setDetailAlertId(alert.id);
   }
@@ -588,7 +586,7 @@ export function TradeAlertsPage() {
                                   <td className="text-end">
                                     {alert.status === "pending" ? (
                                       <div className="d-flex gap-2 justify-content-end">
-                                        <button type="button" className="btn btn-sm btn-primary" onClick={() => setRollAlert(alert)}>
+                                        <button type="button" className="btn btn-sm btn-primary" onClick={() => handleReview(alert)}>
                                           Roll
                                         </button>
                                         <button
@@ -696,7 +694,7 @@ export function TradeAlertsPage() {
                             <div className="mt-2">
                               {alert.status === "pending" ? (
                                 <div className="d-flex gap-2">
-                                  <button type="button" className="btn btn-primary flex-fill" onClick={() => setRollAlert(alert)}>
+                                  <button type="button" className="btn btn-primary flex-fill" onClick={() => handleReview(alert)}>
                                     Roll
                                   </button>
                                   <button
@@ -731,14 +729,8 @@ export function TradeAlertsPage() {
           onClose={() => {
             setDetailSymbol(null);
             setDetailAlertId(undefined);
+            loadAlerts();
           }}
-        />
-      )}
-      {rollAlert && (
-        <RollPositionModal
-          alert={rollAlert}
-          onClose={() => setRollAlert(null)}
-          onRolled={() => setAlerts((prev) => prev.filter((a) => a.id !== rollAlert.id))}
         />
       )}
     </>

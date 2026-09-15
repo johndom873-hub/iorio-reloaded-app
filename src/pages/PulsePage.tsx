@@ -195,7 +195,7 @@ export function PulsePage() {
     fetchStrategySettings().then(setStrategySettings).catch(() => {});
   }, []);
 
-  // Yesterday's P&L (KPI) and the Today's P&L chart are intentionally
+  // Yesterday's P&L (KPI) and the Unrealised P&L chart are intentionally
   // different numbers: this is day-over-day snapshot delta, the chart is a
   // live mark-to-market sum of currently-open positions since each one's
   // own entry. Don't "fix" them to agree.
@@ -669,7 +669,7 @@ export function PulsePage() {
           <div className="charts-row">
             <div className="chart-panel">
               <div className="chart-panel-title">
-                <span>Today&apos;s P&amp;L · live</span>
+                <span>Unrealised P&amp;L</span>
                 <span
                   className="cur-val"
                   style={{

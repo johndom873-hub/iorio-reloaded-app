@@ -6,6 +6,7 @@ import { OrderReviewPanel } from "./OrderReviewPanel";
 import { TickerPriceChart } from "./charts/TickerPriceChart";
 import { IvHistoryChart } from "./charts/IvHistoryChart";
 import { PositionCard } from "./PositionCard";
+import { RollOrderSetupForm, type RollAlertLike } from "./RollOrderSetupForm";
 import {
   openTickerDetailStream,
   type OptionQuote,
@@ -455,6 +456,13 @@ export function TickerDetailModal({ symbol, onClose, initialAlertId, focusPositi
   const [activeExpiry, setActiveExpiry] = useState<string | null>(null);
   const [selection, setSelection] = useState<ChainSelection | null>(null);
   const [contractQty, setContractQty] = useState("1");
+  // Roll review, folded into this same Order Setup slot since 2026-09-15
+  // instead of opening a separate stacked modal — mutually exclusive with
+  // `selection` (a chain pick/new-trade alert), same mutual-exclusivity
+  // convention as the rest of this component's selection state.
+  const [rollSelection, setRollSelection] = useState<RollAlertLike | null>(null);
+  const [rollPendingOrder, setRollPendingOrder] = useState<OrderRequest | null>(null);
+  const orderSetupRef = useRef<HTMLDivElement | null>(null);
   const [pendingOrder, setPendingOrder] = useState<OrderRequest | null>(null);
   const [building, setBuilding] = useState(false);
   const [buildError, setBuildError] = useState<string | null>(null);
@@ -493,7 +501,7 @@ export function TickerDetailModal({ symbol, onClose, initialAlertId, focusPositi
   const alertsRef = useRef<TradeAlert[] | null>(null);
   alertsRef.current = alerts;
   const isBuildingRef = useRef(false);
-  isBuildingRef.current = selection !== null || pendingOrder !== null;
+  isBuildingRef.current = selection !== null || pendingOrder !== null || rollSelection !== null;
 
   // Closes the gap where an order-fill's onFilled (above) fires loadPositions
   // before reconcilePositionsFromIbkr has actually created the new position
@@ -648,6 +656,7 @@ export function TickerDetailModal({ symbol, onClose, initialAlertId, focusPositi
 
   const expiryGroups = useMemo(() => groupOptionChain(optionChain ?? []), [optionChain]);
   const relevantAlerts = useMemo(() => newTradeAlerts(alerts ?? []), [alerts]);
+  const rollAlerts = useMemo(() => (alerts ?? []).filter(isRollAlert), [alerts]);
   const rollAlertsByPositionId = useMemo(() => {
     const byPositionId: Record<string, TradeAlert & { suggestedStructure: RollStructure }> = {};
     for (const alert of alerts ?? []) {
@@ -675,7 +684,17 @@ export function TickerDetailModal({ symbol, onClose, initialAlertId, focusPositi
   // only jumped/scrolled and left the order panel closed — fixed 2026-08-27,
   // see handleAlertPillClick below.
   useEffect(() => {
-    if (appliedInitialAlert.current || !initialAlertId || relevantAlerts.length === 0 || expiryGroups.length === 0) return;
+    if (appliedInitialAlert.current || !initialAlertId) return;
+    // A roll alert has no chain expiry/strike to jump to — check it first,
+    // independent of expiryGroups being ready, since selectRoll doesn't need
+    // the option chain at all.
+    const rollMatch = rollAlerts.find((a) => a.id === initialAlertId);
+    if (rollMatch) {
+      appliedInitialAlert.current = true;
+      selectRoll(rollMatch);
+      return;
+    }
+    if (relevantAlerts.length === 0 || expiryGroups.length === 0) return;
     const alert = relevantAlerts.find((a) => a.id === initialAlertId);
     if (!alert) return;
     appliedInitialAlert.current = true;
@@ -685,7 +704,7 @@ export function TickerDetailModal({ symbol, onClose, initialAlertId, focusPositi
     chainRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
     selectAlert(alert);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [initialAlertId, relevantAlerts, expiryGroups]);
+  }, [initialAlertId, relevantAlerts, rollAlerts, expiryGroups]);
 
   // Opened from a specific position's row (e.g. Positions' symbol/notes
   // columns) — scrolls that position's card into view once positions have
@@ -731,13 +750,14 @@ export function TickerDetailModal({ symbol, onClose, initialAlertId, focusPositi
   }
 
   function selectAlert(alert: NewTradeAlert) {
+    closeRollPanel();
     setSelection({
       strategyKey: alert.strategyKey,
       strike: alert.suggestedStructure.strike,
       expiryYyyymmdd: alert.suggestedStructure.expiry.replaceAll("-", ""),
       sourceAlert: alert,
     });
-    setContractQty("1");
+    setContractQty(defaultContractQtyFor(alert.strategyKey));
     setPendingOrder(null);
     setBuildError(null);
   }
@@ -748,13 +768,15 @@ export function TickerDetailModal({ symbol, onClose, initialAlertId, focusPositi
   // cells (as opposed to its pill specifically) carries the same frozen
   // fallback values a pill click would.
   function selectQuote(quote: OptionQuote) {
+    closeRollPanel();
+    const strategyKey = quote.right === "C" ? "covered_call" : "cash_secured_put";
     setSelection({
-      strategyKey: quote.right === "C" ? "covered_call" : "cash_secured_put",
+      strategyKey,
       strike: quote.strike,
       expiryYyyymmdd: quote.expiry,
       sourceAlert: matchAlertToQuote(quote, relevantAlerts) ?? undefined,
     });
-    setContractQty("1");
+    setContractQty(defaultContractQtyFor(strategyKey));
     setPendingOrder(null);
     setBuildError(null);
   }
@@ -780,6 +802,23 @@ export function TickerDetailModal({ symbol, onClose, initialAlertId, focusPositi
     } catch (err) {
       setPositionsError(err instanceof ApiError ? err.message : "Failed to load positions.");
     }
+  }
+
+  // Shares of this symbol sitting in an open unstructured (bare stock)
+  // position — the same pool the backend's fetchAvailableUncoveredShares
+  // nets a new covered call's stock leg against (routes/positions.ts POST
+  // /orders). Recomputed client-side from data already loaded here so the
+  // Contracts input can default to a useful quantity instead of always "1"
+  // (found 2026-09-15: 200 held shares defaulted to 1 contract, not 2).
+  const uncoveredShares = (positions ?? [])
+    .filter((position) => position.status === "open" && position.strategyKey === "unstructured")
+    .flatMap((position) => position.legs)
+    .filter((leg) => leg.legType === "stock" && leg.exitAt === null)
+    .reduce((sum, leg) => sum + leg.quantity, 0);
+
+  function defaultContractQtyFor(strategyKey: StrategyKey): string {
+    if (strategyKey !== "covered_call" || uncoveredShares < 100) return "1";
+    return String(Math.floor(uncoveredShares / 100));
   }
 
   // Live-upgrading Greeks/P&L for this symbol's open positions — streamed
@@ -861,6 +900,20 @@ export function TickerDetailModal({ symbol, onClose, initialAlertId, focusPositi
     setSelection(null);
     setPendingOrder(null);
     setBuildError(null);
+  }
+
+  function selectRoll(alert: RollAlertLike) {
+    setSelection(null);
+    setPendingOrder(null);
+    setBuildError(null);
+    setRollSelection(alert);
+    setRollPendingOrder(null);
+    orderSetupRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+
+  function closeRollPanel() {
+    setRollSelection(null);
+    setRollPendingOrder(null);
   }
 
   async function handleReviewOrder() {
@@ -1002,6 +1055,30 @@ export function TickerDetailModal({ symbol, onClose, initialAlertId, focusPositi
     />
   );
 
+  // Same two-shape split as orderSetupForm/orderSetupPanel above, mirrored
+  // for the roll flow folded in from the old standalone RollPositionModal
+  // (2026-09-15) — RollOrderSetupForm only builds the order and hands it up;
+  // the shared OrderReviewPanel takes over for the actual confirm/fill,
+  // exactly like a chain-selection order does.
+  const rollOrderSetupForm = rollSelection && !rollPendingOrder && (
+    <RollOrderSetupForm alert={rollSelection} onCancel={closeRollPanel} onSubmitted={setRollPendingOrder} />
+  );
+  const rollOrderSetupPanel = rollSelection && rollPendingOrder && (
+    <OrderReviewPanel
+      order={rollPendingOrder}
+      liveSpotPrice={spotPrice}
+      onCancelled={closeRollPanel}
+      onFilled={() => {
+        closeRollPanel();
+        loadPositions();
+        fetchTradeAlerts({ status: "pending", symbol })
+          .then(setAlerts)
+          .then(() => setStreamKey((key) => key + 1))
+          .catch(() => {});
+      }}
+    />
+  );
+
   const orderSetupForm = selection && !pendingOrder && (
     <div className="d-flex flex-column gap-3">
       <div>
@@ -1074,8 +1151,16 @@ export function TickerDetailModal({ symbol, onClose, initialAlertId, focusPositi
             {selection.strategyKey === "covered_call" && (
               <div className="text-secondary mt-1 font-mono" style={{ fontSize: "0.78rem" }}>
                 = <strong>{(Number(contractQty) || 0) * 100}</strong> shares required ({contractQty || 0} contract
-                {Number(contractQty) === 1 ? "" : "s"} × 100) — already-held shares on this symbol are netted out
-                automatically when the order is built
+                {Number(contractQty) === 1 ? "" : "s"} × 100)
+                {uncoveredShares > 0 ? (
+                  <>
+                    {" "}
+                    — you hold <strong>{uncoveredShares}</strong> uncovered share{uncoveredShares === 1 ? "" : "s"} of {symbol}; this order
+                    covers {Math.min((Number(contractQty) || 0) * 100, uncoveredShares)} of them, netted out automatically when built
+                  </>
+                ) : (
+                  " — already-held shares on this symbol are netted out automatically when the order is built"
+                )}
               </div>
             )}
           </div>
@@ -1225,7 +1310,9 @@ export function TickerDetailModal({ symbol, onClose, initialAlertId, focusPositi
                                   currentPrice={spotPrice}
                                   rollAlert={rollAlertsByPositionId[position.id]}
                                   onChanged={loadPositions}
+                                  onRollSelect={selectRoll}
                                   onSellCall={(prefill) => {
+                                    closeRollPanel();
                                     if (prefill) {
                                       const expiryYyyymmdd = prefill.expiry.replaceAll("-", "");
                                       if (expiryGroups.some((g) => g.expiry === expiryYyyymmdd)) setActiveExpiry(expiryYyyymmdd);
@@ -1295,12 +1382,19 @@ export function TickerDetailModal({ symbol, onClose, initialAlertId, focusPositi
                       the order panel (when open) spans the FULL height of both,
                       not just the chain table next to it. */}
                   <div className="d-flex flex-column flex-lg-row gap-3">
-                  <div style={{ minWidth: 0, flex: selection ? "1 1 68%" : "1 1 100%" }}>
+                  <div style={{ minWidth: 0, flex: selection || rollSelection ? "1 1 68%" : "1 1 100%" }}>
                   {/* ---------- Trade Alerts ---------- */}
                   {alertsError && <div className="alert alert-danger">{alertsError}</div>}
                   {alerts !== null && !alertsError && (
                     <CollapsibleCard
-                      title={<>Trade Alerts {relevantAlerts.length > 0 && <span className="text-secondary fw-normal">({relevantAlerts.length})</span>}</>}
+                      title={
+                        <>
+                          Trade Alerts{" "}
+                          {relevantAlerts.length + rollAlerts.length > 0 && (
+                            <span className="text-secondary fw-normal">({relevantAlerts.length + rollAlerts.length})</span>
+                          )}
+                        </>
+                      }
                       subtitle={
                         <button
                           type="button"
@@ -1320,7 +1414,9 @@ export function TickerDetailModal({ symbol, onClose, initialAlertId, focusPositi
                     >
                       {scanError && <div className="alert alert-danger">{scanError}</div>}
 
-                      {relevantAlerts.length === 0 && !scanning && <p className="text-secondary mb-0">No active trade alerts.</p>}
+                      {relevantAlerts.length === 0 && rollAlerts.length === 0 && !scanning && (
+                        <p className="text-secondary mb-0">No active trade alerts.</p>
+                      )}
 
                       {relevantAlerts.length > 0 && (
                         <>
@@ -1369,6 +1465,76 @@ export function TickerDetailModal({ symbol, onClose, initialAlertId, focusPositi
                         ))}
                       </div>
                         </>
+                      )}
+
+                      {rollAlerts.length > 0 && (
+                        <div className={relevantAlerts.length > 0 ? "mt-4" : ""}>
+                          <p className="text-secondary small mb-2">
+                            Roll alerts for existing positions — click a row to set up the roll below.
+                          </p>
+
+                          {/* Desktop/tablet: compact table */}
+                          <div className="table-responsive border rounded d-none d-md-block">
+                            <table className="table table-sm table-vcenter card-table table-hover mb-0">
+                              <thead className="table-light">
+                                <tr>
+                                  <th>Close</th>
+                                  <th>Replacement</th>
+                                  <th className="text-end">Net Credit</th>
+                                  <th style={{ width: 24 }}></th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {rollAlerts.map((alert) => {
+                                  const { closeLeg, replacement, netCredit } = alert.suggestedStructure;
+                                  const rightLabel = closeLeg.right === "call" ? "C" : "P";
+                                  return (
+                                    <tr key={alert.id} role="button" onClick={() => selectRoll(alert)}>
+                                      <td>
+                                        {formatCurrencyTrimmed(closeLeg.strike)}
+                                        {rightLabel} exp {formatDate(closeLeg.expiry)}
+                                      </td>
+                                      <td>
+                                        {formatCurrencyTrimmed(replacement.strike)}
+                                        {rightLabel} exp {formatDate(replacement.expiry)}
+                                      </td>
+                                      <td className="text-end font-mono text-success">{formatCurrency(netCredit)}</td>
+                                      <td className="text-secondary">›</td>
+                                    </tr>
+                                  );
+                                })}
+                              </tbody>
+                            </table>
+                          </div>
+
+                          {/* Mobile: compact tappable cards */}
+                          <div className="d-md-none d-flex flex-column gap-2">
+                            {rollAlerts.map((alert) => {
+                              const { closeLeg, replacement, netCredit } = alert.suggestedStructure;
+                              const rightLabel = closeLeg.right === "call" ? "C" : "P";
+                              return (
+                                <button
+                                  type="button"
+                                  key={alert.id}
+                                  className="btn btn-outline-secondary text-start d-flex flex-column gap-1"
+                                  onClick={() => selectRoll(alert)}
+                                >
+                                  <div className="d-flex justify-content-between">
+                                    <span>
+                                      {formatCurrencyTrimmed(closeLeg.strike)}
+                                      {rightLabel} → {formatCurrencyTrimmed(replacement.strike)}
+                                      {rightLabel}
+                                    </span>
+                                    <span className="text-success font-mono">{formatCurrency(netCredit)}</span>
+                                  </div>
+                                  <div className="text-secondary" style={{ fontSize: "0.78rem" }}>
+                                    exp {formatDate(closeLeg.expiry)} → {formatDate(replacement.expiry)}
+                                  </div>
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
                       )}
                     </CollapsibleCard>
                   )}
@@ -1540,21 +1706,26 @@ export function TickerDetailModal({ symbol, onClose, initialAlertId, focusPositi
                       cramped sidebar next to just the chain table), sticky
                       so it stays in view while that column scrolls. Inline
                       card on mobile instead, below everything. */}
-                  {selection && (
+                  {(selection || rollSelection) && (
                     <div
-                      className={pendingOrder ? "d-none d-lg-block" : "border rounded p-4 d-none d-lg-block"}
+                      ref={orderSetupRef}
+                      className={pendingOrder || rollPendingOrder ? "d-none d-lg-block" : "border rounded p-4 d-none d-lg-block"}
                       style={{ flex: "1 1 32%", maxWidth: "420px", minWidth: 0, alignSelf: "flex-start", position: "sticky", top: 0 }}
                     >
                       {orderSetupForm}
                       {orderSetupPanel}
+                      {rollOrderSetupForm}
+                      {rollOrderSetupPanel}
                     </div>
                   )}
                   </div>
 
-                  {selection && (
-                    <div className={pendingOrder ? "mt-3 d-lg-none" : "border rounded p-3 mt-3 d-lg-none"}>
+                  {(selection || rollSelection) && (
+                    <div className={pendingOrder || rollPendingOrder ? "mt-3 d-lg-none" : "border rounded p-3 mt-3 d-lg-none"}>
                       {orderSetupForm}
                       {orderSetupPanel}
+                      {rollOrderSetupForm}
+                      {rollOrderSetupPanel}
                     </div>
                   )}
 

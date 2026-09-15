@@ -4,7 +4,6 @@ import { DataTable, type DataTableColumn } from "../components/DataTable/DataTab
 import { Spinner } from "../components/Spinner";
 import { FlashingNumber } from "../components/FlashingNumber";
 import { ClosePositionModal } from "../components/ClosePositionModal";
-import { RollPositionModal } from "../components/RollPositionModal";
 import { TickerDetailModal } from "../components/TickerDetailModal";
 import { ApiError } from "../api/client";
 import {
@@ -88,12 +87,15 @@ export function PositionsPage() {
   const [unrealizedPnlFetchFailed, setUnrealizedPnlFetchFailed] = useState(false);
   const [detailSymbol, setDetailSymbol] = useTickerDetailSymbol();
   // Not persisted across a refresh (unlike detailSymbol) -- it's a one-shot
-  // "scroll to this position" aid, not state worth surviving a reload.
+  // "scroll to this position"/"pre-select this alert" aid, not state worth
+  // surviving a reload.
   const [focusPositionId, setFocusPositionId] = useState<string | undefined>(undefined);
+  const [initialAlertId, setInitialAlertId] = useState<string | undefined>(undefined);
   const openTickerDetail = useCallback(
-    (ticker: { symbol: string; focusPositionId?: string }) => {
+    (ticker: { symbol: string; focusPositionId?: string; alertId?: string }) => {
       setDetailSymbol(ticker.symbol);
       setFocusPositionId(ticker.focusPositionId);
+      setInitialAlertId(ticker.alertId);
     },
     [setDetailSymbol],
   );
@@ -103,7 +105,6 @@ export function PositionsPage() {
   // filters above: a roll alert only ever exists for an open position, so
   // fetching the full pending set unfiltered is simplest.
   const [rollAlertsByPositionId, setRollAlertsByPositionId] = useState<Record<string, RollAlert>>({});
-  const [rollAlert, setRollAlert] = useState<RollAlert | null>(null);
 
   const loadPositions = useCallback(async () => {
     try {
@@ -466,7 +467,7 @@ export function PositionsPage() {
                   type="button"
                   className="btn btn-sm btn-outline-warning"
                   title={alert.rationale ?? "Roll alert pending for this position"}
-                  onClick={() => setRollAlert(alert)}
+                  onClick={() => openTickerDetail({ symbol: row.symbol, focusPositionId: row.id, alertId: alert.id })}
                 >
                   Roll
                 </button>
@@ -545,25 +546,11 @@ export function PositionsPage() {
         <TickerDetailModal
           symbol={detailSymbol}
           focusPositionId={focusPositionId}
+          initialAlertId={initialAlertId}
           onClose={() => {
             setDetailSymbol(null);
             setFocusPositionId(undefined);
-            loadPositions();
-          }}
-        />
-      )}
-
-      {rollAlert && (
-        <RollPositionModal
-          alert={{
-            id: rollAlert.id,
-            symbol: rollAlert.symbol,
-            relatedPositionId: rollAlert.relatedPositionId,
-            suggestedStructure: rollAlert.suggestedStructure,
-          }}
-          onClose={() => setRollAlert(null)}
-          onRolled={() => {
-            setRollAlert(null);
+            setInitialAlertId(undefined);
             loadPositions();
             loadRollAlerts();
           }}

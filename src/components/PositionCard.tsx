@@ -2,11 +2,11 @@ import { useMemo, useState } from "react";
 import { Spinner } from "./Spinner";
 import { ApexChart } from "./charts/ApexChart";
 import { ClosePositionModal } from "./ClosePositionModal";
-import { RollPositionModal } from "./RollPositionModal";
+import type { RollAlertLike } from "./RollOrderSetupForm";
 import { RecoveryPathModal } from "./RecoveryPathModal";
 import { ApiError } from "../api/client";
 import { useTheme } from "../contexts/ThemeContext";
-import { fetchRollCandidate, type Greeks, type Position, type RollCandidate, type UnrealizedPnlResult } from "../api/positions";
+import { fetchRollCandidate, type Greeks, type Position, type UnrealizedPnlResult } from "../api/positions";
 import type { RollStructure, TradeAlert } from "../api/tradeAlerts";
 import { computePayoff } from "../lib/payoff";
 import {
@@ -55,6 +55,13 @@ interface PositionCardProps {
    * quantity in the chain's order panel instead of leaving it blank.
    */
   onSellCall: (prefill?: { strike: number; expiry: string; quantity: number; premium: number }) => void;
+  /**
+   * Opens (or replaces) the roll review in TickerDetailModal's own Order
+   * Setup slot — since 2026-09-15, a roll no longer opens its own stacked
+   * modal, so this card just hands the alert/candidate shape up to the
+   * parent instead of rendering RollPositionModal itself.
+   */
+  onRollSelect: (alert: RollAlertLike) => void;
 }
 
 const annotationColorsByTheme = {
@@ -82,6 +89,7 @@ export function PositionCard({
   rollAlert,
   onChanged,
   onSellCall,
+  onRollSelect,
 }: PositionCardProps) {
   const { theme } = useTheme();
   const annotationColors = annotationColorsByTheme[theme];
@@ -99,12 +107,6 @@ export function PositionCard({
 
   const [rollingLegId, setRollingLegId] = useState<string | null>(null);
   const [rollError, setRollError] = useState<string | null>(null);
-  const [rollCandidate, setRollCandidate] = useState<RollCandidate | null>(null);
-  // Set when the user opens the roll flow off a real pending roll alert
-  // (banner or the leg's alert-aware Roll button) rather than the on-demand
-  // fetchRollCandidate path — keeps its id so the roll gets submitted as
-  // sourceAlertId instead of a bare on-demand roll.
-  const [selectedRollAlert, setSelectedRollAlert] = useState<(TradeAlert & { suggestedStructure: RollStructure }) | null>(null);
 
   const payoff = useMemo(
     () => (position.strategyKey !== "unstructured" ? computePayoff(position.strategyKey, position.legs) : null),
@@ -116,7 +118,11 @@ export function PositionCard({
     setRollError(null);
     try {
       const candidate = await fetchRollCandidate(position.id, legId);
-      setRollCandidate(candidate);
+      onRollSelect({
+        symbol: candidate.symbol,
+        relatedPositionId: candidate.relatedPositionId,
+        suggestedStructure: candidate.suggestedStructure,
+      });
     } catch (err) {
       setRollError(err instanceof ApiError ? err.message : "Failed to compute a roll candidate.");
     } finally {
@@ -220,7 +226,11 @@ export function PositionCard({
           <div>
             <strong>Roll alert:</strong> {rollAlert.rationale ?? "This position is ready to roll."}
           </div>
-          <button type="button" className="btn btn-outline-secondary" onClick={() => setSelectedRollAlert(rollAlert)}>
+          <button
+            type="button"
+            className="btn btn-outline-secondary"
+            onClick={() => onRollSelect({ id: rollAlert.id, symbol: rollAlert.symbol, relatedPositionId: rollAlert.relatedPositionId, suggestedStructure: rollAlert.suggestedStructure })}
+          >
             Review Roll
           </button>
         </div>
@@ -293,7 +303,14 @@ export function PositionCard({
                           type="button"
                           className="btn btn-sm btn-outline-warning"
                           title={legRollAlert.rationale ?? "Roll alert pending"}
-                          onClick={() => setSelectedRollAlert(legRollAlert)}
+                          onClick={() =>
+                            onRollSelect({
+                              id: legRollAlert.id,
+                              symbol: legRollAlert.symbol,
+                              relatedPositionId: legRollAlert.relatedPositionId,
+                              suggestedStructure: legRollAlert.suggestedStructure,
+                            })
+                          }
                         >
                           Roll Alert
                         </button>
@@ -427,34 +444,6 @@ export function PositionCard({
           onSellCandidate={(prefill) => {
             setShowRecoveryPath(false);
             onSellCall(prefill);
-          }}
-        />
-      )}
-
-      {(rollCandidate || selectedRollAlert) && (
-        <RollPositionModal
-          alert={
-            selectedRollAlert
-              ? {
-                  id: selectedRollAlert.id,
-                  symbol: selectedRollAlert.symbol,
-                  relatedPositionId: selectedRollAlert.relatedPositionId,
-                  suggestedStructure: selectedRollAlert.suggestedStructure,
-                }
-              : {
-                  symbol: rollCandidate!.symbol,
-                  relatedPositionId: rollCandidate!.relatedPositionId,
-                  suggestedStructure: rollCandidate!.suggestedStructure,
-                }
-          }
-          onClose={() => {
-            setRollCandidate(null);
-            setSelectedRollAlert(null);
-          }}
-          onRolled={() => {
-            setRollCandidate(null);
-            setSelectedRollAlert(null);
-            onChanged();
           }}
         />
       )}
