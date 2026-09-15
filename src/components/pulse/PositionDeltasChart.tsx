@@ -1,4 +1,5 @@
 import { useRef, useState } from "react";
+import { ChartTimeAxis } from "./ChartTimeAxis";
 
 // Pure/presentational — PulsePage owns the rolling-sample logic (sampling
 // the live greeks stream's |delta| per position, filtered to CC/CSP only
@@ -16,11 +17,19 @@ export interface DeltaSeries {
 interface PositionDeltasChartProps {
   seriesByPosition: DeltaSeries[];
   deltaLimit: number;
+  /**
+   * Same sample clock PulsePage uses for every series (one push per
+   * interval tick) — used only for the shared x-axis labels below, not to
+   * place each polyline (those still plot along their own values.length,
+   * since a position that opened after tracking started has a shorter
+   * series than this array).
+   */
+  timestamps: number[];
   /** Upper bound of the y-axis — kept independent of deltaLimit so the reference line isn't pinned to the very top edge. */
   yAxisMax?: number;
 }
 
-export function PositionDeltasChart({ seriesByPosition, deltaLimit, yAxisMax = 0.4 }: PositionDeltasChartProps) {
+export function PositionDeltasChart({ seriesByPosition, deltaLimit, timestamps, yAxisMax = 0.4 }: PositionDeltasChartProps) {
   const wrapRef = useRef<HTMLDivElement>(null);
   const [hoverFraction, setHoverFraction] = useState<number | null>(null);
 
@@ -85,6 +94,7 @@ export function PositionDeltasChart({ seriesByPosition, deltaLimit, yAxisMax = 0
           </div>
         )}
       </div>
+      <ChartTimeAxis timestamps={timestamps} />
     </div>
   );
 }

@@ -234,6 +234,13 @@ export function formatLocalTime(dateInput: string | Date | number): string {
   return date.toLocaleTimeString("en-US", { hour12: false });
 }
 
+// 24-hour local time without seconds, e.g. "14:32" — used for chart x-axis
+// tick labels, where formatLocalTime's HH:MM:SS is too dense.
+export function formatHourMinute(dateInput: string | Date | number): string {
+  const date = typeof dateInput === "object" ? dateInput : new Date(dateInput);
+  return date.toLocaleTimeString("en-US", { hour12: false, hour: "2-digit", minute: "2-digit" });
+}
+
 export function formatNumber(value: number | string | null | undefined, maximumFractionDigits = 0): string {
   if (value === null || value === undefined) return "—";
   const numericValue = typeof value === "string" ? Number(value) : value;

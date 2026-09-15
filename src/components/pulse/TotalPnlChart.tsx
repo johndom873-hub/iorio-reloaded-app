@@ -1,4 +1,5 @@
 import { useRef, useState } from "react";
+import { ChartTimeAxis } from "./ChartTimeAxis";
 
 // Pure/presentational — PulsePage owns the rolling-sample logic (a
 // setInterval pushing the live sum of unrealizedPnl into a capped array).
@@ -8,10 +9,9 @@ interface TotalPnlChartProps {
   series: number[];
   timestamps: number[];
   formatValue: (value: number) => string;
-  formatTime: (timestamp: number) => string;
 }
 
-export function TotalPnlChart({ series, timestamps, formatValue, formatTime }: TotalPnlChartProps) {
+export function TotalPnlChart({ series, timestamps, formatValue }: TotalPnlChartProps) {
   const wrapRef = useRef<HTMLDivElement>(null);
   const [hoverIndex, setHoverIndex] = useState<number | null>(null);
   const [hoverX, setHoverX] = useState(0);
@@ -45,33 +45,40 @@ export function TotalPnlChart({ series, timestamps, formatValue, formatTime }: T
   const hoverValue = hoverIndex !== null ? series[hoverIndex] : null;
 
   return (
-    <div ref={wrapRef} style={{ position: "relative", width: "100%", height: "100%" }} onMouseMove={handleMouseMove} onMouseLeave={() => setHoverIndex(null)}>
-      <svg viewBox="0 0 300 100" preserveAspectRatio="none">
-        <line x1={0} y1={zeroY} x2={300} y2={zeroY} stroke="var(--border-strong)" strokeWidth={0.6} strokeDasharray="3 3" />
-        <polyline points={points} fill="none" stroke="var(--accent-glow)" strokeWidth={0.9} />
-        {hoverIndex !== null && (
-          <>
-            <line
-              x1={(hoverIndex / (series.length - 1)) * 300}
-              y1={0}
-              x2={(hoverIndex / (series.length - 1)) * 300}
-              y2={100}
-              stroke="var(--text-muted)"
-              strokeWidth={0.4}
-            />
-            <circle cx={(hoverIndex / (series.length - 1)) * 300} cy={y(series[hoverIndex]!)} r={2.2} fill="var(--accent-glow)" />
-          </>
+    <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
+      <div
+        ref={wrapRef}
+        style={{ position: "relative", width: "100%", flex: 1, minHeight: 0 }}
+        onMouseMove={handleMouseMove}
+        onMouseLeave={() => setHoverIndex(null)}
+      >
+        <svg viewBox="0 0 300 100" preserveAspectRatio="none">
+          <line x1={0} y1={zeroY} x2={300} y2={zeroY} stroke="var(--border-strong)" strokeWidth={0.6} strokeDasharray="3 3" />
+          <polyline points={points} fill="none" stroke="var(--accent-glow)" strokeWidth={0.9} />
+          {hoverIndex !== null && (
+            <>
+              <line
+                x1={(hoverIndex / (series.length - 1)) * 300}
+                y1={0}
+                x2={(hoverIndex / (series.length - 1)) * 300}
+                y2={100}
+                stroke="var(--text-muted)"
+                strokeWidth={0.4}
+              />
+              <circle cx={(hoverIndex / (series.length - 1)) * 300} cy={y(series[hoverIndex]!)} r={2.2} fill="var(--accent-glow)" />
+            </>
+          )}
+        </svg>
+        {hoverValue !== null && hoverIndex !== null && (
+          <div
+            className="chart-tooltip"
+            style={{ left: `${hoverX}%`, transform: hoverX > 80 ? "translateX(-100%)" : hoverX < 5 ? "translateX(0)" : "translateX(-50%)" }}
+          >
+            <div>{formatValue(hoverValue)}</div>
+          </div>
         )}
-      </svg>
-      {hoverValue !== null && hoverIndex !== null && (
-        <div
-          className="chart-tooltip"
-          style={{ left: `${hoverX}%`, transform: hoverX > 80 ? "translateX(-100%)" : hoverX < 5 ? "translateX(0)" : "translateX(-50%)" }}
-        >
-          <div>{formatValue(hoverValue)}</div>
-          <div className="chart-tooltip-time">{formatTime(timestamps[hoverIndex]!)}</div>
-        </div>
-      )}
+      </div>
+      <ChartTimeAxis timestamps={timestamps} />
     </div>
   );
 }

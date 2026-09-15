@@ -870,6 +870,19 @@
   font-size: 0.56rem;
   color: var(--text-secondary);
 }
+.iorio-pulse-page .chart-time-axis {
+  position: relative;
+  height: 0.8rem;
+  flex-shrink: 0;
+}
+.iorio-pulse-page .chart-time-axis-label {
+  position: absolute;
+  top: 0;
+  font-family: var(--font-mono);
+  font-size: 0.55rem;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
 
 @media (prefers-reduced-motion: reduce) {
   .iorio-pulse-page .led {

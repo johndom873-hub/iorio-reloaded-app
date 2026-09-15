@@ -29,15 +29,16 @@ import {
   type MarketStatus,
   type MarketSessionState,
 } from "../api/systemHealth";
-import { daysToExpiry, todayInEasternIso, formatSignedPnl, formatSignedPercentageValue, formatCompactDollars, formatNumber, formatLocalTime, ibkrExpiryToIsoDate } from "../lib/formatters";
+import { daysToExpiry, todayInEasternIso, formatSignedPnl, formatSignedPercentageValue, formatCompactDollars, formatNumber, ibkrExpiryToIsoDate } from "../lib/formatters";
 import { positionExpiryDate } from "../lib/positionPnl";
 import { FlashingNumber } from "../components/FlashingNumber";
 import { TopologyMap, type PulseEvent } from "../components/pulse/TopologyMap";
 import { TotalPnlChart } from "../components/pulse/TotalPnlChart";
 import { PositionDeltasChart, type DeltaSeries } from "../components/pulse/PositionDeltasChart";
 
-const CHART_SAMPLE_INTERVAL_MS = 75_000;
-const CHART_MAX_SAMPLES = 40;
+const CHART_SAMPLE_INTERVAL_MS = 60_000;
+// 4 hours of history at one sample/minute.
+const CHART_MAX_SAMPLES = 240;
 const HEALTH_POLL_INTERVAL_MS = 30_000;
 const TRADES_LIMIT = 30;
 const EVENTS_LIMIT = 30;
@@ -782,12 +783,7 @@ export function PulsePage() {
                 </span>
               </div>
               <div className="chart-svg-wrap">
-                <TotalPnlChart
-                  series={pnlSeries}
-                  timestamps={pnlTimestamps}
-                  formatValue={(value) => formatSignedPnl(value, 0)}
-                  formatTime={formatLocalTime}
-                />
+                <TotalPnlChart series={pnlSeries} timestamps={pnlTimestamps} formatValue={(value) => formatSignedPnl(value, 0)} />
               </div>
             </div>
             <div className="chart-panel">
@@ -795,7 +791,7 @@ export function PulsePage() {
                 <span>Position Deltas · live</span>
                 <span className="cur-val">limit {deltaLimit.toFixed(2)}</span>
               </div>
-              <PositionDeltasChart seriesByPosition={deltaSeriesForChart} deltaLimit={deltaLimit} />
+              <PositionDeltasChart seriesByPosition={deltaSeriesForChart} deltaLimit={deltaLimit} timestamps={pnlTimestamps} />
             </div>
           </div>
 
