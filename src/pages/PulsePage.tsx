@@ -29,7 +29,7 @@ import {
   type MarketStatus,
   type MarketSessionState,
 } from "../api/systemHealth";
-import { daysToExpiry, todayInEasternIso, formatSignedPnl, formatSignedPercentageValue, formatCompactDollars, formatDate, formatLocalTime, ibkrExpiryToIsoDate } from "../lib/formatters";
+import { daysToExpiry, todayInEasternIso, formatSignedPnl, formatSignedPercentageValue, formatCompactDollars, formatNumber, formatLocalTime, ibkrExpiryToIsoDate } from "../lib/formatters";
 import { positionExpiryDate } from "../lib/positionPnl";
 import { FlashingNumber } from "../components/FlashingNumber";
 import { TopologyMap, type PulseEvent } from "../components/pulse/TopologyMap";
@@ -923,8 +923,8 @@ export function PulsePage() {
                     {trade.side.toUpperCase()} {trade.quantity}
                   </b>{" "}
                   {trade.symbol}
-                  {trade.strikePrice ? ` ${trade.strikePrice}${trade.optionType === "call" ? "C" : "P"}` : ""}
-                  {trade.expiryDate ? ` ${formatDate(trade.expiryDate)}` : ""} @ {trade.price}
+                  {trade.strikePrice ? ` ${formatNumber(trade.strikePrice, 2)}${trade.optionType === "call" ? "C" : "P"}` : ""}
+                  {trade.expiryDate ? ` ${daysToExpiry(trade.expiryDate, trade.executedAt)}DTE` : ""} @ {formatNumber(trade.price, 2)}
                 </span>
               </div>
             ))}
