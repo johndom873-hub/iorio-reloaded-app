@@ -345,61 +345,66 @@ export function PulsePage() {
     setEvents((prev) => [{ id: eventIdRef.current, time: new Date().toLocaleTimeString("en-US", { hour12: false }), text, color }, ...prev].slice(0, EVENTS_LIMIT));
   }, []);
 
+  // Fetches the most recent events from the backend and describes them with
+  // the same text/color formatting as the live switch below (order_status
+  // needs the same fetchOrder lookup), skipping the pulse/side-effect work,
+  // which only matters for events as they happen live.
+  const fetchDescribedEvents = useCallback(async () => {
+    const { events: recentEvents } = await fetchRecentNotifications();
+    const described = await Promise.all(
+      recentEvents.map(async ({ notification, occurredAt }) => {
+        switch (notification.type) {
+          case "job_completed": {
+            if (notification.jobName === "ibkr_health_check") return null;
+            const color = notification.status === "success" ? "var(--accent-glow)" : "var(--danger)";
+            return { occurredAt, text: `Job ${notification.status === "success" ? "done" : "failed"} — ${notification.jobName}`, color };
+          }
+          case "alert_generated":
+            return {
+              occurredAt,
+              text: `Alert — ${notification.symbol} ${strategyAbbrev(notification.strategyKey)}, ${(notification.annualizedYield * 100).toFixed(1)}% yield`,
+              color: "var(--warning)",
+            };
+          case "order_status": {
+            try {
+              const order = await fetchOrder(notification.orderId);
+              const legsSummary = formatOrderLegsSummary(order.payload.legs, occurredAt);
+              return {
+                occurredAt,
+                text: `${orderEventStatusLabel(order.status)} — ${order.payload.symbol}${legsSummary ? `: ${legsSummary}` : ""}`,
+                color: "var(--success)",
+              };
+            } catch {
+              return null;
+            }
+          }
+          case "position_opened":
+            return { occurredAt, text: `Position opened — ${notification.symbol}`, color: "var(--success)" };
+          case "position_closed":
+            return { occurredAt, text: `Position closed — ${notification.symbol}`, color: "var(--success)" };
+          case "genosuke_reply":
+            return { occurredAt, text: `Genosuke replied: ${notification.preview}`, color: "var(--text-secondary)" };
+          default:
+            return null;
+        }
+      }),
+    );
+    return described
+      .filter((item): item is { occurredAt: string; text: string; color: string } => item !== null)
+      .map((item) => {
+        eventIdRef.current += 1;
+        return { id: eventIdRef.current, time: new Date(item.occurredAt).toLocaleTimeString("en-US", { hour12: false }), text: item.text, color: item.color };
+      });
+  }, []);
+
   // Backfills Latest Events with history from the backend on load — the SSE
   // stream below only ever carries events from the moment this tab connects,
-  // so without this the panel always starts empty. Mirrors the switch below's
-  // text/color formatting (order_status needs the same fetchOrder lookup) but
-  // skips the pulse/side-effect work, which only matters for events as they
-  // happen live.
+  // so without this the panel always starts empty.
   useEffect(() => {
     let cancelled = false;
-    fetchRecentNotifications()
-      .then(async ({ events: recentEvents }) => {
-        const described = await Promise.all(
-          recentEvents.map(async ({ notification, occurredAt }) => {
-            switch (notification.type) {
-              case "job_completed": {
-                if (notification.jobName === "ibkr_health_check") return null;
-                const color = notification.status === "success" ? "var(--accent-glow)" : "var(--danger)";
-                return { occurredAt, text: `Job ${notification.status === "success" ? "done" : "failed"} — ${notification.jobName}`, color };
-              }
-              case "alert_generated":
-                return {
-                  occurredAt,
-                  text: `Alert — ${notification.symbol} ${strategyAbbrev(notification.strategyKey)}, ${(notification.annualizedYield * 100).toFixed(1)}% yield`,
-                  color: "var(--warning)",
-                };
-              case "order_status": {
-                try {
-                  const order = await fetchOrder(notification.orderId);
-                  const legsSummary = formatOrderLegsSummary(order.payload.legs, occurredAt);
-                  return {
-                    occurredAt,
-                    text: `${orderEventStatusLabel(order.status)} — ${order.payload.symbol}${legsSummary ? `: ${legsSummary}` : ""}`,
-                    color: "var(--success)",
-                  };
-                } catch {
-                  return null;
-                }
-              }
-              case "position_opened":
-                return { occurredAt, text: `Position opened — ${notification.symbol}`, color: "var(--success)" };
-              case "position_closed":
-                return { occurredAt, text: `Position closed — ${notification.symbol}`, color: "var(--success)" };
-              case "genosuke_reply":
-                return { occurredAt, text: `Genosuke replied: ${notification.preview}`, color: "var(--text-secondary)" };
-              default:
-                return null;
-            }
-          }),
-        );
+    fetchDescribedEvents()
+      .then((initialEvents) => {
         if (cancelled) return;
-        const initialEvents = described
-          .filter((item): item is { occurredAt: string; text: string; color: string } => item !== null)
-          .map((item) => {
-            eventIdRef.current += 1;
-            return { id: eventIdRef.current, time: new Date(item.occurredAt).toLocaleTimeString("en-US", { hour12: false }), text: item.text, color: item.color };
-          });
         // Guards against clobbering events appended live while this request
         // was in flight.
         setEvents((prev) => (prev.length > 0 ? prev : initialEvents));
@@ -408,7 +413,23 @@ export function PulsePage() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [fetchDescribedEvents]);
+
+  // Refetches on tab refocus — a laptop closed for hours drops/suspends the
+  // SSE connection, so the panel otherwise keeps showing a stale mix: a
+  // handful of events received right around sleep/wake sitting atop the
+  // backfill snapshot from whenever the tab was first opened, with a dead
+  // gap between them for everything that happened while it was backgrounded.
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.visibilityState !== "visible") return;
+      fetchDescribedEvents()
+        .then(setEvents)
+        .catch(() => {});
+    };
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    return () => document.removeEventListener("visibilitychange", handleVisibilityChange);
+  }, [fetchDescribedEvents]);
 
   useEffect(() => {
     return openNotificationStream((notification: AppNotification) => {
