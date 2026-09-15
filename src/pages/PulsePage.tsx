@@ -10,7 +10,7 @@ import "@fontsource/ibm-plex-mono/700.css";
 import "./PulsePage.css";
 import { fetchAccountValue, fetchDashboardSummary, fetchAvailableCash, type AccountValue, type AvailableCash, type DashboardSummary } from "../api/dashboard";
 import { fetchExposure, fetchStrategySettings, type ExposureData, type StrategySettings } from "../api/riskLimits";
-import { fetchPositions, openUnrealizedPnlStream, openGreeksStream, fetchOrder, type Position, type UnrealizedPnlResult, type Greeks, type OrderLeg } from "../api/positions";
+import { fetchPositions, openUnrealizedPnlStream, openGreeksStream, fetchOrder, type Position, type UnrealizedPnlResult, type Greeks, type OrderLeg, type OrderRequestStatus } from "../api/positions";
 import { fetchTradeAlerts, isRollAlert, type NewTradeCandidate, type TradeAlert } from "../api/tradeAlerts";
 import { fetchTradeBlotter, type Trade } from "../api/tradeBlotter";
 import { openNotificationStream, fetchRecentNotifications, type AppNotification } from "../api/notifications";
@@ -44,6 +44,23 @@ const EVENTS_LIMIT = 30;
 
 function strategyAbbrev(strategyKey: string): "CC" | "CSP" {
   return strategyKey === "covered_call" ? "CC" : "CSP";
+}
+
+// Latest Events' own terse status wording (distinct from
+// orderRequestStatusLabel's fuller labels used in OrderReviewPanel/Trade
+// Blotter, which have more room) — the three most frequent statuses get a
+// short standalone word; everything else keeps the "Order <status>" form.
+function orderEventStatusLabel(status: OrderRequestStatus): string {
+  switch (status) {
+    case "filled":
+      return "Filled";
+    case "partially_filled":
+      return "Part. filled";
+    case "submitted":
+      return "Sent";
+    default:
+      return `Order ${status.replace(/_/g, " ")}`;
+  }
 }
 
 // Latest Events only has room for a short per-leg summary (stock: price;
@@ -357,7 +374,7 @@ export function PulsePage() {
                   const legsSummary = formatOrderLegsSummary(order.payload.legs, occurredAt);
                   return {
                     occurredAt,
-                    text: `Order ${order.status.replace(/_/g, " ")} — ${order.payload.symbol}${legsSummary ? `: ${legsSummary}` : ""}`,
+                    text: `${orderEventStatusLabel(order.status)} — ${order.payload.symbol}${legsSummary ? `: ${legsSummary}` : ""}`,
                     color: "var(--success)",
                   };
                 } catch {
@@ -416,7 +433,7 @@ export function PulsePage() {
             .then((order) => {
               firePulse("heroku-gateway", "var(--success)", { reverse: true });
               const legsSummary = formatOrderLegsSummary(order.payload.legs, todayInEasternIso());
-              appendEvent(`Order ${order.status.replace(/_/g, " ")} — ${order.payload.symbol}${legsSummary ? `: ${legsSummary}` : ""}`, "var(--success)");
+              appendEvent(`${orderEventStatusLabel(order.status)} — ${order.payload.symbol}${legsSummary ? `: ${legsSummary}` : ""}`, "var(--success)");
               if (order.status === "filled" || order.status === "partially_filled") {
                 loadTrades();
               }
