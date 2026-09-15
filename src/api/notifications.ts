@@ -1,4 +1,4 @@
-import { apiBaseUrl } from "./client";
+import { apiBaseUrl, apiRequest } from "./client";
 
 export type AppNotification =
   | { type: "order_status"; orderId: string }
@@ -33,4 +33,15 @@ export function openNotificationStream(onNotification: (notification: AppNotific
   source.onerror = () => {};
 
   return () => source.close();
+}
+
+export interface RecentNotificationEvent {
+  notification: AppNotification;
+  occurredAt: string;
+}
+
+// Backs the Pulse dashboard's Latest Events panel on mount, since the SSE
+// stream above only ever carries events from the moment a tab connects.
+export function fetchRecentNotifications(): Promise<{ events: RecentNotificationEvent[] }> {
+  return apiRequest("/notifications/recent");
 }

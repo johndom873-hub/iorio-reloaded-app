@@ -13,7 +13,7 @@ import { fetchExposure, fetchStrategySettings, type ExposureData, type StrategyS
 import { fetchPositions, openUnrealizedPnlStream, openGreeksStream, fetchOrder, type Position, type UnrealizedPnlResult, type Greeks } from "../api/positions";
 import { fetchTradeAlerts, isRollAlert, type NewTradeCandidate, type TradeAlert } from "../api/tradeAlerts";
 import { fetchTradeBlotter, type Trade } from "../api/tradeBlotter";
-import { openNotificationStream, type AppNotification } from "../api/notifications";
+import { openNotificationStream, fetchRecentNotifications, type AppNotification } from "../api/notifications";
 import {
   fetchPresence,
   fetchDbHealth,
@@ -306,6 +306,66 @@ export function PulsePage() {
   const appendEvent = useCallback((text: string, color: string) => {
     eventIdRef.current += 1;
     setEvents((prev) => [{ id: eventIdRef.current, time: new Date().toLocaleTimeString("en-US", { hour12: false }), text, color }, ...prev].slice(0, EVENTS_LIMIT));
+  }, []);
+
+  // Backfills Latest Events with history from the backend on load — the SSE
+  // stream below only ever carries events from the moment this tab connects,
+  // so without this the panel always starts empty. Mirrors the switch below's
+  // text/color formatting (order_status needs the same fetchOrder lookup) but
+  // skips the pulse/side-effect work, which only matters for events as they
+  // happen live.
+  useEffect(() => {
+    let cancelled = false;
+    fetchRecentNotifications()
+      .then(async ({ events: recentEvents }) => {
+        const described = await Promise.all(
+          recentEvents.map(async ({ notification, occurredAt }) => {
+            switch (notification.type) {
+              case "job_completed": {
+                if (notification.jobName === "ibkr_health_check") return null;
+                const color = notification.status === "success" ? "var(--accent-glow)" : "var(--danger)";
+                return { occurredAt, text: `Job ${notification.status === "success" ? "done" : "failed"} — ${notification.jobName}`, color };
+              }
+              case "alert_generated":
+                return {
+                  occurredAt,
+                  text: `Alert — ${notification.symbol} ${strategyAbbrev(notification.strategyKey)}, ${(notification.annualizedYield * 100).toFixed(1)}% yield`,
+                  color: "var(--warning)",
+                };
+              case "order_status": {
+                try {
+                  const order = await fetchOrder(notification.orderId);
+                  return { occurredAt, text: `Order ${order.status.replace(/_/g, " ")} — ${order.payload.symbol}`, color: "var(--success)" };
+                } catch {
+                  return null;
+                }
+              }
+              case "position_opened":
+                return { occurredAt, text: `Position opened — ${notification.symbol}`, color: "var(--success)" };
+              case "position_closed":
+                return { occurredAt, text: `Position closed — ${notification.symbol}`, color: "var(--success)" };
+              case "genosuke_reply":
+                return { occurredAt, text: `Genosuke replied: ${notification.preview}`, color: "var(--text-secondary)" };
+              default:
+                return null;
+            }
+          }),
+        );
+        if (cancelled) return;
+        const initialEvents = described
+          .filter((item): item is { occurredAt: string; text: string; color: string } => item !== null)
+          .map((item) => {
+            eventIdRef.current += 1;
+            return { id: eventIdRef.current, time: new Date(item.occurredAt).toLocaleTimeString("en-US", { hour12: false }), text: item.text, color: item.color };
+          });
+        // Guards against clobbering events appended live while this request
+        // was in flight.
+        setEvents((prev) => (prev.length > 0 ? prev : initialEvents));
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   useEffect(() => {
