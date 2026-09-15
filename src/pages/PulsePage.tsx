@@ -10,7 +10,7 @@ import "@fontsource/ibm-plex-mono/700.css";
 import "./PulsePage.css";
 import { fetchAccountValue, fetchDashboardSummary, fetchAvailableCash, type AccountValue, type AvailableCash, type DashboardSummary } from "../api/dashboard";
 import { fetchExposure, fetchStrategySettings, type ExposureData, type StrategySettings } from "../api/riskLimits";
-import { fetchPositions, openUnrealizedPnlStream, openGreeksStream, fetchOrder, type Position, type UnrealizedPnlResult, type Greeks } from "../api/positions";
+import { fetchPositions, openUnrealizedPnlStream, openGreeksStream, fetchOrder, type Position, type UnrealizedPnlResult, type Greeks, type OrderLeg } from "../api/positions";
 import { fetchTradeAlerts, isRollAlert, type NewTradeCandidate, type TradeAlert } from "../api/tradeAlerts";
 import { fetchTradeBlotter, type Trade } from "../api/tradeBlotter";
 import { openNotificationStream, fetchRecentNotifications, type AppNotification } from "../api/notifications";
@@ -29,7 +29,7 @@ import {
   type MarketStatus,
   type MarketSessionState,
 } from "../api/systemHealth";
-import { daysToExpiry, todayInEasternIso, formatSignedPnl, formatSignedPercentageValue, formatCompactDollars, formatDate, formatLocalTime } from "../lib/formatters";
+import { daysToExpiry, todayInEasternIso, formatSignedPnl, formatSignedPercentageValue, formatCompactDollars, formatDate, formatLocalTime, ibkrExpiryToIsoDate } from "../lib/formatters";
 import { positionExpiryDate } from "../lib/positionPnl";
 import { FlashingNumber } from "../components/FlashingNumber";
 import { TopologyMap, type PulseEvent } from "../components/pulse/TopologyMap";
@@ -44,6 +44,25 @@ const EVENTS_LIMIT = 30;
 
 function strategyAbbrev(strategyKey: string): "CC" | "CSP" {
   return strategyKey === "covered_call" ? "CC" : "CSP";
+}
+
+// Latest Events only has room for a short per-leg summary (stock: price;
+// option: strike/DTE/premium) — the full per-fill detail already lives in
+// the Trades panel. DTE is relative to asOf (the event's own time), not
+// "today" — a backfilled historical event for an expiry that's since
+// passed should show the DTE it actually had then, not a confusing
+// negative countdown (mirrors daysToExpiry's asOf convention).
+function formatOrderLegsSummary(legs: OrderLeg[], asOf: string): string {
+  return legs
+    .map((leg) => {
+      if (leg.role === "stock") {
+        return `${leg.action} ${leg.quantity} @ ${leg.unitPrice.toFixed(2)}`;
+      }
+      const expiryIsoDate = leg.expiry ? (leg.expiry.length === 8 ? ibkrExpiryToIsoDate(leg.expiry) : leg.expiry) : null;
+      const dte = expiryIsoDate ? `${daysToExpiry(expiryIsoDate, asOf)}d ` : "";
+      return `${leg.action} ${leg.quantity} ${leg.strike}${leg.right ?? ""} ${dte}@ ${leg.unitPrice.toFixed(2)}`;
+    })
+    .join(" + ");
 }
 
 function colorForIndex(index: number, total: number): string {
@@ -335,7 +354,12 @@ export function PulsePage() {
               case "order_status": {
                 try {
                   const order = await fetchOrder(notification.orderId);
-                  return { occurredAt, text: `Order ${order.status.replace(/_/g, " ")} — ${order.payload.symbol}`, color: "var(--success)" };
+                  const legsSummary = formatOrderLegsSummary(order.payload.legs, occurredAt);
+                  return {
+                    occurredAt,
+                    text: `Order ${order.status.replace(/_/g, " ")} — ${order.payload.symbol}${legsSummary ? `: ${legsSummary}` : ""}`,
+                    color: "var(--success)",
+                  };
                 } catch {
                   return null;
                 }
@@ -391,7 +415,8 @@ export function PulsePage() {
           fetchOrder(notification.orderId)
             .then((order) => {
               firePulse("heroku-gateway", "var(--success)", { reverse: true });
-              appendEvent(`Order ${order.status.replace(/_/g, " ")} — ${order.payload.symbol}`, "var(--success)");
+              const legsSummary = formatOrderLegsSummary(order.payload.legs, todayInEasternIso());
+              appendEvent(`Order ${order.status.replace(/_/g, " ")} — ${order.payload.symbol}${legsSummary ? `: ${legsSummary}` : ""}`, "var(--success)");
               if (order.status === "filled" || order.status === "partially_filled") {
                 loadTrades();
               }
