@@ -10,8 +10,16 @@ export function strategyLabel(strategyKey: PositionStrategyKey): string {
   return "Needs Review";
 }
 
+export function strategyAbbrev(strategyKey: PositionStrategyKey): string {
+  if (strategyKey === "covered_call") return "CC";
+  if (strategyKey === "cash_secured_put") return "CSP";
+  return "Needs Review";
+}
+
 export function strategyBadgeClass(strategyKey: PositionStrategyKey): string {
-  return strategyKey === "unstructured" ? "bg-warning-lt" : "bg-azure-lt";
+  if (strategyKey === "covered_call") return "bg-azure-lt";
+  if (strategyKey === "cash_secured_put") return "bg-orange-lt";
+  return "bg-warning-lt";
 }
 
 // Whether Stock P&L is meaningful to show for this position — not just

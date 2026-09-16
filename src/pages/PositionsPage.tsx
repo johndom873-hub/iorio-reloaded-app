@@ -43,8 +43,8 @@ import {
   positionStockPnl,
   positionTotalPnl,
   positionTotalPnlPercent,
+  strategyAbbrev,
   strategyBadgeClass,
-  strategyLabel,
 } from "../lib/positionPnl";
 
 type RollAlert = TradeAlert & { suggestedStructure: RollStructure };
@@ -199,40 +199,10 @@ export function PositionsPage() {
       key: "strategy",
       header: "Strategy",
       render: (row) => (
-        <span className={`badge ${strategyBadgeClass(row.strategyKey)}`}>{strategyLabel(row.strategyKey)}</span>
+        <span className={`badge ${strategyBadgeClass(row.strategyKey)}`}>{strategyAbbrev(row.strategyKey)}</span>
       ),
     },
     { key: "structure", header: "Structure", render: (row) => structureSummary(row) },
-    {
-      key: "pnl",
-      header: "P&L $",
-      align: "right",
-      render: (row) => {
-        const pnl = positionTotalPnl(row, unrealizedPnlByPositionId);
-        if (pnl === "loading") {
-          if (unrealizedPnlFetchFailed) {
-            return (
-              <span className="text-muted" title="Failed to load live P&L data">
-                —
-              </span>
-            );
-          }
-          return <Spinner size="sm" label="Loading P&L" />;
-        }
-        if (pnl === null)
-          return (
-            <span className="text-muted" title="No live price or recent snapshot available for this position">
-              —
-            </span>
-          );
-        const asOfDate = positionPnlAsOfDate(row, unrealizedPnlByPositionId);
-        return (
-          <FlashingNumber value={pnl} className={pnlTextClass(pnl)} title={asOfDate ? `As of ${formatDate(asOfDate)} close` : undefined}>
-            {formatSignedPnl(pnl)}
-          </FlashingNumber>
-        );
-      },
-    },
     {
       key: "pnlPercent",
       header: "P&L %",
@@ -261,6 +231,36 @@ export function PositionsPage() {
           <FlashingNumber value={pct} precision={2} className={pnlTextClass(pct)} title={asOfDate ? `As of ${formatDate(asOfDate)} close` : undefined}>
             {pct > 0 ? "+" : ""}
             {formatPercentageValue(pct, 2)}
+          </FlashingNumber>
+        );
+      },
+    },
+    {
+      key: "pnl",
+      header: "P&L $",
+      align: "right",
+      render: (row) => {
+        const pnl = positionTotalPnl(row, unrealizedPnlByPositionId);
+        if (pnl === "loading") {
+          if (unrealizedPnlFetchFailed) {
+            return (
+              <span className="text-muted" title="Failed to load live P&L data">
+                —
+              </span>
+            );
+          }
+          return <Spinner size="sm" label="Loading P&L" />;
+        }
+        if (pnl === null)
+          return (
+            <span className="text-muted" title="No live price or recent snapshot available for this position">
+              —
+            </span>
+          );
+        const asOfDate = positionPnlAsOfDate(row, unrealizedPnlByPositionId);
+        return (
+          <FlashingNumber value={pnl} className={pnlTextClass(pnl)} title={asOfDate ? `As of ${formatDate(asOfDate)} close` : undefined}>
+            {formatSignedPnl(pnl)}
           </FlashingNumber>
         );
       },
@@ -323,29 +323,6 @@ export function PositionsPage() {
       render: (row) => {
         if (row.capitalAtRisk === null || totalAccountValue === null) return "—";
         return formatPercentageValue((Number(row.capitalAtRisk) / totalAccountValue) * 100, 1);
-      },
-    },
-    {
-      key: "marketValue",
-      header: "MV",
-      headerTitle: "Market value — capital committed to this position plus its unrealized P&L",
-      align: "right",
-      render: (row) => {
-        if (row.capitalAtRisk === null) return "—";
-        const pnl = positionTotalPnl(row, unrealizedPnlByPositionId);
-        if (pnl === "loading") {
-          if (unrealizedPnlFetchFailed) {
-            return (
-              <span className="text-muted" title="Failed to load live P&L data">
-                —
-              </span>
-            );
-          }
-          return <Spinner size="sm" label="Loading market value" />;
-        }
-        if (pnl === null) return "—";
-        const marketValue = Number(row.capitalAtRisk) + pnl;
-        return <FlashingNumber value={marketValue}>{formatCurrency(marketValue, 0)}</FlashingNumber>;
       },
     },
     {
