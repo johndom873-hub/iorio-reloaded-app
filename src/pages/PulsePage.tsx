@@ -274,6 +274,13 @@ export function PulsePage() {
     return openUnrealizedPnlStream(positionIds, setUnrealizedPnlByPositionId);
   }, [positions]);
 
+  // Total market value of shares currently held (covered-call stock legs
+  // only — CSPs hold no stock) — IBKR node's "Total equity" row. A position
+  // with no live/fallback price yet is excluded from the sum via `?? 0`,
+  // same convention as the Unrealised P&L chart's totalPnl calc below,
+  // rather than blanking the whole total for one stale leg.
+  const totalStockValue = Object.values(unrealizedPnlByPositionId).reduce((sum, row) => sum + (row.stockMarketValue ?? 0), 0);
+
   // --- Top Alerts by yield ---
   const [pendingAlerts, setPendingAlerts] = useState<TradeAlert[]>([]);
   useEffect(() => {
@@ -825,6 +832,12 @@ export function PulsePage() {
                 <div className="node-title">IBKR</div>
                 <div className="node-sub">Interactive Brokers</div>
               </div>
+            </div>
+            <div className="sub-row">
+              <span className="sub-name">Total equity</span>
+              <FlashingNumber value={positions.length > 0 ? totalStockValue : null} className="sub-value">
+                {positions.length > 0 ? formatCompactDollars(totalStockValue) : "—"}
+              </FlashingNumber>
             </div>
             <div className="sub-row">
               <span className="sub-name">Total cash</span>

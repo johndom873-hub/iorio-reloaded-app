@@ -388,6 +388,13 @@ export interface UnrealizedPnlResult {
   // whole-position figure, not a per-leg-type split.
   unrealizedPremiumPnl: number | null;
   unrealizedStockPnl: number | null;
+  // Current market value of the open stock leg only (covered calls hold
+  // shares; CSPs have none, so this is 0 for them) — for Iorio Pulse's
+  // "Total equity" (total value held in stocks) aggregate. No snapshot
+  // fallback exists for this field (the nightly snapshot only stores PnL
+  // deltas), so it's null whenever live pricing is unavailable even if
+  // unrealizedPnl itself fell back to a snapshot.
+  stockMarketValue: number | null;
   // Set only when unrealizedPnl came from the last nightly snapshot instead
   // of a live IBKR quote (outside market hours) — the date that snapshot
   // was captured. null when unrealizedPnl is live, or when neither a live
