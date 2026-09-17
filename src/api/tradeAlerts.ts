@@ -107,6 +107,36 @@ export function refreshTradeAlert(id: string): Promise<TradeAlert> {
   return apiRequest<TradeAlert>(`/trade-alerts/${id}/refresh`, { method: "POST" });
 }
 
+// Live current price next to each ticker's name on the Trade Alerts page —
+// added per Juan's 2026-09-17 ask. Same SSE mechanics as
+// openPricePerformanceStream (see that function's comment), but scoped to
+// exactly the symbols currently grouped on screen rather than the whole
+// shortlist, since Trade Alerts can also show roll-alert tickers that have
+// since left the shortlist.
+export function openTradeAlertCurrentPricesStream(
+  symbols: string[],
+  onUpdate: (result: Record<string, number | null>) => void,
+  onError?: () => void,
+): () => void {
+  const query = encodeURIComponent(symbols.join(","));
+  const source = new EventSource(`${apiBaseUrl}/trade-alerts/current-prices/stream?symbols=${query}`, { withCredentials: true });
+
+  source.onmessage = (message) => {
+    try {
+      onUpdate(JSON.parse(message.data));
+    } catch {
+      // Malformed/heartbeat frame — ignore.
+    }
+  };
+
+  source.onerror = () => {
+    source.close();
+    onError?.();
+  };
+
+  return () => source.close();
+}
+
 // Rescans one ticker's new_trade alerts for both strategies against live
 // IBKR data — backs the Trade Alerts page's per-ticker "Refresh" button and
 // the Ticker Detail modal's "Scan for Alerts"/"Refresh" button (same

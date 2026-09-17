@@ -1,12 +1,14 @@
 import { Fragment, useCallback, useEffect, useState } from "react";
 import { PageHeader } from "../components/layout/PageHeader";
 import { Spinner } from "../components/Spinner";
+import { TickColoredPrice } from "../components/TickColoredPrice";
 import { TickerDetailModal } from "../components/TickerDetailModal";
 import { ApiError } from "../api/client";
 import { useBackgroundJobs, useJobEvents } from "../contexts/BackgroundJobsContext";
 import {
   fetchTradeAlerts,
   isRollAlert,
+  openTradeAlertCurrentPricesStream,
   refreshTickerAlerts,
   refreshTradeAlert,
   type NewTradeCandidate,
@@ -157,6 +159,8 @@ export function TradeAlertsPage() {
   // the slate, at which point a ticker with genuinely zero alerts correctly
   // stops appearing at all, matching this page's normal behavior.
   const [keptEmptyTickers, setKeptEmptyTickers] = useState<Map<string, { symbol: string; companyName: string | null }>>(new Map());
+  const [currentPriceBySymbol, setCurrentPriceBySymbol] = useState<Record<string, number | null>>({});
+  const [currentPriceStreamFailed, setCurrentPriceStreamFailed] = useState(false);
   const [detailSymbol, setDetailSymbol] = useTickerDetailSymbol();
   const [detailAlertId, setDetailAlertId] = useState<string | undefined>(undefined);
   const { jobs, startTradeAlertScan } = useBackgroundJobs();
@@ -248,6 +252,24 @@ export function TradeAlertsPage() {
     if (!groupedByTicker.has(tickerId)) groupedByTicker.set(tickerId, { tickerId, symbol, companyName, alerts: [] });
   }
 
+  const groupedSymbols = Array.from(groupedByTicker.values())
+    .map((group) => group.symbol)
+    .sort()
+    .join(",");
+
+  useEffect(() => {
+    if (!groupedSymbols) return;
+    setCurrentPriceStreamFailed(false);
+    return openTradeAlertCurrentPricesStream(
+      groupedSymbols.split(","),
+      (result) => {
+        setCurrentPriceStreamFailed(false);
+        setCurrentPriceBySymbol(result);
+      },
+      () => setCurrentPriceStreamFailed(true),
+    );
+  }, [groupedSymbols]);
+
   return (
     <>
       <PageHeader
@@ -335,6 +357,20 @@ export function TradeAlertsPage() {
                     {symbol}
                   </button>
                   <span className="text-secondary ms-2">{companyName ?? "—"}</span>
+                  <span className="font-mono ms-2 text-nowrap">
+                    {(() => {
+                      const currentPrice = currentPriceBySymbol[symbol];
+                      if (currentPrice === undefined) {
+                        return currentPriceStreamFailed ? null : <Spinner size="sm" label="Loading current price" />;
+                      }
+                      if (currentPrice === null) return null;
+                      return (
+                        <TickColoredPrice value={currentPrice} initialReference={null} precision={2} title="Live current price">
+                          {formatCurrency(currentPrice)}
+                        </TickColoredPrice>
+                      );
+                    })()}
+                  </span>
                 </div>
                 {status === "pending" && (
                   <div className="d-flex align-items-center gap-2">
