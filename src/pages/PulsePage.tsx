@@ -32,6 +32,7 @@ import {
 import { daysToExpiry, todayInEasternIso, formatSignedPnl, formatSignedPercentageValue, formatCompactDollars, formatNumber, formatPercentageValue, ibkrExpiryToIsoDate } from "../lib/formatters";
 import { positionExpiryDate } from "../lib/positionPnl";
 import { FlashingNumber } from "../components/FlashingNumber";
+import { higherIsWorseStatus } from "../lib/statusThresholds";
 import { TopologyMap, type PulseEvent } from "../components/pulse/TopologyMap";
 import { TotalPnlChart } from "../components/pulse/TotalPnlChart";
 import { ProfitProbabilityChart, type ProbabilitySeries } from "../components/pulse/ProfitProbabilityChart";
@@ -46,6 +47,14 @@ const EVENTS_LIMIT = 30;
 // unlikely to end in profit. Set 2026-09-19; a constant, not a setting, since
 // nothing else consumes it.
 const PROFIT_PROBABILITY_THRESHOLD = 0.5;
+// Green/amber/red cut-offs for the node stats (approved 2026-09-19). Each pair
+// is [greenBelow, amberUpTo]; anything above amberUpTo is red.
+const CONNECTIONS_USED_PERCENT_BANDS = [50, 80] as const;
+const DB_SIZE_USED_PERCENT_BANDS = [70, 90] as const;
+const DB_AVERAGE_RESPONSE_MS_BANDS = [50, 200] as const;
+const DB_SLOWEST_RESPONSE_MS_BANDS = [500, 2000] as const;
+const GATEWAY_RECONNECT_BANDS = [1, 5] as const;
+const GATEWAY_HEALTHY_UPTIME_MS = 30 * 60_000;
 
 function strategyAbbrev(strategyKey: string): "CC" | "CSP" {
   return strategyKey === "covered_call" ? "CC" : "CSP";
@@ -663,6 +672,7 @@ export function PulsePage() {
   // (exposure.accountDataError, from GET /risk-limits/exposure) is failing.
   // Database/Heroku/Genosuke aren't gated on — if the page loaded at all,
   // those are already up.
+  const databaseSizeUsedPercent = dbHealth ? (Number(dbHealth.databaseSizeBytes) / Number(dbHealth.maxDatabaseSizeBytes)) * 100 : 0;
   const attentionReasons = describeAttentionReasons(gatewayHealth, exposure?.accountDataError);
 
   return (
@@ -838,22 +848,39 @@ export function PulsePage() {
             </div>
             <div className="sub-row">
               <span className="sub-name">Connections</span>
-              <FlashingNumber value={dbHealth ? Number(dbHealth.totalConnections) : null} className="sub-value">
+              <FlashingNumber
+                value={dbHealth ? Number(dbHealth.totalConnections) : null}
+                className={`sub-value ${higherIsWorseStatus(dbHealth ? (Number(dbHealth.totalConnections) / dbHealth.maxConnections) * 100 : null, ...CONNECTIONS_USED_PERCENT_BANDS)}`}
+              >
                 {dbHealth ? `${dbHealth.totalConnections} / ${dbHealth.maxConnections}` : "—"}
               </FlashingNumber>
             </div>
             <div className="sub-row">
               <span className="sub-name">DB size</span>
-              <FlashingNumber value={dbHealth ? Number(dbHealth.databaseSizeBytes) : null} className="sub-value">
-                {dbHealth ? `${formatBytes(dbHealth.databaseSizeBytes)} (${formatPercentageValue((Number(dbHealth.databaseSizeBytes) / Number(dbHealth.maxDatabaseSizeBytes)) * 100, 2)} used)` : "—"}
+              <FlashingNumber
+                value={dbHealth ? Number(dbHealth.databaseSizeBytes) : null}
+                className={`sub-value ${higherIsWorseStatus(dbHealth ? databaseSizeUsedPercent : null, ...DB_SIZE_USED_PERCENT_BANDS)}`}
+              >
+                {dbHealth ? `${formatBytes(dbHealth.databaseSizeBytes)} (${formatPercentageValue(databaseSizeUsedPercent, 2)} used)` : "—"}
               </FlashingNumber>
             </div>
             <div className="sub-row">
               <span className="sub-name">Response time (ms)</span>
               <span className="sub-value">
-                {dbHealth
-                  ? `max ${formatNumber(dbHealth.responseTime.slowestMs, dbHealth.responseTime.slowestMs !== null && dbHealth.responseTime.slowestMs < 10 ? 1 : 0)} | avg ${formatNumber(dbHealth.responseTime.averageMs, dbHealth.responseTime.averageMs !== null && dbHealth.responseTime.averageMs < 10 ? 1 : 0)}`
-                  : "—"}
+                {dbHealth ? (
+                  <>
+                    max{" "}
+                    <span className={`sub-value ${higherIsWorseStatus(dbHealth.responseTime.slowestMs, ...DB_SLOWEST_RESPONSE_MS_BANDS)}`}>
+                      {formatNumber(dbHealth.responseTime.slowestMs, (dbHealth.responseTime.slowestMs ?? 0) < 10 ? 1 : 0)}
+                    </span>{" "}
+                    | avg{" "}
+                    <span className={`sub-value ${higherIsWorseStatus(dbHealth.responseTime.averageMs, ...DB_AVERAGE_RESPONSE_MS_BANDS)}`}>
+                      {formatNumber(dbHealth.responseTime.averageMs, (dbHealth.responseTime.averageMs ?? 0) < 10 ? 1 : 0)}
+                    </span>
+                  </>
+                ) : (
+                  "—"
+                )}
               </span>
             </div>
           </div>
@@ -1008,11 +1035,13 @@ export function PulsePage() {
                 </div>
                 <div className="sub-row">
                   <span className="sub-name">Uptime</span>
-                  <span className="sub-value">{formatDurationShort(gatewayHealth?.uptimeMs)}</span>
+                  <span className={`sub-value ${gatewayHealth?.uptimeMs == null ? "" : gatewayHealth.uptimeMs >= GATEWAY_HEALTHY_UPTIME_MS ? "ok" : "warn"}`}>
+                    {formatDurationShort(gatewayHealth?.uptimeMs)}
+                  </span>
                 </div>
                 <div className="sub-row">
                   <span className="sub-name">Reconnects</span>
-                  <FlashingNumber value={gatewayHealth?.totalReconnects ?? null} className="sub-value">
+                  <FlashingNumber value={gatewayHealth?.totalReconnects ?? null} className={`sub-value ${higherIsWorseStatus(gatewayHealth?.totalReconnects, ...GATEWAY_RECONNECT_BANDS)}`}>
                     {gatewayHealth?.totalReconnects ?? "—"}
                   </FlashingNumber>
                 </div>
