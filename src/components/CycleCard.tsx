@@ -12,7 +12,7 @@ const timelineColumns = [
   { key: "date", header: "Date" },
   { key: "type", header: "Type" },
   { key: "event", header: "Event" },
-  { key: "owner", header: "Owner" },
+  { key: "owner", header: "Strategy" },
   { key: "quantity", header: "Qty" },
   { key: "strike", header: "Strike" },
   { key: "stockPrice", header: "Stock price" },
@@ -134,7 +134,7 @@ export function CycleCard({ symbol }: { symbol: string }) {
                   {visible("date") && <th>Date</th>}
                   {visible("type") && <th>Type</th>}
                   {visible("event") && <th>Event</th>}
-                  {visible("owner") && <th>Owner</th>}
+                  {visible("owner") && <th>Strategy</th>}
                   {visible("quantity") && <th className="text-end" title="Shares-equivalent: 1 option contract = 100">Qty</th>}
                   {visible("strike") && <th className="text-end">Strike</th>}
                   {visible("stockPrice") && <th className="text-end" title="Real fill for stock trades, otherwise that day's closing price of the stock">Stock price</th>}
