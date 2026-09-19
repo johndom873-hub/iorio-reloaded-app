@@ -2,11 +2,11 @@ import { useRef, useState } from "react";
 import { ChartTimeAxis } from "./ChartTimeAxis";
 
 // Pure/presentational — PulsePage owns the rolling-sample logic (sampling
-// the live greeks stream's |delta| per position, filtered to CC/CSP only
-// before it reaches this component). Reference line is the real configured
-// delta_target_max from strategy_settings (fetched once on mount, not
-// hardcoded).
-export interface DeltaSeries {
+// the live greeks stream's probabilityByD2 — the approved N(d2) success
+// probability, see positionSuccessProbability.ts — per position, filtered to
+// CC/CSP only before it reaches this component). The reference line is a
+// minimum: a position sitting below it is unlikely to end in profit.
+export interface ProbabilitySeries {
   /** Position id, not symbol — a rolled position can leave two open positions sharing one ticker, so symbol alone isn't a safe React key. */
   id: string;
   symbol: string;
@@ -14,9 +14,9 @@ export interface DeltaSeries {
   values: number[];
 }
 
-interface PositionDeltasChartProps {
-  seriesByPosition: DeltaSeries[];
-  deltaLimit: number;
+interface ProfitProbabilityChartProps {
+  seriesByPosition: ProbabilitySeries[];
+  probabilityThreshold: number;
   /**
    * Same sample clock PulsePage uses for every series (one push per
    * interval tick) — used only for the shared x-axis labels below, not to
@@ -25,16 +25,16 @@ interface PositionDeltasChartProps {
    * series than this array).
    */
   timestamps: number[];
-  /** Upper bound of the y-axis — kept independent of deltaLimit so the reference line isn't pinned to the very top edge. */
+  /** Upper bound of the y-axis — kept independent of probabilityThreshold so the reference line isn't pinned to the very top edge. */
   yAxisMax?: number;
 }
 
-export function PositionDeltasChart({ seriesByPosition, deltaLimit, timestamps, yAxisMax = 0.4 }: PositionDeltasChartProps) {
+export function ProfitProbabilityChart({ seriesByPosition, probabilityThreshold, timestamps, yAxisMax = 1 }: ProfitProbabilityChartProps) {
   const wrapRef = useRef<HTMLDivElement>(null);
   const [hoverFraction, setHoverFraction] = useState<number | null>(null);
 
   const y = (value: number) => 95 - (value / yAxisMax) * 90;
-  const limitY = y(deltaLimit).toFixed(1);
+  const limitY = y(probabilityThreshold).toFixed(1);
   const plottable = seriesByPosition.filter((series) => series.values.length >= 2);
 
   function handleMouseMove(event: React.MouseEvent<HTMLDivElement>) {
@@ -54,7 +54,7 @@ export function PositionDeltasChart({ seriesByPosition, deltaLimit, timestamps, 
 
   return (
     <div className="chart-body">
-      <div className="delta-legend">
+      <div className="probability-legend">
         {seriesByPosition.map((series) => (
           <div className="legend-item" key={series.id}>
             <span className="legend-dot" style={{ background: series.color }} />

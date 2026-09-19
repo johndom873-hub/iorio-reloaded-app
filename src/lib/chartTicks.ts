@@ -10,7 +10,7 @@ export interface TimeAxisTick {
 // bunch several ticks into a few seconds of each other (rendering as
 // visually duplicate labels) while leaving a large real time gap elsewhere
 // unlabeled. Shared by Pulse's hand-rolled SVG line charts (TotalPnlChart,
-// PositionDeltasChart).
+// ProfitProbabilityChart).
 export function pickTimeAxisTicks(timestamps: number[], maxTicks = 6): TimeAxisTick[] {
   if (timestamps.length === 0) return [];
   if (timestamps.length <= maxTicks) return timestamps.map((timestamp, index) => ({ index, timestamp }));

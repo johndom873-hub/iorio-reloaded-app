@@ -10,7 +10,6 @@ import "@fontsource/ibm-plex-mono/700.css";
 import "./PulsePage.css";
 import { useExposureStream } from "../hooks/useExposureStream";
 import { fetchAccountValue, fetchDashboardSummary, fetchAvailableCash, type AccountValue, type AvailableCash, type DashboardSummary } from "../api/dashboard";
-import { fetchStrategySettings, type StrategySettings } from "../api/riskLimits";
 import { fetchPositions, openUnrealizedPnlStream, openGreeksStream, fetchOrder, type Position, type UnrealizedPnlResult, type Greeks, type OrderLeg, type OrderRequestStatus } from "../api/positions";
 import { fetchTradeAlerts, isRollAlert, type NewTradeCandidate, type TradeAlert } from "../api/tradeAlerts";
 import { fetchTradeBlotter, type Trade } from "../api/tradeBlotter";
@@ -35,7 +34,7 @@ import { positionExpiryDate } from "../lib/positionPnl";
 import { FlashingNumber } from "../components/FlashingNumber";
 import { TopologyMap, type PulseEvent } from "../components/pulse/TopologyMap";
 import { TotalPnlChart } from "../components/pulse/TotalPnlChart";
-import { PositionDeltasChart, type DeltaSeries } from "../components/pulse/PositionDeltasChart";
+import { ProfitProbabilityChart, type ProbabilitySeries } from "../components/pulse/ProfitProbabilityChart";
 
 const CHART_SAMPLE_INTERVAL_MS = 60_000;
 // 4 hours of history at one sample/minute.
@@ -43,6 +42,10 @@ const CHART_MAX_SAMPLES = 240;
 const HEALTH_POLL_INTERVAL_MS = 30_000;
 const TRADES_LIMIT = 30;
 const EVENTS_LIMIT = 30;
+// Reference line on the Profit Probability chart — below this a position is
+// unlikely to end in profit. Set 2026-09-19; a constant, not a setting, since
+// nothing else consumes it.
+const PROFIT_PROBABILITY_THRESHOLD = 0.5;
 
 function strategyAbbrev(strategyKey: string): "CC" | "CSP" {
   return strategyKey === "covered_call" ? "CC" : "CSP";
@@ -320,13 +323,11 @@ export function PulsePage() {
   const [summary, setSummary] = useState<DashboardSummary | null>(null);
   const [availableCash, setAvailableCash] = useState<AvailableCash | null>(null);
   const { exposure } = useExposureStream("Failed to load account exposure.");
-  const [strategySettings, setStrategySettings] = useState<StrategySettings[]>([]);
 
   useEffect(() => {
     fetchAccountValue().then(setAccountValue).catch(() => {});
     fetchDashboardSummary().then(setSummary).catch(() => {});
     fetchAvailableCash().then(setAvailableCash).catch(() => {});
-    fetchStrategySettings().then(setStrategySettings).catch(() => {});
   }, []);
 
   // Yesterday's P&L (KPI) and the Unrealised P&L chart are intentionally
@@ -616,7 +617,7 @@ export function PulsePage() {
   // Keyed by position id, not symbol — a rolled position can leave two
   // distinct open positions sharing one ticker (confirmed in dev data: two
   // separate SPCX positions), which would otherwise collide.
-  const [deltaSeriesByPositionId, setDeltaSeriesByPositionId] = useState<Record<string, number[]>>({});
+  const [probabilitySeriesByPositionId, setProbabilitySeriesByPositionId] = useState<Record<string, number[]>>({});
   const latestDataRef = useRef({ unrealizedPnlByPositionId, greeksByLegId, positions });
   useEffect(() => {
     latestDataRef.current = { unrealizedPnlByPositionId, greeksByLegId, positions };
@@ -629,15 +630,15 @@ export function PulsePage() {
       setPnlSeries((prev) => [...prev, totalPnl].slice(-CHART_MAX_SAMPLES));
       setPnlTimestamps((prev) => [...prev, Date.now()].slice(-CHART_MAX_SAMPLES));
 
-      setDeltaSeriesByPositionId((prev) => {
+      setProbabilitySeriesByPositionId((prev) => {
         const next = { ...prev };
         for (const position of posList) {
           if (position.strategyKey !== "covered_call" && position.strategyKey !== "cash_secured_put") continue;
           const optionLeg = position.legs.find((leg) => leg.legType === "option");
           if (!optionLeg) continue;
-          const delta = greeksMap[optionLeg.id]?.delta;
-          if (delta === null || delta === undefined) continue;
-          next[position.id] = [...(next[position.id] ?? []), Math.abs(delta)].slice(-CHART_MAX_SAMPLES);
+          const probability = greeksMap[optionLeg.id]?.probabilityByD2;
+          if (probability === null || probability === undefined) continue;
+          next[position.id] = [...(next[position.id] ?? []), probability].slice(-CHART_MAX_SAMPLES);
         }
         return next;
       });
@@ -645,15 +646,14 @@ export function PulsePage() {
     return () => window.clearInterval(interval);
   }, []);
 
-  const deltaLimit = strategySettings.length > 0 ? Math.max(...strategySettings.map((row) => Number(row.deltaTargetMax))) : 0.3;
-  const deltaSeriesForChart: DeltaSeries[] = positions
+  const probabilitySeriesForChart: ProbabilitySeries[] = positions
     .filter((position) => position.strategyKey === "covered_call" || position.strategyKey === "cash_secured_put")
-    .filter((position) => (deltaSeriesByPositionId[position.id]?.length ?? 0) >= 2)
+    .filter((position) => (probabilitySeriesByPositionId[position.id]?.length ?? 0) >= 2)
     .map((position, index, arr) => ({
       id: position.id,
       symbol: position.symbol,
       color: colorForIndex(index, arr.length),
-      values: deltaSeriesByPositionId[position.id]!,
+      values: probabilitySeriesByPositionId[position.id]!,
     }));
 
   // Real, computed status — not decorative. "Degraded" whenever the Gateway
@@ -934,10 +934,10 @@ export function PulsePage() {
             </div>
             <div className="chart-panel">
               <div className="chart-panel-title">
-                <span>Position Deltas · live</span>
-                <span className="cur-val">limit {deltaLimit.toFixed(2)}</span>
+                <span>Profit Probability · live</span>
+                <span className="cur-val">threshold {PROFIT_PROBABILITY_THRESHOLD.toFixed(2)}</span>
               </div>
-              <PositionDeltasChart seriesByPosition={deltaSeriesForChart} deltaLimit={deltaLimit} timestamps={pnlTimestamps} />
+              <ProfitProbabilityChart seriesByPosition={probabilitySeriesForChart} probabilityThreshold={PROFIT_PROBABILITY_THRESHOLD} timestamps={pnlTimestamps} />
             </div>
           </div>
 

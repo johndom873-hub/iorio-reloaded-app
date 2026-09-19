@@ -886,7 +886,7 @@
   flex-direction: column;
   gap: 0.3rem;
 }
-.iorio-pulse-page .delta-legend {
+.iorio-pulse-page .probability-legend {
   display: flex;
   flex-wrap: wrap;
   column-gap: 0.7rem;
