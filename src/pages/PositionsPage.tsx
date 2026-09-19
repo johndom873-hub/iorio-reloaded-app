@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { PageHeader } from "../components/layout/PageHeader";
 import { DataTable, type DataTableColumn } from "../components/DataTable/DataTable";
 import { Spinner } from "../components/Spinner";
@@ -20,14 +20,11 @@ import { fetchAccountValue } from "../api/dashboard";
 import { openNotificationStream } from "../api/notifications";
 import type { StrategyKey } from "../api/strategy";
 import {
-  daysAgo,
   daysToExpiry,
   todayInEasternIso,
   formatCurrency,
   formatCurrencyTrimmed,
   formatDate,
-  formatDateTime,
-  formatDaysAgo,
   formatDaysToExpiry,
   formatNumber,
   formatPercentageValue,
@@ -41,6 +38,7 @@ import {
   positionPnlAsOfDate,
   positionPremiumPnl,
   positionStockPnl,
+  computePositionTotals,
   positionTotalPnl,
   positionTotalPnlPercent,
   strategyAbbrev,
@@ -181,6 +179,52 @@ export function PositionsPage() {
     );
   }, [positions]);
 
+  function renderProbability(row: Position, field: "probabilityByDelta" | "probabilityByD2") {
+    const optionLeg = row.legs.find((leg) => leg.legType === "option" && !leg.exitAt);
+    if (!optionLeg || row.status === "closed") return <span className="text-muted">—</span>;
+    const greeks = greeksByLegId[optionLeg.id];
+    if (!greeks) {
+      if (greeksFetchFailed) return <span className="text-muted" title="Failed to load">—</span>;
+      return <Spinner size="sm" label="Loading probability" />;
+    }
+    const value = greeks[field] ?? null;
+    if (value === null) {
+      const reason = field === "probabilityByD2" ? "Needs live implied volatility, price and a risk-free rate" : "No delta available";
+      return <span className="text-muted" title={reason}>—</span>;
+    }
+    return (
+      <FlashingNumber value={value} precision={2} title={greeks.asOfDate ? `As of ${formatDate(greeks.asOfDate)} close` : undefined}>
+        {formatNumber(value, 2)}
+      </FlashingNumber>
+    );
+  }
+
+  const totals = computePositionTotals(positions, unrealizedPnlByPositionId, totalAccountValue);
+  const totalPnlTitle = totals.positionsWithoutPnl > 0 ? `Excludes ${totals.positionsWithoutPnl} position(s) with no live price or snapshot` : undefined;
+  const signedTotal = (value: number) => (
+    <span className={`font-mono ${pnlTextClass(value)}`} title={totalPnlTitle}>
+      {formatSignedPnl(value)}
+    </span>
+  );
+  // Closed positions' capital was committed at different times and reused, so
+  // summing Exp $ / Exp % (and a P&L % on that base) across them is meaningless —
+  // only the P&L $ totals are shown there.
+  const isOpenView = status === "open";
+  const footerCells: Record<string, ReactNode> = {
+    symbol: `Total (${positions.length})`,
+    pnlPercent: !isOpenView ? null : totals.isLoading ? <Spinner size="sm" label="Loading" /> : totals.pnlPercent === null ? "—" : (
+      <span className={`font-mono ${pnlTextClass(totals.pnlPercent)}`} title={totalPnlTitle}>
+        {totals.pnlPercent > 0 ? "+" : ""}
+        {formatPercentageValue(totals.pnlPercent, 2)}
+      </span>
+    ),
+    pnl: totals.isLoading ? <Spinner size="sm" label="Loading" /> : signedTotal(totals.totalPnl),
+    premiumPnl: totals.isLoading ? <Spinner size="sm" label="Loading" /> : signedTotal(totals.premiumPnl),
+    stockPnl: totals.isLoading ? <Spinner size="sm" label="Loading" /> : signedTotal(totals.stockPnl),
+    exposureDollars: !isOpenView ? null : <span className="font-mono">{formatCurrency(totals.exposureDollars, 0)}</span>,
+    exposurePercent: !isOpenView ? null : totals.exposurePercent === null ? "—" : <span className="font-mono">{formatPercentageValue(totals.exposurePercent, 1)}</span>,
+  };
+
   const columns: DataTableColumn<Position>[] = [
     {
       key: "symbol",
@@ -203,6 +247,29 @@ export function PositionsPage() {
       ),
     },
     { key: "structure", header: "Structure", render: (row) => structureSummary(row) },
+    {
+      key: "price",
+      header: "Price",
+      headerTitle: "Current stock price",
+      align: "right",
+      render: (row) => {
+        if (row.status === "closed") return "—";
+        const optionLeg = row.legs.find((leg) => leg.legType === "option" && !leg.exitAt);
+        const greeks = optionLeg ? greeksByLegId[optionLeg.id] : undefined;
+        let price: number | null = greeks?.underlyingPrice ?? null;
+        if (price === null) {
+          // No option leg (or no greeks yet): derive from the stock leg's live market value.
+          const stockShares = row.legs.filter((leg) => leg.legType === "stock" && !leg.exitAt).reduce((sum, leg) => sum + leg.quantity, 0);
+          const stockMarketValue = unrealizedPnlByPositionId[row.id]?.stockMarketValue ?? null;
+          if (stockShares > 0 && stockMarketValue !== null) price = stockMarketValue / stockShares;
+        }
+        if (price === null) {
+          if (optionLeg ? greeksFetchFailed : unrealizedPnlFetchFailed) return <span className="text-muted">—</span>;
+          return <Spinner size="sm" label="Loading price" />;
+        }
+        return <FlashingNumber value={price} precision={2}>{formatCurrency(price, 2)}</FlashingNumber>;
+      },
+    },
     {
       key: "pnlPercent",
       header: "P&L %",
@@ -326,11 +393,6 @@ export function PositionsPage() {
       },
     },
     {
-      key: "openedAt",
-      header: "Opened",
-      render: (row) => <span title={formatDateTime(row.openedAt)}>{formatDaysAgo(daysAgo(row.openedAt))}</span>,
-    },
-    {
       key: "expiry",
       header: "Expiry",
       render: (row) => {
@@ -340,62 +402,18 @@ export function PositionsPage() {
       },
     },
     {
-      key: "delta",
-      header: "Delta",
+      key: "probabilityByDelta",
+      header: "P(Δ)",
+      headerTitle: "Chance of success from the short option's delta, 0.00–1.00 (1 = success): covered call = assigned, |Δ|; cash-secured put = not assigned, 1 − |Δ|",
       align: "right",
-      render: (row) => {
-        const optionLeg = row.legs.find((leg) => leg.legType === "option");
-        if (!optionLeg) return "—";
-        // Closed positions never get greeks back from the API (the /greeks
-        // endpoint only looks up open positions — a closed leg has no live
-        // market data to show), so don't show a spinner that will never resolve.
-        if (row.status === "closed") return "—";
-        const greeks = greeksByLegId[optionLeg.id];
-        if (!greeks) {
-          if (greeksFetchFailed) {
-            return (
-              <span className="text-muted" title="Failed to load delta">
-                —
-              </span>
-            );
-          }
-          return <Spinner size="sm" label="Loading delta" />;
-        }
-        if (greeks.delta === null) return <span className="text-muted">—</span>;
-        return (
-          <FlashingNumber value={greeks.delta} precision={2} title={greeks.asOfDate ? `As of ${formatDate(greeks.asOfDate)} close` : undefined}>
-            {formatNumber(greeks.delta, 2)}
-          </FlashingNumber>
-        );
-      },
+      render: (row) => renderProbability(row, "probabilityByDelta"),
     },
     {
-      key: "gamma",
-      header: "Gamma",
-      headerTitle: "Rate of change of delta per $1 move in the underlying — higher gamma means delta (and assignment risk) can shift faster",
+      key: "probabilityByD2",
+      header: "P(d2)",
+      headerTitle: "Chance of success from N(d2) using implied volatility and the FRED risk-free rate, 0.00–1.00 (1 = success). Covered call = assigned at a profit (above the higher of strike and stock cost); cash-secured put = not assigned",
       align: "right",
-      render: (row) => {
-        const optionLeg = row.legs.find((leg) => leg.legType === "option");
-        if (!optionLeg) return "—";
-        if (row.status === "closed") return "—";
-        const greeks = greeksByLegId[optionLeg.id];
-        if (!greeks) {
-          if (greeksFetchFailed) {
-            return (
-              <span className="text-muted" title="Failed to load gamma">
-                —
-              </span>
-            );
-          }
-          return <Spinner size="sm" label="Loading gamma" />;
-        }
-        if (greeks.gamma === null) return <span className="text-muted">—</span>;
-        return (
-          <FlashingNumber value={greeks.gamma} precision={3} title={greeks.asOfDate ? `As of ${formatDate(greeks.asOfDate)} close` : undefined}>
-            {formatNumber(greeks.gamma, 3)}
-          </FlashingNumber>
-        );
-      },
+      render: (row) => renderProbability(row, "probabilityByD2"),
     },
     {
       key: "actions",
@@ -505,6 +523,7 @@ export function PositionsPage() {
         rows={positions}
         rowKey={(row) => row.id}
         loading={loading}
+        footerCells={footerCells}
         emptyMessage={`No ${status} positions yet.`}
       />
 

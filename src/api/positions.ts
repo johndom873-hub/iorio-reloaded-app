@@ -339,6 +339,13 @@ export interface Greeks {
   // date that snapshot was captured. null when live, or when neither a live
   // value nor a snapshot is available.
   asOfDate: string | null;
+  // Streamed only. Underlying price and IV come from the same IBKR tick as
+  // the greeks; the two probabilities (0..1, 1 = success) are computed
+  // server-side — see positionSuccessProbability.ts in the API repo.
+  impliedVolatility?: number | null;
+  underlyingPrice?: number | null;
+  probabilityByDelta?: number | null;
+  probabilityByD2?: number | null;
 }
 
 export function fetchGreeks(legIds: string[]): Promise<Record<string, Greeks>> {

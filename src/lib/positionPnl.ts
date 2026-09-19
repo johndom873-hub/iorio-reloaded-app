@@ -13,7 +13,7 @@ export function strategyLabel(strategyKey: PositionStrategyKey): string {
 export function strategyAbbrev(strategyKey: PositionStrategyKey): string {
   if (strategyKey === "covered_call") return "CC";
   if (strategyKey === "cash_secured_put") return "CSP";
-  return "Needs Review";
+  return "N/S";
 }
 
 export function strategyBadgeClass(strategyKey: PositionStrategyKey): string {
@@ -115,4 +115,64 @@ export function positionExpiryDate(position: Position): string | null {
   const candidateLegs = openLegs.length > 0 ? openLegs : position.legs.filter((leg) => leg.legType === "option" && leg.expiryDate);
   if (candidateLegs.length === 0) return null;
   return candidateLegs.reduce((earliest, leg) => (leg.expiryDate! < earliest ? leg.expiryDate! : earliest), candidateLegs[0].expiryDate!);
+}
+
+export interface PositionTotals {
+  /** True while any position's live P&L hasn't arrived yet. */
+  isLoading: boolean;
+  totalPnl: number;
+  premiumPnl: number;
+  stockPnl: number;
+  exposureDollars: number;
+  exposurePercent: number | null;
+  /** Total P&L $ / total Exp $ over the positions that have both. */
+  pnlPercent: number | null;
+  /** Positions left out of the P&L sums because no live price or snapshot exists. */
+  positionsWithoutPnl: number;
+}
+
+// Approved 2026-09-19: totals are straight sums of the row figures; total
+// P&L % is total P&L $ / total Exp $ (never an average of row percentages);
+// total EXP % is the straight sum of the rows' EXP % (each is exposure /
+// total account value, so the sum equals total exposure / account value).
+export function computePositionTotals(
+  positions: Position[],
+  unrealizedByPositionId: Record<string, UnrealizedPnlResult>,
+  totalAccountValue: number | null,
+): PositionTotals {
+  const totals: PositionTotals = {
+    isLoading: false,
+    totalPnl: 0,
+    premiumPnl: 0,
+    stockPnl: 0,
+    exposureDollars: 0,
+    exposurePercent: null,
+    pnlPercent: null,
+    positionsWithoutPnl: 0,
+  };
+  let pnlRowsExposure = 0;
+  for (const position of positions) {
+    const exposure = position.capitalAtRisk === null ? null : Number(position.capitalAtRisk);
+    if (exposure !== null) totals.exposureDollars += exposure;
+    const pnl = positionTotalPnl(position, unrealizedByPositionId);
+    if (pnl === "loading") {
+      totals.isLoading = true;
+      continue;
+    }
+    if (pnl === null) {
+      totals.positionsWithoutPnl += 1;
+      continue;
+    }
+    totals.totalPnl += pnl;
+    if (exposure !== null) pnlRowsExposure += exposure;
+    const premium = positionPremiumPnl(position, unrealizedByPositionId);
+    if (typeof premium === "number") totals.premiumPnl += premium;
+    if (positionHasStockLeg(position)) {
+      const stock = positionStockPnl(position, unrealizedByPositionId);
+      if (typeof stock === "number") totals.stockPnl += stock;
+    }
+  }
+  if (pnlRowsExposure > 0) totals.pnlPercent = (totals.totalPnl / pnlRowsExposure) * 100;
+  if (totalAccountValue !== null && totalAccountValue > 0) totals.exposurePercent = (totals.exposureDollars / totalAccountValue) * 100;
+  return totals;
 }

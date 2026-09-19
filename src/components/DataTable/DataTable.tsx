@@ -22,6 +22,8 @@ interface DataTableProps<TRow> {
   emptyMessage?: string;
   /** Data is being fetched — shows the standardized spinner instead of emptyMessage or stale rows. */
   loading?: boolean;
+  /** Optional totals row, keyed by column key; columns without an entry render an empty cell. Hidden while loading or when there are no rows. */
+  footerCells?: Record<string, ReactNode>;
 }
 
 export function DataTable<TRow>({
@@ -31,6 +33,7 @@ export function DataTable<TRow>({
   rowKey,
   emptyMessage = "No data",
   loading = false,
+  footerCells,
 }: DataTableProps<TRow>) {
   const { isColumnVisible, toggleColumn } = useColumnVisibility(
     tableId,
@@ -91,6 +94,17 @@ export function DataTable<TRow>({
               ))
             )}
           </tbody>
+          {footerCells && !loading && rows.length > 0 && (
+            <tfoot className="table-totals-row">
+              <tr>
+                {visibleColumns.map((column) => (
+                  <td key={column.key} className={column.align === "right" ? "text-end" : undefined}>
+                    {footerCells[column.key]}
+                  </td>
+                ))}
+              </tr>
+            </tfoot>
+          )}
         </table>
       </div>
     </div>

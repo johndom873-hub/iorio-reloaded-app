@@ -707,3 +707,12 @@
 .table-flush {
   margin: calc(var(--tblr-card-spacer-y) * -1) calc(var(--tblr-card-spacer-x) * -1);
 }
+
+/* DataTable totals row (tfoot). Not Bootstrap's .table-light: that class
+   hardcodes a light fill that renders as a white bar in dark mode, unlike
+   the theme-aware thead. Same surface token the header uses. */
+.table-totals-row > tr > td {
+  background-color: var(--tblr-bg-surface-tertiary);
+  font-weight: 700;
+  border-top: 2px solid var(--tblr-border-color);
+}
