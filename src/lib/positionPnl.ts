@@ -107,12 +107,18 @@ export function positionTotalPnlPercent(position: Position, pnl: number | null):
 }
 
 // The expiry driving this position: the nearest expiry among its still-open
-// option legs, or (once every leg has been closed) the nearest among all of
-// them, so a closed position still shows what it expired/would have expired
-// on. Null for pure-stock or legless positions.
+// option legs. A CLOSED position falls back to the nearest among all its
+// option legs, so it still shows what it expired/would have expired on. An
+// OPEN position with no open option leg (bare stock left after its call
+// expired or was assigned away — "unstructured") has no expiry: showing the
+// dead call's date made it look like an option position (found 2026-09-19).
+// Null for pure-stock or legless positions.
 export function positionExpiryDate(position: Position): string | null {
   const openLegs = position.legs.filter((leg) => leg.legType === "option" && leg.expiryDate && !leg.exitAt);
-  const candidateLegs = openLegs.length > 0 ? openLegs : position.legs.filter((leg) => leg.legType === "option" && leg.expiryDate);
+  const candidateLegs =
+    openLegs.length > 0 || position.status === "open"
+      ? openLegs
+      : position.legs.filter((leg) => leg.legType === "option" && leg.expiryDate);
   if (candidateLegs.length === 0) return null;
   return candidateLegs.reduce((earliest, leg) => (leg.expiryDate! < earliest ? leg.expiryDate! : earliest), candidateLegs[0].expiryDate!);
 }

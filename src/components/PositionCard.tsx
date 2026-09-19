@@ -105,12 +105,20 @@ export function PositionCard({
   const isUnstructured = position.strategyKey === "unstructured";
   const hasOpenStockLeg = position.legs.some((leg) => leg.legType === "stock" && !leg.exitAt);
 
+  // An open position can still carry closed legs (an expired/assigned call whose stock leg remains). Those are
+  // history, not part of what's held now — the Wheel cycle card has them — so only live legs are listed and
+  // drive the payoff diagram. A closed position shows all its legs.
+  const displayedLegs = useMemo(
+    () => (position.status === "open" ? position.legs.filter((leg) => !leg.exitAt) : position.legs),
+    [position],
+  );
+
   const [rollingLegId, setRollingLegId] = useState<string | null>(null);
   const [rollError, setRollError] = useState<string | null>(null);
 
   const payoff = useMemo(
-    () => (position.strategyKey !== "unstructured" ? computePayoff(position.strategyKey, position.legs) : null),
-    [position],
+    () => (position.strategyKey !== "unstructured" ? computePayoff(position.strategyKey, displayedLegs) : null),
+    [position, displayedLegs],
   );
 
   async function handleRollClick(legId: string) {
@@ -255,7 +263,7 @@ export function PositionCard({
               </tr>
             </thead>
             <tbody>
-              {position.legs.map((leg) => {
+              {displayedLegs.map((leg) => {
                 const rollEligible = position.status === "open" && leg.legType === "option" && leg.side === "short" && !leg.exitAt;
                 const legRollAlert = rollAlert && rollAlert.suggestedStructure.closeLeg.legId === leg.id ? rollAlert : undefined;
                 return (
