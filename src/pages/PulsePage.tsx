@@ -29,7 +29,7 @@ import {
   type MarketStatus,
   type MarketSessionState,
 } from "../api/systemHealth";
-import { daysToExpiry, todayInEasternIso, formatSignedPnl, formatSignedPercentageValue, formatCompactDollars, formatNumber, formatMilliseconds, ibkrExpiryToIsoDate } from "../lib/formatters";
+import { daysToExpiry, todayInEasternIso, formatSignedPnl, formatSignedPercentageValue, formatCompactDollars, formatNumber, ibkrExpiryToIsoDate } from "../lib/formatters";
 import { positionExpiryDate } from "../lib/positionPnl";
 import { FlashingNumber } from "../components/FlashingNumber";
 import { TopologyMap, type PulseEvent } from "../components/pulse/TopologyMap";
@@ -849,12 +849,12 @@ export function PulsePage() {
               </FlashingNumber>
             </div>
             <div className="sub-row">
-              <span className="sub-name">Response time</span>
-              <span className="sub-value">{dbHealth ? `${formatMilliseconds(dbHealth.responseTime.averageMs)} avg` : "—"}</span>
-            </div>
-            <div className="sub-row">
-              <span className="sub-name">Slowest</span>
-              <span className="sub-value">{dbHealth ? formatMilliseconds(dbHealth.responseTime.slowestMs) : "—"}</span>
+              <span className="sub-name">Response time (ms)</span>
+              <span className="sub-value">
+                {dbHealth
+                  ? `max ${formatNumber(dbHealth.responseTime.slowestMs, dbHealth.responseTime.slowestMs !== null && dbHealth.responseTime.slowestMs < 10 ? 1 : 0)} | avg ${formatNumber(dbHealth.responseTime.averageMs, dbHealth.responseTime.averageMs !== null && dbHealth.responseTime.averageMs < 10 ? 1 : 0)}`
+                  : "—"}
+              </span>
             </div>
           </div>
 

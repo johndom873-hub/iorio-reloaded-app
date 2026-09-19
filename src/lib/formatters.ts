@@ -298,14 +298,6 @@ export function formatRelativeTime(dateInput: string | Date | null | undefined):
   return `${diffHours}h ago`;
 }
 
-/** Short latency label: "4.3 ms" under 10 ms, "120 ms" under a second, "1.4 s" above; "—" when unknown. */
-export function formatMilliseconds(milliseconds: number | null | undefined): string {
-  if (milliseconds === null || milliseconds === undefined) return "—";
-  if (milliseconds < 10) return `${milliseconds.toFixed(1)} ms`;
-  if (milliseconds < 1000) return `${Math.round(milliseconds)} ms`;
-  return `${(milliseconds / 1000).toFixed(1)} s`;
-}
-
 export function formatDuration(
   startedAt: string | Date | null | undefined,
   finishedAt: string | Date | null | undefined,
