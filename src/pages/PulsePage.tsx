@@ -129,6 +129,110 @@ function formatDurationShort(ms: number | null | undefined): string {
   return hours > 0 ? `${hours}h ${minutes}m` : `${minutes}m`;
 }
 
+interface AttentionReason {
+  key: string;
+  name: string;
+  detail: string;
+  meta: string;
+}
+
+function describeAttentionReasons(gatewayHealth: GatewayHealth | null, accountDataError: string | null | undefined): AttentionReason[] {
+  const reasons: AttentionReason[] = [];
+  if (gatewayHealth?.staleOrMissing) {
+    const updatedAtMs = gatewayHealth.updatedAt ? new Date(gatewayHealth.updatedAt).getTime() : null;
+    reasons.push({
+      key: "gateway",
+      name: "Gateway worker not reporting",
+      detail: "No heartbeat from the IBKR worker. Orders and live prices may be stale.",
+      meta: updatedAtMs
+        ? `Last update ${formatDurationShort(Date.now() - updatedAtMs)} ago · ${new Date(updatedAtMs).toLocaleTimeString("en-US", { hour12: false })}`
+        : "No heartbeat recorded",
+    });
+  } else if (gatewayHealth && !gatewayHealth.connected) {
+    reasons.push({
+      key: "gateway",
+      name: "Gateway disconnected from IBKR",
+      detail: "Worker is running but has lost its IBKR connection; it is retrying.",
+      meta: `Status code ${gatewayHealth.lastSystemStatusCode ?? "—"} · reconnects ${gatewayHealth.totalReconnects ?? "—"}`,
+    });
+  }
+  if (accountDataError) {
+    reasons.push({
+      key: "ibkr-data",
+      name: "IBKR account data unavailable",
+      detail: "Account value, cash and exposure may be out of date.",
+      meta: `Error ${accountDataError}`,
+    });
+  }
+  return reasons;
+}
+
+// Touch taps also fire emulated mouseenter/focus before click, so on
+// hover-less devices those would open the tooltip and the click toggle would
+// immediately close it again.
+function deviceCanHover(): boolean {
+  return window.matchMedia("(hover: hover)").matches;
+}
+
+function AttentionPill({ reasons }: { reasons: AttentionReason[] }) {
+  const [isOpen, setIsOpen] = useState(false);
+  const wrapperRef = useRef<HTMLDivElement>(null);
+  const degraded = reasons.length > 0;
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const handlePointerDown = (event: PointerEvent) => {
+      if (wrapperRef.current && !wrapperRef.current.contains(event.target as Node)) setIsOpen(false);
+    };
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setIsOpen(false);
+    };
+    document.addEventListener("pointerdown", handlePointerDown);
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("pointerdown", handlePointerDown);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [isOpen]);
+
+  return (
+    <div
+      className="pill-wrap"
+      ref={wrapperRef}
+      onMouseEnter={degraded && deviceCanHover() ? () => setIsOpen(true) : undefined}
+      onMouseLeave={degraded && deviceCanHover() ? () => setIsOpen(false) : undefined}
+    >
+      <div
+        className={`status-pill${degraded ? " status-pill-degraded status-pill-interactive" : ""}`}
+        tabIndex={degraded ? 0 : undefined}
+        role={degraded ? "button" : undefined}
+        aria-expanded={degraded ? isOpen : undefined}
+        onFocus={degraded && deviceCanHover() ? () => setIsOpen(true) : undefined}
+        onBlur={degraded && deviceCanHover() ? () => setIsOpen(false) : undefined}
+        onClick={degraded && !deviceCanHover() ? () => setIsOpen((previous) => !previous) : undefined}
+      >
+        <span className={`led${degraded ? " led-warn" : ""}`} />
+        {degraded ? "ATTENTION NEEDED" : "ALL SYSTEMS NOMINAL"}
+      </div>
+      {degraded && isOpen && (
+        <div className="attention-tip" role="tooltip">
+          <div className="tip-title">Needs attention · {reasons.length}</div>
+          {reasons.map((reason) => (
+            <div className="tip-item" key={reason.key}>
+              <span className="led led-warn" />
+              <div>
+                <div className="tip-name">{reason.name}</div>
+                <div className="tip-detail">{reason.detail}</div>
+                <div className="tip-meta">{reason.meta}</div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function marketStatusStyle(state: MarketSessionState | undefined): { badgeLabel: string; ledClass: string; textClass: string } {
   switch (state) {
     case "open":
@@ -548,9 +652,7 @@ export function PulsePage() {
   // (exposure.accountDataError, from GET /risk-limits/exposure) is failing.
   // Database/Heroku/Genosuke aren't gated on — if the page loaded at all,
   // those are already up.
-  const gatewayDown = gatewayHealth ? gatewayHealth.staleOrMissing || !gatewayHealth.connected : false;
-  const ibkrDataError = Boolean(exposure?.accountDataError);
-  const systemDegraded = gatewayDown || ibkrDataError;
+  const attentionReasons = describeAttentionReasons(gatewayHealth, exposure?.accountDataError);
 
   return (
     <div className="iorio-pulse-page">
@@ -562,10 +664,7 @@ export function PulsePage() {
           <span className="brand-eyebrow">REALTIME SYSTEM MONITORING</span>
         </div>
         <div className="pulse-header-right">
-          <div className={`status-pill${systemDegraded ? " status-pill-degraded" : ""}`}>
-            <span className={`led${systemDegraded ? " led-warn" : ""}`} />
-            {systemDegraded ? "ATTENTION NEEDED" : "ALL SYSTEMS NOMINAL"}
-          </div>
+          <AttentionPill reasons={attentionReasons} />
           <div className="clock">{clock}</div>
         </div>
       </div>
