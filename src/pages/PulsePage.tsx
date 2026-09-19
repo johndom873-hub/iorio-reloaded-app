@@ -29,7 +29,7 @@ import {
   type MarketStatus,
   type MarketSessionState,
 } from "../api/systemHealth";
-import { daysToExpiry, todayInEasternIso, formatSignedPnl, formatSignedPercentageValue, formatCompactDollars, formatNumber, ibkrExpiryToIsoDate } from "../lib/formatters";
+import { daysToExpiry, todayInEasternIso, formatSignedPnl, formatSignedPercentageValue, formatCompactDollars, formatNumber, formatMilliseconds, ibkrExpiryToIsoDate } from "../lib/formatters";
 import { positionExpiryDate } from "../lib/positionPnl";
 import { FlashingNumber } from "../components/FlashingNumber";
 import { TopologyMap, type PulseEvent } from "../components/pulse/TopologyMap";
@@ -837,16 +837,24 @@ export function PulsePage() {
               </div>
             </div>
             <div className="sub-row">
-              <span className="sub-name">Active connections</span>
-              <FlashingNumber value={dbHealth ? Number(dbHealth.activeConnections) : null} className="sub-value">
-                {dbHealth?.activeConnections ?? "—"}
+              <span className="sub-name">Connections</span>
+              <FlashingNumber value={dbHealth ? Number(dbHealth.totalConnections) : null} className="sub-value">
+                {dbHealth ? `${dbHealth.totalConnections} / ${dbHealth.maxConnections}` : "—"}
               </FlashingNumber>
             </div>
             <div className="sub-row">
               <span className="sub-name">DB size</span>
               <FlashingNumber value={dbHealth ? Number(dbHealth.databaseSizeBytes) : null} className="sub-value">
-                {formatBytes(dbHealth?.databaseSizeBytes)}
+                {dbHealth ? `${formatBytes(dbHealth.databaseSizeBytes)} / ${formatBytes(dbHealth.maxDatabaseSizeBytes)}` : "—"}
               </FlashingNumber>
+            </div>
+            <div className="sub-row">
+              <span className="sub-name">Response time</span>
+              <span className="sub-value">{dbHealth ? `${formatMilliseconds(dbHealth.responseTime.averageMs)} avg` : "—"}</span>
+            </div>
+            <div className="sub-row">
+              <span className="sub-name">Slowest</span>
+              <span className="sub-value">{dbHealth ? formatMilliseconds(dbHealth.responseTime.slowestMs) : "—"}</span>
             </div>
           </div>
 
@@ -999,14 +1007,14 @@ export function PulsePage() {
                   </FlashingNumber>
                 </div>
                 <div className="sub-row">
-                  <span className="sub-name">Reconnects</span>
-                  <FlashingNumber value={gatewayHealth?.totalReconnects ?? null} className="sub-value">
-                    {gatewayHealth?.totalReconnects ?? "—"} lifetime
-                  </FlashingNumber>
-                </div>
-                <div className="sub-row">
                   <span className="sub-name">Uptime</span>
                   <span className="sub-value">{formatDurationShort(gatewayHealth?.uptimeMs)}</span>
+                </div>
+                <div className="sub-row">
+                  <span className="sub-name">Reconnects</span>
+                  <FlashingNumber value={gatewayHealth?.totalReconnects ?? null} className="sub-value">
+                    {gatewayHealth?.totalReconnects ?? "—"}
+                  </FlashingNumber>
                 </div>
               </>
             )}

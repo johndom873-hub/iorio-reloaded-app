@@ -48,8 +48,12 @@ export function fetchMarketStatus(): Promise<MarketStatus> {
 }
 
 export interface DbHealth {
-  activeConnections: string;
+  totalConnections: string;
+  maxConnections: number;
   databaseSizeBytes: string;
+  maxDatabaseSizeBytes: string;
+  /** Rolling 5-minute query latency of the web dyno's own queries; null when no queries ran in the window. */
+  responseTime: { averageMs: number | null; slowestMs: number | null };
 }
 
 export function fetchDbHealth(): Promise<DbHealth> {
