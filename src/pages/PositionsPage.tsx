@@ -305,6 +305,7 @@ export function PositionsPage() {
     {
       key: "pnl",
       header: "P&L $",
+      headerTitle: "Realized + unrealized P&L, net of commissions: opening commissions are already inside entry prices, closing-trade commissions are subtracted once a leg closes",
       align: "right",
       render: (row) => {
         const pnl = positionTotalPnl(row, unrealizedPnlByPositionId);
