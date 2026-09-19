@@ -8,7 +8,9 @@ export type AppNotification =
   | { type: "job_completed"; jobName: string; status: "success" | "failure" }
   | { type: "alert_generated"; strategyKey: string; symbol: string; annualizedYield: number }
   | { type: "genosuke_reply"; preview: string }
-  | { type: "presence"; onlineUserIds: string[] };
+  | { type: "presence"; onlineUserIds: string[] }
+  // Animation-only signal for Pulse's topology lines; only sent to the /pulse tab.
+  | { type: "pulse"; edgeId: "ibkr-gateway" | "heroku-browser" | "heroku-db" | "genosuke-db" | "genosuke-llm" };
 
 // One long-lived connection per browser tab, shared by every caller —
 // replaces the old per-order 2s client poll. Pushed by the backend's
@@ -30,7 +32,10 @@ const notificationListeners = new Set<(notification: AppNotification) => void>()
 let sharedNotificationSource: EventSource | null = null;
 
 function openSharedNotificationSource(): EventSource {
-  const source = new EventSource(`${apiBaseUrl}/notifications/stream`, { withCredentials: true });
+  // The Pulse page's own tab asks for the high-frequency topology pulse
+  // frames; every other page's stream skips them (see the backend route).
+  const pulsesQuery = window.location.pathname === "/pulse" ? "?pulses=1" : "";
+  const source = new EventSource(`${apiBaseUrl}/notifications/stream${pulsesQuery}`, { withCredentials: true });
 
   source.onmessage = (message) => {
     let notification: AppNotification;

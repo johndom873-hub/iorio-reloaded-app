@@ -54,7 +54,7 @@ export function TotalPnlChart({ series, timestamps, formatValue }: TotalPnlChart
       >
         <svg viewBox="0 0 300 100" preserveAspectRatio="none">
           <line x1={0} y1={zeroY} x2={300} y2={zeroY} stroke="var(--border-strong)" strokeWidth={0.6} strokeDasharray="3 3" />
-          <polyline points={points} fill="none" stroke="var(--accent-glow)" strokeWidth={0.9} />
+          <polyline points={points} fill="none" stroke="var(--pnl-line)" strokeWidth={0.9} />
           {hoverIndex !== null && (
             <>
               <line
@@ -65,7 +65,7 @@ export function TotalPnlChart({ series, timestamps, formatValue }: TotalPnlChart
                 stroke="var(--text-muted)"
                 strokeWidth={0.4}
               />
-              <circle cx={(hoverIndex / (series.length - 1)) * 300} cy={y(series[hoverIndex]!)} r={2.2} fill="var(--accent-glow)" />
+              <circle cx={(hoverIndex / (series.length - 1)) * 300} cy={y(series[hoverIndex]!)} r={2.2} fill="var(--pnl-line)" />
             </>
           )}
         </svg>

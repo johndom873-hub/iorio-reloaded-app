@@ -47,6 +47,21 @@ const EVENTS_LIMIT = 30;
 // unlikely to end in profit. Set 2026-09-19; a constant, not a setting, since
 // nothing else consumes it.
 const PROFIT_PROBABILITY_THRESHOLD = 0.5;
+// How long a topology line stays lit: the dot's travel time, which is also how
+// long the line glows (set to 300 ms 2026-09-19; was 1100 ms). The extra
+// grace lets the last animation frame land before the dot is removed.
+const PULSE_DURATION_MS = 300;
+const PULSE_REMOVAL_GRACE_MS = 50;
+// Dot colour per silent-until-now line (see backend pulseEmitter.ts): plain
+// infrastructure traffic in the accent, Genosuke's own traffic in the muted
+// tone its Heroku-Genosuke line already uses.
+const PULSE_EDGE_COLORS = {
+  "ibkr-gateway": "var(--accent-glow)",
+  "heroku-browser": "var(--accent-glow)",
+  "heroku-db": "var(--accent-glow)",
+  "genosuke-db": "var(--text-secondary)",
+  "genosuke-llm": "var(--text-secondary)",
+} as const;
 // Green/amber/red cut-offs for the node stats (approved 2026-09-19). Each pair
 // is [greenBelow, amberUpTo]; anything above amberUpTo is red.
 const CONNECTIONS_USED_PERCENT_BANDS = [50, 80] as const;
@@ -461,9 +476,9 @@ export function PulsePage() {
 
   const firePulse = useCallback((edgeId: string, color: string, opts?: { reverse?: boolean; durationMs?: number }) => {
     const key = `${edgeId}-${Date.now()}-${Math.random()}`;
-    const durationMs = opts?.durationMs ?? 1100;
+    const durationMs = opts?.durationMs ?? PULSE_DURATION_MS;
     setPulses((prev) => [...prev, { key, edgeId, color, reverse: opts?.reverse, durationMs }]);
-    window.setTimeout(() => setPulses((prev) => prev.filter((pulse) => pulse.key !== key)), durationMs + 150);
+    window.setTimeout(() => setPulses((prev) => prev.filter((pulse) => pulse.key !== key)), durationMs + PULSE_REMOVAL_GRACE_MS);
   }, []);
 
   const appendEvent = useCallback((text: string, color: string) => {
@@ -606,6 +621,10 @@ export function PulsePage() {
           appendEvent(`Genosuke replied: ${notification.preview}`, "var(--text-secondary)");
           setTelegramFlash(true);
           window.setTimeout(() => setTelegramFlash(false), 900);
+          break;
+        }
+        case "pulse": {
+          firePulse(notification.edgeId, PULSE_EDGE_COLORS[notification.edgeId]);
           break;
         }
         case "presence": {

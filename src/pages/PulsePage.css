@@ -19,6 +19,7 @@
   --accent: #0ea5e9;
   --accent-glow: #7dd3fc;
   --accent-dim: rgba(14, 165, 233, 0.4);
+  --pnl-line: #a78bfa;
   --success: #34d399;
   --danger: #f0554f;
   --warning: #f5a524;
@@ -706,7 +707,7 @@
 }
 .iorio-pulse-page .grid-db {
   grid-column: 2;
-  grid-row: 1;
+  grid-row: 3;
 }
 .iorio-pulse-page .grid-genosuke {
   grid-column: 3;
@@ -722,7 +723,7 @@
 }
 .iorio-pulse-page .grid-gateway {
   grid-column: 2;
-  grid-row: 3;
+  grid-row: 1;
 }
 .iorio-pulse-page .grid-heroku {
   grid-column: 3;

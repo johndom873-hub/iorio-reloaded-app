@@ -98,7 +98,7 @@ export function TopologyMap({ children, pulses, activeEdgeIds }: TopologyMapProp
         {pulses.map((pulse) => (
           <circle key={pulse.key} r={2.8} className="packet-dot" fill={pulse.color} style={{ color: pulse.color }}>
             <animateMotion
-              dur={`${(pulse.durationMs ?? 1100) / 1000}s`}
+              dur={`${(pulse.durationMs ?? 300) / 1000}s`}
               repeatCount={1}
               fill="freeze"
               keyPoints={pulse.reverse ? "1;0" : undefined}
