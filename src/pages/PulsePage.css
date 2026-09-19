@@ -71,6 +71,11 @@
   color: var(--text-muted);
   text-transform: uppercase;
 }
+.iorio-pulse-page .brand-logo {
+  height: 1.5rem;
+  width: auto;
+  align-self: center;
+}
 .iorio-pulse-page .brand-title {
   font-size: 1.12rem;
   font-weight: 700;
@@ -318,6 +323,22 @@
 }
 .iorio-pulse-page .alloc-seg:hover::after {
   opacity: 1;
+}
+/* Lights the hovered segment up a little. A white overlay rather than a
+   filter, because a filter on the segment would also brighten its ::after
+   tooltip. */
+.iorio-pulse-page .alloc-seg::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: #fff;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.15s ease;
+}
+.iorio-pulse-page .alloc-seg:hover::before {
+  opacity: 0.22;
 }
 
 /* ---------- main grid ---------- */

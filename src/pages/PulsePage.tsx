@@ -699,8 +699,9 @@ export function PulsePage() {
     <div className="iorio-pulse-page">
       <div className="pulse-header">
         <div className="pulse-header-left">
+          <img className="brand-logo" src="/brand/iorio-icon.svg" alt="" />
           <span className="brand-title">
-            IORIO PULSE<span className="dot">.</span>
+            IORIO Pulse<span className="dot">.</span>
           </span>
           <span className="brand-eyebrow">REALTIME SYSTEM MONITORING</span>
         </div>
