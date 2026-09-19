@@ -1,4 +1,5 @@
 import { apiBaseUrl, apiRequest } from "./client";
+import type { OrderLeg, OrderRequestStatus } from "./positions";
 
 export type AppNotification =
   | { type: "order_status"; orderId: string }
@@ -82,6 +83,12 @@ export function openNotificationStream(onNotification: (notification: AppNotific
 export interface RecentNotificationEvent {
   notification: AppNotification;
   occurredAt: string;
+  /**
+   * Only on order_status events: that order's status and payload, resolved
+   * server-side so the Latest Events backfill needs no per-order request
+   * (null when the order no longer exists).
+   */
+  order?: { status: OrderRequestStatus; payload: { symbol: string; legs: OrderLeg[] } } | null;
 }
 
 // Backs the Pulse dashboard's Latest Events panel on mount, since the SSE

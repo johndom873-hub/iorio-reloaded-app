@@ -493,7 +493,7 @@ export function PulsePage() {
   const fetchDescribedEvents = useCallback(async () => {
     const { events: recentEvents } = await fetchRecentNotifications();
     const described = await Promise.all(
-      recentEvents.map(async ({ notification, occurredAt }) => {
+      recentEvents.map(async ({ notification, occurredAt, order }) => {
         switch (notification.type) {
           case "job_completed": {
             if (notification.jobName === "ibkr_health_check") return null;
@@ -507,17 +507,14 @@ export function PulsePage() {
               color: "var(--warning)",
             };
           case "order_status": {
-            try {
-              const order = await fetchOrder(notification.orderId);
-              const legsSummary = formatOrderLegsSummary(order.payload.legs, occurredAt);
-              return {
-                occurredAt,
-                text: `${orderEventStatusLabel(order.status)} — ${order.payload.symbol}${legsSummary ? `: ${legsSummary}` : ""}`,
-                color: "var(--success)",
-              };
-            } catch {
-              return null;
-            }
+            // Resolved server-side in the same response — no per-order request.
+            if (!order) return null;
+            const legsSummary = formatOrderLegsSummary(order.payload.legs, occurredAt);
+            return {
+              occurredAt,
+              text: `${orderEventStatusLabel(order.status)} — ${order.payload.symbol}${legsSummary ? `: ${legsSummary}` : ""}`,
+              color: "var(--success)",
+            };
           }
           case "position_opened":
             return { occurredAt, text: `Position opened — ${notification.symbol}`, color: "var(--success)" };
