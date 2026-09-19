@@ -833,6 +833,9 @@
   gap: 0.28rem;
   color: var(--success);
 }
+.iorio-pulse-page .avatar-item-offline .avatar-circle {
+  opacity: 0.45;
+}
 .iorio-pulse-page .avatar-status.offline {
   color: var(--text-muted);
 }

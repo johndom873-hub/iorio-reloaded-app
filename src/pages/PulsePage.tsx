@@ -29,7 +29,7 @@ import {
   type MarketStatus,
   type MarketSessionState,
 } from "../api/systemHealth";
-import { daysToExpiry, todayInEasternIso, formatSignedPnl, formatSignedPercentageValue, formatCompactDollars, formatNumber, formatPercentageValue, ibkrExpiryToIsoDate } from "../lib/formatters";
+import { daysToExpiry, todayInEasternIso, formatSignedPnl, formatSignedPercentageValue, formatCompactDollars, formatDateTime, formatNumber, formatPercentageValue, formatRelativeDate, ibkrExpiryToIsoDate } from "../lib/formatters";
 import { positionExpiryDate } from "../lib/positionPnl";
 import { FlashingNumber } from "../components/FlashingNumber";
 import { higherIsWorseStatus } from "../lib/statusThresholds";
@@ -429,7 +429,7 @@ export function PulsePage() {
   const [genosukeHealth, setGenosukeHealth] = useState<GenosukeHealth | null>(null);
   const [webDynoHealth, setWebDynoHealth] = useState<WebDynoHealth | null>(null);
   const [gatewayHealth, setGatewayHealth] = useState<GatewayHealth | null>(null);
-  const [onlineUsers, setOnlineUsers] = useState<PresenceUser[]>([]);
+  const [presenceUsers, setPresenceUsers] = useState<PresenceUser[]>([]);
 
   useEffect(() => {
     let cancelled = false;
@@ -441,7 +441,7 @@ export function PulsePage() {
           setGenosukeHealth(genosuke);
           setWebDynoHealth(webDyno);
           setGatewayHealth(gateway);
-          setOnlineUsers(presence.online);
+          setPresenceUsers(presence.users);
         })
         .catch(() => {});
     }
@@ -609,7 +609,7 @@ export function PulsePage() {
           break;
         }
         case "presence": {
-          fetchPresence().then((result) => setOnlineUsers(result.online)).catch(() => {});
+          fetchPresence().then((result) => setPresenceUsers(result.users)).catch(() => {});
           break;
         }
       }
@@ -1107,17 +1107,23 @@ export function PulsePage() {
               </div>
             </div>
             <div className="avatar-row">
-              {onlineUsers.length === 0 && <span className="avatar-name">No one online</span>}
-              {onlineUsers.map((user) => (
-                <div className="avatar-item" key={user.id}>
+              {presenceUsers.length === 0 && <span className="avatar-name">No users</span>}
+              {presenceUsers.map((user) => (
+                <div className={`avatar-item${user.online ? "" : " avatar-item-offline"}`} key={user.id}>
                   <div className="avatar-circle" style={{ background: "#7DD3FC" }}>
                     {user.displayName.charAt(0).toUpperCase()}
                   </div>
                   <span className="avatar-name">{user.displayName}</span>
-                  <span className="avatar-status">
-                    <span className="led" />
-                    online
-                  </span>
+                  {user.online ? (
+                    <span className="avatar-status">
+                      <span className="led" />
+                      online
+                    </span>
+                  ) : (
+                    <span className="avatar-status offline" title={user.lastSeenAt ? formatDateTime(user.lastSeenAt) : undefined}>
+                      {formatRelativeDate(user.lastSeenAt)}
+                    </span>
+                  )}
                 </div>
               ))}
             </div>

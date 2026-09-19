@@ -29,10 +29,14 @@ export function triggerIbkrHealthCheck(): Promise<JobRun | null> {
 export interface PresenceUser {
   id: string;
   displayName: string;
+  online: boolean;
+  /** ISO time of the user's last open tab (connect or disconnect). Null only for an online user who connected before last-seen tracking existed. */
+  lastSeenAt: string | null;
 }
 
-export function fetchPresence(): Promise<{ online: PresenceUser[] }> {
-  return apiRequest<{ online: PresenceUser[] }>("/system-health/presence");
+/** Up to 3 users: online first, then most recently active. */
+export function fetchPresence(): Promise<{ users: PresenceUser[] }> {
+  return apiRequest<{ users: PresenceUser[] }>("/system-health/presence");
 }
 
 export type MarketSessionState = "pre-market" | "open" | "after-hours" | "closed";
