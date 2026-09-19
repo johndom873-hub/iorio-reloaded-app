@@ -29,7 +29,7 @@ import {
   type MarketStatus,
   type MarketSessionState,
 } from "../api/systemHealth";
-import { daysToExpiry, todayInEasternIso, formatSignedPnl, formatSignedPercentageValue, formatCompactDollars, formatNumber, ibkrExpiryToIsoDate } from "../lib/formatters";
+import { daysToExpiry, todayInEasternIso, formatSignedPnl, formatSignedPercentageValue, formatCompactDollars, formatNumber, formatPercentageValue, ibkrExpiryToIsoDate } from "../lib/formatters";
 import { positionExpiryDate } from "../lib/positionPnl";
 import { FlashingNumber } from "../components/FlashingNumber";
 import { TopologyMap, type PulseEvent } from "../components/pulse/TopologyMap";
@@ -845,7 +845,7 @@ export function PulsePage() {
             <div className="sub-row">
               <span className="sub-name">DB size</span>
               <FlashingNumber value={dbHealth ? Number(dbHealth.databaseSizeBytes) : null} className="sub-value">
-                {dbHealth ? `${formatBytes(dbHealth.databaseSizeBytes)} / ${formatBytes(dbHealth.maxDatabaseSizeBytes)}` : "—"}
+                {dbHealth ? `${formatBytes(dbHealth.databaseSizeBytes)} (${formatPercentageValue((Number(dbHealth.databaseSizeBytes) / Number(dbHealth.maxDatabaseSizeBytes)) * 100, 2)} used)` : "—"}
               </FlashingNumber>
             </div>
             <div className="sub-row">
