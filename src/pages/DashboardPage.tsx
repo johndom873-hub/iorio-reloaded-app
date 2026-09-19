@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { PageHeader } from "../components/layout/PageHeader";
 import { Spinner } from "../components/Spinner";
 import { ApexChart } from "../components/charts/ApexChart";
@@ -13,17 +13,15 @@ import {
   fetchDashboardSummary,
   fetchPeriodPnlByStrategy,
   fetchPnlHistory,
-  fetchPortfolio,
   type AvailableCash,
   type DashboardSummary,
   type PeriodPnlByStrategy,
   type PnlHistoryPoint,
-  type Portfolio,
   type PositionEvent,
   type StrategyPeriodPnlRow,
 } from "../api/dashboard";
 import { fetchPositions, type Position } from "../api/positions";
-import { fetchExposure, type ConcentrationRow, type ExposureData, type StrategyAllocationRow, type TopPositionRow } from "../api/riskLimits";
+import { type ConcentrationRow, type StrategyAllocationRow, type TopPositionRow } from "../api/riskLimits";
 import {
   formatCurrency,
   formatDateTime,
@@ -35,6 +33,8 @@ import {
   formatSignedPnl,
   pnlTextClass,
 } from "../lib/formatters";
+import { useExposureStream } from "../hooks/useExposureStream";
+import { portfolioFromExposure } from "../lib/portfolioFromExposure";
 import { useTickerDetailSymbol } from "../hooks/useTickerDetailSymbol";
 
 const strategyLabels: Record<string, string> = {
@@ -397,17 +397,16 @@ export function DashboardPage() {
   const [historyLoading, setHistoryLoading] = useState(true);
   const [historyError, setHistoryError] = useState<string | null>(null);
 
-  const [exposure, setExposure] = useState<ExposureData | null>(null);
-  const [exposureLoading, setExposureLoading] = useState(true);
-  const [exposureError, setExposureError] = useState<string | null>(null);
+  // One stream feeds both the allocation cards and the Portfolio tiles —
+  // see portfolioFromExposure.
+  const { exposure, loading: exposureLoading, error: exposureError } = useExposureStream("Failed to load account allocation.");
+  const portfolio = useMemo(() => (exposure ? portfolioFromExposure(exposure) : null), [exposure]);
+  const portfolioLoading = exposureLoading;
+  const portfolioError = exposureError;
 
   const [cash, setCash] = useState<AvailableCash | null>(null);
   const [cashLoading, setCashLoading] = useState(true);
   const [cashError, setCashError] = useState<string | null>(null);
-
-  const [portfolio, setPortfolio] = useState<Portfolio | null>(null);
-  const [portfolioLoading, setPortfolioLoading] = useState(true);
-  const [portfolioError, setPortfolioError] = useState<string | null>(null);
 
   const [periodPnl, setPeriodPnl] = useState<PeriodPnlByStrategy | null>(null);
   const [periodPnlLoading, setPeriodPnlLoading] = useState(true);
@@ -450,24 +449,10 @@ export function DashboardPage() {
   }, []);
 
   useEffect(() => {
-    fetchExposure()
-      .then(setExposure)
-      .catch((err) => setExposureError(err instanceof ApiError ? err.message : "Failed to load account allocation."))
-      .finally(() => setExposureLoading(false));
-  }, []);
-
-  useEffect(() => {
     fetchPnlHistory()
       .then(setHistory)
       .catch((err) => setHistoryError(err instanceof ApiError ? err.message : "Failed to load P&L history."))
       .finally(() => setHistoryLoading(false));
-  }, []);
-
-  useEffect(() => {
-    fetchPortfolio()
-      .then(setPortfolio)
-      .catch((err) => setPortfolioError(err instanceof ApiError ? err.message : "Failed to load portfolio."))
-      .finally(() => setPortfolioLoading(false));
   }, []);
 
   useEffect(() => {

@@ -5,16 +5,15 @@ import { HelpTooltip } from "../components/HelpTooltip";
 import { TickerDetailModal } from "../components/TickerDetailModal";
 import { ApiError } from "../api/client";
 import {
-  fetchExposure,
   fetchStrategySettings,
   updateStrategySettings,
   type ConcentrationRow,
-  type ExposureData,
   type StrategySettings,
   type StrategySettingsInput,
 } from "../api/riskLimits";
 import type { StrategyKey } from "../api/strategy";
 import { formatCurrency, formatDateTime, formatPercentage, formatPercentageValue, formatRelativeTime } from "../lib/formatters";
+import { useExposureStream } from "../hooks/useExposureStream";
 import { useTickerDetailSymbol } from "../hooks/useTickerDetailSymbol";
 
 const strategyTabs: { key: StrategyKey; label: string }[] = [
@@ -165,9 +164,7 @@ function NumberField({ label, value, step = "1", help, onChange }: NumberFieldPr
 }
 
 export function RiskLimitsPage() {
-  const [exposure, setExposure] = useState<ExposureData | null>(null);
-  const [exposureLoading, setExposureLoading] = useState(true);
-  const [exposureError, setExposureError] = useState<string | null>(null);
+  const { exposure, loading: exposureLoading, error: exposureError } = useExposureStream("Failed to load account exposure.");
 
   const [strategy, setStrategy] = useState<StrategyKey>("covered_call");
   const [allSettings, setAllSettings] = useState<StrategySettings[]>([]);
@@ -177,13 +174,6 @@ export function RiskLimitsPage() {
   const [saveError, setSaveError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [detailSymbol, setDetailSymbol] = useTickerDetailSymbol();
-
-  useEffect(() => {
-    fetchExposure()
-      .then(setExposure)
-      .catch((err) => setExposureError(err instanceof ApiError ? err.message : "Failed to load account exposure."))
-      .finally(() => setExposureLoading(false));
-  }, []);
 
   const loadSettings = useCallback(async () => {
     try {

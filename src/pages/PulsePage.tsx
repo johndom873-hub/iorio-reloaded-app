@@ -8,8 +8,9 @@ import "@fontsource/ibm-plex-mono/500.css";
 import "@fontsource/ibm-plex-mono/600.css";
 import "@fontsource/ibm-plex-mono/700.css";
 import "./PulsePage.css";
+import { useExposureStream } from "../hooks/useExposureStream";
 import { fetchAccountValue, fetchDashboardSummary, fetchAvailableCash, type AccountValue, type AvailableCash, type DashboardSummary } from "../api/dashboard";
-import { fetchExposure, fetchStrategySettings, type ExposureData, type StrategySettings } from "../api/riskLimits";
+import { fetchStrategySettings, type StrategySettings } from "../api/riskLimits";
 import { fetchPositions, openUnrealizedPnlStream, openGreeksStream, fetchOrder, type Position, type UnrealizedPnlResult, type Greeks, type OrderLeg, type OrderRequestStatus } from "../api/positions";
 import { fetchTradeAlerts, isRollAlert, type NewTradeCandidate, type TradeAlert } from "../api/tradeAlerts";
 import { fetchTradeBlotter, type Trade } from "../api/tradeBlotter";
@@ -221,14 +222,13 @@ export function PulsePage() {
   const [accountValue, setAccountValue] = useState<AccountValue | null>(null);
   const [summary, setSummary] = useState<DashboardSummary | null>(null);
   const [availableCash, setAvailableCash] = useState<AvailableCash | null>(null);
-  const [exposure, setExposure] = useState<ExposureData | null>(null);
+  const { exposure } = useExposureStream("Failed to load account exposure.");
   const [strategySettings, setStrategySettings] = useState<StrategySettings[]>([]);
 
   useEffect(() => {
     fetchAccountValue().then(setAccountValue).catch(() => {});
     fetchDashboardSummary().then(setSummary).catch(() => {});
     fetchAvailableCash().then(setAvailableCash).catch(() => {});
-    fetchExposure().then(setExposure).catch(() => {});
     fetchStrategySettings().then(setStrategySettings).catch(() => {});
   }, []);
 

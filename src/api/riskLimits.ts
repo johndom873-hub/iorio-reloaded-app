@@ -1,4 +1,4 @@
-import { apiRequest } from "./client";
+import { apiRequest, apiBaseUrl } from "./client";
 import type { StrategyKey } from "./strategy";
 
 export interface StrategySettings {
@@ -139,6 +139,29 @@ export interface ExposureData {
   topPositions: TopPositionRow[];
 }
 
-export function fetchExposure(): Promise<ExposureData> {
-  return apiRequest<ExposureData>("/risk-limits/exposure");
+// Live-upgrading replacement for the old one-shot GET /risk-limits/exposure
+// (2026-09-19): the backend's /exposure/stream sends a first reading from
+// FROZEN prices, then the whole ExposureData again each time a price
+// actually changes. The one-shot had to wait on option prices that IBKR
+// gives no completion signal for; the stream never waits, it just updates.
+// Held open until the returned cleanup fn is called. Close instead of
+// letting EventSource auto-reconnect — see openUnrealizedPnlStream's note
+// (each retry opens a fresh IBKR connection server-side).
+export function openExposureStream(onUpdate: (exposure: ExposureData) => void, onError: () => void): () => void {
+  const source = new EventSource(`${apiBaseUrl}/risk-limits/exposure/stream`, { withCredentials: true });
+
+  source.onmessage = (message) => {
+    try {
+      onUpdate(JSON.parse(message.data));
+    } catch {
+      // Malformed/heartbeat frame — ignore.
+    }
+  };
+
+  source.onerror = () => {
+    source.close();
+    onError();
+  };
+
+  return () => source.close();
 }
