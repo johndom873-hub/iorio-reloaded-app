@@ -478,6 +478,13 @@ export interface CycleTimelineRow {
   bucket: CycleBucketKey;
   premium: number;
   stock: number;
+  instrument: "stock" | "option";
+  /** Shares-equivalent, always positive (1 contract = 100). */
+  quantity: number;
+  /** Option strike; null for stock rows. */
+  strike: number | null;
+  /** Real fill for stock trades, else that date's daily close. */
+  stockPrice: number | null;
 }
 
 export interface Cycle {

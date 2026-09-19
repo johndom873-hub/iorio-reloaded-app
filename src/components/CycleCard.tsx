@@ -1,9 +1,24 @@
 import { useEffect, useState } from "react";
 import { CollapsibleCard } from "./CollapsibleCard";
+import { ColumnVisibilityPopover } from "./DataTable/ColumnVisibilityPopover";
+import { useColumnVisibility } from "./DataTable/useColumnVisibility";
 import { CycleBucketBadge } from "./CycleBucketBadge";
 import { Spinner } from "./Spinner";
 import { fetchCycles, type Cycle } from "../api/positions";
-import { formatCurrency, formatDate, formatSignedPnl, pnlTextClass } from "../lib/formatters";
+import { formatCurrency, formatDate, formatNumber, formatSignedPnl, pnlTextClass } from "../lib/formatters";
+
+// Timeline columns; every data table gets the per-column show/hide gear (project rule), saved in localStorage.
+const timelineColumns = [
+  { key: "date", header: "Date" },
+  { key: "type", header: "Type" },
+  { key: "event", header: "Event" },
+  { key: "owner", header: "Owner" },
+  { key: "quantity", header: "Qty" },
+  { key: "strike", header: "Strike" },
+  { key: "stockPrice", header: "Stock price" },
+  { key: "premium", header: "Premium" },
+  { key: "stock", header: "Stock" },
+];
 
 // The symbol's wheel cycle (approved 2026-09-19): summary tiles + a dated timeline where every event is owned by
 // exactly one bucket (CSP / Unstructured / CC). Figures are as of the latest daily close (open shares marked at it,
@@ -12,6 +27,11 @@ export function CycleCard({ symbol }: { symbol: string }) {
   const [cycles, setCycles] = useState<Cycle[] | null>(null);
   const [failed, setFailed] = useState(false);
   const [selectedIndex, setSelectedIndex] = useState(0);
+  const { isColumnVisible, toggleColumn } = useColumnVisibility(
+    "cycle-timeline",
+    timelineColumns.map((column) => column.key),
+  );
+  const visible = (key: string) => isColumnVisible(key);
 
   useEffect(() => {
     setCycles(null);
@@ -89,33 +109,54 @@ export function CycleCard({ symbol }: { symbol: string }) {
             </div>
           </div>
 
+          <div className="d-flex justify-content-end">
+            <ColumnVisibilityPopover columns={timelineColumns} isColumnVisible={isColumnVisible} onToggleColumn={toggleColumn} />
+          </div>
           <div className="table-responsive border rounded">
             <table className="table table-sm table-vcenter card-table mb-0">
               <thead className="table-light">
                 <tr>
-                  <th>Date</th>
-                  <th>Event</th>
-                  <th>Owner</th>
-                  <th className="text-end">Premium</th>
-                  <th className="text-end">Stock</th>
+                  {visible("date") && <th>Date</th>}
+                  {visible("type") && <th>Type</th>}
+                  {visible("event") && <th>Event</th>}
+                  {visible("owner") && <th>Owner</th>}
+                  {visible("quantity") && <th className="text-end" title="Shares-equivalent: 1 option contract = 100">Qty</th>}
+                  {visible("strike") && <th className="text-end">Strike</th>}
+                  {visible("stockPrice") && <th className="text-end" title="Real fill for stock trades, otherwise that day's closing price of the stock">Stock price</th>}
+                  {visible("premium") && <th className="text-end">Premium</th>}
+                  {visible("stock") && <th className="text-end">Stock</th>}
                 </tr>
               </thead>
               <tbody>
                 {cycle.timeline.map((row, index) => (
                   <tr key={`${row.at ?? "now"}-${index}`}>
-                    <td>{row.at ? formatDate(row.at) : "Today"}</td>
-                    <td>{row.label}</td>
-                    <td><CycleBucketBadge bucket={row.bucket} /></td>
-                    <td className={`text-end font-mono ${row.premium === 0 ? "text-muted" : pnlTextClass(row.premium)}`}>{row.premium === 0 ? "—" : formatSignedPnl(row.premium)}</td>
-                    <td className={`text-end font-mono ${row.stock === 0 ? "text-muted" : pnlTextClass(row.stock)}`}>{row.stock === 0 ? "—" : formatSignedPnl(row.stock)}</td>
+                    {visible("date") && <td>{row.at ? formatDate(row.at) : "Today"}</td>}
+                    {visible("type") && (
+                      <td>
+                        <span className="badge bg-secondary-lt" style={{ fontSize: "0.72rem" }}>{row.instrument === "stock" ? "Stock" : "Option"}</span>
+                      </td>
+                    )}
+                    {visible("event") && <td>{row.label}</td>}
+                    {visible("owner") && <td><CycleBucketBadge bucket={row.bucket} /></td>}
+                    {visible("quantity") && <td className="text-end font-mono">{formatNumber(row.quantity)}</td>}
+                    {visible("strike") && <td className={`text-end font-mono ${row.strike === null ? "text-muted" : ""}`}>{row.strike === null ? "—" : formatCurrency(row.strike, 2)}</td>}
+                    {visible("stockPrice") && <td className={`text-end font-mono ${row.stockPrice === null ? "text-muted" : ""}`}>{row.stockPrice === null ? "—" : formatCurrency(row.stockPrice, 2)}</td>}
+                    {visible("premium") && <td className={`text-end font-mono ${row.premium === 0 ? "text-muted" : pnlTextClass(row.premium)}`}>{row.premium === 0 ? "—" : formatSignedPnl(row.premium)}</td>}
+                    {visible("stock") && <td className={`text-end font-mono ${row.stock === 0 ? "text-muted" : pnlTextClass(row.stock)}`}>{row.stock === 0 ? "—" : formatSignedPnl(row.stock)}</td>}
                   </tr>
                 ))}
               </tbody>
               <tfoot className="table-totals-row">
                 <tr>
-                  <td colSpan={3}>Cycle total</td>
-                  <td className={`text-end font-mono ${pnlTextClass(cycle.netPremium)}`}>{formatSignedPnl(cycle.netPremium)}</td>
-                  <td className={`text-end font-mono ${pnlTextClass(cycle.total - cycle.netPremium)}`}>{formatSignedPnl(cycle.total - cycle.netPremium)}</td>
+                  {timelineColumns
+                    .filter((column) => visible(column.key))
+                    .map((column) => (
+                      <td key={column.key} className={["quantity", "strike", "stockPrice", "premium", "stock"].includes(column.key) ? "text-end font-mono" : undefined}>
+                        {column.key === "date" ? "Cycle total" : null}
+                        {column.key === "premium" ? <span className={pnlTextClass(cycle.netPremium)}>{formatSignedPnl(cycle.netPremium)}</span> : null}
+                        {column.key === "stock" ? <span className={pnlTextClass(cycle.total - cycle.netPremium)}>{formatSignedPnl(cycle.total - cycle.netPremium)}</span> : null}
+                      </td>
+                    ))}
                 </tr>
               </tfoot>
             </table>
