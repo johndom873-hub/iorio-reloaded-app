@@ -378,6 +378,17 @@ export function PulsePage() {
   // rather than blanking the whole total for one stale leg.
   const totalStockValue = Object.values(unrealizedPnlByPositionId).reduce((sum, row) => sum + (row.stockMarketValue ?? 0), 0);
 
+  // Live mark-to-market sum of open positions — same total the Unrealised P&L
+  // chart samples. % is against the account value excluding this open
+  // gain/loss (mirrors how Yesterday's P&L is measured against the pre-move
+  // baseline), formula approved 2026-09-19.
+  const hasUnrealizedPnl = Object.keys(unrealizedPnlByPositionId).length > 0;
+  const totalUnrealizedPnl = hasUnrealizedPnl ? Object.values(unrealizedPnlByPositionId).reduce((sum, row) => sum + (row.unrealizedPnl ?? 0), 0) : null;
+  const accountValueBeforeUnrealizedPnl =
+    totalUnrealizedPnl !== null && accountValue?.netLiquidationValue ? Number(accountValue.netLiquidationValue) - totalUnrealizedPnl : null;
+  const totalUnrealizedPnlPercent =
+    totalUnrealizedPnl !== null && accountValueBeforeUnrealizedPnl ? (totalUnrealizedPnl / accountValueBeforeUnrealizedPnl) * 100 : null;
+
   // --- Top Alerts by yield ---
   const [pendingAlerts, setPendingAlerts] = useState<TradeAlert[]>([]);
   useEffect(() => {
@@ -698,6 +709,21 @@ export function PulsePage() {
             </FlashingNumber>
             <span className={`kpi-delta ${summary?.dayPnlPercent && summary.dayPnlPercent >= 0 ? "up" : "down"}`}>
               {formatSignedPercentageValue(summary?.dayPnlPercent ?? null, 2)}
+            </span>
+          </div>
+        </div>
+        <div className="kpi-tile">
+          <span className="kpi-label">Unrealised P&amp;L</span>
+          <div className="kpi-value-row">
+            <FlashingNumber
+              value={totalUnrealizedPnl}
+              className="kpi-value"
+              style={{ color: totalUnrealizedPnl === null ? undefined : totalUnrealizedPnl >= 0 ? "var(--success)" : "var(--danger)" }}
+            >
+              {formatSignedPnl(totalUnrealizedPnl, 0)}
+            </FlashingNumber>
+            <span className={`kpi-delta ${totalUnrealizedPnlPercent !== null && totalUnrealizedPnlPercent >= 0 ? "up" : "down"}`}>
+              {formatSignedPercentageValue(totalUnrealizedPnlPercent, 2)}
             </span>
           </div>
         </div>

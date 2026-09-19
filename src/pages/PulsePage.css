@@ -216,7 +216,8 @@
 /* ---------- KPI strip ---------- */
 .iorio-pulse-page .kpi-strip {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  /* four value tiles at 15% each, Allocation at 40% */
+  grid-template-columns: repeat(4, 3fr) 8fr;
   gap: 0.55rem;
   flex-shrink: 0;
 }
