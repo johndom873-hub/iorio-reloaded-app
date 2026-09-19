@@ -179,15 +179,8 @@ interface EventItem {
 }
 
 function EventRow({ time, text, color }: { time: string; text: string; color: string }) {
-  const [isNew, setIsNew] = useState(true);
-  useEffect(() => {
-    const raf1 = requestAnimationFrame(() => {
-      requestAnimationFrame(() => setIsNew(false));
-    });
-    return () => cancelAnimationFrame(raf1);
-  }, []);
   return (
-    <div className={`event-row${isNew ? " event-new" : ""}`}>
+    <div className="event-row">
       <span className="event-dot" style={{ background: color }} />
       <span className="event-time">{time}</span>
       <span className="event-text">{text}</span>

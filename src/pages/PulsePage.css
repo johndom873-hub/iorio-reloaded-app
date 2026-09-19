@@ -460,16 +460,19 @@
   padding: 0.22rem 0;
   border-bottom: 1px dashed var(--border);
   font-size: 0.69rem;
-  opacity: 1;
-  transform: translateY(0);
-  transition: opacity 0.5s ease, transform 0.5s ease;
+  animation: event-enter 0.5s ease;
 }
 .iorio-pulse-page .event-row:last-child {
   border-bottom: none;
 }
-.iorio-pulse-page .event-row.event-new {
-  opacity: 0;
-  transform: translateY(-5px);
+/* Pure-CSS entry animation: a JS/requestAnimationFrame-driven fade stays at
+   opacity 0 forever in a tab whose animation frames are paused (wall monitor,
+   occluded window), leaving blank rows. This resolves to visible regardless. */
+@keyframes event-enter {
+  from {
+    opacity: 0;
+    transform: translateY(-5px);
+  }
 }
 .iorio-pulse-page .event-dot {
   width: 6px;
