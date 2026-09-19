@@ -461,3 +461,49 @@ export function openUnrealizedPnlStream(
 
   return () => source.close();
 }
+
+// Wheel cycles (approved 2026-09-19, see cycles.ts in the API repo).
+export type CycleBucketKey = "csp" | "unstructured" | "cc";
+
+export interface CycleBucketResult {
+  premium: number;
+  stock: number;
+  total: number;
+  capital: number;
+}
+
+export interface CycleTimelineRow {
+  at: string | null; // null = the "today" mark row
+  label: string;
+  bucket: CycleBucketKey;
+  premium: number;
+  stock: number;
+}
+
+export interface Cycle {
+  startAt: string;
+  endAt: string | null;
+  status: "open" | "closed";
+  buckets: Record<CycleBucketKey, CycleBucketResult>;
+  total: number;
+  netPremium: number;
+  sharesHeld: number;
+  breakEvenPerShare: number | null;
+  timeline: CycleTimelineRow[];
+  dataFlags: string[];
+}
+
+export function fetchCycles(symbol: string): Promise<{ symbol: string; cycles: Cycle[] }> {
+  return apiRequest(`/positions/cycles?symbol=${encodeURIComponent(symbol)}`);
+}
+
+export interface CycleScoreboard {
+  buckets: Record<CycleBucketKey, CycleBucketResult & { returnOnCapital: number | null }>;
+  total: number;
+  cyclesIncluded: number;
+  cyclesExcluded: { symbol: string; reason: string }[];
+}
+
+export function fetchCycleScoreboard(): Promise<CycleScoreboard> {
+  return apiRequest("/positions/cycles/scoreboard");
+}

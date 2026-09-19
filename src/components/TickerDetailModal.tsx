@@ -2,6 +2,7 @@ import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { IconStar } from "@tabler/icons-react";
 import { Spinner } from "./Spinner";
 import { CollapsibleCard } from "./CollapsibleCard";
+import { CycleCard } from "./CycleCard";
 import { OrderReviewPanel } from "./OrderReviewPanel";
 import { TickerPriceChart } from "./charts/TickerPriceChart";
 import { IvHistoryChart } from "./charts/IvHistoryChart";
@@ -1344,6 +1345,7 @@ export function TickerDetailModal({ symbol, onClose, initialAlertId, focusPositi
                             ))}
                           </CollapsibleCard>
                         )}
+                        <CycleCard symbol={symbol} />
                         {closedPositions.length > 0 && (
                           <CollapsibleCard title={`History (${closedPositions.length})`} storageKey="ticker-detail-history" defaultOpen={false}>
                             <div className="table-responsive border rounded">

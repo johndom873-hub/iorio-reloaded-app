@@ -5,6 +5,7 @@ import { Spinner } from "../components/Spinner";
 import { FlashingNumber } from "../components/FlashingNumber";
 import { ClosePositionModal } from "../components/ClosePositionModal";
 import { TickerDetailModal } from "../components/TickerDetailModal";
+import { CycleScoreboard } from "../components/CycleScoreboard";
 import { ApiError } from "../api/client";
 import {
   fetchPositions,
@@ -506,6 +507,8 @@ export function PositionsPage() {
       <PageHeader title="Positions" subtitle="Open and closed positions across all strategies" />
 
       {error && <div className="alert alert-danger">{error}</div>}
+
+      <CycleScoreboard />
 
       <div className="d-flex flex-column flex-md-row justify-content-between gap-2 mb-3">
         <ul className="nav nav-tabs">
