@@ -51,6 +51,9 @@ export interface Position {
   realizedStockPnl: string;
   /** Entry-time capital committed: stock cost for covered calls, strike collateral for CSPs. Null if unavailable. */
   capitalAtRisk: string | null;
+  // Cycle break-even per share (open positions only), see cycleBreakEven.ts in the API repo; null with a reason when it can't be trusted.
+  breakEven?: number | null;
+  breakEvenUnavailableReason?: string | null;
 }
 
 export interface PositionFilters {

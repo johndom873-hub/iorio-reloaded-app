@@ -179,6 +179,20 @@ export function PositionsPage() {
     );
   }, [positions]);
 
+  // Stock price for a row: the option tick's underlying price when it has an open option leg, else the stock
+  // leg's live market value / shares. `failed` = the stream this depends on errored (show a dash, not a spinner).
+  function resolvePrice(row: Position): { price: number | null; failed: boolean } {
+    const optionLeg = row.legs.find((leg) => leg.legType === "option" && !leg.exitAt);
+    const greeks = optionLeg ? greeksByLegId[optionLeg.id] : undefined;
+    let price: number | null = greeks?.underlyingPrice ?? null;
+    if (price === null) {
+      const stockShares = row.legs.filter((leg) => leg.legType === "stock" && !leg.exitAt).reduce((sum, leg) => sum + leg.quantity, 0);
+      const stockMarketValue = unrealizedPnlByPositionId[row.id]?.stockMarketValue ?? null;
+      if (stockShares > 0 && stockMarketValue !== null) price = stockMarketValue / stockShares;
+    }
+    return { price, failed: optionLeg ? greeksFetchFailed : unrealizedPnlFetchFailed };
+  }
+
   function renderProbability(row: Position, field: "probabilityByDelta" | "probabilityByD2") {
     const optionLeg = row.legs.find((leg) => leg.legType === "option" && !leg.exitAt);
     if (!optionLeg || row.status === "closed") return <span className="text-muted">—</span>;
@@ -254,20 +268,28 @@ export function PositionsPage() {
       align: "right",
       render: (row) => {
         if (row.status === "closed") return "—";
-        const optionLeg = row.legs.find((leg) => leg.legType === "option" && !leg.exitAt);
-        const greeks = optionLeg ? greeksByLegId[optionLeg.id] : undefined;
-        let price: number | null = greeks?.underlyingPrice ?? null;
+        const { price, failed } = resolvePrice(row);
         if (price === null) {
-          // No option leg (or no greeks yet): derive from the stock leg's live market value.
-          const stockShares = row.legs.filter((leg) => leg.legType === "stock" && !leg.exitAt).reduce((sum, leg) => sum + leg.quantity, 0);
-          const stockMarketValue = unrealizedPnlByPositionId[row.id]?.stockMarketValue ?? null;
-          if (stockShares > 0 && stockMarketValue !== null) price = stockMarketValue / stockShares;
-        }
-        if (price === null) {
-          if (optionLeg ? greeksFetchFailed : unrealizedPnlFetchFailed) return <span className="text-muted">—</span>;
+          if (failed) return <span className="text-muted">—</span>;
           return <Spinner size="sm" label="Loading price" />;
         }
         return <FlashingNumber value={price} precision={2}>{formatCurrency(price, 2)}</FlashingNumber>;
+      },
+    },
+    {
+      key: "breakEven",
+      header: "Break-Even",
+      headerTitle: "Stock price at which this symbol's whole wheel cycle (all puts, calls and stock since it began) nets to zero on the shares still held. Green = price above it, red = below. Free = premium collected already exceeds the cost.",
+      align: "right",
+      render: (row) => {
+        if (row.status === "closed") return "—";
+        if (row.breakEven === null || row.breakEven === undefined) {
+          return <span className="text-muted" title={row.breakEvenUnavailableReason ?? "No break-even for this position"}>—</span>;
+        }
+        if (row.breakEven <= 0) return <span className="badge bg-success-lt">Free</span>;
+        const { price } = resolvePrice(row);
+        const colorClass = price === null ? "" : price >= row.breakEven ? "text-success" : "text-danger";
+        return <span className={`font-mono ${colorClass}`}>{formatCurrency(row.breakEven, 2)}</span>;
       },
     },
     {
