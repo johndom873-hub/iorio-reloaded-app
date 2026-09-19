@@ -13,6 +13,8 @@ interface CollapsibleCardProps {
   className?: string;
   /** Bump this to force the card open programmatically (e.g. scrolling to it from elsewhere), even if the user had collapsed it. */
   forceOpenSignal?: number;
+  /** Shown in the header only while the card is collapsed (e.g. key figures), so they're visible without expanding. */
+  collapsedSummary?: ReactNode;
   children: ReactNode;
 }
 
@@ -23,6 +25,7 @@ export function CollapsibleCard({
   storageKey,
   className,
   forceOpenSignal,
+  collapsedSummary,
   children,
 }: CollapsibleCardProps) {
   const [isOpen, setIsOpen] = useCollapsibleCard(storageKey, defaultOpen, forceOpenSignal);
@@ -40,6 +43,7 @@ export function CollapsibleCard({
           {title}
           {subtitle}
         </h3>
+        {!isOpen && collapsedSummary && <div className="ms-auto me-3 d-flex flex-wrap justify-content-end column-gap-3 row-gap-1">{collapsedSummary}</div>}
         <IconChevronDown
           size={18}
           className="text-muted"

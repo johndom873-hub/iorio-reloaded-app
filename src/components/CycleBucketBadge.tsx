@@ -9,7 +9,7 @@ export const cycleBucketLabel: Record<CycleBucketKey, string> = {
 
 const cycleBucketBadgeClass: Record<CycleBucketKey, string> = {
   csp: "bg-purple text-white",
-  unstructured: "bg-orange-lt",
+  unstructured: "bg-orange text-orange-fg",
   cc: "bg-blue text-white",
 };
 

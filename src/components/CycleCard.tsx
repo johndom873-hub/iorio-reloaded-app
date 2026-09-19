@@ -44,12 +44,27 @@ export function CycleCard({ symbol }: { symbol: string }) {
 
   if (cycles !== null && cycles.length === 0) return null;
   const cycle = cycles?.[selectedIndex];
+  const newest = cycles?.[0];
+  const summaryItem = (label: string, value: number) => (
+    <span key={label} className="text-nowrap" style={{ fontSize: "0.8rem" }}>
+      <span className="text-muted">{label} </span>
+      <span className={`fw-bold font-mono ${pnlTextClass(value)}`}>{formatSignedPnl(value)}</span>
+    </span>
+  );
+  const collapsedSummary = newest && (
+    <>
+      {summaryItem("Cycle P&L", newest.total)}
+      {summaryItem("Premium", newest.netPremium)}
+      {summaryItem("Stock", newest.buckets.csp.stock + newest.buckets.unstructured.stock + newest.buckets.cc.stock)}
+    </>
+  );
 
   return (
     <CollapsibleCard
       title="Wheel cycle"
       storageKey="ticker-detail-cycle"
       defaultOpen={false}
+      collapsedSummary={collapsedSummary}
     >
       {cycles === null && !failed && (
         <div className="d-flex justify-content-center py-2">
@@ -133,7 +148,9 @@ export function CycleCard({ symbol }: { symbol: string }) {
                     {visible("date") && <td>{row.at ? formatDate(row.at) : "Today"}</td>}
                     {visible("type") && (
                       <td>
-                        <span className="badge bg-secondary-lt" style={{ fontSize: "0.72rem" }}>{row.instrument === "stock" ? "Stock" : "Option"}</span>
+                        <span className={`badge ${row.instrument === "stock" ? "bg-teal text-teal-fg" : "bg-pink text-pink-fg"}`} style={{ fontSize: "0.72rem" }}>
+                          {row.instrument === "stock" ? "Stock" : "Option"}
+                        </span>
                       </td>
                     )}
                     {visible("event") && <td>{row.label}</td>}
