@@ -54,6 +54,7 @@ const DB_SIZE_USED_PERCENT_BANDS = [70, 90] as const;
 const DB_AVERAGE_RESPONSE_MS_BANDS = [50, 200] as const;
 const DB_SLOWEST_RESPONSE_MS_BANDS = [500, 2000] as const;
 const GATEWAY_RECONNECT_BANDS = [1, 5] as const;
+const GATEWAY_IN_FLIGHT_BANDS = [1, 5] as const;
 const GATEWAY_HEALTHY_UPTIME_MS = 30 * 60_000;
 
 function strategyAbbrev(strategyKey: string): "CC" | "CSP" {
@@ -848,20 +849,30 @@ export function PulsePage() {
             </div>
             <div className="sub-row">
               <span className="sub-name">Connections</span>
-              <FlashingNumber
-                value={dbHealth ? Number(dbHealth.totalConnections) : null}
-                className={`sub-value ${higherIsWorseStatus(dbHealth ? (Number(dbHealth.totalConnections) / dbHealth.maxConnections) * 100 : null, ...CONNECTIONS_USED_PERCENT_BANDS)}`}
-              >
-                {dbHealth ? `${dbHealth.totalConnections} / ${dbHealth.maxConnections}` : "—"}
+              <FlashingNumber value={dbHealth ? Number(dbHealth.totalConnections) : null} className="sub-value">
+                {dbHealth ? (
+                  <>
+                    <span className={`sub-value ${higherIsWorseStatus((Number(dbHealth.totalConnections) / dbHealth.maxConnections) * 100, ...CONNECTIONS_USED_PERCENT_BANDS)}`}>
+                      {dbHealth.totalConnections}
+                    </span>{" "}
+                    / {dbHealth.maxConnections}
+                  </>
+                ) : (
+                  "—"
+                )}
               </FlashingNumber>
             </div>
             <div className="sub-row">
               <span className="sub-name">DB size</span>
-              <FlashingNumber
-                value={dbHealth ? Number(dbHealth.databaseSizeBytes) : null}
-                className={`sub-value ${higherIsWorseStatus(dbHealth ? databaseSizeUsedPercent : null, ...DB_SIZE_USED_PERCENT_BANDS)}`}
-              >
-                {dbHealth ? `${formatBytes(dbHealth.databaseSizeBytes)} (${formatPercentageValue(databaseSizeUsedPercent, 2)} used)` : "—"}
+              <FlashingNumber value={dbHealth ? Number(dbHealth.databaseSizeBytes) : null} className="sub-value">
+                {dbHealth ? (
+                  <>
+                    {formatBytes(dbHealth.databaseSizeBytes)} (
+                    <span className={`sub-value ${higherIsWorseStatus(databaseSizeUsedPercent, ...DB_SIZE_USED_PERCENT_BANDS)}`}>{formatPercentageValue(databaseSizeUsedPercent, 2)}</span> used)
+                  </>
+                ) : (
+                  "—"
+                )}
               </FlashingNumber>
             </div>
             <div className="sub-row">
@@ -1029,7 +1040,7 @@ export function PulsePage() {
               <>
                 <div className="sub-row">
                   <span className="sub-name">In flight</span>
-                  <FlashingNumber value={gatewayHealth?.inFlightOrderCount ?? null} className="sub-value warn">
+                  <FlashingNumber value={gatewayHealth?.inFlightOrderCount ?? null} className={`sub-value ${higherIsWorseStatus(gatewayHealth?.inFlightOrderCount, ...GATEWAY_IN_FLIGHT_BANDS)}`}>
                     {gatewayHealth ? `${gatewayHealth.inFlightOrderCount} orders` : "—"}
                   </FlashingNumber>
                 </div>
