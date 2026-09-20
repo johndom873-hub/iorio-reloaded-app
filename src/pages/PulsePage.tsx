@@ -32,7 +32,7 @@ import {
 import { daysToExpiry, todayInEasternIso, formatSignedPnl, formatSignedPercentageValue, formatCompactDollars, formatDateTime, formatNumber, formatPercentageValue, formatRelativeDate, ibkrExpiryToIsoDate } from "../lib/formatters";
 import { positionExpiryDate } from "../lib/positionPnl";
 import { FlashingNumber } from "../components/FlashingNumber";
-import { higherIsWorseStatus } from "../lib/statusThresholds";
+import { higherIsWorseStatus, lowerIsWorseStatus } from "../lib/statusThresholds";
 import { TopologyMap, type PulseEvent } from "../components/pulse/TopologyMap";
 import { TotalPnlChart } from "../components/pulse/TotalPnlChart";
 import { ProfitProbabilityChart, type ProbabilitySeries } from "../components/pulse/ProfitProbabilityChart";
@@ -70,6 +70,8 @@ const DB_AVERAGE_RESPONSE_MS_BANDS = [50, 200] as const;
 const DB_SLOWEST_RESPONSE_MS_BANDS = [500, 2000] as const;
 const GATEWAY_RECONNECT_BANDS = [1, 5] as const;
 const GATEWAY_IN_FLIGHT_BANDS = [1, 5] as const;
+// Available cash as % of account value: below 15 red, below 30 amber, else green.
+const AVAILABLE_CASH_PERCENT_BANDS = [15, 30] as const;
 const GATEWAY_HEALTHY_UPTIME_MS = 30 * 60_000;
 
 function strategyAbbrev(strategyKey: string): "CC" | "CSP" {
@@ -348,6 +350,13 @@ export function PulsePage() {
   const [summary, setSummary] = useState<DashboardSummary | null>(null);
   const [availableCash, setAvailableCash] = useState<AvailableCash | null>(null);
   const { exposure } = useExposureStream("Failed to load account exposure.");
+
+  const netLiquidationValue = accountValue?.netLiquidationValue ?? null;
+  const availableCashToTrade = availableCash?.availableCashToTrade ?? null;
+  const availableCashPercent =
+    netLiquidationValue !== null && netLiquidationValue > 0 && availableCashToTrade !== null
+      ? (availableCashToTrade / netLiquidationValue) * 100
+      : null;
 
   useEffect(() => {
     fetchAccountValue().then(setAccountValue).catch(() => {});
@@ -629,7 +638,7 @@ export function PulsePage() {
           break;
         }
       }
-    });
+    }, { wantsPulses: true });
   }, [appendEvent, firePulse, loadPositions, loadTrades]);
 
   const activeEdgeIds = useMemo(() => new Set(pulses.map((pulse) => pulse.edgeId)), [pulses]);
@@ -723,6 +732,11 @@ export function PulsePage() {
             <FlashingNumber value={availableCash?.availableCashToTrade ?? null} className="kpi-value">
               {formatSignedPnl(availableCash?.availableCashToTrade ?? null, 0).replace("+", "")}
             </FlashingNumber>
+            {availableCashPercent !== null && (
+              <span className={`kpi-delta ${lowerIsWorseStatus(availableCashPercent, ...AVAILABLE_CASH_PERCENT_BANDS)}`}>
+                ({availableCashPercent.toFixed(1)}%)
+              </span>
+            )}
           </div>
         </div>
         <div className="kpi-tile">
@@ -1057,9 +1071,12 @@ export function PulsePage() {
               <>
                 <div className="sub-row">
                   <span className="sub-name">In flight</span>
-                  <FlashingNumber value={gatewayHealth?.inFlightOrderCount ?? null} className={`sub-value ${higherIsWorseStatus(gatewayHealth?.inFlightOrderCount, ...GATEWAY_IN_FLIGHT_BANDS)}`}>
-                    {gatewayHealth ? `${gatewayHealth.inFlightOrderCount} orders` : "—"}
-                  </FlashingNumber>
+                  <span>
+                    <FlashingNumber value={gatewayHealth?.inFlightOrderCount ?? null} className={`sub-value ${higherIsWorseStatus(gatewayHealth?.inFlightOrderCount, ...GATEWAY_IN_FLIGHT_BANDS)}`}>
+                      {gatewayHealth ? gatewayHealth.inFlightOrderCount : "—"}
+                    </FlashingNumber>
+                    {gatewayHealth && <span className="sub-unit"> orders</span>}
+                  </span>
                 </div>
                 <div className="sub-row">
                   <span className="sub-name">Uptime</span>

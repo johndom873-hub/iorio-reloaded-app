@@ -269,6 +269,18 @@
 .iorio-pulse-page .kpi-delta.down {
   color: var(--danger);
 }
+.iorio-pulse-page .kpi-delta.ok {
+  color: var(--success);
+}
+.iorio-pulse-page .kpi-delta.warn {
+  color: var(--warning);
+}
+.iorio-pulse-page .kpi-delta.err {
+  color: var(--danger);
+}
+.iorio-pulse-page .sub-unit {
+  color: var(--text-primary);
+}
 .iorio-pulse-page .flash-changed {
   animation: pulse-flash 1200ms ease-out;
 }
