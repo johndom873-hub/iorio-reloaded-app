@@ -436,6 +436,8 @@ export function TickerDetailModal({ symbol, onClose, initialAlertId, focusPositi
   const [chainForceOpenSignal, setChainForceOpenSignal] = useState(0);
 
   const [overview, setOverview] = useState<TickerOverview | null>(null);
+  // The header price — same source as the Positions table (frozen last, then live last trades). Never a previous close.
+  const [spotLast, setSpotLast] = useState<number | null>(null);
   const [overviewError, setOverviewError] = useState<string | null>(null);
   const [isAddingToShortlist, setIsAddingToShortlist] = useState(false);
   const [addToShortlistError, setAddToShortlistError] = useState<string | null>(null);
@@ -580,6 +582,7 @@ export function TickerDetailModal({ symbol, onClose, initialAlertId, focusPositi
 
     if (symbolChanged) {
       setOverview(null);
+      setSpotLast(null);
       setOverviewError(null);
       setChartBars(null);
       setChartError(null);
@@ -618,6 +621,9 @@ export function TickerDetailModal({ symbol, onClose, initialAlertId, focusPositi
       switch (event.type) {
         case "overview":
           setOverview(event.data);
+          break;
+        case "spot":
+          setSpotLast(event.data.last);
           break;
         case "chart":
           setChartBars(event.data);
@@ -967,13 +973,15 @@ export function TickerDetailModal({ symbol, onClose, initialAlertId, focusPositi
   }
 
   const pricing = overview?.pricing;
-  const spotPrice = pricing?.last ?? pricing?.previousClose ?? null;
-  const change = pricing?.last != null && pricing?.previousClose != null ? pricing.last - pricing.previousClose : null;
+  // Same price the Positions table shows (approved 2026-09-19). The pricing stream's own last is only a live-tick
+  // fallback; its previous close is NOT a price — outside market hours it is a whole session old (AAOI 98.06 vs 104.90).
+  const spotPrice = spotLast ?? pricing?.last ?? null;
+  const change = spotPrice != null && pricing?.previousClose != null ? spotPrice - pricing.previousClose : null;
   const changePercent = change != null && pricing?.previousClose ? change / pricing.previousClose : null;
 
   // Pricing keeps ticking for as long as this modal stays open (see
   // streamTickerDetail.ts) -- same flash convention as the option chain.
-  const spotPriceFlash = useFlashOnChange(pricing?.last ?? null);
+  const spotPriceFlash = useFlashOnChange(spotPrice);
   const lowFlash = useFlashOnChange(pricing?.low ?? null);
   const highFlash = useFlashOnChange(pricing?.high ?? null);
   const volumeFlash = useFlashOnChange(pricing?.volume ?? null);

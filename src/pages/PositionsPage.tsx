@@ -180,18 +180,20 @@ export function PositionsPage() {
     );
   }, [positions]);
 
-  // Stock price for a row: the option tick's underlying price when it has an open option leg, else the stock
-  // leg's live market value / shares. `failed` = the stream this depends on errored (show a dash, not a spinner).
+  // Stock price for a row. Same source the row's own P&L uses first: the stock leg's live market value / shares (the
+  // frozen-then-live last trade), so Price and Stock P&L never disagree. Only when that isn't live (no stock leg, or the
+  // P&L is a nightly-snapshot fallback with no market value) does it use the option tick's underlying price.
+  // `failed` = the stream this depends on errored (show a dash, not a spinner).
   function resolvePrice(row: Position): { price: number | null; failed: boolean } {
     const optionLeg = row.legs.find((leg) => leg.legType === "option" && !leg.exitAt);
-    const greeks = optionLeg ? greeksByLegId[optionLeg.id] : undefined;
-    let price: number | null = greeks?.underlyingPrice ?? null;
-    if (price === null) {
-      const stockShares = row.legs.filter((leg) => leg.legType === "stock" && !leg.exitAt).reduce((sum, leg) => sum + leg.quantity, 0);
-      const stockMarketValue = unrealizedPnlByPositionId[row.id]?.stockMarketValue ?? null;
-      if (stockShares > 0 && stockMarketValue !== null) price = stockMarketValue / stockShares;
-    }
-    return { price, failed: optionLeg ? greeksFetchFailed : unrealizedPnlFetchFailed };
+    const stockShares = row.legs.filter((leg) => leg.legType === "stock" && !leg.exitAt).reduce((sum, leg) => sum + leg.quantity, 0);
+    const stockMarketValue = unrealizedPnlByPositionId[row.id]?.stockMarketValue ?? null;
+    let price: number | null = stockShares > 0 && stockMarketValue !== null ? stockMarketValue / stockShares : null;
+    if (price === null && optionLeg) price = greeksByLegId[optionLeg.id]?.underlyingPrice ?? null;
+    // Everything this row waits on has answered (or errored) and there is still no price: show a dash, not a spinner.
+    const dataArrived = row.id in unrealizedPnlByPositionId && (optionLeg ? optionLeg.id in greeksByLegId : true);
+    const streamsFailed = optionLeg ? greeksFetchFailed && unrealizedPnlFetchFailed : unrealizedPnlFetchFailed;
+    return { price, failed: price === null && (dataArrived || streamsFailed) };
   }
 
   function renderProbability(row: Position, field: "probabilityByDelta" | "probabilityByD2") {

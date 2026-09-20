@@ -76,6 +76,8 @@ export interface TickerTechnicals {
 // the two stream-lifecycle events the route itself sends (done/streamError).
 export type TickerDetailStreamEvent =
   | { type: "overview"; data: TickerOverview }
+  // Header price: same frozen-then-live, last-trade-only source as the Positions table (see streamTickerDetail.ts).
+  | { type: "spot"; data: { last: number } }
   | { type: "chart"; data: PriceBar[] }
   | { type: "optionChain"; data: OptionQuote[] }
   | { type: "technicals"; data: TickerTechnicals }
