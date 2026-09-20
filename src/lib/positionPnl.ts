@@ -10,16 +10,30 @@ export function strategyLabel(strategyKey: PositionStrategyKey): string {
   return "Needs Review";
 }
 
+// The one short code for each strategy, shown in every badge on the platform.
+// N/S = "no strategy": a position that doesn't cleanly pair into CC or CSP.
 export function strategyAbbrev(strategyKey: PositionStrategyKey): string {
   if (strategyKey === "covered_call") return "CC";
   if (strategyKey === "cash_secured_put") return "CSP";
   return "N/S";
 }
 
+// What a badge's tooltip says, since the code alone is terse.
+export function strategyTooltip(strategyKey: PositionStrategyKey): string {
+  if (strategyKey === "covered_call") return "Covered Call";
+  if (strategyKey === "cash_secured_put") return "Cash-Secured Put";
+  return "No strategy (N/S) — a position that doesn't pair into a covered call or cash-secured put; needs review";
+}
+
+// THE strategy palette (the Strategy scoreboard's, standardized 2026-09-20):
+// CC blue, CSP purple, N/S orange — solid Tabler colours. Every place a
+// strategy is shown as a coloured badge, chart series or bar segment uses
+// these so a colour always means the same strategy; see StrategyBadge.tsx
+// and strategyColors.ts.
 export function strategyBadgeClass(strategyKey: PositionStrategyKey): string {
-  if (strategyKey === "covered_call") return "bg-azure-lt";
-  if (strategyKey === "cash_secured_put") return "bg-orange-lt";
-  return "bg-warning-lt";
+  if (strategyKey === "covered_call") return "bg-blue text-white";
+  if (strategyKey === "cash_secured_put") return "bg-purple text-white";
+  return "bg-orange text-orange-fg";
 }
 
 // Whether Stock P&L is meaningful to show for this position — not just

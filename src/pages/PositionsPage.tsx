@@ -42,9 +42,8 @@ import {
   computePositionTotals,
   positionTotalPnl,
   positionTotalPnlPercent,
-  strategyAbbrev,
-  strategyBadgeClass,
 } from "../lib/positionPnl";
+import { StrategyBadge } from "../components/StrategyBadge";
 
 type RollAlert = TradeAlert & { suggestedStructure: RollStructure };
 
@@ -259,9 +258,7 @@ export function PositionsPage() {
     {
       key: "strategy",
       header: "Strategy",
-      render: (row) => (
-        <span className={`badge ${strategyBadgeClass(row.strategyKey)}`}>{strategyAbbrev(row.strategyKey)}</span>
-      ),
+      render: (row) => <StrategyBadge strategyKey={row.strategyKey} />,
     },
     { key: "structure", header: "Structure", render: (row) => structureSummary(row) },
     {

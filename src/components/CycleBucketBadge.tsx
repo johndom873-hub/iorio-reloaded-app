@@ -1,22 +1,15 @@
-import type { CycleBucketKey } from "../api/positions";
+import type { CycleBucketKey, PositionStrategyKey } from "../api/positions";
+import { StrategyBadge } from "./StrategyBadge";
 
-// One place for the three cycle buckets' label + colour, shared by the Cycle card and the scoreboard.
-export const cycleBucketLabel: Record<CycleBucketKey, string> = {
-  csp: "CSP",
-  unstructured: "Unstructured",
-  cc: "CC",
-};
-
-const cycleBucketBadgeClass: Record<CycleBucketKey, string> = {
-  csp: "bg-purple text-white",
-  unstructured: "bg-orange text-orange-fg",
-  cc: "bg-blue text-white",
+// The cycle buckets are the three strategies under their own short keys; the
+// badge itself is the platform-wide StrategyBadge, so the scoreboard and the
+// Cycle card can never disagree with Positions, Trade Alerts, etc.
+const strategyKeyByBucket: Record<CycleBucketKey, PositionStrategyKey> = {
+  csp: "cash_secured_put",
+  unstructured: "unstructured",
+  cc: "covered_call",
 };
 
 export function CycleBucketBadge({ bucket }: { bucket: CycleBucketKey }) {
-  return (
-    <span className={`badge ${cycleBucketBadgeClass[bucket]}`} style={{ fontSize: "0.72rem" }}>
-      {cycleBucketLabel[bucket]}
-    </span>
-  );
+  return <StrategyBadge strategyKey={strategyKeyByBucket[bucket]} />;
 }

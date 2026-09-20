@@ -694,6 +694,12 @@
   --tblr-toast-header-color: var(--tblr-body-color);
 }
 
+/* Same header-contrast fix as the new-version toast (Tabler's default toast
+   header colour is a washed-out grey against the toast background). */
+.iorio-stream-connection-toast {
+  --tblr-toast-header-color: var(--tblr-body-color);
+}
+
 /* Tabler's .card-table gives its first/last cells 1.25rem of left/right
    padding so the table can bleed flush to a card's edges -- but that only
    works when the table sits as a sibling of .card-body, not nested inside

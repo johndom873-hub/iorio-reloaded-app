@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { PageHeader } from "../components/layout/PageHeader";
+import { StrategyBadge } from "../components/StrategyBadge";
+import type { PositionStrategyKey } from "../api/positions";
 import { Spinner } from "../components/Spinner";
 import { ApexChart } from "../components/charts/ApexChart";
 import { CollapsibleCard } from "../components/CollapsibleCard";
@@ -40,7 +42,7 @@ import { useTickerDetailSymbol } from "../hooks/useTickerDetailSymbol";
 const strategyLabels: Record<string, string> = {
   covered_call: "Covered Calls",
   cash_secured_put: "Cash-Secured Puts",
-  unstructured: "Unstructured",
+  unstructured: "No strategy",
   unallocated: "Unallocated (cash)",
 };
 
@@ -96,6 +98,11 @@ interface AllocationListProps {
   // ticker opens TickerDetailModal (By Strategy/By Industry labels aren't
   // tickers, so they stay plain text).
   onTickerClick?: (ticker: { symbol: string; focusPositionId?: string }) => void;
+}
+
+// Strategy series colours follow the StrategyBadge palette (CC blue, CSP purple, N/S orange).
+function tablerColor(variableName: string): string {
+  return getComputedStyle(document.documentElement).getPropertyValue(variableName).trim();
 }
 
 // Assigns the fixed-order categorical palette to each real row (skipping
@@ -306,7 +313,6 @@ function formatLegDescription(leg: PositionEvent["legs"][number], showExitPrice:
 }
 
 function EventRow({ event, onSymbolClick }: { event: PositionEvent; onSymbolClick: (ticker: { symbol: string; focusPositionId?: string }) => void }) {
-  const strategyLabel = strategyLabels[event.strategyKey] ?? event.strategyKey;
   const description = event.legs.map((leg) => formatLegDescription(leg, event.eventType === "closed", event.openedAt)).join(" / ");
 
   let statusLabel: string;
@@ -315,7 +321,7 @@ function EventRow({ event, onSymbolClick }: { event: PositionEvent; onSymbolClic
     statusLabel = "Opened";
     statusBadgeClass = eventStatusBadge.opened;
   } else if (event.eventType === "unstructured") {
-    statusLabel = "Unstructured";
+    statusLabel = "No strategy";
     statusBadgeClass = eventStatusBadge.unstructured;
   } else {
     statusLabel = closeReasonLabels[event.closeReason ?? ""] ?? event.closeReason ?? "Closed";
@@ -353,13 +359,7 @@ function EventRow({ event, onSymbolClick }: { event: PositionEvent; onSymbolClic
         >
           {statusLabel}
         </span>
-        <span
-          className="badge bg-secondary-lt text-truncate d-inline-block align-bottom"
-          style={{ fontSize: "0.72rem", maxWidth: "8rem", padding: "0.2em 0.45em" }}
-          title={strategyLabel}
-        >
-          {strategyLabel}
-        </span>
+        <StrategyBadge strategyKey={event.strategyKey as PositionStrategyKey} className="align-bottom" />
       </td>
       <td
         style={{
@@ -540,7 +540,7 @@ export function DashboardPage() {
             <PortfolioTile label="Available Cash" value={portfolio?.availableCash ?? null} />
             <PortfolioTile label="Cash-Secured Puts" value={portfolio?.cashSecuredPuts ?? null} />
             <PortfolioTile label="Covered Calls" value={portfolio?.coveredCalls ?? null} />
-            <PortfolioTile label="Unstructured" value={portfolio?.unstructured ?? null} />
+            <PortfolioTile label="No strategy" value={portfolio?.unstructured ?? null} />
           </div>
         )}
       </CollapsibleCard>
@@ -657,7 +657,7 @@ export function DashboardPage() {
                   <tbody>
                     <PeriodPnlRow label="Covered Calls" row={periodPnl.coveredCalls} />
                     <PeriodPnlRow label="Cash-Secured Puts" row={periodPnl.cashSecuredPuts} />
-                    <PeriodPnlRow label="Unstructured" row={periodPnl.unstructured} />
+                    <PeriodPnlRow label="No strategy" row={periodPnl.unstructured} />
                     <PeriodPnlRow label="Residual" row={periodPnl.residual} />
                     <PeriodPnlRow label="Total" row={periodPnl.total} bold />
                   </tbody>
@@ -817,13 +817,14 @@ export function DashboardPage() {
             series={[
               { name: "Covered Calls", data: history.map((point) => ({ x: point.snapshotDate, y: point.coveredCalls })) },
               { name: "Cash-Secured Puts", data: history.map((point) => ({ x: point.snapshotDate, y: point.cashSecuredPuts })) },
-              { name: "Unstructured", data: history.map((point) => ({ x: point.snapshotDate, y: point.unstructured })) },
+              { name: "No strategy", data: history.map((point) => ({ x: point.snapshotDate, y: point.unstructured })) },
               {
                 name: "Residual",
                 data: history.map((point) => ({ x: point.snapshotDate, y: point.residual === null ? null : point.residual })),
               },
             ]}
             options={{
+              colors: [tablerColor("--tblr-blue"), tablerColor("--tblr-purple"), tablerColor("--tblr-orange"), tablerColor("--tblr-secondary")],
               xaxis: {
                 type: "datetime",
                 tickAmount: Math.min(history.length - 1, 7),

@@ -32,13 +32,13 @@ import { addToShortlist } from "../api/shortlist";
 import { openNotificationStream } from "../api/notifications";
 import { fetchNextTickerCalendarEvents, type NextTickerCalendarEvents } from "../api/calendarEvents";
 import type { StrategyKey } from "../api/strategy";
+import { StrategyBadge } from "./StrategyBadge";
 import { computeAnnualizedYield, computePayoff, type PayoffLegInput } from "../lib/payoff";
 import {
   formatCompactNumber,
   formatCurrency,
   formatCurrencyTrimmed,
   formatDate,
-  formatExpiryWithDte,
   formatNumber,
   formatPercentage,
   formatSignedPnl,
@@ -46,7 +46,6 @@ import {
   daysToExpiry,
   todayInEasternIso,
 } from "../lib/formatters";
-import { strategyBadgeClass, strategyLabel } from "../lib/positionPnl";
 import { flashClassName, useFlashOnChange } from "../hooks/useFlashOnChange";
 
 interface TickerDetailModalProps {
@@ -186,10 +185,6 @@ function findQuoteForAlert(alert: NewTradeAlert, quotes: OptionQuote[] | null): 
       (q) => q.right === wantsRight && q.strike === alert.suggestedStructure.strike && ibkrExpiryToIsoDate(q.expiry) === alert.suggestedStructure.expiry,
     ) ?? null
   );
-}
-
-function StrategyBadge({ strategyKey }: { strategyKey: StrategyKey }) {
-  return <span className="badge bg-azure-lt">{strategyKey === "covered_call" ? "Covered Call" : "Cash-Secured Put"}</span>;
 }
 
 // Recomputes an alert's delta/premium/DTE/yield from the live chain quote
@@ -806,8 +801,8 @@ export function TickerDetailModal({ symbol, onClose, initialAlertId, focusPositi
   // sides). Label switches between "Scan for Alerts" (none yet) and
   // "Refresh" (some exist) but both call the same thing.
   // Loads (or re-loads, after a Close/Roll/Save action) every position for
-  // this symbol — open ones drive the actionable PositionCards, closed ones
-  // the collapsed History list. Greeks/unrealized-P&L are fetched once here
+  // this symbol — open ones drive the actionable PositionCards (closed ones
+  // only decide whether the Cycle card below shows). Greeks/unrealized-P&L are fetched once here
   // across ALL open positions rather than per-card, since both endpoints
   // already accept arrays (see PositionCard's old standalone-modal ancestor,
   // PositionDetailModal, which fetched per-position before this merge).
@@ -1354,46 +1349,6 @@ export function TickerDetailModal({ symbol, onClose, initialAlertId, focusPositi
                           </CollapsibleCard>
                         )}
                         <CycleCard symbol={symbol} />
-                        {closedPositions.length > 0 && (
-                          <CollapsibleCard title={`History (${closedPositions.length})`} storageKey="ticker-detail-history" defaultOpen={false}>
-                            <div className="table-responsive border rounded">
-                              <table className="table table-sm table-vcenter card-table mb-0">
-                                <thead className="table-light">
-                                  <tr>
-                                    <th>Strategy</th>
-                                    <th>Structure</th>
-                                    <th>Opened</th>
-                                    <th>Closed</th>
-                                    <th className="text-end">Realized P&L</th>
-                                  </tr>
-                                </thead>
-                                <tbody>
-                                  {closedPositions.map((position) => (
-                                    <tr key={position.id}>
-                                      <td>
-                                        <span className={`badge ${strategyBadgeClass(position.strategyKey)}`}>
-                                          {strategyLabel(position.strategyKey)}
-                                        </span>
-                                      </td>
-                                      <td className="small">
-                                        {position.legs
-                                          .map((leg) =>
-                                            leg.legType === "stock"
-                                              ? `${leg.side} ${leg.quantity} sh`
-                                              : `${leg.side} ${leg.quantity}x ${leg.strikePrice ? formatCurrencyTrimmed(Number(leg.strikePrice)) : "—"}${leg.optionType === "call" ? "C" : "P"} exp ${formatExpiryWithDte(leg.expiryDate, position.openedAt)}`,
-                                          )
-                                          .join(" / ")}
-                                      </td>
-                                      <td>{formatDate(position.openedAt)}</td>
-                                      <td>{position.closedAt ? formatDate(position.closedAt) : "—"}</td>
-                                      <td className="text-end font-mono">{formatSignedPnl(Number(position.realizedPnl))}</td>
-                                    </tr>
-                                  ))}
-                                </tbody>
-                              </table>
-                            </div>
-                          </CollapsibleCard>
-                        )}
                       </div>
                     );
                   })()}

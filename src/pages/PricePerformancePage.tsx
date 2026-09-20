@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { IconAlertTriangle, IconRefresh } from "@tabler/icons-react";
 import { PageHeader } from "../components/layout/PageHeader";
 import { DataTable, type DataTableColumn } from "../components/DataTable/DataTable";
 import { Spinner } from "../components/Spinner";
@@ -6,17 +7,20 @@ import { FlashingNumber } from "../components/FlashingNumber";
 import { TickColoredPrice } from "../components/TickColoredPrice";
 import { TickerDetailModal } from "../components/TickerDetailModal";
 import { ApiError } from "../api/client";
+import { openNotificationStream } from "../api/notifications";
 import {
   fetchPricePerformance,
-  fetchPricePerformanceTrends,
   openPricePerformanceStream,
+  requestPriceDataRefresh,
   type MacdSignal,
   type MaTrend,
-  type PricePerformanceLiveRow,
+  type PricePerformanceData,
+  type PricePerformanceLivePrices,
   type PricePerformanceRow,
-  type PricePerformanceTrend,
+  type ReferenceCloses,
 } from "../api/pricePerformance";
-import { formatCurrency, formatNumber, formatPercentage, formatPercentageValue, pnlBadgeClass } from "../lib/formatters";
+import { formatCurrency, formatDate, formatNumber, formatPercentage, formatPercentageValue, pnlBadgeClass } from "../lib/formatters";
+import { percentChange } from "../lib/priceChange";
 import { useTickerDetailSymbol } from "../hooks/useTickerDetailSymbol";
 
 // Flashes on every live-streamed update, same mechanism as Positions'
@@ -38,11 +42,21 @@ const macdBadgeClass: Record<MacdSignal, string> = {
   Neutral: "badge-change-flat",
 };
 
-function MacdTrendBadge({ trend, loading }: { trend: MacdSignal | null | undefined; loading: boolean }) {
-  if (trend === undefined) return loading ? <Spinner size="sm" label="Loading MACD trend" /> : <span className="text-muted">—</span>;
-  if (trend === null) return <span className="text-muted">—</span>;
+const trendUnavailableTitle = "Not enough daily history yet (needs about 99 trading days of closes)";
+
+function MacdTrendBadge({ trend }: { trend: MacdSignal | null }) {
+  if (trend === null)
+    return (
+      <span className="text-muted" title={trendUnavailableTitle}>
+        —
+      </span>
+    );
   return (
-    <span className={`badge ${macdBadgeClass[trend]}`} style={{ fontSize: "0.72rem" }} title="EMA12/EMA26 MACD line vs. its 9-period signal line">
+    <span
+      className={`badge ${macdBadgeClass[trend]}`}
+      style={{ fontSize: "0.72rem" }}
+      title="As of the last completed close: EMA12/EMA26 MACD line vs. its 9-period signal line"
+    >
       {trend}
     </span>
   );
@@ -59,37 +73,66 @@ const maTrendBadgeLabel: Record<MaTrend, string> = {
   mixed: "Mixed",
 };
 
-function MaTrendBadge({ trend, loading }: { trend: MaTrend | null | undefined; loading: boolean }) {
-  if (trend === undefined) return loading ? <Spinner size="sm" label="Loading MA trend" /> : <span className="text-muted">—</span>;
-  if (trend === null) return <span className="text-muted">—</span>;
+function MaTrendBadge({ trend }: { trend: MaTrend | null }) {
+  if (trend === null)
+    return (
+      <span className="text-muted" title={trendUnavailableTitle}>
+        —
+      </span>
+    );
   return (
-    <span className={`badge ${maTrendBadgeClass[trend]} text-nowrap`} style={{ fontSize: "0.72rem" }} title="Spot vs. 25-day and 99-day moving averages">
+    <span
+      className={`badge ${maTrendBadgeClass[trend]} text-nowrap`}
+      style={{ fontSize: "0.72rem" }}
+      title="As of the last completed close: that close vs. the 25-day and 99-day moving averages"
+    >
       {maTrendBadgeLabel[trend]}
     </span>
   );
 }
 
+// How long to wait for the first live price before saying so, instead of an
+// endless spinner (market closed, IBKR slow or unreachable).
+const LIVE_PRICE_WAIT_MS = 8_000;
+// While a refresh is running, re-check this often in addition to the
+// job_completed notification (which is what normally ends it instantly).
+const REFRESH_POLL_MS = 3_000;
+const REFRESH_JOB_NAMES = new Set(["price_bars_refresh", "daily_market_data_capture"]);
+
+type LiveConnection = "connecting" | "live" | "unavailable";
+
+// The live change against a reference close if a live price is known, else the
+// static change vs. the last completed close the server computed.
+function changeFor(row: PricePerformanceRow, livePrice: number | null | undefined, key: keyof ReferenceCloses, staticChange: number | null): number | null {
+  if (livePrice === undefined || livePrice === null) return staticChange;
+  return percentChange(livePrice, row.referenceCloses[key]);
+}
+
 export function PricePerformancePage() {
-  const [rows, setRows] = useState<PricePerformanceRow[]>([]);
+  const [data, setData] = useState<PricePerformanceData | null>(null);
+  // The server reports the refresh cooldown as "N seconds left" at the moment
+  // it answered; the page turns that into an end time and ticks against it, so
+  // the button re-enables by itself instead of waiting for the next reload.
+  const [cooldownEndsAtMs, setCooldownEndsAtMs] = useState(0);
+  const [clockMs, setClockMs] = useState(() => Date.now());
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [detailSymbol, setDetailSymbol] = useTickerDetailSymbol();
-  // Loaded separately from `rows` (undefined = still loading) so the table
-  // itself keeps rendering instantly from stored daily bars while the live
-  // stream fills in current price + recomputed % changes — see
-  // openPricePerformanceStream.
-  const [liveBySymbol, setLiveBySymbol] = useState<Record<string, PricePerformanceLiveRow>>({});
-  const [liveStreamFailed, setLiveStreamFailed] = useState(false);
-  // Same "loaded separately, undefined = still loading" pattern as
-  // liveBySymbol above — MACD/MA trend can fall through to a live
-  // IBKR call, so it fills in after the table's already showing.
-  const [trendBySymbol, setTrendBySymbol] = useState<Record<string, PricePerformanceTrend>>({});
-  const [trendFetchFailed, setTrendFetchFailed] = useState(false);
+  // Live prices arrive separately from the table (which renders at once from
+  // stored daily bars), so the table never waits on IBKR.
+  const [livePrices, setLivePrices] = useState<PricePerformanceLivePrices>({});
+  const [liveConnection, setLiveConnection] = useState<LiveConnection>("connecting");
+  const [liveWaitExpired, setLiveWaitExpired] = useState(false);
+  const [isRequestingRefresh, setIsRequestingRefresh] = useState(false);
+  const [refreshMessage, setRefreshMessage] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     try {
       setError(null);
-      setRows(await fetchPricePerformance());
+      const loaded = await fetchPricePerformance();
+      setClockMs(Date.now());
+      setCooldownEndsAtMs(Date.now() + loaded.meta.refresh.cooldownRemainingSeconds * 1000);
+      setData(loaded);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Failed to load price performance.");
     }
@@ -100,24 +143,91 @@ export function PricePerformancePage() {
     load().finally(() => setLoading(false));
   }, [load]);
 
+  // One stream for the page's lifetime, reopened only if the set of shortlisted
+  // tickers itself changes — reloading the same table must not restart it.
+  const symbolsKey = data ? data.tickers.map((row) => row.symbol).join(",") : "";
   useEffect(() => {
-    if (rows.length === 0) return;
-    setLiveStreamFailed(false);
-    return openPricePerformanceStream(
-      (result) => {
-        setLiveStreamFailed(false);
-        setLiveBySymbol(result);
+    if (symbolsKey === "") return;
+    setLivePrices({});
+    setLiveConnection("connecting");
+    setLiveWaitExpired(false);
+    const waitTimer = window.setTimeout(() => setLiveWaitExpired(true), LIVE_PRICE_WAIT_MS);
+    const closeStream = openPricePerformanceStream(
+      (prices) => {
+        window.clearTimeout(waitTimer);
+        setLiveWaitExpired(false);
+        setLiveConnection("live");
+        setLivePrices(prices);
       },
-      () => setLiveStreamFailed(true),
+      () => {
+        window.clearTimeout(waitTimer);
+        setLiveConnection("unavailable");
+      },
     );
-  }, [rows]);
+    return () => {
+      window.clearTimeout(waitTimer);
+      closeStream();
+    };
+  }, [symbolsKey]);
+
+  // The nightly capture or a manual refresh finished: reload the stored data.
+  useEffect(() => {
+    return openNotificationStream((notification) => {
+      if (notification.type === "job_completed" && REFRESH_JOB_NAMES.has(notification.jobName)) void load();
+    });
+  }, [load]);
 
   useEffect(() => {
-    setTrendFetchFailed(false);
-    fetchPricePerformanceTrends()
-      .then(setTrendBySymbol)
-      .catch(() => setTrendFetchFailed(true));
-  }, [rows]);
+    if (cooldownEndsAtMs <= Date.now()) return;
+    const timer = window.setInterval(() => {
+      setClockMs(Date.now());
+      if (Date.now() >= cooldownEndsAtMs) window.clearInterval(timer);
+    }, 1_000);
+    return () => window.clearInterval(timer);
+  }, [cooldownEndsAtMs]);
+
+  const isRefreshRunning = data?.meta.refresh.isRunning ?? false;
+  useEffect(() => {
+    if (!isRefreshRunning) return;
+    const timer = window.setInterval(() => void load(), REFRESH_POLL_MS);
+    return () => window.clearInterval(timer);
+  }, [isRefreshRunning, load]);
+
+  async function handleRefreshClick() {
+    setIsRequestingRefresh(true);
+    setRefreshMessage(null);
+    try {
+      const result = await requestPriceDataRefresh();
+      if (result.status === "cooldown") setRefreshMessage(`Just refreshed — try again in ${result.retryAfterSeconds}s.`);
+      if (result.status === "upToDate") setRefreshMessage("Daily data is already current.");
+      await load();
+    } catch (err) {
+      setRefreshMessage(err instanceof ApiError ? err.message : "Could not start the refresh.");
+    } finally {
+      setIsRequestingRefresh(false);
+    }
+  }
+
+  const rows = data?.tickers ?? [];
+  const meta = data?.meta ?? null;
+  const refreshableCount = meta?.refresh.refreshableSymbolCount ?? 0;
+  const refreshCooldown = Math.max(0, Math.ceil((cooldownEndsAtMs - clockMs) / 1000));
+  const refreshBusy = isRefreshRunning || isRequestingRefresh;
+  const refreshDisabled = refreshBusy || refreshableCount === 0 || refreshCooldown > 0;
+  const refreshTitle = refreshableCount === 0
+    ? "Every ticker already has the latest completed session — nothing to fetch."
+    : refreshCooldown > 0
+      ? `Refreshed moments ago — available again in ${refreshCooldown}s.`
+      : `Fetch the missing daily bars for ${refreshableCount} ticker${refreshableCount === 1 ? "" : "s"} from IBKR.`;
+
+  const liveStatus =
+    liveConnection === "live"
+      ? { label: "Live prices streaming", className: "bg-success-lt" }
+      : liveConnection === "unavailable"
+        ? { label: "Live prices unavailable", className: "bg-warning-lt" }
+        : liveWaitExpired
+          ? { label: "No live prices yet — market may be closed", className: "bg-secondary-lt" }
+          : { label: "Waiting for live prices…", className: "bg-secondary-lt" };
 
   const columns: DataTableColumn<PricePerformanceRow>[] = [
     {
@@ -139,7 +249,16 @@ export function PricePerformancePage() {
       header: "Last Close",
       headerTitle: "Most recent completed trading day's close",
       align: "right",
-      render: (row) => formatCurrency(row.latestClose == null ? null : Number(row.latestClose)),
+      render: (row) => (
+        <span>
+          {formatCurrency(row.latestClose == null ? null : Number(row.latestClose))}
+          {row.isBehind && (
+            <span className="ms-1 text-warning" title={`Out of date — this ticker's latest daily bar is ${formatDate(row.latestDate)}`}>
+              <IconAlertTriangle size={14} aria-hidden="true" />
+            </span>
+          )}
+        </span>
+      ),
     },
     {
       key: "currentPrice",
@@ -147,31 +266,37 @@ export function PricePerformancePage() {
       headerTitle: "Live streamed price — blank when markets are closed or a live quote isn't available right now",
       align: "right",
       render: (row) => {
-        const live = liveBySymbol[row.symbol];
-        if (!live) {
-          if (liveStreamFailed) {
+        const price = livePrices[row.symbol];
+        if (price === undefined) {
+          // Nothing has arrived for this ticker: still connecting, or it will not.
+          if (liveConnection === "unavailable")
             return (
-              <span className="text-muted" title="Failed to load live prices">
+              <span className="text-muted" title="Live prices are unavailable right now">
                 —
               </span>
             );
-          }
+          if (liveWaitExpired)
+            return (
+              <span className="text-muted" title="No live price yet — the market may be closed, or IBKR is slow to respond">
+                —
+              </span>
+            );
           return <Spinner size="sm" label="Loading current price" />;
         }
-        if (live.currentPrice === null)
+        if (price === null)
           return (
-            <span className="text-muted" title="Live price unavailable right now (outside market hours or IBKR pacing)">
+            <span className="text-muted" title="No live quote for this ticker right now (outside market hours or no market data)">
               —
             </span>
           );
         return (
           <TickColoredPrice
-            value={live.currentPrice}
+            value={price}
             initialReference={row.latestClose == null ? null : Number(row.latestClose)}
             precision={2}
             title="Colored vs. the previous tick, not the last daily close"
           >
-            {formatCurrency(live.currentPrice)}
+            {formatCurrency(price)}
           </TickColoredPrice>
         );
       },
@@ -181,49 +306,49 @@ export function PricePerformancePage() {
       header: "24hr",
       headerTitle: "vs. 1 trading day back — live once the price stream connects",
       align: "right",
-      render: (row) => <ChangeBadge value={liveBySymbol[row.symbol]?.change24h ?? row.change24h} />,
+      render: (row) => <ChangeBadge value={changeFor(row, livePrices[row.symbol], "close24hAgo", row.change24h)} />,
     },
     {
       key: "change48h",
       header: "48hr",
       headerTitle: "vs. 2 trading days back — live once the price stream connects",
       align: "right",
-      render: (row) => <ChangeBadge value={liveBySymbol[row.symbol]?.change48h ?? row.change48h} />,
+      render: (row) => <ChangeBadge value={changeFor(row, livePrices[row.symbol], "close48hAgo", row.change48h)} />,
     },
     {
       key: "change72h",
       header: "72hr",
       headerTitle: "vs. 3 trading days back — live once the price stream connects",
       align: "right",
-      render: (row) => <ChangeBadge value={liveBySymbol[row.symbol]?.change72h ?? row.change72h} />,
+      render: (row) => <ChangeBadge value={changeFor(row, livePrices[row.symbol], "close72hAgo", row.change72h)} />,
     },
     {
       key: "change1w",
       header: "1W",
       headerTitle: "vs. ~7 calendar days back — live once the price stream connects",
       align: "right",
-      render: (row) => <ChangeBadge value={liveBySymbol[row.symbol]?.change1w ?? row.change1w} />,
+      render: (row) => <ChangeBadge value={changeFor(row, livePrices[row.symbol], "close1wAgo", row.change1w)} />,
     },
     {
       key: "change1m",
       header: "1M",
       headerTitle: "vs. ~30 calendar days back — live once the price stream connects",
       align: "right",
-      render: (row) => <ChangeBadge value={liveBySymbol[row.symbol]?.change1m ?? row.change1m} />,
+      render: (row) => <ChangeBadge value={changeFor(row, livePrices[row.symbol], "close1mAgo", row.change1m)} />,
     },
     {
       key: "macdTrend",
       header: "MACD Trend",
-      headerTitle: "EMA12/EMA26 MACD line vs. its 9-period signal line",
+      headerTitle: "As of the last completed close: EMA12/EMA26 MACD line vs. its 9-period signal line",
       align: "right",
-      render: (row) => <MacdTrendBadge trend={trendBySymbol[row.symbol]?.macdTrend} loading={!trendFetchFailed} />,
+      render: (row) => <MacdTrendBadge trend={row.macdTrend} />,
     },
     {
       key: "maTrend",
       header: "MA Trend",
-      headerTitle: "Spot vs. 25-day and 99-day moving averages",
+      headerTitle: "As of the last completed close: that close vs. the 25-day and 99-day moving averages",
       align: "right",
-      render: (row) => <MaTrendBadge trend={trendBySymbol[row.symbol]?.maTrend} loading={!trendFetchFailed} />,
+      render: (row) => <MaTrendBadge trend={row.maTrend} />,
     },
     {
       key: "impliedVolatility",
@@ -271,9 +396,47 @@ export function PricePerformancePage() {
 
   return (
     <>
-      <PageHeader title="Price Performance" subtitle="Recent price moves across every shortlisted ticker" />
+      <PageHeader
+        title="Price Performance"
+        subtitle="Recent price moves across every shortlisted ticker"
+        actions={
+          <button type="button" className="btn btn-outline-primary" disabled={refreshDisabled} title={refreshTitle} onClick={() => void handleRefreshClick()}>
+            {refreshBusy ? (
+              <>
+                <Spinner size="sm" className="me-2" />
+                Refreshing…
+              </>
+            ) : (
+              <>
+                <IconRefresh size={18} className="me-2" />
+                Refresh daily data
+              </>
+            )}
+          </button>
+        }
+      />
 
       {error && <div className="alert alert-danger">{error}</div>}
+
+      {meta && !meta.isDataCurrent && (
+        <div className="alert alert-warning" role="alert">
+          {/* One element: .alert is a flex container, so loose text and <strong> would become separately spaced flex items. */}
+          <div>
+            Daily data is out of date for {meta.behindSymbols.length} ticker{meta.behindSymbols.length === 1 ? "" : "s"} ({meta.behindSymbols.join(", ")}) —
+            the nightly capture may have missed them. Use <strong>Refresh daily data</strong> to fetch what is missing.
+          </div>
+        </div>
+      )}
+
+      {meta && (
+        <div className="d-flex flex-wrap align-items-center gap-2 mb-3 text-muted small">
+          <span>Daily data as of the {formatDate(meta.completedThroughDate)} close</span>
+          <span className={`badge ${liveStatus.className}`} style={{ fontSize: "0.72rem" }} role="status">
+            {liveStatus.label}
+          </span>
+          {refreshMessage && <span>{refreshMessage}</span>}
+        </div>
+      )}
 
       <DataTable
         tableId="price-performance"

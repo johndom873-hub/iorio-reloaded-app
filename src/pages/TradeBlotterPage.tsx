@@ -8,6 +8,7 @@ import { ApiError } from "../api/client";
 import { cancelOrder } from "../api/positions";
 import { fetchTradeBlotter, type PendingOrder, type Trade } from "../api/tradeBlotter";
 import type { StrategyKey } from "../api/strategy";
+import { StrategyBadge } from "../components/StrategyBadge";
 import { useTickerDetailSymbol } from "../hooks/useTickerDetailSymbol";
 import {
   formatCurrency,
@@ -139,11 +140,7 @@ export function TradeBlotterPage() {
     {
       key: "strategy",
       header: "Strategy",
-      render: (row) => (
-        <span className="badge bg-azure-lt">
-          {row.strategyKey === "covered_call" ? "Covered Call" : "Cash-Secured Put"}
-        </span>
-      ),
+      render: (row) => <StrategyBadge strategyKey={row.strategyKey} />,
     },
     { key: "leg", header: "Leg", render: (row) => legSummary(row) },
     {

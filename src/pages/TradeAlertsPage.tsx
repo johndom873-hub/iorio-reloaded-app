@@ -17,6 +17,7 @@ import {
   type TradeAlertStatus,
 } from "../api/tradeAlerts";
 import type { StrategyKey } from "../api/strategy";
+import { StrategyBadge } from "../components/StrategyBadge";
 import { useTickerDetailSymbol } from "../hooks/useTickerDetailSymbol";
 import {
   formatCurrency,
@@ -116,10 +117,6 @@ const statusLabel: Record<TradeAlertStatus, string> = {
   modified: "Modified",
   expired: "Expired",
 };
-
-function StrategyBadge({ strategyKey }: { strategyKey: StrategyKey }) {
-  return <span className="badge bg-azure-lt">{strategyKey === "covered_call" ? "Covered Call" : "Cash-Secured Put"}</span>;
-}
 
 // A non-pending alert (viewed via the status filter) is a past decision, not
 // something actionable — shown as a read-only status badge instead of the

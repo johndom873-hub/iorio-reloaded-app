@@ -1,4 +1,5 @@
 import { apiRequest, apiBaseUrl } from "./client";
+import { openMultiplexedStream } from "./streamMultiplexer";
 import type { StrategyKey } from "./strategy";
 import type { RollStructure } from "./tradeAlerts";
 
@@ -361,6 +362,11 @@ export function fetchGreeks(legIds: string[]): Promise<Record<string, Greeks>> {
 // backed by GET /positions/greeks/stream.
 export function openGreeksStream(legIds: string[], onUpdate: (result: Record<string, Greeks>) => void, onError?: () => void): () => void {
   if (legIds.length === 0) return () => {};
+  const openLegacy = () => openLegacyGreeksStream(legIds, onUpdate, onError);
+  return openMultiplexedStream<Record<string, Greeks>>({ kind: "greeks", parameters: { legIds }, onData: onUpdate, onError: () => onError?.(), openLegacy });
+}
+
+function openLegacyGreeksStream(legIds: string[], onUpdate: (result: Record<string, Greeks>) => void, onError?: () => void): () => void {
   const source = new EventSource(`${apiBaseUrl}/positions/greeks/stream?legIds=${legIds.join(",")}`, { withCredentials: true });
 
   source.onmessage = (message) => {
@@ -439,6 +445,21 @@ export function openUnrealizedPnlStream(
   onError?: () => void,
 ): () => void {
   if (positionIds.length === 0) return () => {};
+  const openLegacy = () => openLegacyUnrealizedPnlStream(positionIds, onUpdate, onError);
+  return openMultiplexedStream<Record<string, UnrealizedPnlResult>>({
+    kind: "pnl",
+    parameters: { positionIds },
+    onData: onUpdate,
+    onError: () => onError?.(),
+    openLegacy,
+  });
+}
+
+function openLegacyUnrealizedPnlStream(
+  positionIds: string[],
+  onUpdate: (result: Record<string, UnrealizedPnlResult>) => void,
+  onError?: () => void,
+): () => void {
   const source = new EventSource(`${apiBaseUrl}/positions/pnl/stream?positionIds=${positionIds.join(",")}`, { withCredentials: true });
 
   source.onmessage = (message) => {

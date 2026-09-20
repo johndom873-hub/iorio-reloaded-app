@@ -32,9 +32,8 @@ import {
   positionStockPnl,
   positionTotalPnl,
   positionTotalPnlPercent,
-  strategyBadgeClass,
-  strategyLabel,
 } from "../lib/positionPnl";
+import { StrategyBadge } from "./StrategyBadge";
 
 interface PositionCardProps {
   position: Position;
@@ -141,7 +140,7 @@ export function PositionCard({
   return (
     <div>
       <div className="d-flex flex-wrap align-items-center gap-2 mb-3">
-        <span className={`badge ${strategyBadgeClass(position.strategyKey)}`}>{strategyLabel(position.strategyKey)}</span>
+        <StrategyBadge strategyKey={position.strategyKey} />
         {(() => {
           const pnl = positionTotalPnl(position, unrealizedPnlByPositionId);
           if (pnl === "loading") {

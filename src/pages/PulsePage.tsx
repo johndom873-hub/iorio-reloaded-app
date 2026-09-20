@@ -30,7 +30,7 @@ import {
   type MarketSessionState,
 } from "../api/systemHealth";
 import { daysToExpiry, todayInEasternIso, formatSignedPnl, formatSignedPercentageValue, formatCompactDollars, formatDateTime, formatNumber, formatPercentageValue, formatRelativeDate, ibkrExpiryToIsoDate } from "../lib/formatters";
-import { positionExpiryDate } from "../lib/positionPnl";
+import { positionExpiryDate, strategyAbbrev as positionStrategyAbbrev, strategyTooltip } from "../lib/positionPnl";
 import { FlashingNumber } from "../components/FlashingNumber";
 import { higherIsWorseStatus, lowerIsWorseStatus } from "../lib/statusThresholds";
 import { TopologyMap, type PulseEvent } from "../components/pulse/TopologyMap";
@@ -74,9 +74,12 @@ const GATEWAY_IN_FLIGHT_BANDS = [1, 5] as const;
 const AVAILABLE_CASH_PERCENT_BANDS = [15, 30] as const;
 const GATEWAY_HEALTHY_UPTIME_MS = 30 * 60_000;
 
+// Alert notifications only ever carry the two structured strategies.
 function strategyAbbrev(strategyKey: string): "CC" | "CSP" {
   return strategyKey === "covered_call" ? "CC" : "CSP";
 }
+
+const strategyBadgeModifier: Record<string, string> = { covered_call: "cc", cash_secured_put: "csp", unstructured: "ns" };
 
 // Latest Events' own terse status wording (distinct from
 // orderRequestStatusLabel's fuller labels used in OrderReviewPanel/Trade
@@ -772,12 +775,12 @@ export function PulsePage() {
         <div className="kpi-tile">
           <span className="kpi-label">Allocation</span>
           <div className="alloc-bar">
-            <span className="alloc-seg" style={{ width: `${ccPct}%`, background: "var(--accent)" }} data-label={`Covered Calls — ${ccPct.toFixed(0)}%`} />
-            <span className="alloc-seg" style={{ width: `${cspPct}%`, background: "var(--warning)" }} data-label={`Cash-Secured Puts — ${cspPct.toFixed(0)}%`} />
+            <span className="alloc-seg" style={{ width: `${ccPct}%`, background: "var(--tblr-blue)" }} data-label={`Covered Calls — ${ccPct.toFixed(0)}%`} />
+            <span className="alloc-seg" style={{ width: `${cspPct}%`, background: "var(--tblr-purple)" }} data-label={`Cash-Secured Puts — ${cspPct.toFixed(0)}%`} />
             <span
               className="alloc-seg"
-              style={{ width: `${unstructuredPct}%`, background: "var(--danger)" }}
-              data-label={`Unstructured — ${unstructuredPct.toFixed(0)}%`}
+              style={{ width: `${unstructuredPct}%`, background: "var(--tblr-orange)" }}
+              data-label={`No strategy — ${unstructuredPct.toFixed(0)}%`}
             />
             <span className="alloc-seg" style={{ width: `${cashPct}%`, background: "var(--border-strong)" }} data-label={`Cash — ${cashPct.toFixed(0)}%`} />
           </div>
@@ -808,13 +811,9 @@ export function PulsePage() {
               return (
                 <div className="pos-row" key={position.id}>
                   <span className="pos-sym">{position.symbol}</span>
-                  {position.strategyKey === "unstructured" ? (
-                    <span className="strat-badge" style={{ background: "rgba(169,183,204,0.14)", color: "var(--text-secondary)" }}>
-                      ?
-                    </span>
-                  ) : (
-                    <span className={`strat-badge ${position.strategyKey === "covered_call" ? "cc" : "csp"}`}>{strategyAbbrev(position.strategyKey)}</span>
-                  )}
+                  <span className={`strat-badge ${strategyBadgeModifier[position.strategyKey] ?? "ns"}`} title={strategyTooltip(position.strategyKey)}>
+                    {positionStrategyAbbrev(position.strategyKey)}
+                  </span>
                   <span className="pos-num">{dte ?? "—"}</span>
                   <FlashingNumber value={capitalAtRisk} className="pos-exp">
                     {formatCompactDollars(capitalAtRisk)}

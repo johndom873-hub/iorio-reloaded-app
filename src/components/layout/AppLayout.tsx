@@ -21,6 +21,7 @@ import { useAuth } from "../../contexts/AuthContext";
 import { useTheme } from "../../contexts/ThemeContext";
 import { BackgroundJobsToastStack } from "./BackgroundJobsToastStack";
 import { NewVersionToast } from "./NewVersionToast";
+import { StreamConnectionToast } from "./StreamConnectionToast";
 
 const navigationItems = [
   { to: "/", label: "Dashboard", icon: IconLayoutDashboard, end: true },
@@ -221,6 +222,7 @@ export function AppLayout() {
 
       <BackgroundJobsToastStack />
       <NewVersionToast />
+      <StreamConnectionToast />
     </div>
   );
 }

@@ -1,4 +1,5 @@
 import { apiRequest, apiBaseUrl } from "./client";
+import { openMultiplexedStream } from "./streamMultiplexer";
 import type { StrategyKey } from "./strategy";
 
 export type TradeAlertStatus = "pending" | "approved" | "rejected" | "modified" | "expired";
@@ -114,6 +115,22 @@ export function refreshTradeAlert(id: string): Promise<TradeAlert> {
 // shortlist, since Trade Alerts can also show roll-alert tickers that have
 // since left the shortlist.
 export function openTradeAlertCurrentPricesStream(
+  symbols: string[],
+  onUpdate: (result: Record<string, number | null>) => void,
+  onError?: () => void,
+): () => void {
+  const openLegacy = () => openLegacyTradeAlertCurrentPricesStream(symbols, onUpdate, onError);
+  if (symbols.length === 0) return openLegacy();
+  return openMultiplexedStream<Record<string, number | null>>({
+    kind: "tradeAlertPrices",
+    parameters: { symbols },
+    onData: onUpdate,
+    onError: () => onError?.(),
+    openLegacy,
+  });
+}
+
+function openLegacyTradeAlertCurrentPricesStream(
   symbols: string[],
   onUpdate: (result: Record<string, number | null>) => void,
   onError?: () => void,

@@ -445,12 +445,16 @@
   letter-spacing: 0.02em;
 }
 .iorio-pulse-page .strat-badge.cc {
-  background: rgba(14, 165, 233, 0.14);
-  color: var(--accent-glow);
+  background: var(--tblr-blue);
+  color: #fff;
 }
 .iorio-pulse-page .strat-badge.csp {
-  background: rgba(245, 165, 36, 0.14);
-  color: var(--warning);
+  background: var(--tblr-purple);
+  color: #fff;
+}
+.iorio-pulse-page .strat-badge.ns {
+  background: var(--tblr-orange);
+  color: var(--tblr-orange-fg, #fff);
 }
 .iorio-pulse-page .pos-num,
 .iorio-pulse-page .pos-exp {

@@ -1,4 +1,5 @@
 import { apiRequest, apiBaseUrl } from "./client";
+import { openMultiplexedStream } from "./streamMultiplexer";
 import type { StrategyKey } from "./strategy";
 
 export interface StrategySettings {
@@ -148,6 +149,11 @@ export interface ExposureData {
 // letting EventSource auto-reconnect — see openUnrealizedPnlStream's note
 // (each retry opens a fresh IBKR connection server-side).
 export function openExposureStream(onUpdate: (exposure: ExposureData) => void, onError: () => void): () => void {
+  const openLegacy = () => openLegacyExposureStream(onUpdate, onError);
+  return openMultiplexedStream<ExposureData>({ kind: "exposure", parameters: {}, onData: onUpdate, onError, openLegacy });
+}
+
+function openLegacyExposureStream(onUpdate: (exposure: ExposureData) => void, onError: () => void): () => void {
   const source = new EventSource(`${apiBaseUrl}/risk-limits/exposure/stream`, { withCredentials: true });
 
   source.onmessage = (message) => {
