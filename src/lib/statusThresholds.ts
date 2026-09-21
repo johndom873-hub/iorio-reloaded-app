@@ -16,3 +16,9 @@ export function lowerIsWorseStatus(value: number | null | undefined, redBelow: n
   if (value < redBelow) return "err";
   return value < greenFrom ? "warn" : "ok";
 }
+
+/** Available cash as % of account value: below 15 red, below 30 amber, else green. Shared by Pulse and Dashboard. */
+export const AVAILABLE_CASH_PERCENT_BANDS = [15, 30] as const;
+
+/** Bootstrap text colour class for a StatusClass. */
+export const statusTextClass: Record<StatusClass, string> = { ok: "text-success", warn: "text-warning", err: "text-danger", "": "" };

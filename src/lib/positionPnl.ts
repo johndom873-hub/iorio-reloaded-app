@@ -57,6 +57,18 @@ export function positionHasOptionLeg(position: Position): boolean {
   return position.legs.some((leg) => leg.legType === "option");
 }
 
+// An OPEN position holding stock with no live (un-exited) option leg: bare
+// stock left after its call expired or was assigned away ("unstructured",
+// N/S). It has no premium P&L — any premium from the expired calls belongs
+// to the finished cycle — so its whole P&L is stock P&L (approved 2026-09-21).
+export function positionIsStockOnly(position: Position): boolean {
+  return (
+    position.status === "open" &&
+    positionHasStockLeg(position) &&
+    !position.legs.some((leg) => leg.legType === "option" && !leg.exitAt)
+  );
+}
+
 // Total P&L for a position: realized-only for closed positions (no live
 // call needed, computed server-side from stored exit prices); realized (any
 // already-rolled-away leg) + unrealized for open ones. Returns "loading"
@@ -100,6 +112,7 @@ export function positionStockPnl(
   position: Position,
   unrealizedByPositionId: Record<string, UnrealizedPnlResult>,
 ): number | null | "loading" {
+  if (positionIsStockOnly(position)) return positionTotalPnl(position, unrealizedByPositionId);
   const realized = Number(position.realizedStockPnl);
   if (position.status === "closed") return realized;
   if (!(position.id in unrealizedByPositionId)) return "loading";
@@ -186,7 +199,7 @@ export function computePositionTotals(
     totals.totalPnl += pnl;
     if (exposure !== null) pnlRowsExposure += exposure;
     const premium = positionPremiumPnl(position, unrealizedByPositionId);
-    if (typeof premium === "number") totals.premiumPnl += premium;
+    if (typeof premium === "number" && !positionIsStockOnly(position)) totals.premiumPnl += premium;
     if (positionHasStockLeg(position)) {
       const stock = positionStockPnl(position, unrealizedByPositionId);
       if (typeof stock === "number") totals.stockPnl += stock;

@@ -22,7 +22,8 @@ import {
   type PositionEvent,
   type StrategyPeriodPnlRow,
 } from "../api/dashboard";
-import { fetchPositions, type Position } from "../api/positions";
+import { fetchPositions, fetchUnrealizedPnl, type Position, type UnrealizedPnlResult } from "../api/positions";
+import { AVAILABLE_CASH_PERCENT_BANDS, lowerIsWorseStatus, statusTextClass } from "../lib/statusThresholds";
 import { type ConcentrationRow, type StrategyAllocationRow, type TopPositionRow } from "../api/riskLimits";
 import {
   formatCurrency,
@@ -219,12 +220,15 @@ interface TopStatProps {
   loading?: boolean;
   valueClassName?: string;
   tooltip?: string;
+  // Small secondary figure next to the value (a % of account, etc.), coloured independently of the value.
+  delta?: string | null;
+  deltaClassName?: string;
 }
 
-function TopStat({ label, value, loading, valueClassName, tooltip }: TopStatProps) {
+function TopStat({ label, value, loading, valueClassName, tooltip, delta, deltaClassName }: TopStatProps) {
   return (
-    <div className="col-12 col-sm-4">
-      <div className="card">
+    <div className="col-6 col-lg-3">
+      <div className="card h-100">
         <div className="card-body">
           {/* HelpTooltip's own hit-target padding (4px) is taller than a
               plain text line, which was making this card noticeably taller
@@ -232,7 +236,7 @@ function TopStat({ label, value, loading, valueClassName, tooltip }: TopStatProp
               padding's layout contribution without shrinking the actual
               hoverable target. The gap-1 on the container supplies the
               visible space between label and icon instead. */}
-          <div className="text-muted mb-1 d-flex align-items-center gap-1" style={{ fontSize: "0.75rem", lineHeight: 1 }}>
+          <div className="text-muted text-uppercase fw-semibold mb-1 d-flex align-items-center gap-1" style={{ fontSize: "0.75rem", lineHeight: 1 }}>
             {label}
             {tooltip && (
               <span style={{ margin: "-4px" }}>
@@ -243,8 +247,15 @@ function TopStat({ label, value, loading, valueClassName, tooltip }: TopStatProp
           {loading ? (
             <Spinner size="sm" label={`Loading ${label}`} />
           ) : (
-            <div className={`fw-bold font-mono ${valueClassName ?? ""}`} style={{ fontSize: "1.25rem" }}>
-              {value}
+            <div className="d-flex align-items-baseline gap-2 flex-wrap">
+              <span className={`fw-bold font-mono ${valueClassName ?? ""}`} style={{ fontSize: "1.25rem" }}>
+                {value}
+              </span>
+              {delta && (
+                <span className={`font-mono ${deltaClassName ?? ""}`} style={{ fontSize: "0.75rem" }}>
+                  {delta}
+                </span>
+              )}
             </div>
           )}
         </div>
@@ -253,16 +264,25 @@ function TopStat({ label, value, loading, valueClassName, tooltip }: TopStatProp
   );
 }
 
-function PortfolioTile({ label, value }: { label: string; value: number | null }) {
+function PortfolioTile({ label, value, swatchColor }: { label: string; value: number | null; swatchColor: string }) {
   return (
     <div className="col-6 col-md-3">
-      <div className="text-muted mb-1" style={{ fontSize: "0.75rem" }}>
+      <div className="text-muted mb-1 d-flex align-items-center gap-2" style={{ fontSize: "0.75rem" }}>
+        <span className="allocation-swatch" style={{ background: swatchColor }} />
         {label}
       </div>
       <div className="fw-bold font-mono">{formatCurrency(value, 0)}</div>
     </div>
   );
 }
+
+// Same segment colours as Pulse's Allocation bar.
+const ALLOCATION_COLORS = {
+  coveredCalls: "var(--tblr-blue)",
+  cashSecuredPuts: "var(--tblr-purple)",
+  unstructured: "var(--tblr-orange)",
+  cash: "var(--tblr-gray-500)",
+} as const;
 
 const periodColumns: { key: keyof StrategyPeriodPnlRow; label: string }[] = [
   { key: "day", label: "Day" },
@@ -435,6 +455,11 @@ export function DashboardPage() {
   const [periodPnlLoading, setPeriodPnlLoading] = useState(true);
   const [periodPnlError, setPeriodPnlError] = useState<string | null>(null);
 
+  // One-shot mark-to-market of every open position (snapshot/fallback
+  // prices, no stream) — Dashboard's tiles load once, unlike Pulse's live ones.
+  const [unrealizedPnlByPositionId, setUnrealizedPnlByPositionId] = useState<Record<string, UnrealizedPnlResult> | null>(null);
+  const [unrealizedLoading, setUnrealizedLoading] = useState(true);
+
   const [events, setEvents] = useState<PositionEvent[]>([]);
   const [eventsLoading, setEventsLoading] = useState(true);
   const [eventsError, setEventsError] = useState<string | null>(null);
@@ -508,6 +533,10 @@ export function DashboardPage() {
       // isn't a filterable value server-side, so this fetches every open
       // position and filters client-side instead.
       const openPositions = await fetchPositions({ status: "open" });
+      fetchUnrealizedPnl(openPositions.map((position) => position.id))
+        .then(setUnrealizedPnlByPositionId)
+        .catch(() => setUnrealizedPnlByPositionId(null))
+        .finally(() => setUnrealizedLoading(false));
       setNeedsAttention(
         openPositions.filter((position) => {
           if (position.strategyKey !== "unstructured") return false;
@@ -516,6 +545,7 @@ export function DashboardPage() {
         }),
       );
     } catch (err) {
+      setUnrealizedLoading(false);
       setNeedsAttentionError(err instanceof ApiError ? err.message : "Failed to load positions needing attention.");
     } finally {
       setNeedsAttentionLoading(false);
@@ -525,6 +555,32 @@ export function DashboardPage() {
   useEffect(() => {
     loadNeedsAttention();
   }, [loadNeedsAttention]);
+
+  const accountValueNumber = summary?.netLiquidationValue ? Number(summary.netLiquidationValue) : null;
+  const yesterdaysPnl = summary?.periods.day ? Number(summary.periods.day) : null;
+  const availableCashPercent =
+    accountValueNumber !== null && accountValueNumber > 0 && cash?.availableCashToTrade != null ? (cash.availableCashToTrade / accountValueNumber) * 100 : null;
+  // Same formula Pulse uses (approved 2026-09-19): % is against the account
+  // value excluding this open gain/loss.
+  const totalUnrealizedPnl = unrealizedPnlByPositionId
+    ? Object.values(unrealizedPnlByPositionId).reduce((sum, row) => sum + (row.unrealizedPnl ?? 0), 0)
+    : null;
+  const accountValueBeforeUnrealizedPnl = totalUnrealizedPnl !== null && accountValueNumber !== null ? accountValueNumber - totalUnrealizedPnl : null;
+  const totalUnrealizedPnlPercent =
+    totalUnrealizedPnl !== null && accountValueBeforeUnrealizedPnl ? (totalUnrealizedPnl / accountValueBeforeUnrealizedPnl) * 100 : null;
+
+  // Same basis as Pulse's Allocation bar: each strategy's notional over total account value.
+  const allocationPercentFor = (strategyKey: string) => {
+    if (!exposure?.totalAccountValue) return 0;
+    const row = exposure.strategyAllocation.find((candidate) => candidate.strategyKey === strategyKey);
+    return ((row ? Number(row.notionalValue) : 0) / exposure.totalAccountValue) * 100;
+  };
+  const allocationSegments = [
+    { label: "Covered Calls", percent: allocationPercentFor("covered_call"), color: ALLOCATION_COLORS.coveredCalls },
+    { label: "Cash-Secured Puts", percent: allocationPercentFor("cash_secured_put"), color: ALLOCATION_COLORS.cashSecuredPuts },
+    { label: "No strategy", percent: allocationPercentFor("unstructured"), color: ALLOCATION_COLORS.unstructured },
+    { label: "Cash", percent: allocationPercentFor("unallocated"), color: ALLOCATION_COLORS.cash },
+  ];
 
   const sectorRows = (exposure?.concentrationBySector ?? []).filter((row: ConcentrationRow) => row.sector !== "Unallocated");
 
@@ -539,32 +595,57 @@ export function DashboardPage() {
         <TopStat
           label="Account Value"
           loading={summaryLoading}
-          value={formatCurrency(summary?.netLiquidationValue ? Number(summary.netLiquidationValue) : null, 0)}
+          value={formatCurrency(accountValueNumber, 0)}
         />
         <TopStat
           label="Available Cash"
-          loading={cashLoading}
+          loading={cashLoading || summaryLoading}
           value={formatCurrency(cash?.availableCashToTrade ?? null, 0)}
+          delta={availableCashPercent === null ? null : `(${availableCashPercent.toFixed(1)}%)`}
+          deltaClassName={statusTextClass[lowerIsWorseStatus(availableCashPercent, ...AVAILABLE_CASH_PERCENT_BANDS)]}
           tooltip="Total cash minus cash reserved to cover assignment on open cash-secured puts."
         />
         <TopStat
-          label="Day P&L"
+          label="Yesterday's P&L"
           loading={summaryLoading}
-          value={`${formatSignedPnl(summary?.periods.day ? Number(summary.periods.day) : null, 0)} (${formatSignedPercentageValue(summary?.dayPnlPercent ?? null)})`}
-          valueClassName={pnlTextClass(summary?.periods.day ? Number(summary.periods.day) : null)}
+          value={formatSignedPnl(yesterdaysPnl, 0)}
+          valueClassName={pnlTextClass(yesterdaysPnl)}
+          delta={formatSignedPercentageValue(summary?.dayPnlPercent ?? null, 2)}
+          deltaClassName={pnlTextClass(summary?.dayPnlPercent ?? null)}
+        />
+        <TopStat
+          label="Unrealised P&L"
+          loading={summaryLoading || unrealizedLoading}
+          value={formatSignedPnl(totalUnrealizedPnl, 0)}
+          valueClassName={pnlTextClass(totalUnrealizedPnl)}
+          delta={formatSignedPercentageValue(totalUnrealizedPnlPercent, 2)}
+          deltaClassName={pnlTextClass(totalUnrealizedPnlPercent)}
         />
       </div>
 
-      <CollapsibleCard title="Portfolio" storageKey="portfolio" className="mb-3">
+      <CollapsibleCard title="Allocation" storageKey="portfolio" className="mb-3">
         {portfolioError && <div className="alert alert-danger mb-0">{portfolioError}</div>}
-        {!portfolioError && portfolioLoading && <Spinner size="sm" label="Loading portfolio" />}
+        {!portfolioError && portfolioLoading && <Spinner size="sm" label="Loading allocation" />}
         {!portfolioError && !portfolioLoading && (
-          <div className="row g-3">
-            <PortfolioTile label="Available Cash" value={portfolio?.availableCash ?? null} />
-            <PortfolioTile label="Cash-Secured Puts" value={portfolio?.cashSecuredPuts ?? null} />
-            <PortfolioTile label="Covered Calls" value={portfolio?.coveredCalls ?? null} />
-            <PortfolioTile label="No strategy" value={portfolio?.unstructured ?? null} />
-          </div>
+          <>
+            <div className="allocation-bar mt-2 mb-3">
+              {allocationSegments.map((segment) => (
+                <span
+                  key={segment.label}
+                  className="allocation-seg"
+                  style={{ width: `${segment.percent}%`, background: segment.color }}
+                  data-label={`${segment.label} — ${segment.percent.toFixed(0)}%`}
+                />
+              ))}
+            </div>
+            {/* Keep this order identical to allocationSegments (the bar above). */}
+            <div className="row g-3">
+              <PortfolioTile label="Covered Calls" value={portfolio?.coveredCalls ?? null} swatchColor={ALLOCATION_COLORS.coveredCalls} />
+              <PortfolioTile label="Cash-Secured Puts" value={portfolio?.cashSecuredPuts ?? null} swatchColor={ALLOCATION_COLORS.cashSecuredPuts} />
+              <PortfolioTile label="No strategy" value={portfolio?.unstructured ?? null} swatchColor={ALLOCATION_COLORS.unstructured} />
+              <PortfolioTile label="Available Cash" value={portfolio?.availableCash ?? null} swatchColor={ALLOCATION_COLORS.cash} />
+            </div>
+          </>
         )}
       </CollapsibleCard>
 
@@ -678,9 +759,9 @@ export function DashboardPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    <PeriodPnlRow label="Covered Calls" row={periodPnl.coveredCalls} />
-                    <PeriodPnlRow label="Cash-Secured Puts" row={periodPnl.cashSecuredPuts} />
-                    <PeriodPnlRow label="No strategy" row={periodPnl.unstructured} />
+                    <PeriodPnlRow label={<StrategyBadge strategyKey="covered_call" />} row={periodPnl.coveredCalls} />
+                    <PeriodPnlRow label={<StrategyBadge strategyKey="cash_secured_put" />} row={periodPnl.cashSecuredPuts} />
+                    <PeriodPnlRow label={<StrategyBadge strategyKey="unstructured" />} row={periodPnl.unstructured} />
                     <PeriodPnlRow label={<DottedLabelTooltip label="Residual" tooltipHtml={residualTooltipHtml} />} row={periodPnl.residual} />
                     <PeriodPnlRow label="Total" row={periodPnl.total} bold />
                   </tbody>
@@ -727,7 +808,7 @@ export function DashboardPage() {
                       <tbody>
                         {knownRows.map((row) => (
                           <tr key={row.strategyKey}>
-                            <td>{strategyLabels[row.strategyKey] ?? row.strategyKey}</td>
+                            <td><StrategyBadge strategyKey={row.strategyKey} /></td>
                             <td className={`text-end font-mono ${pnlTextClass(row.realizedPnl)}`}>{formatSignedPnl(row.realizedPnl, 0)}</td>
                             <td className={`text-end font-mono ${pnlTextClass(row.unrealizedPnl)}`}>{formatSignedPnl(row.unrealizedPnl, 0)}</td>
                           </tr>

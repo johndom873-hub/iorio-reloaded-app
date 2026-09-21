@@ -723,6 +723,72 @@
   border-top: 2px solid var(--tblr-border-color);
 }
 
+/* Dashboard Allocation bar — segmented, hover shows "label — %" (mirrors Pulse's .alloc-bar). */
+.allocation-bar {
+  display: flex;
+  height: 1rem;
+  border-radius: 0.3rem;
+}
+.allocation-seg {
+  position: relative;
+  height: 100%;
+}
+.allocation-seg:first-child {
+  border-top-left-radius: 0.3rem;
+  border-bottom-left-radius: 0.3rem;
+}
+.allocation-seg:last-child {
+  border-top-right-radius: 0.3rem;
+  border-bottom-right-radius: 0.3rem;
+}
+.allocation-seg::after {
+  content: attr(data-label);
+  position: absolute;
+  bottom: calc(100% + 0.4rem);
+  left: 0;
+  background: var(--tblr-bg-surface);
+  border: 1px solid var(--tblr-border-color);
+  color: var(--tblr-body-color);
+  font-family: var(--tblr-font-monospace);
+  font-size: 0.75rem;
+  padding: 0.2rem 0.5rem;
+  border-radius: 0.3rem;
+  white-space: nowrap;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.15s ease;
+  z-index: 20;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.25);
+}
+/* Segments can be narrower than their label, so centring would clip at the bar's edges: anchor at the segment's start, and the last one at the bar's right edge. */
+.allocation-seg:last-child::after {
+  left: auto;
+  right: 0;
+}
+.allocation-seg:hover::after {
+  opacity: 1;
+}
+.allocation-seg::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: #fff;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.15s ease;
+}
+.allocation-seg:hover::before {
+  opacity: 0.22;
+}
+.allocation-swatch {
+  display: inline-block;
+  width: 0.6rem;
+  height: 0.6rem;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
 /* Text label with a dotted underline that carries a tooltip (DottedLabelTooltip). */
 .dotted-underline-label {
   text-decoration: underline dotted;

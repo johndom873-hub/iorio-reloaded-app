@@ -28,6 +28,7 @@ import {
   positionHasOptionLeg,
   positionHasStockLeg,
   positionPnlAsOfDate,
+  positionIsStockOnly,
   positionPremiumPnl,
   positionStockPnl,
   positionTotalPnl,
@@ -177,6 +178,7 @@ export function PositionCard({
           );
         })()}
         {positionHasOptionLeg(position) &&
+          !positionIsStockOnly(position) &&
           (() => {
             const premiumPnl = positionPremiumPnl(position, unrealizedPnlByPositionId);
             return (

@@ -37,6 +37,7 @@ import {
   positionExpiryDate,
   positionHasStockLeg,
   positionPnlAsOfDate,
+  positionIsStockOnly,
   positionPremiumPnl,
   positionStockPnl,
   computePositionTotals,
@@ -361,6 +362,12 @@ export function PositionsPage() {
       headerTitle: "Premium collected vs. current buy-back cost of the option contract(s) — isolated from any stock price movement",
       align: "right",
       render: (row) => {
+        if (positionIsStockOnly(row))
+          return (
+            <span className="text-muted" title="No live option leg — all P&L on this position is stock P&L">
+              —
+            </span>
+          );
         const pnl = positionPremiumPnl(row, unrealizedPnlByPositionId);
         if (pnl === "loading") return <Spinner size="sm" label="Loading premium P&L" />;
         if (pnl === null)
@@ -550,6 +557,8 @@ export function PositionsPage() {
         emptyMessage={`No ${status} positions yet.`}
       />
 
+      <CycleScoreboard />
+
       {closePosition && (
         <ClosePositionModal
           position={closePosition}
@@ -557,8 +566,6 @@ export function PositionsPage() {
           onClosed={() => {
             setClosePosition(null);
             loadPositions();
-      <CycleScoreboard />
-
           }}
         />
       )}

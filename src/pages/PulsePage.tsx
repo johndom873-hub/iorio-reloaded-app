@@ -32,7 +32,7 @@ import {
 import { daysToExpiry, todayInEasternIso, formatSignedPnl, formatSignedPercentageValue, formatCompactDollars, formatDateTime, formatNumber, formatPercentageValue, formatRelativeDate, ibkrExpiryToIsoDate } from "../lib/formatters";
 import { positionExpiryDate, strategyAbbrev as positionStrategyAbbrev, strategyTooltip } from "../lib/positionPnl";
 import { FlashingNumber } from "../components/FlashingNumber";
-import { higherIsWorseStatus, lowerIsWorseStatus } from "../lib/statusThresholds";
+import { AVAILABLE_CASH_PERCENT_BANDS, higherIsWorseStatus, lowerIsWorseStatus } from "../lib/statusThresholds";
 import { TopologyMap, type PulseEvent } from "../components/pulse/TopologyMap";
 import { TotalPnlChart } from "../components/pulse/TotalPnlChart";
 import { ProfitProbabilityChart, type ProbabilitySeries } from "../components/pulse/ProfitProbabilityChart";
@@ -70,8 +70,6 @@ const DB_AVERAGE_RESPONSE_MS_BANDS = [50, 200] as const;
 const DB_SLOWEST_RESPONSE_MS_BANDS = [500, 2000] as const;
 const GATEWAY_RECONNECT_BANDS = [1, 5] as const;
 const GATEWAY_IN_FLIGHT_BANDS = [1, 5] as const;
-// Available cash as % of account value: below 15 red, below 30 amber, else green.
-const AVAILABLE_CASH_PERCENT_BANDS = [15, 30] as const;
 const GATEWAY_HEALTHY_UPTIME_MS = 30 * 60_000;
 
 // Alert notifications only ever carry the two structured strategies.
