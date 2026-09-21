@@ -29,7 +29,7 @@ import {
   type MarketStatus,
   type MarketSessionState,
 } from "../api/systemHealth";
-import { daysToExpiry, todayInEasternIso, formatSignedPnl, formatSignedPercentageValue, formatCompactDollars, formatDateTime, formatNumber, formatPercentageValue, formatRelativeDate, ibkrExpiryToIsoDate } from "../lib/formatters";
+import { daysToExpiry, todayInEasternIso, formatSignedPnl, formatSignedPercentageValue, formatCompactDollars, formatDateTime, formatFeedTime, formatNumber, formatPercentageValue, formatRelativeDate, ibkrExpiryToIsoDate } from "../lib/formatters";
 import { positionExpiryDate, strategyAbbrev as positionStrategyAbbrev, strategyTooltip } from "../lib/positionPnl";
 import { FlashingNumber } from "../components/FlashingNumber";
 import { AVAILABLE_CASH_PERCENT_BANDS, higherIsWorseStatus, lowerIsWorseStatus } from "../lib/statusThresholds";
@@ -541,7 +541,7 @@ export function PulsePage() {
       .filter((item): item is { occurredAt: string; text: string; color: string } => item !== null)
       .map((item) => {
         eventIdRef.current += 1;
-        return { id: eventIdRef.current, time: new Date(item.occurredAt).toLocaleTimeString("en-US", { hour12: false }), text: item.text, color: item.color };
+        return { id: eventIdRef.current, time: formatFeedTime(item.occurredAt), text: item.text, color: item.color };
       });
   }, []);
 
@@ -1167,7 +1167,7 @@ export function PulsePage() {
             {trades.length === 0 && <div className="panel-empty">No recent trades.</div>}
             {trades.map((trade) => (
               <div className="fill-row" key={trade.id}>
-                <span className="fill-time">{new Date(trade.executedAt).toLocaleTimeString("en-US", { hour12: false })}</span>
+                <span className="fill-time">{formatFeedTime(trade.executedAt)}</span>
                 <span className="fill-desc">
                   <b>
                     {trade.side.toUpperCase()} {trade.quantity}

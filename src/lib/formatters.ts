@@ -234,6 +234,16 @@ export function formatLocalTime(dateInput: string | Date | number): string {
   return date.toLocaleTimeString("en-US", { hour12: false });
 }
 
+// Feed timestamp (Pulse Trades / Latest Events): the HH:MM:SS clock time for
+// anything under 24h old, "Xd ago" once it's a full day or more — a bare clock
+// time is ambiguous for older rows, and "Xd ago" is the narrowest unambiguous label.
+export function formatFeedTime(dateInput: string | Date | number): string {
+  const date = typeof dateInput === "object" ? dateInput : new Date(dateInput);
+  const ageInDays = Math.floor((Date.now() - date.getTime()) / 86_400_000);
+  if (ageInDays >= 1) return `${ageInDays}d ago`;
+  return formatLocalTime(date);
+}
+
 // 24-hour local time without seconds, e.g. "14:32" — used for chart x-axis
 // tick labels, where formatLocalTime's HH:MM:SS is too dense.
 export function formatHourMinute(dateInput: string | Date | number): string {
