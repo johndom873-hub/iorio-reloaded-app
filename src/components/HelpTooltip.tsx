@@ -34,3 +34,27 @@ export function HelpTooltip({ text }: HelpTooltipProps) {
     </span>
   );
 }
+
+interface DottedLabelTooltipProps {
+  label: string;
+  /** Tooltip body; simple inline HTML only (Bootstrap sanitizes it). Always developer-authored, never user data. */
+  tooltipHtml: string;
+}
+
+/** A text label with a dotted underline that reveals a footnote-style tooltip on hover, focus or tap. */
+export function DottedLabelTooltip({ label, tooltipHtml }: DottedLabelTooltipProps) {
+  const labelRef = useRef<HTMLSpanElement | null>(null);
+
+  useEffect(() => {
+    const el = labelRef.current;
+    if (!el) return;
+    const tooltip = new Tooltip(el, { title: tooltipHtml, html: true, placement: "top", customClass: "footnote-tooltip" });
+    return () => tooltip.dispose();
+  }, [tooltipHtml]);
+
+  return (
+    <span ref={labelRef} className="dotted-underline-label" tabIndex={0}>
+      {label}
+    </span>
+  );
+}

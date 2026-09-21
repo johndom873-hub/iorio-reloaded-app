@@ -722,3 +722,19 @@
   font-weight: 700;
   border-top: 2px solid var(--tblr-border-color);
 }
+
+/* Text label with a dotted underline that carries a tooltip (DottedLabelTooltip). */
+.dotted-underline-label {
+  text-decoration: underline dotted;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 0.25rem;
+  cursor: help;
+}
+
+.footnote-tooltip .tooltip-inner {
+  max-width: min(22rem, 85vw);
+  text-align: left;
+  padding: 0.6rem 0.75rem;
+  font-size: 0.8rem;
+  line-height: 1.4;
+}

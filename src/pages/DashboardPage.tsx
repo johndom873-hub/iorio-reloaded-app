@@ -1,11 +1,11 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import { PageHeader } from "../components/layout/PageHeader";
 import { StrategyBadge } from "../components/StrategyBadge";
 import type { PositionStrategyKey } from "../api/positions";
 import { Spinner } from "../components/Spinner";
 import { ApexChart } from "../components/charts/ApexChart";
 import { CollapsibleCard } from "../components/CollapsibleCard";
-import { HelpTooltip } from "../components/HelpTooltip";
+import { DottedLabelTooltip, HelpTooltip } from "../components/HelpTooltip";
 import { TickerDetailModal } from "../components/TickerDetailModal";
 import { useTheme } from "../contexts/ThemeContext";
 import { ApiError } from "../api/client";
@@ -271,7 +271,17 @@ const periodColumns: { key: keyof StrategyPeriodPnlRow; label: string }[] = [
   { key: "year", label: "YTD" },
 ];
 
-function PeriodPnlRow({ label, row, bold }: { label: string; row: StrategyPeriodPnlRow; bold?: boolean }) {
+// Footnote for the Residual row on both P&L cards. Residual = the account's own P&L (change in net liquidation value)
+// minus the three strategy rows, so it is a plug: it holds whatever the strategy cycles don't attribute. Interest and
+// dividends are deliberately not named: Flex shows none on this paper account (see PROGRESS.md, 2026-09-11 / 2026-09-21).
+const residualTooltipHtml =
+  "<strong>Residual</strong> = account P&amp;L (change in net liquidation value) minus the three strategy rows." +
+  "<br/><br/>It holds what the strategy cycles don't attribute: commissions (cycles are gross) and timing differences " +
+  "between IBKR's account value and this platform's price marks, which are captured at slightly different moments." +
+  "<br/><br/>Positions open at the start of a period with no stored option mark are also left out of that period's strategy rows, " +
+  "so they land here too (affects Week and Month until the mark history builds up).";
+
+function PeriodPnlRow({ label, row, bold }: { label: ReactNode; row: StrategyPeriodPnlRow; bold?: boolean }) {
   return (
     <tr>
       <td className={bold ? "fw-bold" : undefined}>{label}</td>
@@ -658,7 +668,7 @@ export function DashboardPage() {
                     <PeriodPnlRow label="Covered Calls" row={periodPnl.coveredCalls} />
                     <PeriodPnlRow label="Cash-Secured Puts" row={periodPnl.cashSecuredPuts} />
                     <PeriodPnlRow label="No strategy" row={periodPnl.unstructured} />
-                    <PeriodPnlRow label="Residual" row={periodPnl.residual} />
+                    <PeriodPnlRow label={<DottedLabelTooltip label="Residual" tooltipHtml={residualTooltipHtml} />} row={periodPnl.residual} />
                     <PeriodPnlRow label="Total" row={periodPnl.total} bold />
                   </tbody>
                 </table>
@@ -710,7 +720,7 @@ export function DashboardPage() {
                           </tr>
                         ))}
                         <tr>
-                          <td className="fw-bold">Residual</td>
+                          <td className="fw-bold"><DottedLabelTooltip label="Residual" tooltipHtml={residualTooltipHtml} /></td>
                           <td className={`text-end font-mono fw-bold ${pnlTextClass(residualRealized)}`}>
                             {formatSignedPnl(residualRealized, 0)}
                           </td>
@@ -812,7 +822,7 @@ export function DashboardPage() {
           <div className="text-muted">Not enough snapshot history yet to chart a trend.</div>
         ) : (
           <ApexChart
-            type="area"
+            type="bar"
             height={260}
             series={[
               { name: "Covered Calls", data: history.map((point) => ({ x: point.snapshotDate, y: point.coveredCalls })) },
@@ -824,6 +834,10 @@ export function DashboardPage() {
               },
             ]}
             options={{
+              // Stacked columns rather than stacked areas: ApexCharts stacks positives up and negatives down
+              // for bars, but sums mixed-sign area series cumulatively, so the bands cross each other.
+              chart: { stacked: true },
+              plotOptions: { bar: { columnWidth: "70%" } },
               colors: [tablerColor("--tblr-blue"), tablerColor("--tblr-purple"), tablerColor("--tblr-orange"), tablerColor("--tblr-secondary")],
               xaxis: {
                 type: "datetime",
@@ -832,11 +846,13 @@ export function DashboardPage() {
               },
               yaxis: { labels: { formatter: (value: number) => formatCurrency(value, 0) } },
               tooltip: {
+                shared: true,
+                intersect: false,
                 x: { format: "dd MMM yyyy" },
                 y: { formatter: (value: number) => formatSignedPnl(value, 0) },
               },
               dataLabels: { enabled: false },
-              stroke: { curve: "straight", width: 2 },
+              stroke: { width: 0 },
               legend: { position: "top" },
               responsive: [{ breakpoint: 768, options: { legend: { position: "bottom" }, chart: { height: 220 } } }],
             }}

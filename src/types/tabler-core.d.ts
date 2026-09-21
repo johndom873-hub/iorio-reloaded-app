@@ -1,6 +1,6 @@
 declare module "@tabler/core/dist/js/tabler.esm.min.js" {
   export class Tooltip {
-    constructor(element: Element, options?: { title?: string; placement?: string });
+    constructor(element: Element, options?: { title?: string; placement?: string; html?: boolean; customClass?: string });
     dispose(): void;
   }
 
