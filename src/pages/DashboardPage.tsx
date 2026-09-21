@@ -838,6 +838,7 @@ export function DashboardPage() {
               // for bars, but sums mixed-sign area series cumulatively, so the bands cross each other.
               chart: { stacked: true },
               plotOptions: { bar: { columnWidth: "70%" } },
+              fill: { opacity: 1 }, // ApexCharts' bar default is 0.85, which lets the dark card show through and mutes the colours
               colors: [tablerColor("--tblr-blue"), tablerColor("--tblr-purple"), tablerColor("--tblr-orange"), tablerColor("--tblr-secondary")],
               xaxis: {
                 type: "datetime",
