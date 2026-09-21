@@ -597,7 +597,7 @@ export function DashboardPage() {
         </CollapsibleCard>
       ) : null}
 
-      <CollapsibleCard title="Latest Events" storageKey="latest-events" className="mb-3">
+      <CollapsibleCard title="Latest Transactions" storageKey="latest-events" className="mb-3">
         {eventsError && <div className="alert alert-danger">{eventsError}</div>}
         {eventsLoading ? (
           <Spinner size="sm" label="Loading events" />
