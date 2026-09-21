@@ -1,13 +1,13 @@
 import { useCallback, useEffect, useState } from "react";
 import { PageHeader } from "../components/layout/PageHeader";
 import { DataTable, type DataTableColumn } from "../components/DataTable/DataTable";
+import { Pagination } from "../components/Pagination";
 import { Spinner } from "../components/Spinner";
 import { TickerDetailModal } from "../components/TickerDetailModal";
 import { ConfirmModal } from "../components/ConfirmModal";
 import { ApiError } from "../api/client";
-import { cancelOrder } from "../api/positions";
+import { cancelOrder, type PositionStrategyKey } from "../api/positions";
 import { fetchTradeBlotter, type PendingOrder, type Trade } from "../api/tradeBlotter";
-import type { StrategyKey } from "../api/strategy";
 import { StrategyBadge } from "../components/StrategyBadge";
 import { useTickerDetailSymbol } from "../hooks/useTickerDetailSymbol";
 import {
@@ -16,23 +16,24 @@ import {
   formatDateTime,
   formatNumber,
   formatRelativeDate,
-  formatSignedPnl,
   orderRequestStatusBadgeClass,
   orderRequestStatusLabel,
-  pnlBadgeClass,
 } from "../lib/formatters";
 
 // Kept in sync with positions.ts's /orders/:id/cancel eligibility.
 const cancellableStatuses = new Set(["pending_confirmation", "confirmed", "submitted", "partially_filled"]);
 
-const strategyTabs: { key: StrategyKey | "all"; label: string }[] = [
+const rowsPerPage = 50;
+
+const strategyOptions: { key: PositionStrategyKey | "all"; label: string }[] = [
   { key: "all", label: "All" },
   { key: "covered_call", label: "Covered Calls" },
   { key: "cash_secured_put", label: "Cash-Secured Puts" },
+  { key: "unstructured", label: "Other" },
 ];
 
 // A real fill (Trade) and a not-yet-filled order (PendingOrder) share every
-// column except P&L (an order hasn't realized anything) and IBKR State (a
+// column except IBKR State (a
 // Trade's state is trivially "Filled" — it only exists because IBKR filled
 // it — while an order's is its real, current order_requests.status).
 type BlotterRow = ({ kind: "trade" } & Trade) | ({ kind: "order" } & PendingOrder);
@@ -46,11 +47,12 @@ function legSummary(row: BlotterRow): string {
 }
 
 export function TradeBlotterPage() {
-  const [strategy, setStrategy] = useState<StrategyKey | "all">("all");
+  const [strategy, setStrategy] = useState<PositionStrategyKey | "all">("all");
   const [symbol, setSymbol] = useState("");
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
   const [rows, setRows] = useState<BlotterRow[]>([]);
+  const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [detailSymbol, setDetailSymbol] = useTickerDetailSymbol();
@@ -82,6 +84,16 @@ export function TradeBlotterPage() {
       setError(err instanceof ApiError ? err.message : "Failed to load trades.");
     }
   }, [strategy, symbol, from, to]);
+
+  // A new filter means a new result set — start back at the first page.
+  useEffect(() => {
+    setPage(1);
+  }, [strategy, symbol, from, to]);
+
+  // After a refresh (e.g. a cancel) the result set can shrink below the current page.
+  const lastPage = Math.max(1, Math.ceil(rows.length / rowsPerPage));
+  const currentPage = Math.min(page, lastPage);
+  const visibleRows = rows.slice((currentPage - 1) * rowsPerPage, currentPage * rowsPerPage);
 
   useEffect(() => {
     setLoading(true);
@@ -170,16 +182,6 @@ export function TradeBlotterPage() {
       render: (row) => {
         const rawPrice = row.kind === "trade" ? row.price : row.unitPrice;
         return formatCurrency(rawPrice == null || rawPrice === "" ? null : Number(rawPrice));
-      },
-    },
-    {
-      key: "pnl",
-      header: "P&L",
-      align: "right",
-      render: (row) => {
-        if (row.kind === "order" || row.pnl === null) return "—";
-        const pnl = Number(row.pnl);
-        return <span className={`badge ${pnlBadgeClass(pnl)}`}>{formatSignedPnl(pnl)}</span>;
       },
     },
     {
@@ -286,21 +288,21 @@ export function TradeBlotterPage() {
 
       {error && <div className="alert alert-danger">{error}</div>}
 
-      <ul className="nav nav-tabs mb-3">
-        {strategyTabs.map((tab) => (
-          <li className="nav-item" key={tab.key}>
-            <button
-              type="button"
-              className={`nav-link ${strategy === tab.key ? "active" : ""}`}
-              onClick={() => setStrategy(tab.key)}
-            >
-              {tab.label}
-            </button>
-          </li>
-        ))}
-      </ul>
-
       <div className="row g-2 mb-3">
+        <div className="col-12 col-sm-3" style={{ maxWidth: "14rem" }}>
+          <select
+            className="form-select"
+            aria-label="Strategy"
+            value={strategy}
+            onChange={(event) => setStrategy(event.target.value as PositionStrategyKey | "all")}
+          >
+            {strategyOptions.map((option) => (
+              <option key={option.key} value={option.key}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+        </div>
         <div className="col-6 col-sm-3" style={{ maxWidth: "10rem" }}>
           <input
             type="text"
@@ -333,11 +335,13 @@ export function TradeBlotterPage() {
       <DataTable
         tableId="trade-blotter"
         columns={columns}
-        rows={rows}
+        rows={visibleRows}
         rowKey={(row) => row.id}
         loading={loading}
         emptyMessage="No trades or orders yet."
       />
+
+      <Pagination page={currentPage} pageSize={rowsPerPage} totalRows={rows.length} onPageChange={setPage} />
 
       {detailSymbol && <TickerDetailModal symbol={detailSymbol} onClose={() => setDetailSymbol(null)} />}
 

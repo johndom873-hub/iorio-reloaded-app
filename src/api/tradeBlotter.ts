@@ -1,6 +1,5 @@
 import { apiRequest } from "./client";
-import type { StrategyKey } from "./strategy";
-import type { LegSide, LegType, OptionType, OrderRequestStatus } from "./positions";
+import type { LegSide, LegType, OptionType, OrderRequestStatus, PositionStrategyKey } from "./positions";
 
 export interface Trade {
   id: string;
@@ -14,7 +13,7 @@ export interface Trade {
   isClosingTrade: boolean;
   pnl: string | null;
   positionId: string;
-  strategyKey: StrategyKey;
+  strategyKey: PositionStrategyKey;
   legId: string;
   legType: LegType;
   legSide: LegSide;
@@ -40,7 +39,7 @@ export interface PendingOrder {
   requestType: string;
   createdAt: string;
   symbol: string;
-  strategyKey: StrategyKey;
+  strategyKey: PositionStrategyKey;
   legRole: "stock" | "option";
   action: "BUY" | "SELL";
   quantity: number;
@@ -53,7 +52,7 @@ export interface PendingOrder {
 }
 
 export interface TradeBlotterFilters {
-  strategyKey?: StrategyKey;
+  strategyKey?: PositionStrategyKey;
   symbol?: string;
   from?: string;
   to?: string;

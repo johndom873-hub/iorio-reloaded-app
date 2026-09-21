@@ -507,8 +507,6 @@ export function PositionsPage() {
 
       {error && <div className="alert alert-danger">{error}</div>}
 
-      <CycleScoreboard />
-
       <div className="d-flex flex-column flex-md-row justify-content-between gap-2 mb-3">
         <ul className="nav nav-tabs">
           {strategyTabs.map((tabOption) => (
@@ -559,6 +557,8 @@ export function PositionsPage() {
           onClosed={() => {
             setClosePosition(null);
             loadPositions();
+      <CycleScoreboard />
+
           }}
         />
       )}

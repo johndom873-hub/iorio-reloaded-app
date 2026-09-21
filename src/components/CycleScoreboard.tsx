@@ -3,7 +3,7 @@ import { CollapsibleCard } from "./CollapsibleCard";
 import { CycleBucketBadge } from "./CycleBucketBadge";
 import { Spinner } from "./Spinner";
 import { fetchCycleScoreboard, type CycleBucketKey, type CycleScoreboard as CycleScoreboardData } from "../api/positions";
-import { formatCurrency, formatPercentageValue, formatSignedPnl, pnlTextClass } from "../lib/formatters";
+import { formatSignedPnl, pnlTextClass } from "../lib/formatters";
 
 const bucketOrder: CycleBucketKey[] = ["csp", "unstructured", "cc"];
 
@@ -20,8 +20,8 @@ export function CycleScoreboard() {
 
   return (
     <CollapsibleCard
-      className="mb-3"
-      title="Strategy scoreboard"
+      className="mt-3 mb-3"
+      title="Profit & Loss"
       storageKey="positions-cycle-scoreboard"
       defaultOpen={false}
     >
@@ -33,19 +33,14 @@ export function CycleScoreboard() {
       {failed && <div className="text-muted">Couldn't load the scoreboard.</div>}
       {data && (
         <>
-          <p className="text-muted mb-2" style={{ fontSize: "0.8rem" }}>
-            Fair view: each strategy is credited for its premium and charged for what it did to the shares — a put pays for being assigned below its strike, calls only own the shares while a call is written on them.
-          </p>
-          <div className="table-responsive border rounded">
+          <div className="table-responsive table-flush">
             <table className="table table-sm table-vcenter card-table mb-0">
               <thead className="table-light">
                 <tr>
                   <th>Strategy</th>
-                  <th className="text-end" title="Premium collected, net of commissions — the old view">Premium only</th>
-                  <th className="text-end" title="Assignment charge (puts) or stock P&L while the strategy held the shares">Assignment / stock</th>
-                  <th className="text-end">Fair total</th>
-                  <th className="text-end" title="Capital deployed: strike x shares for a put, share value at each handoff otherwise (every handoff counts as a deployment)">Capital</th>
-                  <th className="text-end">Return</th>
+                  <th className="text-end" title="Premium collected, net of commissions — the old view">Premium</th>
+                  <th className="text-end" title="Assignment charge (puts) or stock P&L while the strategy held the shares">Stock</th>
+                  <th className="text-end">Total</th>
                 </tr>
               </thead>
               <tbody>
@@ -57,30 +52,24 @@ export function CycleScoreboard() {
                       <td className="text-end font-mono">{row.premium === 0 ? "—" : formatSignedPnl(row.premium)}</td>
                       <td className={`text-end font-mono ${pnlTextClass(row.stock)}`}>{row.stock === 0 ? "—" : formatSignedPnl(row.stock)}</td>
                       <td className={`text-end font-mono fw-bold ${pnlTextClass(row.total)}`}>{formatSignedPnl(row.total)}</td>
-                      <td className="text-end font-mono">{row.capital === 0 ? "—" : formatCurrency(row.capital, 0)}</td>
-                      <td className={`text-end font-mono ${pnlTextClass(row.returnOnCapital)}`}>
-                        {row.returnOnCapital === null ? "—" : `${row.returnOnCapital > 0 ? "+" : ""}${formatPercentageValue(row.returnOnCapital * 100, 1)}`}
-                      </td>
                     </tr>
                   );
                 })}
               </tbody>
               <tfoot className="table-totals-row">
                 <tr>
-                  <td>All cycles ({data.cyclesIncluded})</td>
+                  <td>Total</td>
                   <td className="text-end font-mono">{formatSignedPnl(data.buckets.csp.premium + data.buckets.cc.premium)}</td>
                   <td className={`text-end font-mono ${pnlTextClass(data.buckets.csp.stock + data.buckets.unstructured.stock + data.buckets.cc.stock)}`}>
                     {formatSignedPnl(data.buckets.csp.stock + data.buckets.unstructured.stock + data.buckets.cc.stock)}
                   </td>
                   <td className={`text-end font-mono ${pnlTextClass(data.total)}`}>{formatSignedPnl(data.total)}</td>
-                  <td />
-                  <td />
                 </tr>
               </tfoot>
             </table>
           </div>
           {data.cyclesExcluded.length > 0 && (
-            <div className="text-muted mt-2" style={{ fontSize: "0.8rem" }}>
+            <div className="text-muted" style={{ fontSize: "0.8rem", marginTop: "calc(var(--tblr-card-spacer-y) + 0.5rem)" }}>
               {data.cyclesExcluded.length} cycle(s) left out because their fills are incomplete: {data.cyclesExcluded.map((item) => `${item.symbol} (${item.reason})`).join("; ")}.
             </div>
           )}
