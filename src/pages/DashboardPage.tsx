@@ -605,13 +605,13 @@ export function DashboardPage() {
           <div className="text-muted">No recent activity.</div>
         ) : (
           <div className="table-responsive table-flush" style={{ maxHeight: "26rem", overflowY: "auto" }}>
-            <table className="table table-sm table-vcenter card-table mb-0" style={{ tableLayout: "fixed" }}>
+            <table className="table table-sm table-vcenter card-table mb-0" style={{ tableLayout: "fixed", minWidth: "62rem" }}>
               <colgroup>
                 <col style={{ width: "5.5rem" }} />
                 <col style={{ width: "6rem" }} />
                 <col style={{ width: "4.5rem" }} />
-                <col style={{ width: "17rem" }} />
-                <col style={{ width: "18rem" }} />
+                <col style={{ width: "11rem" }} />
+                <col style={{ width: "40%" }} />
                 <col style={{ width: "6rem" }} />
                 <col style={{ width: "5.5rem" }} />
               </colgroup>
