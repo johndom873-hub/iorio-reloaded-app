@@ -378,6 +378,55 @@
   overflow: hidden;
   flex: 1;
 }
+/* Draggable divider between a rail's two panels (ResizableRail). The handle
+   sits in the existing gap (negative margins cancel its own height, so the
+   spacing is unchanged); the split applies at desktop width only. */
+.iorio-pulse-page .rail-divider {
+  position: relative;
+  flex: none;
+  height: 0.6rem;
+  margin-block: -0.6rem;
+  cursor: row-resize;
+  touch-action: none;
+  z-index: 1;
+}
+.iorio-pulse-page .rail-divider::after {
+  content: "";
+  position: absolute;
+  left: 30%;
+  right: 30%;
+  top: 50%;
+  height: 2px;
+  transform: translateY(-50%);
+  border-radius: 1px;
+  background: var(--border-strong);
+  opacity: 0;
+  transition: opacity 0.15s, background 0.15s, left 0.15s, right 0.15s;
+}
+.iorio-pulse-page .rail-divider:hover::after,
+.iorio-pulse-page .rail-divider:focus-visible::after {
+  opacity: 1;
+  left: 15%;
+  right: 15%;
+  background: var(--accent-glow);
+}
+.iorio-pulse-page .rail-divider:focus-visible {
+  outline: none;
+}
+@media (min-width: 601px) {
+  .iorio-pulse-page .rail > .panel:first-child {
+    flex: var(--rail-top-share, 50) 1 0;
+  }
+  .iorio-pulse-page .rail > .panel:last-child {
+    flex: var(--rail-bottom-share, 50) 1 0;
+  }
+}
+@media (max-width: 600px) {
+  .iorio-pulse-page .rail-divider {
+    display: none;
+  }
+}
+
 .iorio-pulse-page .panel-title {
   font-size: 0.65rem;
   font-weight: 700;

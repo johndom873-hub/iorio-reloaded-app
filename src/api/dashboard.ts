@@ -124,6 +124,8 @@ export interface AvailableCash {
   totalCashValue: number | null;
   cashLockedInCsps: number;
   availableCashToTrade: number | null;
+  // Live IBKR net liquidation value, from the same account-summary call.
+  netLiquidationValue: number | null;
 }
 
 // Live IBKR round trip (see the route's own comment) -- used by Order Review

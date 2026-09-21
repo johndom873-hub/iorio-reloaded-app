@@ -34,6 +34,7 @@ import { positionExpiryDate, strategyAbbrev as positionStrategyAbbrev, strategyT
 import { FlashingNumber } from "../components/FlashingNumber";
 import { AVAILABLE_CASH_PERCENT_BANDS, higherIsWorseStatus, lowerIsWorseStatus } from "../lib/statusThresholds";
 import { TopologyMap, type PulseEvent } from "../components/pulse/TopologyMap";
+import { ResizableRail } from "../components/pulse/ResizableRail";
 import { TotalPnlChart } from "../components/pulse/TotalPnlChart";
 import { ProfitProbabilityChart, type ProbabilitySeries } from "../components/pulse/ProfitProbabilityChart";
 
@@ -41,6 +42,7 @@ const CHART_SAMPLE_INTERVAL_MS = 60_000;
 // 4 hours of history at one sample/minute.
 const CHART_MAX_SAMPLES = 240;
 const HEALTH_POLL_INTERVAL_MS = 30_000;
+const ACCOUNT_POLL_INTERVAL_MS = 60_000;
 const TRADES_LIMIT = 30;
 const EVENTS_LIMIT = 30;
 // Reference line on the Profit Probability chart — below this a position is
@@ -352,7 +354,11 @@ export function PulsePage() {
   const [availableCash, setAvailableCash] = useState<AvailableCash | null>(null);
   const { exposure } = useExposureStream("Failed to load account exposure.");
 
-  const netLiquidationValue = accountValue?.netLiquidationValue ?? null;
+  // Live value from the polled account summary; the nightly snapshot only
+  // fills in until the first poll lands. Yesterday's P&L and the unrealised
+  // % base deliberately keep using the snapshot (accountValue).
+  const liveNetLiquidationValue = availableCash?.netLiquidationValue ?? null;
+  const netLiquidationValue = liveNetLiquidationValue ?? accountValue?.netLiquidationValue ?? null;
   const availableCashToTrade = availableCash?.availableCashToTrade ?? null;
   const availableCashPercent =
     netLiquidationValue !== null && netLiquidationValue > 0 && availableCashToTrade !== null
@@ -362,7 +368,24 @@ export function PulsePage() {
   useEffect(() => {
     fetchAccountValue().then(setAccountValue).catch(() => {});
     fetchDashboardSummary().then(setSummary).catch(() => {});
-    fetchAvailableCash().then(setAvailableCash).catch(() => {});
+  }, []);
+
+  // Refreshed every minute while the tab is visible, and immediately on
+  // refocus. A failed poll keeps the last good values on screen.
+  useEffect(() => {
+    const refreshAvailableCash = () => fetchAvailableCash().then(setAvailableCash).catch(() => {});
+    refreshAvailableCash();
+    const interval = window.setInterval(() => {
+      if (document.visibilityState === "visible") refreshAvailableCash();
+    }, ACCOUNT_POLL_INTERVAL_MS);
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") refreshAvailableCash();
+    };
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    return () => {
+      window.clearInterval(interval);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
   }, []);
 
   // Yesterday's P&L (KPI) and the Unrealised P&L chart are intentionally
@@ -373,17 +396,22 @@ export function PulsePage() {
 
   const strategyPct = useCallback(
     (key: string) => {
-      if (!exposure?.totalAccountValue) return 0;
+      // Denominator: the polled live value, else the stream's open-time one.
+      const denominator = liveNetLiquidationValue ?? exposure?.totalAccountValue;
+      if (!exposure || !denominator) return 0;
       const row = exposure.strategyAllocation.find((r) => r.strategyKey === key);
       const value = row ? Number(row.notionalValue) : 0;
-      return (value / exposure.totalAccountValue) * 100;
+      return (value / denominator) * 100;
     },
-    [exposure],
+    [exposure, liveNetLiquidationValue],
   );
   const ccPct = strategyPct("covered_call");
   const cspPct = strategyPct("cash_secured_put");
   const unstructuredPct = strategyPct("unstructured");
-  const cashPct = strategyPct("unallocated");
+  // Remainder rather than the server's "unallocated" row, which is computed
+  // against the account value at stream open and would drift from the live
+  // denominator used above.
+  const cashPct = Math.max(0, 100 - ccPct - cspPct - unstructuredPct);
 
   // --- Positions: same fetch + live SSE idiom as PositionsPage.tsx. ---
   const [positions, setPositions] = useState<Position[]>([]);
@@ -722,8 +750,8 @@ export function PulsePage() {
         <div className="kpi-tile">
           <span className="kpi-label">Account Value</span>
           <div className="kpi-value-row">
-            <FlashingNumber value={accountValue?.netLiquidationValue ?? null} className="kpi-value">
-              {formatSignedPnl(accountValue?.netLiquidationValue ?? null, 0).replace("+", "")}
+            <FlashingNumber value={netLiquidationValue} className="kpi-value">
+              {formatSignedPnl(netLiquidationValue, 0).replace("+", "")}
             </FlashingNumber>
           </div>
         </div>
@@ -786,7 +814,7 @@ export function PulsePage() {
       </div>
 
       <div className="main-grid">
-        <div className="rail">
+        <ResizableRail storageKey="pulse.leftRailTopPercent">
           <div className="panel">
             <div className="panel-title">
               Positions <span className="count">{positions.length}</span>
@@ -804,7 +832,7 @@ export function PulsePage() {
               const expiryDate = positionExpiryDate(position);
               const dte = expiryDate ? daysToExpiry(expiryDate, todayInEasternIso()) : null;
               const capitalAtRisk = position.capitalAtRisk !== null ? Number(position.capitalAtRisk) : null;
-              const expPct = capitalAtRisk !== null && accountValue?.netLiquidationValue ? (capitalAtRisk / accountValue.netLiquidationValue) * 100 : null;
+              const expPct = capitalAtRisk !== null && netLiquidationValue ? (capitalAtRisk / netLiquidationValue) * 100 : null;
               const pnl = unrealizedPnlByPositionId[position.id]?.unrealizedPnl ?? null;
               return (
                 <div className="pos-row" key={position.id}>
@@ -849,7 +877,7 @@ export function PulsePage() {
               </div>
             ))}
           </div>
-        </div>
+        </ResizableRail>
 
         <TopologyMap pulses={pulses} activeEdgeIds={activeEdgeIds}>
           <div className="market-chip grid-market">
@@ -1161,7 +1189,7 @@ export function PulsePage() {
           </div>
         </TopologyMap>
 
-        <div className="rail">
+        <ResizableRail storageKey="pulse.rightRailTopPercent">
           <div className="panel">
             <div className="panel-title">Trades</div>
             {trades.length === 0 && <div className="panel-empty">No recent trades.</div>}
@@ -1188,7 +1216,7 @@ export function PulsePage() {
               ))}
             </div>
           </div>
-        </div>
+        </ResizableRail>
       </div>
     </div>
   );
