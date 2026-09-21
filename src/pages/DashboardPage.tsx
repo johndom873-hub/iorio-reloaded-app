@@ -3,7 +3,7 @@ import { PageHeader } from "../components/layout/PageHeader";
 import { StrategyBadge } from "../components/StrategyBadge";
 import type { PositionStrategyKey } from "../api/positions";
 import { Spinner } from "../components/Spinner";
-import { ApexChart } from "../components/charts/ApexChart";
+import { ApexChart, textColorByTheme } from "../components/charts/ApexChart";
 import { CollapsibleCard } from "../components/CollapsibleCard";
 import { DottedLabelTooltip, HelpTooltip } from "../components/HelpTooltip";
 import { TickerDetailModal } from "../components/TickerDetailModal";
@@ -398,7 +398,20 @@ function EventRow({ event, onSymbolClick }: { event: PositionEvent; onSymbolClic
   );
 }
 
+// ApexCharts insets a y-axis annotation by half a column on each side on a datetime bar chart while the gridlines run
+// edge to edge, so stretch the $0 line to the full plot width after every render/resize.
+// ApexCharts' TypeScript types don't expose the internal `w.globals` used here, hence the cast.
+function extendZeroLineToFullPlotWidth(chartContext: unknown) {
+  const { globals } = (chartContext as { w: { globals: { barPadForNumericAxis?: number; gridWidth: number; dom: { baseEl: Element } } } }).w;
+  const zeroLine = globals.dom.baseEl.querySelector(".apexcharts-yaxis-annotations line");
+  if (!zeroLine) return;
+  const inset = globals.barPadForNumericAxis ?? 0;
+  zeroLine.setAttribute("x1", String(-inset));
+  zeroLine.setAttribute("x2", String(globals.gridWidth + inset));
+}
+
 export function DashboardPage() {
+  const { theme } = useTheme();
   const [summary, setSummary] = useState<DashboardSummary | null>(null);
   const [summaryLoading, setSummaryLoading] = useState(true);
   const [summaryError, setSummaryError] = useState<string | null>(null);
@@ -836,7 +849,9 @@ export function DashboardPage() {
             options={{
               // Stacked columns rather than stacked areas: ApexCharts stacks positives up and negatives down
               // for bars, but sums mixed-sign area series cumulatively, so the bands cross each other.
-              chart: { stacked: true },
+              chart: { stacked: true, events: { mounted: extendZeroLineToFullPlotWidth, updated: extendZeroLineToFullPlotWidth } },
+              // A solid line at $0 so it is obvious which side of zero each column sits on.
+              annotations: { yaxis: [{ y: 0, borderColor: textColorByTheme[theme], borderWidth: 1.5, strokeDashArray: 0 }] },
               plotOptions: { bar: { columnWidth: "70%" } },
               fill: { opacity: 1 }, // ApexCharts' bar default is 0.85, which lets the dark card show through and mutes the colours
               colors: [tablerColor("--tblr-blue"), tablerColor("--tblr-purple"), tablerColor("--tblr-orange"), tablerColor("--tblr-secondary")],

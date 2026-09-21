@@ -13,7 +13,7 @@ interface ApexChartProps {
 // (lightweight-charts) — kept in sync so every chart in the app reads the
 // same in dark mode. ApexCharts defaults to a fixed grey unaware of the
 // app's dark navy background, which made axis labels/legend illegible.
-const textColorByTheme = { light: "#1d273b", dark: "#f9fafb" } as const;
+export const textColorByTheme = { light: "#1d273b", dark: "#f9fafb" } as const;
 const gridColorByTheme = { light: "rgba(0,0,0,0.08)", dark: "rgba(255,255,255,0.12)" } as const;
 
 // Shared wrapper around react-apexcharts so every chart in the app gets
