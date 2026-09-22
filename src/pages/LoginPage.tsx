@@ -1,3 +1,4 @@
+import { PublicEnvironmentBadges } from "../components/layout/EnvironmentBadges";
 import { useState, type FormEvent } from "react";
 import { Navigate } from "react-router-dom";
 import { useAuth } from "../contexts/AuthContext";
@@ -40,6 +41,9 @@ export function LoginPage() {
             className="img-fluid"
             style={{ maxWidth: "20rem" }}
           />
+        </div>
+        <div className="mb-3">
+          <PublicEnvironmentBadges />
         </div>
         <div className="card card-md">
           <div className="card-body">

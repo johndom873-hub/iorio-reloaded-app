@@ -1,0 +1,168 @@
+/* Environment badges (PAPER / LIVE / STAGING / DEV / TRADING BLOCKED). Approved mockup, variant A
+   (2026-09-22). Named classes rather than inline hexes: none of Tabler's semantic colours produce
+   these shades (LIVE red is darkened from --tblr-danger so white text passes 4.5:1). LIVE is red and
+   appears only in production; blocked/offline is amber so the two can never be confused. */
+.env-badges {
+  position: relative;
+  display: flex;
+  align-items: center;
+  min-width: 0;
+}
+/* Desktop top bar: a gap after the logo. */
+.iorio-topbar .env-badges {
+  margin-left: 0.85rem;
+}
+/* Narrow desktop (992-1199px): three chips would run into the centred Pulse pill, so the blocked chip
+   shows only its warning icon here; the full wording stays in the button's accessible name and the popover. */
+@media (min-width: 992px) and (max-width: 1199.98px) {
+  .iorio-topbar .env-badge-blocked .env-badge-text {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+  }
+}
+.env-badges-trigger {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0;
+  margin: 0;
+  background: none;
+  border: 0;
+  cursor: pointer;
+}
+/* Touch target (>= 44px tall): the chips are ~22px, so an invisible pseudo-element extends the button's
+   hit area without changing the layout. */
+.env-badges-trigger {
+  position: relative;
+}
+.env-badges-trigger::after {
+  content: "";
+  position: absolute;
+  inset: -0.85rem -0.5rem;
+}
+.env-badges-trigger:focus-visible {
+  outline: 2px solid #0ea5e9;
+  outline-offset: 3px;
+  border-radius: 4px;
+}
+.env-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  padding: 0.2rem 0.55rem;
+  border-radius: 4px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  line-height: 1.2;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+.env-badge-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+}
+.env-badge-paper {
+  border: 1px solid #64748b;
+  color: #cbd5e1;
+}
+.env-badge-live {
+  background: #b91c1c;
+  color: #ffffff;
+}
+.env-badge-staging {
+  background: #ae3ec9;
+  color: #ffffff;
+}
+.env-badge-dev {
+  border: 1px solid #17a2b8;
+  color: #7dd3e0;
+}
+.env-badge-blocked {
+  background: #f59f00;
+  color: #111827;
+}
+.env-badge-unknown {
+  border: 1px dashed #94a3b8;
+  color: #94a3b8;
+}
+
+/* On the login page the badges sit on the themed page body, not on the navy bar. */
+.env-badges-on-page .env-badge-paper {
+  color: #475569;
+}
+.env-badges-on-page .env-badge-dev {
+  color: #0e7490;
+  border-color: #0e7490;
+}
+.env-badges-on-page .env-badge-unknown {
+  color: #64748b;
+  border-color: #64748b;
+}
+:root[data-bs-theme="dark"] .env-badges-on-page .env-badge-paper {
+  color: #cbd5e1;
+}
+:root[data-bs-theme="dark"] .env-badges-on-page .env-badge-dev {
+  color: #7dd3e0;
+  border-color: #17a2b8;
+}
+:root[data-bs-theme="dark"] .env-badges-on-page .env-badge-unknown {
+  color: #94a3b8;
+  border-color: #94a3b8;
+}
+
+/* Phones: the real logo is 181px wide, so the chips get their own slim row under the header. */
+.env-mobile-strip {
+  flex: 0 0 100%;
+  padding: 0 0 0.55rem;
+}
+
+.env-popover {
+  position: absolute;
+  top: calc(100% + 0.6rem);
+  left: 0;
+  z-index: 1040;
+  width: 21rem;
+  max-width: calc(100vw - 1.5rem);
+  padding: 0.85rem 1rem;
+  border: 1px solid var(--tblr-border-color);
+  border-radius: 6px;
+  background: var(--tblr-bg-surface, #ffffff);
+  color: var(--tblr-body-color);
+  box-shadow: 0 6px 18px rgba(15, 20, 29, 0.3);
+  text-align: left;
+}
+.env-popover-title {
+  font-size: 0.85rem;
+  font-weight: 700;
+  margin-bottom: 0.4rem;
+}
+.env-popover-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 1.5rem;
+  padding: 0.35rem 0;
+  border-bottom: 1px solid var(--tblr-border-color);
+  font-size: 0.8rem;
+}
+.env-popover-row span:first-child {
+  color: var(--tblr-secondary, #6b7280);
+}
+.env-popover-row span:last-child {
+  font-weight: 600;
+}
+.env-popover-reason {
+  margin-top: 0.6rem;
+  padding: 0.5rem 0.65rem;
+  border-radius: 4px;
+  background: #fef3c7;
+  color: #7c2d12;
+  font-size: 0.78rem;
+  line-height: 1.4;
+}

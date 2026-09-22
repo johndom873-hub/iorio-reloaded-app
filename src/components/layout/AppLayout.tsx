@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { NavLink, Outlet } from "react-router-dom";
+import { EnvironmentBadges } from "./EnvironmentBadges";
+import { useEnvironmentStatus } from "../../hooks/useEnvironmentStatus";
 import { Collapse } from "@tabler/core/dist/js/tabler.esm.min.js";
 import {
   IconCalendarEvent,
@@ -73,6 +75,7 @@ function BrandMark() {
 
 export function AppLayout() {
   const { logout } = useAuth();
+  const environmentStatus = useEnvironmentStatus();
   const { theme, toggleTheme } = useTheme();
   const navTitleRefs = useRef<(HTMLSpanElement | null)[]>([]);
   const [sidebarMode, setSidebarMode] = useState<SidebarMode>(readStoredSidebarMode);
@@ -143,6 +146,9 @@ export function AppLayout() {
               <IconLogout size={20} />
             </button>
           </div>
+          <div className="env-mobile-strip d-lg-none">
+            <EnvironmentBadges status={environmentStatus} />
+          </div>
           <div className="collapse navbar-collapse" id="sidebar-menu">
             <ul
               className="navbar-nav"
@@ -192,6 +198,7 @@ export function AppLayout() {
           <h1 className="navbar-brand mb-0">
             <BrandMark />
           </h1>
+          <EnvironmentBadges status={environmentStatus} />
           <a href="/pulse" target="_blank" rel="noopener noreferrer" className="iorio-pulse-nav-link">
             <span className="iorio-pulse-dot" aria-hidden="true" />
             IORIO Pulse
