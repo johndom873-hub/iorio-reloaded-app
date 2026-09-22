@@ -832,6 +832,7 @@ export function PulsePage() {
               <span style={{ textAlign: "right" }}>DTE</span>
               <span style={{ textAlign: "right" }}>Exp $</span>
               <span style={{ textAlign: "right" }}>Exp %</span>
+              <span style={{ textAlign: "right" }}>PP</span>
               <span style={{ textAlign: "right" }}>P&amp;L</span>
             </div>
             {positions.length === 0 && <div className="panel-empty">No open positions.</div>}
@@ -841,6 +842,8 @@ export function PulsePage() {
               const capitalAtRisk = position.capitalAtRisk !== null ? Number(position.capitalAtRisk) : null;
               const expPct = capitalAtRisk !== null && netLiquidationValue ? (capitalAtRisk / netLiquidationValue) * 100 : null;
               const pnl = unrealizedPnlByPositionId[position.id]?.unrealizedPnl ?? null;
+              const optionLeg = position.legs.find((leg) => leg.legType === "option");
+              const pop = optionLeg ? greeksByLegId[optionLeg.id]?.probabilityByD2 ?? null : null;
               return (
                 <div className="pos-row" key={position.id}>
                   <span className="pos-sym">{position.symbol}</span>
@@ -853,6 +856,9 @@ export function PulsePage() {
                   </FlashingNumber>
                   <FlashingNumber value={expPct} precision={1} className="pos-pct">
                     {expPct !== null ? `${expPct.toFixed(1)}%` : "—"}
+                  </FlashingNumber>
+                  <FlashingNumber value={pop} precision={0} className="pos-pct">
+                    {pop !== null ? Math.round(pop * 100).toString() : "—"}
                   </FlashingNumber>
                   <FlashingNumber value={pnl} className={`pos-pnl ${pnl !== null && pnl < 0 ? "neg" : "pos"}`}>
                     {formatSignedPnl(pnl, 0)}

@@ -186,6 +186,8 @@ export interface OpenOrderInput {
   option: { quantity: number; limitPrice: number; strikePrice: number; expiryDate: string };
   /** Links this order back to the Trade Alert it was created from, if any — see tradeAlerts.ts. */
   sourceAlertId?: string;
+  /** Signals modal only: the scores at the moment the order was built, stored with the order for Phase 2 (see signals.ts). */
+  signalSnapshot?: Record<string, unknown>;
 }
 
 export function buildOpenOrder(input: OpenOrderInput): Promise<OrderRequest> {

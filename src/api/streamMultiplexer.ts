@@ -12,7 +12,7 @@ import { ApiError, apiBaseUrl, apiRequest } from "./client";
 // new browser can briefly meet an old server) — see connect(). Both go away
 // once the legacy routes are deleted.
 
-export type MultiplexedStreamKind = "greeks" | "pnl" | "exposure" | "pricePerformancePrices" | "tradeAlertPrices" | "notifications" | "pulses";
+export type MultiplexedStreamKind = "greeks" | "pnl" | "exposure" | "pricePerformancePrices" | "tradeAlertPrices" | "signalsScreen" | "signalsTicker" | "notifications" | "pulses";
 
 type ServerFrame =
   | { type: "hello"; connectionId: string; protocolVersion: number }

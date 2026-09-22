@@ -10,23 +10,23 @@ const QUERY_PARAM = "ticker";
  * reopens it on the same symbol instead of losing it. `replace: true` keeps
  * opening/closing the modal from spamming browser history.
  */
-export function useTickerDetailSymbol(): [string | null, (symbol: string | null) => void] {
+export function useTickerDetailSymbol(queryParam: string = QUERY_PARAM): [string | null, (symbol: string | null) => void] {
   const [searchParams, setSearchParams] = useSearchParams();
-  const symbol = searchParams.get(QUERY_PARAM);
+  const symbol = searchParams.get(queryParam);
 
   const setSymbol = useCallback(
     (next: string | null) => {
       setSearchParams(
         (previous) => {
           const params = new URLSearchParams(previous);
-          if (next) params.set(QUERY_PARAM, next);
-          else params.delete(QUERY_PARAM);
+          if (next) params.set(queryParam, next);
+          else params.delete(queryParam);
           return params;
         },
         { replace: true },
       );
     },
-    [setSearchParams],
+    [setSearchParams, queryParam],
   );
 
   return [symbol, setSymbol];

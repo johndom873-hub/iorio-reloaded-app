@@ -2,12 +2,13 @@ import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { IconStar } from "@tabler/icons-react";
 import { Spinner } from "./Spinner";
 import { CollapsibleCard } from "./CollapsibleCard";
-import { CycleCard } from "./CycleCard";
 import { OrderReviewPanel } from "./OrderReviewPanel";
 import { TickerPriceChart } from "./charts/TickerPriceChart";
 import { IvHistoryChart } from "./charts/IvHistoryChart";
-import { PositionCard } from "./PositionCard";
 import { RollOrderSetupForm, type RollAlertLike } from "./RollOrderSetupForm";
+import { TickerHeaderStrip } from "./TickerHeaderStrip";
+import { TickerPositionsCards } from "./TickerPositionsCards";
+import { useTickerPositions } from "../hooks/useTickerPositions";
 import {
   openTickerDetailStream,
   type OptionQuote,
@@ -18,24 +19,14 @@ import {
 import { fetchTradeAlerts, isRollAlert, refreshTickerAlerts, type NewTradeCandidate, type RollStructure, type TradeAlert } from "../api/tradeAlerts";
 import {
   buildOpenOrder,
-  fetchPositionsBySymbol,
-  openGreeksStream,
-  openUnrealizedPnlStream,
-  type Greeks,
   type OrderRequest,
-  type Position,
-  type UnrealizedPnlResult,
 } from "../api/positions";
 import { ApiError } from "../api/client";
-import { fetchAccountValue } from "../api/dashboard";
-import { addToShortlist } from "../api/shortlist";
-import { openNotificationStream } from "../api/notifications";
 import { fetchNextTickerCalendarEvents, type NextTickerCalendarEvents } from "../api/calendarEvents";
 import type { StrategyKey } from "../api/strategy";
 import { StrategyBadge } from "./StrategyBadge";
 import { computeAnnualizedYield, computePayoff, type PayoffLegInput } from "../lib/payoff";
 import {
-  formatCompactNumber,
   formatCurrency,
   formatCurrencyTrimmed,
   formatDate,
@@ -412,15 +403,9 @@ function OptionSideCells({
 }
 
 export function TickerDetailModal({ symbol, onClose, initialAlertId, focusPositionId }: TickerDetailModalProps) {
-  const [positions, setPositions] = useState<Position[] | null>(null);
-  const [positionsError, setPositionsError] = useState<string | null>(null);
-  const [greeksByLegId, setGreeksByLegId] = useState<Record<string, Greeks>>({});
-  const [greeksFetchFailed, setGreeksFetchFailed] = useState(false);
-  const [unrealizedPnlByPositionId, setUnrealizedPnlByPositionId] = useState<Record<string, UnrealizedPnlResult>>({});
-  const [unrealizedPnlFetchFailed, setUnrealizedPnlFetchFailed] = useState(false);
-  // Last-known (not live) total account value, same source/reasoning as
-  // PositionsPage's EXP% column — see fetchAccountValue's own comment.
-  const [totalAccountValue, setTotalAccountValue] = useState<number | null>(null);
+  // Positions + live Greeks / P&L + account value: shared with the Signals modal (useTickerPositions).
+  const tickerPositions = useTickerPositions(symbol);
+  const { positions, loadPositions } = tickerPositions;
   const focusedPositionRef = useRef<HTMLDivElement | null>(null);
   const hasScrolledToFocus = useRef(false);
   // Bumped to force the Positions/Option Chain cards open when something
@@ -434,8 +419,6 @@ export function TickerDetailModal({ symbol, onClose, initialAlertId, focusPositi
   // The header price — same source as the Positions table (frozen last, then live last trades). Never a previous close.
   const [spotLast, setSpotLast] = useState<number | null>(null);
   const [overviewError, setOverviewError] = useState<string | null>(null);
-  const [isAddingToShortlist, setIsAddingToShortlist] = useState(false);
-  const [addToShortlistError, setAddToShortlistError] = useState<string | null>(null);
 
   // Fetched separately from the SSE overview -- this hits ticker_calendar_events
   // (nightly-captured for shortlisted/position tickers, fetched on-demand
@@ -520,15 +503,6 @@ export function TickerDetailModal({ symbol, onClose, initialAlertId, focusPositi
   // "position_opened" once that pass actually creates the row — refetch then
   // rather than guessing at a delay.
   useEffect(() => {
-    return openNotificationStream((notification) => {
-      if (notification.type === "position_opened" && notification.symbol === symbol) {
-        loadPositions();
-      }
-    });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [symbol]);
-
-  useEffect(() => {
     const pollIntervalMs = 60_000;
     const interval = setInterval(async () => {
       let updated: TradeAlert[];
@@ -589,10 +563,8 @@ export function TickerDetailModal({ symbol, onClose, initialAlertId, focusPositi
       appliedInitialAlert.current = false;
       appliedDefaultExpiry.current = false;
 
-      setPositions(null);
-      setPositionsError(null);
       hasScrolledToFocus.current = false;
-      loadPositions();
+      void loadPositions();
 
       fetchTradeAlerts({ status: "pending", symbol })
         .then(setAlerts)
@@ -806,16 +778,6 @@ export function TickerDetailModal({ symbol, onClose, initialAlertId, focusPositi
   // across ALL open positions rather than per-card, since both endpoints
   // already accept arrays (see PositionCard's old standalone-modal ancestor,
   // PositionDetailModal, which fetched per-position before this merge).
-  async function loadPositions() {
-    try {
-      setPositionsError(null);
-      const result = await fetchPositionsBySymbol(symbol);
-      setPositions(result);
-    } catch (err) {
-      setPositionsError(err instanceof ApiError ? err.message : "Failed to load positions.");
-    }
-  }
-
   // Shares of this symbol sitting in an open unstructured (bare stock)
   // position — the same pool the backend's fetchAvailableUncoveredShares
   // nets a new covered call's stock leg against (routes/positions.ts POST
@@ -838,61 +800,6 @@ export function TickerDetailModal({ symbol, onClose, initialAlertId, focusPositi
   // (approved 2026-09-11). Re-opens whenever the position list changes
   // (Close/Roll/a new fill), same as PositionsPage's [positions]-keyed
   // effects; the returned cleanup closes the previous stream first.
-  useEffect(() => {
-    const optionLegIds = (positions ?? [])
-      .filter((position) => position.status === "open")
-      .flatMap((position) => position.legs.filter((leg) => leg.legType === "option").map((leg) => leg.id));
-    if (optionLegIds.length === 0) {
-      setGreeksByLegId({});
-      return;
-    }
-    setGreeksFetchFailed(false);
-    return openGreeksStream(
-      optionLegIds,
-      (result) => {
-        setGreeksFetchFailed(false);
-        setGreeksByLegId(result);
-      },
-      () => setGreeksFetchFailed(true),
-    );
-  }, [positions]);
-
-  useEffect(() => {
-    const openPositionIds = (positions ?? []).filter((position) => position.status === "open").map((position) => position.id);
-    if (openPositionIds.length === 0) {
-      setUnrealizedPnlByPositionId({});
-      return;
-    }
-    setUnrealizedPnlFetchFailed(false);
-    return openUnrealizedPnlStream(
-      openPositionIds,
-      (result) => {
-        setUnrealizedPnlFetchFailed(false);
-        setUnrealizedPnlByPositionId(result);
-      },
-      () => setUnrealizedPnlFetchFailed(true),
-    );
-  }, [positions]);
-
-  useEffect(() => {
-    fetchAccountValue()
-      .then((result) => setTotalAccountValue(result.netLiquidationValue))
-      .catch(() => setTotalAccountValue(null));
-  }, []);
-
-  async function handleAddToShortlist() {
-    setIsAddingToShortlist(true);
-    setAddToShortlistError(null);
-    try {
-      await addToShortlist(symbol);
-      setOverview((prev) => (prev ? { ...prev, isShortlisted: true } : prev));
-    } catch (err) {
-      setAddToShortlistError(err instanceof ApiError ? err.message : "Failed to add ticker to shortlist.");
-    } finally {
-      setIsAddingToShortlist(false);
-    }
-  }
-
   async function handleScanOrRefresh() {
     setScanning(true);
     setScanError(null);
@@ -971,15 +878,6 @@ export function TickerDetailModal({ symbol, onClose, initialAlertId, focusPositi
   // Same price the Positions table shows (approved 2026-09-19). The pricing stream's own last is only a live-tick
   // fallback; its previous close is NOT a price — outside market hours it is a whole session old (AAOI 98.06 vs 104.90).
   const spotPrice = spotLast ?? pricing?.last ?? null;
-  const change = spotPrice != null && pricing?.previousClose != null ? spotPrice - pricing.previousClose : null;
-  const changePercent = change != null && pricing?.previousClose ? change / pricing.previousClose : null;
-
-  // Pricing keeps ticking for as long as this modal stays open (see
-  // streamTickerDetail.ts) -- same flash convention as the option chain.
-  const spotPriceFlash = useFlashOnChange(spotPrice);
-  const lowFlash = useFlashOnChange(pricing?.low ?? null);
-  const highFlash = useFlashOnChange(pricing?.high ?? null);
-  const volumeFlash = useFlashOnChange(pricing?.volume ?? null);
 
   const activeGroup = expiryGroups.find((g) => g.expiry === activeExpiry) ?? null;
   const spotPriceMarkerIndex = activeGroup ? findSpotPriceMarkerIndex(activeGroup.strikes, spotPrice) : null;
@@ -1249,109 +1147,44 @@ export function TickerDetailModal({ symbol, onClose, initialAlertId, focusPositi
                     </div>
                   )}
                   {overview && (
-                    <Fragment>
-                    <div className="d-flex flex-wrap align-items-baseline gap-3 mb-3 font-mono">
-                      <span className={`h2 mb-0 ${flashClassName(spotPriceFlash)}`}>{formatCurrency(spotPrice)}</span>
-                      {change != null && (
-                        <strong className={change > 0 ? "text-success" : change < 0 ? "text-danger" : "text-secondary"}>
-                          {change >= 0 ? "+" : ""}
-                          {formatCurrency(change)} ({change >= 0 ? "+" : ""}
-                          {formatPercentage(changePercent, 2)})
-                        </strong>
-                      )}
-                      <span className="text-secondary small">
-                        <strong>Day range</strong> $<span className={flashClassName(lowFlash)}>{formatNumber(pricing?.low ?? null, 2)}</span>-
-                        <span className={flashClassName(highFlash)}>{formatNumber(pricing?.high ?? null, 2)}</span>
-                      </span>
-                      <span className="text-secondary small">
-                        <strong>Volume</strong> <span className={flashClassName(volumeFlash)}>{formatCompactNumber(pricing?.volume ?? null)}</span>
-                      </span>
-                      <span className="text-secondary small">
-                        <strong>Ex-Div</strong> {formatDate(nextCalendarEvents?.nextExDividendDate ?? null)}
-                      </span>
-                      <span className="text-secondary small">
-                        <strong>Earnings</strong> {formatDate(nextCalendarEvents?.nextEarningsDate ?? null)}
-                      </span>
-                      {overview.sector && <span className="badge bg-secondary-lt">{overview.sector}</span>}
-                      {!overview.isShortlisted && (
-                        <button
-                          type="button"
-                          className="btn btn-outline-primary d-inline-flex align-items-center gap-1"
-                          disabled={isAddingToShortlist}
-                          onClick={handleAddToShortlist}
-                        >
-                          {isAddingToShortlist && <Spinner size="sm" />}
-                          Add to Shortlist
-                        </button>
-                      )}
-                    </div>
-                    {addToShortlistError && <div className="alert alert-danger">{addToShortlistError}</div>}
-                    </Fragment>
+                    <TickerHeaderStrip
+                      symbol={symbol}
+                      overview={overview}
+                      spotPrice={spotPrice}
+                      nextCalendarEvents={nextCalendarEvents}
+                      onShortlisted={() => setOverview((prev) => (prev ? { ...prev, isShortlisted: true } : prev))}
+                    />
                   )}
 
-                  {/* ---------- Positions (consolidated 2026-08-31 modal-wiring-audit merge) ---------- */}
-                  {positionsError && <div className="alert alert-danger">{positionsError}</div>}
-                  {positions === null && !positionsError && (
-                    <div className="d-flex justify-content-center py-2">
-                      <Spinner size="sm" label="Loading positions" />
-                    </div>
-                  )}
-                  {positions !== null && (() => {
-                    const openPositions = positions.filter((p) => p.status === "open");
-                    const closedPositions = positions.filter((p) => p.status === "closed");
-                    if (openPositions.length === 0 && closedPositions.length === 0) return null;
-                    return (
-                      <div className="mb-4 d-flex flex-column gap-3">
-                        {openPositions.length > 0 && (
-                          <CollapsibleCard
-                            title={openPositions.length === 1 ? "Position" : `Positions (${openPositions.length})`}
-                            storageKey="ticker-detail-positions"
-                            forceOpenSignal={positionsForceOpenSignal}
-                          >
-                            {openPositions.map((position, index) => (
-                              <div
-                                key={position.id}
-                                ref={position.id === focusPositionId ? focusedPositionRef : undefined}
-                                className={index < openPositions.length - 1 ? "border-bottom pb-4 mb-4" : undefined}
-                              >
-                                <PositionCard
-                                  position={position}
-                                  greeksByLegId={greeksByLegId}
-                                  greeksFetchFailed={greeksFetchFailed}
-                                  unrealizedPnlByPositionId={unrealizedPnlByPositionId}
-                                  unrealizedPnlFetchFailed={unrealizedPnlFetchFailed}
-                                  totalAccountValue={totalAccountValue}
-                                  currentPrice={spotPrice}
-                                  rollAlert={rollAlertsByPositionId[position.id]}
-                                  onChanged={loadPositions}
-                                  onRollSelect={selectRoll}
-                                  onSellCall={(prefill) => {
-                                    closeRollPanel();
-                                    if (prefill) {
-                                      const expiryYyyymmdd = prefill.expiry.replaceAll("-", "");
-                                      if (expiryGroups.some((g) => g.expiry === expiryYyyymmdd)) setActiveExpiry(expiryYyyymmdd);
-                                      setSelection({
-                                        strategyKey: "covered_call",
-                                        strike: prefill.strike,
-                                        expiryYyyymmdd,
-                                        fallbackPremium: prefill.premium,
-                                      });
-                                      setContractQty(String(prefill.quantity));
-                                      setPendingOrder(null);
-                                      setBuildError(null);
-                                    }
-                                    setChainForceOpenSignal((n) => n + 1);
-                                    chainRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
-                                  }}
-                                />
-                              </div>
-                            ))}
-                          </CollapsibleCard>
-                        )}
-                        <CycleCard symbol={symbol} />
-                      </div>
-                    );
-                  })()}
+                  {/* ---------- Positions (consolidated 2026-08-31 modal-wiring-audit merge; shared component since 2026-09-22) ---------- */}
+                  <TickerPositionsCards
+                    symbol={symbol}
+                    data={tickerPositions}
+                    currentPrice={spotPrice}
+                    rollAlertsByPositionId={rollAlertsByPositionId}
+                    focusPositionId={focusPositionId}
+                    focusedPositionRef={focusedPositionRef}
+                    forceOpenSignal={positionsForceOpenSignal}
+                    onRollSelect={selectRoll}
+                    onSellCall={(prefill) => {
+                      closeRollPanel();
+                      if (prefill) {
+                        const expiryYyyymmdd = prefill.expiry.replaceAll("-", "");
+                        if (expiryGroups.some((g) => g.expiry === expiryYyyymmdd)) setActiveExpiry(expiryYyyymmdd);
+                        setSelection({
+                          strategyKey: "covered_call",
+                          strike: prefill.strike,
+                          expiryYyyymmdd,
+                          fallbackPremium: prefill.premium,
+                        });
+                        setContractQty(String(prefill.quantity));
+                        setPendingOrder(null);
+                        setBuildError(null);
+                      }
+                      setChainForceOpenSignal((n) => n + 1);
+                      chainRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+                    }}
+                  />
 
                   {/* Trade Alerts + Option Chain share this row's left column;
                       the order panel (when open) spans the FULL height of both,

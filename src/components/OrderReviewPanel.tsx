@@ -24,6 +24,8 @@ import { flashClassName, useFlashOnChange } from "../hooks/useFlashOnChange";
 
 interface OrderReviewPanelProps {
   order: OrderRequest;
+  /** Starting value of the fill-priority select (the Signals setup form lets the user pick it before review). */
+  initialAdaptivePriority?: AdaptivePriority;
   onCancelled: () => void;
   /** Fires once the order reaches a terminal, successful state (filled/partially_filled). */
   onFilled: () => void;
@@ -82,7 +84,7 @@ function statusLabel(status: OrderRequest["status"]): string {
  * form only ever builds an OrderRequest (this component's `order` prop) —
  * nothing is sent to IBKR until the user clicks Confirm here.
  */
-export function OrderReviewPanel({ order: initialOrder, onCancelled, onFilled, liveSpotPrice }: OrderReviewPanelProps) {
+export function OrderReviewPanel({ order: initialOrder, initialAdaptivePriority, onCancelled, onFilled, liveSpotPrice }: OrderReviewPanelProps) {
   const { jobs, startOrderJob } = useBackgroundJobs();
   // Once confirmed or cancel-requested, status polling is owned by
   // BackgroundJobsContext (startOrderJob below) rather than a local
@@ -100,7 +102,7 @@ export function OrderReviewPanel({ order: initialOrder, onCancelled, onFilled, l
   // type -- open/close/roll all render this same panel. Only meaningful
   // while pending (sent along with Confirm); a resumed/reloaded order
   // that's already past pending_confirmation shows its actual stored value.
-  const [adaptivePriority, setAdaptivePriority] = useState<AdaptivePriority>("Normal");
+  const [adaptivePriority, setAdaptivePriority] = useState<AdaptivePriority>(initialAdaptivePriority ?? "Normal");
   const [cancelling, setCancelling] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [quote, setQuote] = useState<OrderLegQuote | null>(null);

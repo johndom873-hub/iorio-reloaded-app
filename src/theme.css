@@ -804,3 +804,74 @@
   font-size: 0.8rem;
   line-height: 1.4;
 }
+
+/* ---- New-ticker preparation modal + "Preparing" badge (approved mockup,
+   2026-09-21). Tokens are local to .ticker-prep / .ticker-prep-badge because
+   the mockup's step-state colours, progress track and tinted notes have no
+   Tabler variable that matches in both themes. ---- */
+.ticker-prep,
+.ticker-prep-badge {
+  --prep-primary: #0369a1;
+  --prep-success: #2fb344;
+  --prep-success-lt: #e6f6e9;
+  --prep-danger: #d63939;
+  --prep-warning: #b45309;
+  --prep-warning-lt: #fdf1e2;
+  --prep-skip: #8a94a3;
+  --prep-track: #e3e7eb;
+  --prep-note-bg: #eef5fa;
+  --prep-muted: #667382;
+}
+:root[data-bs-theme="dark"] .ticker-prep,
+:root[data-bs-theme="dark"] .ticker-prep-badge {
+  --prep-primary: #0ea5e9;
+  --prep-success: #4cc866;
+  --prep-success-lt: #1f3b33;
+  --prep-danger: #ef6b6b;
+  --prep-warning: #f0a54a;
+  --prep-warning-lt: #5c4a1e;
+  --prep-skip: #8fa0b4;
+  --prep-track: #3a4a60;
+  --prep-note-bg: #243a50;
+  --prep-muted: #aab6c5;
+}
+.ticker-prep-dialog { max-width: 27rem; }
+.ticker-prep .prep-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 0.75rem; padding: 1rem 1.1rem 0.5rem; }
+.ticker-prep .prep-title { font-size: 1.05rem; font-weight: 650; margin: 0; }
+.ticker-prep .prep-company { color: var(--prep-muted); font-size: 0.8rem; }
+/* Padding + matching negative margins give a 44px tap target without moving the glyph. */
+.ticker-prep .prep-x { background: none; border: 0; color: var(--prep-muted); font-size: 1.25rem; line-height: 1; cursor: pointer; padding: 0.75rem 1rem; margin: -0.65rem -0.7rem -0.65rem 0; }
+.ticker-prep .prep-body { padding: 0.25rem 1.1rem 1rem; }
+.ticker-prep .prep-progress-top { display: flex; justify-content: space-between; font-size: 0.8rem; margin: 0.25rem 0 0.35rem; }
+.ticker-prep .prep-pct { font-weight: 650; font-variant-numeric: tabular-nums; }
+.ticker-prep .prep-track { height: 0.5rem; border-radius: 999px; background: var(--prep-track); overflow: hidden; }
+.ticker-prep .prep-fill { height: 100%; background: var(--prep-primary); border-radius: 999px; transition: width 0.4s ease; }
+.ticker-prep .prep-fill.is-complete { background: var(--prep-success); }
+.ticker-prep .prep-fill.is-partial { background: var(--prep-warning); }
+.ticker-prep .prep-steps { list-style: none; margin: 1rem 0 0; padding: 0; display: flex; flex-direction: column; gap: 0.7rem; }
+.ticker-prep .prep-step { display: grid; grid-template-columns: 1.5rem 1fr; column-gap: 0.65rem; }
+.ticker-prep .prep-step-label { font-weight: 550; font-size: 0.86rem; }
+.ticker-prep .prep-step-message { color: var(--prep-muted); font-size: 0.78rem; margin-top: 0.1rem; overflow-wrap: anywhere; }
+.ticker-prep .prep-step.is-pending .prep-step-label { color: var(--prep-muted); font-weight: 450; }
+.ticker-prep .prep-step.is-failed .prep-step-message { color: var(--prep-danger); }
+.ticker-prep .prep-icon { width: 1.35rem; height: 1.35rem; display: grid; place-items: center; margin-top: 0.05rem; }
+.ticker-prep .prep-icon svg { width: 1.35rem; height: 1.35rem; display: block; }
+.ticker-prep .prep-spin { animation: prep-spin 0.8s linear infinite; transform-origin: 50% 50%; }
+@keyframes prep-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .ticker-prep .prep-spin, .ticker-prep-badge .prep-ring { animation-duration: 2.4s; } }
+.ticker-prep .prep-note { margin-top: 1rem; padding: 0.55rem 0.7rem; border-radius: 0.375rem; background: var(--prep-note-bg); font-size: 0.78rem; }
+.ticker-prep .prep-note p { margin: 0; }
+.ticker-prep .prep-note p + p { margin-top: 0.25rem; }
+.ticker-prep .prep-note.is-ok { background: var(--prep-success-lt); }
+.ticker-prep .prep-note.is-warn { background: var(--prep-warning-lt); }
+.ticker-prep .prep-foot { display: flex; justify-content: flex-end; gap: 0.5rem; padding: 0.75rem 1.1rem; border-top: 1px solid var(--tblr-border-color); }
+
+.badge.ticker-prep-badge { position: relative; display: inline-flex; align-items: center; gap: 0.35rem; font-weight: 600; padding: 0.2rem 0.5rem; border-radius: 0.25rem; background: var(--prep-note-bg); color: var(--prep-primary); border: 1px solid transparent; cursor: pointer; }
+.ticker-prep-badge .prep-ring { width: 0.7rem; height: 0.7rem; border: 2px solid currentColor; border-right-color: transparent; border-radius: 50%; animation: prep-spin 0.8s linear infinite; }
+/* 44px tap area for the badge without changing its look. */
+.ticker-prep-badge::after { content: ""; position: absolute; inset: -0.85rem -0.3rem; }
+
+/* "Backfill history" variant of the badge (ticker has under 5 years of history): amber like the
+   preparation modal's warning note; disabled while another ticker is preparing (one at a time). */
+.badge.ticker-prep-badge.is-history-missing { background: var(--prep-warning-lt); color: var(--prep-warning); }
+.badge.ticker-prep-badge.is-history-missing:disabled { opacity: 0.5; cursor: not-allowed; }

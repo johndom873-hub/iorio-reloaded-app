@@ -314,8 +314,9 @@
   animation: pulse-flash 1200ms ease-out;
 }
 @keyframes pulse-flash {
-  0% {
-    text-shadow: 0 0 8px currentColor;
+  0%,
+  35% {
+    text-shadow: 0 0 12px currentColor, 0 0 4px currentColor;
   }
   100% {
     text-shadow: none;
@@ -488,7 +489,7 @@
 .iorio-pulse-page .pos-head,
 .iorio-pulse-page .pos-row {
   display: grid;
-  grid-template-columns: 2.3rem 2.2rem 1.5rem 3rem 2.2rem 1fr;
+  grid-template-columns: 2.3rem 2.0rem 1.1rem 3rem 2.2rem 1.2rem 1fr;
   column-gap: 0.3rem;
   align-items: center;
 }

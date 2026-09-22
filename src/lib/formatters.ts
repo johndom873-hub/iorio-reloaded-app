@@ -333,6 +333,24 @@ export function formatSignedPnl(amountInDollars: number | null | undefined, deci
   return formatted;
 }
 
+// An option quote (bid/ask/mid) as it appears in a chain: always two decimals, no currency symbol.
+export function formatQuotePrice(priceOrNull: number | null | undefined): string {
+  if (priceOrNull === null || priceOrNull === undefined || Number.isNaN(priceOrNull)) return "—";
+  return priceOrNull.toFixed(2);
+}
+
+// Volatility points ("vp"): a difference between two annualized volatilities
+// given as fractions (0.061 -> "+6.1 vp"), the Signals screen's net Edge unit.
+export function formatVolatilityPoints(fractionOrNull: number | null | undefined, decimalPlaces = 1): string {
+  if (fractionOrNull === null || fractionOrNull === undefined) return "—";
+  if (Number.isNaN(fractionOrNull)) return "—";
+  const points = fractionOrNull * 100;
+  const formatted = `${Math.abs(points).toFixed(decimalPlaces)} vp`;
+  if (points > 0) return `+${formatted}`;
+  if (points < 0) return `-${formatted}`;
+  return formatted;
+}
+
 // Signed version of formatPercentageValue (0-100 scale, not a 0-1
 // fraction) — e.g. a Day P&L % next to its $ figure.
 export function formatSignedPercentageValue(percentOrNull: number | null | undefined, decimalPlaces = 2): string {

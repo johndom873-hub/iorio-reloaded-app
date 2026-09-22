@@ -2,19 +2,23 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { DataTable, type DataTableColumn } from "../DataTable/DataTable";
 import { Spinner } from "../Spinner";
 import { ConfirmModal } from "../ConfirmModal";
+import { TickerPrepModal } from "./TickerPrepModal";
 import { ApiError } from "../../api/client";
 import {
   addToShortlist,
   fetchShortlist,
   removeFromShortlist,
+  retryTickerBackfill,
   searchTickers,
   updateShortlistNotes,
   type ShortlistRow,
+  type TickerBackfillRun,
   type TickerSearchResult,
 } from "../../api/shortlist";
 import { formatDate, formatNumber, formatPercentage, formatPercentageValue } from "../../lib/formatters";
 
 const searchDebounceMs = 400;
+const preparingRefreshMs = 4_000;
 
 interface NotesCellProps {
   row: ShortlistRow;
@@ -103,6 +107,8 @@ export function ShortlistTab({ onOpenTickerDetail }: ShortlistTabProps) {
   const [showDropdown, setShowDropdown] = useState(false);
   const [removeConfirmRow, setRemoveConfirmRow] = useState<ShortlistRow | null>(null);
   const searchDebounceRef = useRef<number | null>(null);
+  const [startingBackfillTickerId, setStartingBackfillTickerId] = useState<string | null>(null);
+  const [prepTicker, setPrepTicker] = useState<{ tickerId: string; symbol: string; companyName: string | null } | null>(null);
 
   const loadRows = useCallback(async () => {
     try {
@@ -148,12 +154,47 @@ export function ShortlistTab({ onOpenTickerDetail }: ShortlistTabProps) {
     };
   }, [newSymbol]);
 
+  // While any ticker is still preparing, refresh the list every few seconds so
+  // its badge percentage advances and clears when the run finishes, even with
+  // the modal closed.
+  const anyTickerPreparing = rows.some((row) => row.backfillStatus === "preparing");
+  useEffect(() => {
+    if (!anyTickerPreparing) return;
+    const timer = window.setInterval(loadRows, preparingRefreshMs);
+    return () => window.clearInterval(timer);
+  }, [anyTickerPreparing, loadRows]);
+
+  const handlePrepRunChange = useCallback(
+    (run: TickerBackfillRun | null) => {
+      if (run && run.status !== "running") void loadRows();
+    },
+    [loadRows],
+  );
+
+  // Starts the full preparation pipeline (5 years of history, calendar, strikes, snapshot) for a
+  // ticker that is missing history. One ticker at a time: the buttons are disabled while any
+  // ticker is preparing, so history requests to IBKR are paced by the user, not by a timer.
+  async function handleStartBackfill(row: ShortlistRow) {
+    setStartingBackfillTickerId(row.tickerId);
+    try {
+      setError(null);
+      await retryTickerBackfill(row.tickerId);
+      setPrepTicker({ tickerId: row.tickerId, symbol: row.symbol, companyName: row.companyName });
+      await loadRows();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : `Failed to start the backfill for ${row.symbol}.`);
+    } finally {
+      setStartingBackfillTickerId(null);
+    }
+  }
+
   async function handleAdd(symbol: string) {
     setShowDropdown(false);
     setPendingSymbol(symbol);
     try {
       setError(null);
-      await addToShortlist(symbol);
+      const added = await addToShortlist(symbol);
+      setPrepTicker({ tickerId: added.tickerId, symbol: added.symbol, companyName: added.companyName });
       await loadRows();
       setNewSymbol("");
       setSearchResults([]);
@@ -248,6 +289,39 @@ export function ShortlistTab({ onOpenTickerDetail }: ShortlistTabProps) {
       render: (row) => formatNumber(row.avgOptionVolume),
     },
     { key: "snapshotDate", header: "Refreshed", headerTitle: "Last Refreshed", render: (row) => formatDate(row.snapshotDate) },
+    {
+      key: "backfillStatus",
+      header: "Status",
+      render: (row) =>
+        row.backfillStatus === "preparing" ? (
+          <button
+            type="button"
+            className="badge ticker-prep-badge"
+            title="Click to see progress"
+            onClick={() => setPrepTicker({ tickerId: row.tickerId, symbol: row.symbol, companyName: row.companyName })}
+          >
+            <span className="prep-ring" aria-hidden="true" />
+            Preparing {row.backfillProgressPercent ?? 0}%
+          </button>
+        ) : row.historyIncomplete ? (
+          <button
+            type="button"
+            className="badge ticker-prep-badge is-history-missing"
+            disabled={anyTickerPreparing || startingBackfillTickerId !== null}
+            title={
+              anyTickerPreparing || startingBackfillTickerId !== null
+                ? "Another ticker is being prepared. One at a time."
+                : `Only history from ${row.historyStartDate ?? "none"}. Click to load 5 years of prices and implied volatility, the calendar and option chain strikes.`
+            }
+            onClick={() => handleStartBackfill(row)}
+          >
+            {startingBackfillTickerId === row.tickerId ? <span className="prep-ring" aria-hidden="true" /> : null}
+            Backfill history
+          </button>
+        ) : (
+          <span className="text-muted">—</span>
+        ),
+    },
     { key: "notes", header: "Notes", render: (row) => <NotesCell row={row} onSave={handleUpdateNotes} /> },
     {
       key: "actions",
@@ -281,7 +355,10 @@ export function ShortlistTab({ onOpenTickerDetail }: ShortlistTabProps) {
               className="form-control"
               placeholder="Search by ticker or company name (e.g. AAPL, Apple)"
               value={newSymbol}
-              onChange={(event) => setNewSymbol(event.target.value)}
+              onChange={(event) => {
+                setNewSymbol(event.target.value);
+                setShowDropdown(true);
+              }}
               onFocus={() => setShowDropdown(true)}
               onBlur={() => window.setTimeout(() => setShowDropdown(false), 150)}
               onKeyDown={(event) => {
@@ -340,6 +417,16 @@ export function ShortlistTab({ onOpenTickerDetail }: ShortlistTabProps) {
         loading={loading}
         emptyMessage="No tickers being monitored yet."
       />
+
+      {prepTicker && (
+        <TickerPrepModal
+          tickerId={prepTicker.tickerId}
+          symbol={prepTicker.symbol}
+          companyName={prepTicker.companyName}
+          onRunChange={handlePrepRunChange}
+          onClose={() => setPrepTicker(null)}
+        />
+      )}
 
       {removeConfirmRow && (
         <ConfirmModal

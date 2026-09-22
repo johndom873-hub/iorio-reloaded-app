@@ -24,6 +24,16 @@ interface DataTableProps<TRow> {
   loading?: boolean;
   /** Optional totals row, keyed by column key; columns without an entry render an empty cell. Hidden while loading or when there are no rows. */
   footerCells?: Record<string, ReactNode>;
+  /** Rendered on the left of the column-gear row (title, status chips, filters). */
+  toolbar?: ReactNode;
+  /** Rendered between the gear row and the table (e.g. a collapsible notice). */
+  beforeTable?: ReactNode;
+  /** Rendered under the table, inside the card (e.g. a legend). */
+  afterTable?: ReactNode;
+  onRowClick?: (row: TRow) => void;
+  rowClassName?: (row: TRow) => string | undefined;
+  /** Smaller type (0.8rem) for dense, many-column tables. */
+  dense?: boolean;
 }
 
 export function DataTable<TRow>({
@@ -34,6 +44,12 @@ export function DataTable<TRow>({
   emptyMessage = "No data",
   loading = false,
   footerCells,
+  toolbar,
+  beforeTable,
+  afterTable,
+  onRowClick,
+  rowClassName,
+  dense = false,
 }: DataTableProps<TRow>) {
   const { isColumnVisible, toggleColumn } = useColumnVisibility(
     tableId,
@@ -43,7 +59,8 @@ export function DataTable<TRow>({
 
   return (
     <div className="card">
-      <div className="card-body d-flex justify-content-end py-2 border-bottom">
+      <div className={`card-body d-flex align-items-center py-2 border-bottom ${toolbar ? "justify-content-between gap-2 flex-wrap" : "justify-content-end"}`}>
+        {toolbar}
         {/* A column with no header (e.g. a trailing actions column) has
             nothing meaningful to label a checkbox with and is never meant
             to be hidden — exclude it from the toggle list rather than show
@@ -54,8 +71,9 @@ export function DataTable<TRow>({
           onToggleColumn={toggleColumn}
         />
       </div>
+      {beforeTable}
       <div className="table-responsive">
-        <table className="table table-sm table-hover table-vcenter card-table">
+        <table className="table table-sm table-hover table-vcenter card-table" style={dense ? { fontSize: "0.8rem" } : undefined}>
           <thead className="table-light">
             <tr>
               {visibleColumns.map((column) => (
@@ -84,7 +102,11 @@ export function DataTable<TRow>({
               </tr>
             ) : (
               rows.map((row) => (
-                <tr key={rowKey(row)}>
+                <tr
+                  key={rowKey(row)}
+                  className={[rowClassName?.(row), onRowClick ? "cursor-pointer" : undefined].filter(Boolean).join(" ") || undefined}
+                  onClick={onRowClick ? () => onRowClick(row) : undefined}
+                >
                   {visibleColumns.map((column) => (
                     <td key={column.key} className={column.align === "right" ? "text-end" : undefined}>
                       {column.render(row)}
@@ -107,6 +129,7 @@ export function DataTable<TRow>({
           )}
         </table>
       </div>
+      {afterTable}
     </div>
   );
 }

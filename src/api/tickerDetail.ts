@@ -98,8 +98,16 @@ export type TickerDetailStreamEvent =
  * clean server-side close. Returns a cleanup function for the caller to
  * invoke on unmount/symbol change.
  */
-export function openTickerDetailStream(symbol: string, onEvent: (event: TickerDetailStreamEvent) => void): () => void {
-  const source = new EventSource(`${apiBaseUrl}/tickers/${encodeURIComponent(symbol)}/detail/stream`, {
+export type TickerDetailStreamSection = "overview" | "spot" | "chart" | "optionChain" | "technicals";
+
+export function openTickerDetailStream(
+  symbol: string,
+  onEvent: (event: TickerDetailStreamEvent) => void,
+  options: { sections?: TickerDetailStreamSection[] } = {},
+): () => void {
+  // No `sections` = everything (Ticker Detail). The Signals modal asks for a subset to skip the ~96-line option chain.
+  const query = options.sections ? `?sections=${options.sections.join(",")}` : "";
+  const source = new EventSource(`${apiBaseUrl}/tickers/${encodeURIComponent(symbol)}/detail/stream${query}`, {
     withCredentials: true,
   });
 
