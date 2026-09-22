@@ -37,6 +37,8 @@ import { TopologyMap, type PulseEvent } from "../components/pulse/TopologyMap";
 import { ResizableRail } from "../components/pulse/ResizableRail";
 import { TotalPnlChart } from "../components/pulse/TotalPnlChart";
 import { ProfitProbabilityChart, type ProbabilitySeries } from "../components/pulse/ProfitProbabilityChart";
+import { EnvironmentBadges } from "../components/layout/EnvironmentBadges";
+import { useEnvironmentStatus } from "../hooks/useEnvironmentStatus";
 
 const CHART_SAMPLE_INTERVAL_MS = 60_000;
 // 4 hours of history at one sample/minute.
@@ -337,6 +339,8 @@ export function PulsePage() {
       else document.documentElement.removeAttribute("data-bs-theme");
     };
   }, []);
+
+  const environmentStatus = useEnvironmentStatus();
 
   const [clock, setClock] = useState(() => new Date().toLocaleTimeString("en-US", { hour12: false }));
   useEffect(() => {
@@ -739,6 +743,9 @@ export function PulsePage() {
             IORIO Pulse<span className="dot">.</span>
           </span>
           <span className="brand-eyebrow">REALTIME SYSTEM MONITORING</span>
+        </div>
+        <div className="pulse-header-center">
+          <EnvironmentBadges status={environmentStatus} />
         </div>
         <div className="pulse-header-right">
           <AttentionPill reasons={attentionReasons} />
