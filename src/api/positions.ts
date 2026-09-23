@@ -459,7 +459,7 @@ export function openUnrealizedPnlStream(
 
 export interface PulseChartHistory {
   pnlSamples: { sampledAtMs: number; totalUnrealizedPnl: number }[];
-  probabilitySamplesByPositionId: Record<string, { sampledAtMs: number; probability: number }[]>;
+  deltaSamplesByPositionId: Record<string, { sampledAtMs: number; delta: number }[]>;
 }
 
 // Backfills Pulse's two charts from the backend's rolling 8h sample buffer

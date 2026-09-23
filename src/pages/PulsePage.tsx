@@ -48,7 +48,7 @@ import { AVAILABLE_CASH_PERCENT_BANDS, higherIsWorseStatus, lowerIsWorseStatus }
 import { TopologyMap, type PulseEvent } from "../components/pulse/TopologyMap";
 import { ResizableRail } from "../components/pulse/ResizableRail";
 import { TotalPnlChart } from "../components/pulse/TotalPnlChart";
-import { ProfitProbabilityChart, type ProbabilitySeries } from "../components/pulse/ProfitProbabilityChart";
+import { NetDeltaChart, type DeltaSeries } from "../components/pulse/NetDeltaChart";
 import { EnvironmentBadges } from "../components/layout/EnvironmentBadges";
 import { useEnvironmentStatus } from "../hooks/useEnvironmentStatus";
 
@@ -61,10 +61,11 @@ const HEALTH_POLL_INTERVAL_MS = 30_000;
 const ACCOUNT_POLL_INTERVAL_MS = 60_000;
 const TRADES_LIMIT = 30;
 const EVENTS_LIMIT = 30;
-// Reference line on the Profit Probability chart — below this a position is
-// unlikely to end in profit. Set 2026-09-19; a constant, not a setting, since
-// nothing else consumes it.
-const PROFIT_PROBABILITY_THRESHOLD = 0.5;
+// Reference line on the Net Delta chart, carried over unchanged from the
+// earlier profit-probability plot (set 2026-09-19, kept as-is 2026-09-24
+// when the chart switched to plotting |delta|). A constant, not a setting,
+// since nothing else consumes it.
+const NET_DELTA_REFERENCE_LINE = 0.5;
 // How long a topology line stays lit: the dot's travel time, which is also how
 // long the line glows (set to 300 ms 2026-09-19; was 1100 ms). The extra
 // grace lets the last animation frame land before the dot is removed.
@@ -699,7 +700,7 @@ export function PulsePage() {
   // Keyed by position id, not symbol — a rolled position can leave two
   // distinct open positions sharing one ticker (confirmed in dev data: two
   // separate SPCX positions), which would otherwise collide.
-  const [probabilitySeriesByPositionId, setProbabilitySeriesByPositionId] = useState<Record<string, number[]>>({});
+  const [deltaSeriesByPositionId, setDeltaSeriesByPositionId] = useState<Record<string, number[]>>({});
   const latestDataRef = useRef({ unrealizedPnlByPositionId, greeksByLegId, positions });
   useEffect(() => {
     latestDataRef.current = { unrealizedPnlByPositionId, greeksByLegId, positions };
@@ -713,11 +714,11 @@ export function PulsePage() {
       .then((history) => {
         setPnlTimestamps((prev) => (prev.length > 0 ? prev : history.pnlSamples.slice(-CHART_MAX_SAMPLES).map((sample) => sample.sampledAtMs)));
         setPnlSeries((prev) => (prev.length > 0 ? prev : history.pnlSamples.slice(-CHART_MAX_SAMPLES).map((sample) => sample.totalUnrealizedPnl)));
-        setProbabilitySeriesByPositionId((prev) => {
+        setDeltaSeriesByPositionId((prev) => {
           if (Object.keys(prev).length > 0) return prev;
           const next: Record<string, number[]> = {};
-          for (const [positionId, samples] of Object.entries(history.probabilitySamplesByPositionId)) {
-            next[positionId] = samples.slice(-CHART_MAX_SAMPLES).map((sample) => sample.probability);
+          for (const [positionId, samples] of Object.entries(history.deltaSamplesByPositionId)) {
+            next[positionId] = samples.slice(-CHART_MAX_SAMPLES).map((sample) => Math.abs(sample.delta));
           }
           return next;
         });
@@ -732,15 +733,15 @@ export function PulsePage() {
       setPnlSeries((prev) => [...prev, totalPnl].slice(-CHART_MAX_SAMPLES));
       setPnlTimestamps((prev) => [...prev, Date.now()].slice(-CHART_MAX_SAMPLES));
 
-      setProbabilitySeriesByPositionId((prev) => {
+      setDeltaSeriesByPositionId((prev) => {
         const next = { ...prev };
         for (const position of posList) {
           if (position.strategyKey !== "covered_call" && position.strategyKey !== "cash_secured_put") continue;
           const optionLeg = position.legs.find((leg) => leg.legType === "option");
           if (!optionLeg) continue;
-          const probability = greeksMap[optionLeg.id]?.probabilityByD2;
-          if (probability === null || probability === undefined) continue;
-          next[position.id] = [...(next[position.id] ?? []), probability].slice(-CHART_MAX_SAMPLES);
+          const delta = greeksMap[optionLeg.id]?.delta;
+          if (delta === null || delta === undefined) continue;
+          next[position.id] = [...(next[position.id] ?? []), Math.abs(delta)].slice(-CHART_MAX_SAMPLES);
         }
         return next;
       });
@@ -748,14 +749,14 @@ export function PulsePage() {
     return () => window.clearInterval(interval);
   }, []);
 
-  const probabilitySeriesForChart: ProbabilitySeries[] = positions
+  const deltaSeriesForChart: DeltaSeries[] = positions
     .filter((position) => position.strategyKey === "covered_call" || position.strategyKey === "cash_secured_put")
-    .filter((position) => (probabilitySeriesByPositionId[position.id]?.length ?? 0) >= 2)
+    .filter((position) => (deltaSeriesByPositionId[position.id]?.length ?? 0) >= 2)
     .map((position, index, arr) => ({
       id: position.id,
       symbol: position.symbol,
       color: colorForIndex(index, arr.length),
-      values: probabilitySeriesByPositionId[position.id]!,
+      values: deltaSeriesByPositionId[position.id]!,
     }));
 
   // Real, computed status — not decorative. "Degraded" whenever the Gateway
@@ -866,7 +867,7 @@ export function PulsePage() {
               <span style={{ textAlign: "right" }}>DTE</span>
               <span style={{ textAlign: "right" }}>Exp $</span>
               <span style={{ textAlign: "right" }}>Exp %</span>
-              <span style={{ textAlign: "right" }}>PP</span>
+              <span style={{ textAlign: "right" }}>|Δ|</span>
               <span style={{ textAlign: "right" }}>P&amp;L</span>
             </div>
             {positions.length === 0 && <div className="panel-empty">No open positions.</div>}
@@ -877,7 +878,8 @@ export function PulsePage() {
               const expPct = capitalAtRisk !== null && netLiquidationValue ? (capitalAtRisk / netLiquidationValue) * 100 : null;
               const pnl = unrealizedPnlByPositionId[position.id]?.unrealizedPnl ?? null;
               const optionLeg = position.legs.find((leg) => leg.legType === "option");
-              const pop = optionLeg ? greeksByLegId[optionLeg.id]?.probabilityByD2 ?? null : null;
+              const legDelta = optionLeg ? greeksByLegId[optionLeg.id]?.delta ?? null : null;
+              const absDelta = legDelta !== null ? Math.abs(legDelta) : null;
               return (
                 <div className="pos-row" key={position.id}>
                   <span className="pos-sym">{position.symbol}</span>
@@ -891,8 +893,8 @@ export function PulsePage() {
                   <FlashingNumber value={expPct} precision={1} className="pos-pct">
                     {expPct !== null ? `${expPct.toFixed(1)}%` : "—"}
                   </FlashingNumber>
-                  <FlashingNumber value={pop} precision={0} className="pos-pct">
-                    {pop !== null ? Math.round(pop * 100).toString() : "—"}
+                  <FlashingNumber value={absDelta} precision={2} className="pos-pct">
+                    {absDelta !== null ? absDelta.toFixed(2) : "—"}
                   </FlashingNumber>
                   <FlashingNumber value={pnl} className={`pos-pnl ${pnl !== null && pnl < 0 ? "neg" : "pos"}`}>
                     {formatSignedPnl(pnl, 0)}
@@ -1083,10 +1085,10 @@ export function PulsePage() {
             </div>
             <div className="chart-panel">
               <div className="chart-panel-title">
-                <span>Profit Probability · live</span>
-                <span className="cur-val">threshold {PROFIT_PROBABILITY_THRESHOLD.toFixed(2)}</span>
+                <span>Net Delta · live</span>
+                <span className="cur-val">threshold {NET_DELTA_REFERENCE_LINE.toFixed(2)}</span>
               </div>
-              <ProfitProbabilityChart seriesByPosition={probabilitySeriesForChart} probabilityThreshold={PROFIT_PROBABILITY_THRESHOLD} timestamps={pnlTimestamps} />
+              <NetDeltaChart seriesByPosition={deltaSeriesForChart} referenceLine={NET_DELTA_REFERENCE_LINE} timestamps={pnlTimestamps} />
             </div>
           </div>
 

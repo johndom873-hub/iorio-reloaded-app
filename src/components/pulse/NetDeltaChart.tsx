@@ -2,11 +2,13 @@ import { useRef, useState } from "react";
 import { ChartTimeAxis } from "./ChartTimeAxis";
 
 // Pure/presentational — PulsePage owns the rolling-sample logic (sampling
-// the live greeks stream's probabilityByD2 — the approved N(d2) success
-// probability, see positionSuccessProbability.ts — per position, filtered to
-// CC/CSP only before it reaches this component). The reference line is a
-// minimum: a position sitting below it is unlikely to end in profit.
-export interface ProbabilitySeries {
+// the live greeks stream's delta per position, filtered to CC/CSP only
+// before it reaches this component, and taking |delta| so a short leg's
+// negative delta plots the same as a long one's positive delta — approved
+// 2026-09-24, replacing the earlier N(d2) profit-probability plot). The
+// reference line is a minimum: a position sitting below it is unlikely to
+// end in profit under the old semantics; kept as-is per 2026-09-24 sign-off.
+export interface DeltaSeries {
   /** Position id, not symbol — a rolled position can leave two open positions sharing one ticker, so symbol alone isn't a safe React key. */
   id: string;
   symbol: string;
@@ -14,9 +16,9 @@ export interface ProbabilitySeries {
   values: number[];
 }
 
-interface ProfitProbabilityChartProps {
-  seriesByPosition: ProbabilitySeries[];
-  probabilityThreshold: number;
+interface NetDeltaChartProps {
+  seriesByPosition: DeltaSeries[];
+  referenceLine: number;
   /**
    * Same sample clock PulsePage uses for every series (one push per
    * interval tick) — used only for the shared x-axis labels below, not to
@@ -25,16 +27,16 @@ interface ProfitProbabilityChartProps {
    * series than this array).
    */
   timestamps: number[];
-  /** Upper bound of the y-axis — kept independent of probabilityThreshold so the reference line isn't pinned to the very top edge. */
+  /** Upper bound of the y-axis — kept independent of referenceLine so the reference line isn't pinned to the very top edge. */
   yAxisMax?: number;
 }
 
-export function ProfitProbabilityChart({ seriesByPosition, probabilityThreshold, timestamps, yAxisMax = 1 }: ProfitProbabilityChartProps) {
+export function NetDeltaChart({ seriesByPosition, referenceLine, timestamps, yAxisMax = 1 }: NetDeltaChartProps) {
   const wrapRef = useRef<HTMLDivElement>(null);
   const [hoverFraction, setHoverFraction] = useState<number | null>(null);
 
   const y = (value: number) => 95 - (value / yAxisMax) * 90;
-  const limitY = y(probabilityThreshold).toFixed(1);
+  const limitY = y(referenceLine).toFixed(1);
   const plottable = seriesByPosition.filter((series) => series.values.length >= 2);
 
   function handleMouseMove(event: React.MouseEvent<HTMLDivElement>) {
