@@ -225,7 +225,8 @@ export function ShortlistTab({ onOpenTickerDetail }: ShortlistTabProps) {
     setBackfillingEarningsTickerId(row.tickerId);
     try {
       setError(null);
-      await backfillTickerEarnings(row.tickerId);
+      const result = await backfillTickerEarnings(row.tickerId);
+      if (result.error) setError(`Failed to backfill earnings for ${row.symbol}: ${result.error}`);
       await loadRows();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : `Failed to backfill earnings for ${row.symbol}.`);
