@@ -31,7 +31,7 @@ export function ConfirmModal({ title, message, confirmLabel = "Confirm", danger 
     <>
       <div className="modal-backdrop show" style={{ zIndex: 1050, backgroundColor: "rgba(0,0,0,0.5)", opacity: 1 }} />
       <div className="modal show d-block" style={{ zIndex: 1050 }}>
-        <div className="modal-dialog modal-sm">
+        <div className="modal-dialog modal-dialog-centered modal-sm">
           <div className="modal-content">
             <div className="modal-header">
               <h5 className="modal-title">{title}</h5>
