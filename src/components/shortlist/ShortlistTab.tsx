@@ -137,6 +137,8 @@ export function ShortlistTab({ onOpenTickerDetail }: ShortlistTabProps) {
   const [startingBackfillTickerId, setStartingBackfillTickerId] = useState<string | null>(null);
   const [backfillingEarningsTickerId, setBackfillingEarningsTickerId] = useState<string | null>(null);
   const [backfillingPriceHistoryTickerId, setBackfillingPriceHistoryTickerId] = useState<string | null>(null);
+  const [confirmEarningsRow, setConfirmEarningsRow] = useState<ShortlistRow | null>(null);
+  const [confirmPriceHistoryRow, setConfirmPriceHistoryRow] = useState<ShortlistRow | null>(null);
   const [prepTicker, setPrepTicker] = useState<{ tickerId: string; symbol: string; companyName: string | null } | null>(null);
   const [surfaceModalSymbol, setSurfaceModalSymbol] = useState<string | null>(null);
 
@@ -219,6 +221,7 @@ export function ShortlistTab({ onOpenTickerDetail }: ShortlistTabProps) {
   }
 
   async function handleBackfillEarnings(row: ShortlistRow) {
+    setConfirmEarningsRow(null);
     setBackfillingEarningsTickerId(row.tickerId);
     try {
       setError(null);
@@ -237,6 +240,7 @@ export function ShortlistTab({ onOpenTickerDetail }: ShortlistTabProps) {
   // silently trigger all 4 steps, including a chain-strike warmup that can run for many minutes on a
   // dense ETF like QQQ).
   async function handleBackfillPriceHistory(row: ShortlistRow) {
+    setConfirmPriceHistoryRow(null);
     setBackfillingPriceHistoryTickerId(row.tickerId);
     try {
       setError(null);
@@ -333,6 +337,9 @@ export function ShortlistTab({ onOpenTickerDetail }: ShortlistTabProps) {
             : row.historyIncomplete
               ? `${reasons.join(" ")} Fix: Actions → Backfill Price History.`
               : `${reasons.join(" ")} Already fully backfilled — history starts ${row.historyStartDate ?? "unknown"}, that's everything IBKR has; nothing to do but wait for more trading days.`;
+        if (backfillingPriceHistoryTickerId === row.tickerId) {
+          return <Spinner size="sm" label={`Backfilling price history for ${row.symbol}`} />;
+        }
         return (
           <span className="d-inline-flex align-items-center gap-1">
             {reason && <WarningTriangle reason={reason} />}
@@ -348,6 +355,9 @@ export function ShortlistTab({ onOpenTickerDetail }: ShortlistTabProps) {
       align: "right",
       render: (row) => {
         if (row.isEtf) return <span className="text-muted small">N/A — ETF</span>;
+        if (backfillingEarningsTickerId === row.tickerId) {
+          return <Spinner size="sm" label={`Backfilling earnings for ${row.symbol}`} />;
+        }
         const thin = row.earningsCount < quartersForEarningsAdjustment;
         const nextInDays = row.nextEarningsDateIso ? formatDaysToExpiry(daysToExpiry(row.nextEarningsDateIso)) : null;
         return (
@@ -434,7 +444,7 @@ export function ShortlistTab({ onOpenTickerDetail }: ShortlistTabProps) {
           {
             key: "backfill-earnings",
             label: "Backfill Earnings",
-            onClick: () => handleBackfillEarnings(row),
+            onClick: () => setConfirmEarningsRow(row),
             loading: backfillingEarningsTickerId === row.tickerId,
             disabled: row.isEtf || row.earningsCount >= quartersForEarningsAdjustment,
             disabledReason: row.isEtf ? "ETFs don't report earnings" : `${row.earningsCount} on record, already sufficient`,
@@ -442,7 +452,7 @@ export function ShortlistTab({ onOpenTickerDetail }: ShortlistTabProps) {
           {
             key: "backfill-price-history",
             label: "Backfill Price History",
-            onClick: () => handleBackfillPriceHistory(row),
+            onClick: () => setConfirmPriceHistoryRow(row),
             loading: backfillingPriceHistoryTickerId === row.tickerId,
             disabled: !row.historyIncomplete || backfillingPriceHistoryTickerId !== null,
             disabledReason:
@@ -571,6 +581,36 @@ export function ShortlistTab({ onOpenTickerDetail }: ShortlistTabProps) {
           confirming={removingId === removeConfirmRow.id}
           onConfirm={() => handleRemove(removeConfirmRow.id)}
           onCancel={() => setRemoveConfirmRow(null)}
+        />
+      )}
+
+      {confirmEarningsRow && (
+        <ConfirmModal
+          title="Backfill Earnings"
+          message={
+            <>
+              Fetch historical earnings dates for <strong>{confirmEarningsRow.symbol}</strong> from API Ninjas and add them to the record?
+            </>
+          }
+          confirmLabel="Backfill"
+          danger={false}
+          onConfirm={() => handleBackfillEarnings(confirmEarningsRow)}
+          onCancel={() => setConfirmEarningsRow(null)}
+        />
+      )}
+
+      {confirmPriceHistoryRow && (
+        <ConfirmModal
+          title="Backfill Price History"
+          message={
+            <>
+              Re-fetch five years of daily price history for <strong>{confirmPriceHistoryRow.symbol}</strong> from IBKR?
+            </>
+          }
+          confirmLabel="Backfill"
+          danger={false}
+          onConfirm={() => handleBackfillPriceHistory(confirmPriceHistoryRow)}
+          onCancel={() => setConfirmPriceHistoryRow(null)}
         />
       )}
 
