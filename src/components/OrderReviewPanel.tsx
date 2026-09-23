@@ -21,6 +21,7 @@ import {
 import { computeAnnualizedYield, computeCapitalAtRiskFromOrderLegs, computePayoff, orderLegsToPayoffInput } from "../lib/payoff";
 import { computeProbabilityOfProfit } from "../lib/probabilityOfProfit";
 import { flashClassName, useFlashOnChange } from "../hooks/useFlashOnChange";
+import { useTooltip } from "../hooks/useTooltip";
 
 interface OrderReviewPanelProps {
   order: OrderRequest;
@@ -250,6 +251,18 @@ export function OrderReviewPanel({ order: initialOrder, initialAdaptivePriority,
   const thetaFlash = useFlashOnChange(quote?.theta ?? null);
   const vegaFlash = useFlashOnChange(quote?.vega ?? null);
 
+  const expPctTooltipRef = useTooltip<HTMLDivElement>("Share of total account value (positions + cash) this order would commit");
+  const popTooltipRef = useTooltip<HTMLDivElement>(
+    "Provisional -- Black-Scholes estimate, still being validated against IBKR's own number (PROGRESS.md). Not yet confirmed reliable enough to act on alone.",
+  );
+  const returnRiskTooltipRef = useTooltip<HTMLDivElement>("Max Gain / Max Loss -- same ratio IBKR's own order ticket shows as Return/Risk.");
+  const quoteStreamErrorTooltipRef = useTooltip<HTMLSpanElement>(quoteStreamError);
+  const adaptivePrioritySelectTooltipRef = useTooltip<HTMLSelectElement>(
+    "How aggressively IBKR works this order within your limit price. Urgent seeks the fastest fill; Patient waits longer for a better price. Never fills worse than the limit shown above.",
+  );
+  const confirmWrapperTooltipRef = useTooltip<HTMLSpanElement>(complianceBlockReason);
+  const complianceTextTooltipRef = useTooltip<HTMLDivElement>(complianceBlockReason);
+
   async function handleConfirm() {
     setConfirming(true);
     setError(null);
@@ -327,7 +340,7 @@ export function OrderReviewPanel({ order: initialOrder, initialAdaptivePriority,
           {capitalAtRisk !== null && (
             <div className="col-4">
               <div className="text-secondary text-uppercase" style={{ fontSize: "0.68rem" }}>Exp %</div>
-              <div className="fw-semibold" title="Share of total account value (positions + cash) this order would commit">
+              <div ref={expPctTooltipRef} className="fw-semibold" tabIndex={0}>
                 {totalAccountValue === null ? "—" : formatPercentageValue((capitalAtRisk / totalAccountValue) * 100, 1)}
               </div>
             </div>
@@ -351,9 +364,10 @@ export function OrderReviewPanel({ order: initialOrder, initialAdaptivePriority,
           {livePop !== null && (
             <div className="col-4">
               <div
+                ref={popTooltipRef}
                 className="text-secondary text-uppercase"
                 style={{ fontSize: "0.68rem" }}
-                title="Provisional -- Black-Scholes estimate, still being validated against IBKR's own number (PROGRESS.md). Not yet confirmed reliable enough to act on alone."
+                tabIndex={0}
               >
                 POP
               </div>
@@ -363,9 +377,10 @@ export function OrderReviewPanel({ order: initialOrder, initialAdaptivePriority,
           {payoff && payoff.maxLoss > 0 && (
             <div className="col-4">
               <div
+                ref={returnRiskTooltipRef}
                 className="text-secondary text-uppercase"
                 style={{ fontSize: "0.68rem" }}
-                title="Max Gain / Max Loss -- same ratio IBKR's own order ticket shows as Return/Risk."
+                tabIndex={0}
               >
                 Return/Risk
               </div>
@@ -382,7 +397,7 @@ export function OrderReviewPanel({ order: initialOrder, initialAdaptivePriority,
           </div>
           {!quote && !quoteStreamError && <Spinner size="sm" label="Loading live quote" />}
           {quoteStreamError && (
-            <span className="text-muted" title={quoteStreamError}>
+            <span ref={quoteStreamErrorTooltipRef} className="text-muted" tabIndex={0}>
               Live quote unavailable
             </span>
           )}
@@ -471,9 +486,9 @@ export function OrderReviewPanel({ order: initialOrder, initialAdaptivePriority,
               id="adaptive-priority-select"
               className="form-select form-select-sm"
               style={{ width: "auto" }}
+              ref={adaptivePrioritySelectTooltipRef}
               value={adaptivePriority}
               onChange={(event) => setAdaptivePriority(event.target.value as AdaptivePriority)}
-              title="How aggressively IBKR works this order within your limit price. Urgent seeks the fastest fill; Patient waits longer for a better price. Never fills worse than the limit shown above."
             >
               <option value="Urgent">Urgent</option>
               <option value="Normal">Normal</option>
@@ -481,23 +496,24 @@ export function OrderReviewPanel({ order: initialOrder, initialAdaptivePriority,
             </select>
           </div>
           <div className="d-flex gap-2">
-            <button
-              type="button"
-              className="btn btn-primary flex-fill d-inline-flex align-items-center justify-content-center gap-1"
-              disabled={confirming || Boolean(complianceBlockReason)}
-              title={complianceBlockReason ?? undefined}
-              onClick={handleConfirm}
-            >
-              {confirming && <Spinner size="sm" />}
-              Confirm &amp; Submit to IBKR
-            </button>
+            <span ref={confirmWrapperTooltipRef} tabIndex={complianceBlockReason ? 0 : undefined} style={{ display: "inline-block", flex: 1 }}>
+              <button
+                type="button"
+                className="btn btn-primary w-100 d-inline-flex align-items-center justify-content-center gap-1"
+                disabled={confirming || Boolean(complianceBlockReason)}
+                onClick={handleConfirm}
+              >
+                {confirming && <Spinner size="sm" />}
+                Confirm &amp; Submit to IBKR
+              </button>
+            </span>
             <button type="button" className="btn btn-outline-secondary" disabled={cancelling} onClick={handleCancel}>
               {cancelling && <Spinner size="sm" />}
               Cancel
             </button>
           </div>
           {complianceBlockReason && (
-            <div className="text-danger" style={{ fontSize: "0.8rem" }} title={complianceBlockReason}>
+            <div ref={complianceTextTooltipRef} className="text-danger" style={{ fontSize: "0.8rem" }} tabIndex={0}>
               {complianceBlockReason}
             </div>
           )}

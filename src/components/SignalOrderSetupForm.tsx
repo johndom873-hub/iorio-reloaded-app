@@ -6,6 +6,7 @@ import { flashClassName, useFlashOnChange } from "../hooks/useFlashOnChange";
 import { formatCurrency, formatCurrencyTrimmed, formatDate, formatPercentage, formatSignedPercentageValue, formatSignedPnl, formatVolatilityPoints } from "../lib/formatters";
 import { describeCandidate, gradeBadgeClass, gradeLabel, signalFlagExplanation, signalFlagLetter } from "../lib/signalsPresentation";
 import { Spinner } from "./Spinner";
+import { useTooltip } from "../hooks/useTooltip";
 
 // Signals order setup (stage 5, approved 2026-09-22). Same split as
 // RollOrderSetupForm: this is only the "form" half -- it builds the order
@@ -40,6 +41,27 @@ function Row({ label, value, tone, strong }: { label: string; value: ReactNode; 
       <span className={strong ? "fw-semibold" : "text-secondary"}>{label}</span>
       <span className={`font-mono text-end ${strong ? "fw-semibold" : ""} ${tone ?? ""}`}>{value}</span>
     </div>
+  );
+}
+
+// A native `disabled` button never fires hover/focus events, so the tooltip
+// has to live on a wrapping span instead (Tabler/Bootstrap Tooltip
+// limitation) -- extracted here since the wrapper also needs its own
+// useTooltip ref.
+function ReviewOrderButton({ disabled, blockedTooltip, building, onClick }: { disabled: boolean; blockedTooltip: string | undefined; building: boolean; onClick: () => void }) {
+  const ref = useTooltip<HTMLSpanElement>(blockedTooltip);
+  return (
+    <span ref={ref} tabIndex={blockedTooltip ? 0 : undefined} style={{ display: "inline-block", flex: 1 }}>
+      <button
+        type="button"
+        className="btn btn-primary w-100 d-inline-flex align-items-center justify-content-center gap-1"
+        disabled={disabled}
+        onClick={onClick}
+      >
+        {building && <Spinner size="sm" />}
+        Review Order
+      </button>
+    </span>
   );
 }
 
@@ -228,10 +250,12 @@ export function SignalOrderSetupForm({ symbol, signals, candidate, spotPrice, ne
       {buildError && <div className="alert alert-danger mb-0">{buildError}</div>}
 
       <div className="d-flex gap-2">
-        <button type="button" className="btn btn-primary flex-fill d-inline-flex align-items-center justify-content-center gap-1" disabled={building || blockingFlag !== undefined} title={blockingFlag ? "You cannot place this now" : undefined} onClick={handleReviewOrder}>
-          {building && <Spinner size="sm" />}
-          Review Order
-        </button>
+        <ReviewOrderButton
+          disabled={building || blockingFlag !== undefined}
+          blockedTooltip={blockingFlag ? "You cannot place this now" : undefined}
+          building={building}
+          onClick={handleReviewOrder}
+        />
         <button type="button" className="btn btn-outline-secondary" onClick={onCancel}>
           Cancel
         </button>

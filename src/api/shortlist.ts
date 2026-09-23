@@ -8,13 +8,6 @@ export interface ShortlistRow {
   symbol: string;
   companyName: string | null;
   sector: string | null;
-  snapshotDate: string | null;
-  impliedVolatility: string | null;
-  avgOptionVolume: string | null;
-  capturedAt: string | null;
-  ivRank: number | null;
-  ivPercentile: number | null;
-  ivWindowDays: number;
   /** 'preparing' while the new-ticker backfill is running, else null. */
   backfillStatus?: "preparing" | null;
   backfillProgressPercent?: number | null;
@@ -22,6 +15,21 @@ export interface ShortlistRow {
   historyIncomplete?: boolean;
   /** ISO date of the earliest stored daily bar, if any. */
   historyStartDate?: string | null;
+  /** True when the latest full-pipeline run ended 'partial' (some step failed) -- offers a full retry, not just Backfill Price History. */
+  backfillNeedsRetry?: boolean;
+
+  // Data-readiness columns (redesigned 2026-09-23) -- exactly what the Signals pipeline reads before it
+  // can score a candidate; see loadShortlistDataReadiness.ts in the API repo.
+  dailyBarCount: number;
+  suspectedSplitDateIso: string | null;
+  earningsCount: number;
+  nextEarningsDateIso: string | null;
+  isEtf: boolean;
+  dividendHistoryCount: number;
+  dividendCadenceUnknown: boolean;
+  chainSnapshotCount: number;
+  latestFittedSliceCount: number | null;
+  latestTotalSliceCount: number | null;
 }
 
 export function fetchShortlist(): Promise<ShortlistRow[]> {
@@ -83,6 +91,31 @@ export interface AddToShortlistResult extends ShortlistRow {
 /** Starts a new preparation run for the ticker (the modal's Retry). A run already in progress is returned as-is. */
 export function retryTickerBackfill(tickerId: string): Promise<TickerBackfillRun> {
   return apiRequest<TickerBackfillRun>(`/shortlist/${tickerId}/backfill`, { method: "POST" });
+}
+
+export interface BackfillEarningsResult {
+  written: number;
+  skippedEtf: boolean;
+  error: string | null;
+}
+
+/** Actions menu's "Backfill Earnings" — same historical-earnings capture (API Ninjas) the new-ticker pipeline runs automatically, re-triggered for an already-shortlisted ticker. */
+export function backfillTickerEarnings(tickerId: string): Promise<BackfillEarningsResult> {
+  return apiRequest<BackfillEarningsResult>(`/shortlist/${tickerId}/backfill-earnings`, { method: "POST" });
+}
+
+export interface BackfillPriceHistoryResult {
+  barCount: number;
+  ivPointCount: number;
+  firstTradingDate: string | null;
+  lastTradingDate: string | null;
+  suspectedSplitDates: string[];
+  invalidBarDates: string[];
+}
+
+/** Actions menu's "Backfill Price History" — scoped to just the 5Y history step, not the full new-ticker pipeline (which also re-fetches the calendar and warms option-chain strikes; see routes/shortlist.ts). */
+export function backfillTickerPriceHistory(tickerId: string): Promise<BackfillPriceHistoryResult> {
+  return apiRequest<BackfillPriceHistoryResult>(`/shortlist/${tickerId}/backfill-price-history`, { method: "POST" });
 }
 
 const backfillStreamReconnectDelayMs = 2_000;

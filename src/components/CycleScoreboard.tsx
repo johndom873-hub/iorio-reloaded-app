@@ -4,6 +4,7 @@ import { CycleBucketBadge } from "./CycleBucketBadge";
 import { Spinner } from "./Spinner";
 import { fetchCycleScoreboard, type CycleBucketKey, type CycleScoreboard as CycleScoreboardData } from "../api/positions";
 import { formatSignedPnl, pnlTextClass } from "../lib/formatters";
+import { TooltipSpan } from "./TooltipSpan";
 
 const bucketOrder: CycleBucketKey[] = ["csp", "unstructured", "cc"];
 
@@ -38,8 +39,8 @@ export function CycleScoreboard() {
               <thead className="table-light">
                 <tr>
                   <th>Strategy</th>
-                  <th className="text-end" title="Premium collected, net of commissions — the old view">Premium</th>
-                  <th className="text-end" title="Assignment charge (puts) or stock P&L while the strategy held the shares">Stock</th>
+                  <TooltipSpan as="th" className="text-end" text="Premium collected, net of commissions — the old view">Premium</TooltipSpan>
+                  <TooltipSpan as="th" className="text-end" text="Assignment charge (puts) or stock P&L while the strategy held the shares">Stock</TooltipSpan>
                   <th className="text-end">Total</th>
                 </tr>
               </thead>

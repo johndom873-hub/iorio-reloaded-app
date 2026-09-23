@@ -18,6 +18,8 @@ import { Spinner } from "./Spinner";
 import { StrategyBadge } from "./StrategyBadge";
 import { TickerHeaderStrip } from "./TickerHeaderStrip";
 import { TickerPositionsCards } from "./TickerPositionsCards";
+import { TooltipSpan } from "./TooltipSpan";
+import { useTooltip } from "../hooks/useTooltip";
 
 // Signals modal (stage 4; mockup approved 2026-09-22, v3). Same header,
 // Positions and Wheel-cycle cards as Ticker Detail, then the live graded
@@ -45,8 +47,9 @@ const badgeFontSize = { fontSize: "0.72rem" } as const;
 const candidateKey = (candidate: SignalCandidate) => `${candidate.expiry}|${candidate.strike}|${candidate.strategyKey === "covered_call" ? "C" : "P"}`;
 
 function GradeBadge({ candidate }: { candidate: SignalCandidate }) {
+  const ref = useTooltip<HTMLSpanElement>(gradeExplanation);
   return (
-    <span className={`badge ${gradeBadgeClass[candidate.grade]}`} style={badgeFontSize} title={gradeExplanation}>
+    <span ref={ref} className={`badge ${gradeBadgeClass[candidate.grade]}`} style={badgeFontSize} tabIndex={0}>
       {gradeLabel[candidate.grade]}
     </span>
   );
@@ -57,9 +60,9 @@ function FlagBadges({ candidate }: { candidate: SignalCandidate }) {
   return (
     <span className="d-inline-flex gap-1">
       {candidate.flags.map((flag) => (
-        <span key={flag} className="badge bg-warning-lt" style={badgeFontSize} title={signalFlagExplanation[flag]}>
+        <TooltipSpan key={flag} className="badge bg-warning-lt" style={badgeFontSize} text={signalFlagExplanation[flag]}>
           {signalFlagLetter[flag]}
-        </span>
+        </TooltipSpan>
       ))}
     </span>
   );
@@ -374,7 +377,18 @@ export function SignalsTickerModal({ symbol, onClose }: SignalsTickerModalProps)
         ),
       },
       { key: "delta", header: "Delta", align: "right", render: (row) => <span className="font-mono">{formatSignedDelta(row.delta)}</span> },
-      { key: "spread", header: "Spread", align: "right", headerTitle: "(Ask − Bid) / Mid", render: (row) => <span className={`font-mono ${row.quoteSource === "live" ? "" : "text-secondary"}`} title={row.quoteSource === "live" ? "Live quote" : "10:00 ET snapshot quote"}>{formatPercentageValue(row.spreadPercent, 1)}{row.quoteSource === "snapshot" ? "*" : ""}</span> },
+      {
+        key: "spread",
+        header: "Spread",
+        align: "right",
+        headerTitle: "(Ask − Bid) / Mid",
+        render: (row) => (
+          <TooltipSpan className={`font-mono ${row.quoteSource === "live" ? "" : "text-secondary"}`} text={row.quoteSource === "live" ? "Live quote" : "10:00 ET snapshot quote"}>
+            {formatPercentageValue(row.spreadPercent, 1)}
+            {row.quoteSource === "snapshot" ? "*" : ""}
+          </TooltipSpan>
+        ),
+      },
       { key: "yield", header: "Ann. yield", align: "right", render: (row) => <span className="font-mono text-secondary">{formatPercentage(row.annualizedYield, 0)}</span> },
       { key: "uncompensated", header: "Uncomp.", align: "right", headerTitle: "Share of P&L variance from delta drift (UncompensatedShare)", render: (row) => <span className="font-mono text-secondary">{row.uncompensatedSharePercent === null ? "…" : `${row.uncompensatedSharePercent.toFixed(0)}%`}</span> },
       { key: "flags", header: "Flags", render: (row) => <FlagBadges candidate={row} /> },

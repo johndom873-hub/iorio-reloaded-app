@@ -39,6 +39,7 @@ import {
 import { useExposureStream } from "../hooks/useExposureStream";
 import { portfolioFromExposure } from "../lib/portfolioFromExposure";
 import { useTickerDetailSymbol } from "../hooks/useTickerDetailSymbol";
+import { TooltipSpan } from "../components/TooltipSpan";
 
 const strategyLabels: Record<string, string> = {
   covered_call: "Covered Calls",
@@ -368,9 +369,9 @@ function EventRow({ event, onSymbolClick }: { event: PositionEvent; onSymbolClic
 
   return (
     <tr>
-      <td className="text-nowrap" title={formatDateTime(event.eventAt)}>
+      <TooltipSpan as="td" className="text-nowrap" text={formatDateTime(event.eventAt)}>
         {formatRelativeDate(event.eventAt)}
-      </td>
+      </TooltipSpan>
       <td className="text-nowrap">{event.attributedTo ?? "—"}</td>
       <td className="text-nowrap fw-bold">
         <button
@@ -382,16 +383,17 @@ function EventRow({ event, onSymbolClick }: { event: PositionEvent; onSymbolClic
         </button>
       </td>
       <td className="text-nowrap">
-        <span
+        <TooltipSpan
           className={`badge ${statusBadgeClass} text-truncate d-inline-block align-bottom me-1`}
           style={{ fontSize: "0.72rem", maxWidth: "8rem", padding: "0.2em 0.45em" }}
-          title={statusLabel}
+          text={statusLabel}
         >
           {statusLabel}
-        </span>
+        </TooltipSpan>
         <StrategyBadge strategyKey={event.strategyKey as PositionStrategyKey} className="align-bottom" />
       </td>
-      <td
+      <TooltipSpan
+        as="td"
         style={{
           fontSize: "0.8rem",
           whiteSpace: "normal",
@@ -400,7 +402,7 @@ function EventRow({ event, onSymbolClick }: { event: PositionEvent; onSymbolClic
           WebkitBoxOrient: "vertical",
           overflow: "hidden",
         }}
-        title={description}
+        text={description}
       >
         {description}
         {event.eventType === "unstructured" && event.unstructuredReason && (
@@ -409,7 +411,7 @@ function EventRow({ event, onSymbolClick }: { event: PositionEvent; onSymbolClic
             ({unstructuredReasonLabels[event.unstructuredReason] ?? event.unstructuredReason})
           </span>
         )}
-      </td>
+      </TooltipSpan>
       <td className="text-end font-mono">{value === null ? "—" : formatCurrency(value, 0)}</td>
       <td className={`text-end font-mono ${event.realizedPnl === null ? "" : pnlTextClass(event.realizedPnl)}`}>
         {event.realizedPnl === null ? "—" : formatSignedPnl(event.realizedPnl, 0)}

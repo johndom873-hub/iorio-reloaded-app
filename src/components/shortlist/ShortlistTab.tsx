@@ -3,9 +3,15 @@ import { DataTable, type DataTableColumn } from "../DataTable/DataTable";
 import { Spinner } from "../Spinner";
 import { ConfirmModal } from "../ConfirmModal";
 import { TickerPrepModal } from "./TickerPrepModal";
+import { WarningTriangle } from "./WarningTriangle";
+import { VolatilitySurfaceModal } from "../VolatilitySurfaceModal";
+import { ActionsMenu, type ActionsMenuItem } from "./ActionsMenu";
+import { useTooltip } from "../../hooks/useTooltip";
 import { ApiError } from "../../api/client";
 import {
   addToShortlist,
+  backfillTickerEarnings,
+  backfillTickerPriceHistory,
   fetchShortlist,
   removeFromShortlist,
   retryTickerBackfill,
@@ -15,9 +21,16 @@ import {
   type TickerBackfillRun,
   type TickerSearchResult,
 } from "../../api/shortlist";
-import { formatDate, formatNumber, formatPercentage, formatPercentageValue } from "../../lib/formatters";
+import { daysToExpiry, formatBarsAsYears, formatDaysToExpiry } from "../../lib/formatters";
 
 const searchDebounceMs = 400;
+
+// Mirrors the API repo's signalsRoadmap.ts constants (separate repos, no shared module) -- how much daily-bar
+// history Signals needs before momentum/the own-volatility threshold turn on, and how many earnings quarters
+// before the vol forecast can correct for them. Keep in sync if those change.
+const tradingDaysForMomentum = 253;
+const tradingDaysForOwnVolatilityThreshold = 377;
+const quartersForEarningsAdjustment = 4;
 const preparingRefreshMs = 4_000;
 
 interface NotesCellProps {
@@ -91,6 +104,20 @@ function NotesCell({ row, onSave }: NotesCellProps) {
   );
 }
 
+// Extracted so useTooltip (a hook) can be called once per row from inside
+// the Status column's render(row) callback (a plain function, not a
+// component) without violating the Rules of Hooks -- see FlashingNumber.tsx's
+// doc comment for the same constraint.
+function PreparingStatusBadge({ progressPercent, onClick }: { progressPercent: number; onClick: () => void }) {
+  const ref = useTooltip<HTMLButtonElement>("Click to see progress");
+  return (
+    <button ref={ref} type="button" className="badge ticker-prep-badge" onClick={onClick}>
+      <span className="prep-ring" aria-hidden="true" />
+      Preparing {progressPercent}%
+    </button>
+  );
+}
+
 interface ShortlistTabProps {
   onOpenTickerDetail: (symbol: string) => void;
 }
@@ -108,7 +135,10 @@ export function ShortlistTab({ onOpenTickerDetail }: ShortlistTabProps) {
   const [removeConfirmRow, setRemoveConfirmRow] = useState<ShortlistRow | null>(null);
   const searchDebounceRef = useRef<number | null>(null);
   const [startingBackfillTickerId, setStartingBackfillTickerId] = useState<string | null>(null);
+  const [backfillingEarningsTickerId, setBackfillingEarningsTickerId] = useState<string | null>(null);
+  const [backfillingPriceHistoryTickerId, setBackfillingPriceHistoryTickerId] = useState<string | null>(null);
   const [prepTicker, setPrepTicker] = useState<{ tickerId: string; symbol: string; companyName: string | null } | null>(null);
+  const [surfaceModalSymbol, setSurfaceModalSymbol] = useState<string | null>(null);
 
   const loadRows = useCallback(async () => {
     try {
@@ -188,6 +218,37 @@ export function ShortlistTab({ onOpenTickerDetail }: ShortlistTabProps) {
     }
   }
 
+  async function handleBackfillEarnings(row: ShortlistRow) {
+    setBackfillingEarningsTickerId(row.tickerId);
+    try {
+      setError(null);
+      await backfillTickerEarnings(row.tickerId);
+      await loadRows();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : `Failed to backfill earnings for ${row.symbol}.`);
+    } finally {
+      setBackfillingEarningsTickerId(null);
+    }
+  }
+
+  // Scoped to just the price-history step (see routes/shortlist.ts) -- unlike handleStartBackfill below,
+  // this does not touch the calendar or option-chain strikes, and doesn't open the 4-step prep modal: it's
+  // a single fast action, not the full new-ticker pipeline (found live 2026-09-23: clicking this used to
+  // silently trigger all 4 steps, including a chain-strike warmup that can run for many minutes on a
+  // dense ETF like QQQ).
+  async function handleBackfillPriceHistory(row: ShortlistRow) {
+    setBackfillingPriceHistoryTickerId(row.tickerId);
+    try {
+      setError(null);
+      await backfillTickerPriceHistory(row.tickerId);
+      await loadRows();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : `Failed to backfill price history for ${row.symbol}.`);
+    } finally {
+      setBackfillingPriceHistoryTickerId(null);
+    }
+  }
+
   async function handleAdd(symbol: string) {
     setShowDropdown(false);
     setPendingSymbol(symbol);
@@ -233,7 +294,7 @@ export function ShortlistTab({ onOpenTickerDetail }: ShortlistTabProps) {
   const columns: DataTableColumn<ShortlistRow>[] = [
     {
       key: "symbol",
-      header: "Symbol",
+      header: "Ticker",
       render: (row) => (
         <button
           type="button"
@@ -244,80 +305,118 @@ export function ShortlistTab({ onOpenTickerDetail }: ShortlistTabProps) {
         </button>
       ),
     },
-    { key: "companyName", header: "Company", render: (row) => row.companyName ?? "—" },
-    { key: "sector", header: "Sector", render: (row) => row.sector ?? "—" },
+    { key: "companyName", header: "Name", render: (row) => row.companyName ?? "—" },
+    { key: "sector", header: "Sector", render: (row) => (row.isEtf ? <span className="text-muted fst-italic">ETF</span> : row.sector ?? "—") },
     {
-      key: "impliedVolatility",
-      header: "IV %",
-      headerTitle: "Implied Volatility",
+      key: "dailyBars",
+      header: "Daily Bars",
+      headerTitle: "Daily price/IV history — momentum needs 253 bars, the own-volatility threshold needs 377",
       align: "right",
-      render: (row) => formatPercentage(row.impliedVolatility === null ? null : Number(row.impliedVolatility)),
-    },
-    {
-      key: "ivRank",
-      header: "IV Rank",
-      headerTitle: "(today's IV − 1yr low) / (1yr high − 1yr low) × 100 — skewed by a single outlier day",
-      align: "right",
-      render: (row) =>
-        row.ivRank === null ? (
-          "—"
-        ) : (
-          <span>
-            {formatPercentageValue(row.ivRank)} <span className="text-muted small">({row.ivWindowDays}d)</span>
+      render: (row) => {
+        const reasons: string[] = [];
+        if (row.suspectedSplitDateIso) {
+          reasons.push(`Suspected stock split on ${row.suspectedSplitDateIso} — stored prices jump the way a split does, so the volatility forecast refuses to use them and this ticker isn't scored.`);
+        }
+        if (row.dailyBarCount < tradingDaysForMomentum) {
+          reasons.push(`Only ${row.dailyBarCount} daily bars — momentum needs ${tradingDaysForMomentum}, currently unavailable.`);
+        } else if (row.dailyBarCount < tradingDaysForOwnVolatilityThreshold) {
+          reasons.push(`Only ${row.dailyBarCount} daily bars — the own-volatility threshold needs ${tradingDaysForOwnVolatilityThreshold}, so it stays on the fixed 1.3x default until then.`);
+        }
+        // row.historyIncomplete means IBKR actually has more to give and we haven't fetched it yet --
+        // only then is "Backfill Price History" a real fix. A short history can also just mean the ticker
+        // hasn't been trading long enough for more to exist yet (e.g. a recently-launched ETF); pointing
+        // at an action that would fetch nothing new was a real bug here (Marcelo caught it on DRAM, only
+        // 0.5y old and correctly already fully backfilled -- 2026-09-23).
+        const reason =
+          reasons.length === 0
+            ? null
+            : row.historyIncomplete
+              ? `${reasons.join(" ")} Fix: Actions → Backfill Price History.`
+              : `${reasons.join(" ")} Already fully backfilled — history starts ${row.historyStartDate ?? "unknown"}, that's everything IBKR has; nothing to do but wait for more trading days.`;
+        return (
+          <span className="d-inline-flex align-items-center gap-1">
+            {reason && <WarningTriangle reason={reason} />}
+            {formatBarsAsYears(row.dailyBarCount)}
           </span>
-        ),
+        );
+      },
     },
     {
-      key: "ivPercentile",
-      header: "IV %ile",
-      headerTitle: "% of the last 1yr of trading days whose IV closed below today's",
+      key: "earnings",
+      header: "Earnings",
+      headerTitle: "Earnings dates on record — the vol forecast can't correct for an earnings-spanning expiry until 4 quarters are on record",
       align: "right",
-      render: (row) =>
-        row.ivPercentile === null ? (
-          "—"
-        ) : (
-          <span>
-            {formatPercentageValue(row.ivPercentile)} <span className="text-muted small">({row.ivWindowDays}d)</span>
+      render: (row) => {
+        if (row.isEtf) return <span className="text-muted small">N/A — ETF</span>;
+        const thin = row.earningsCount < quartersForEarningsAdjustment;
+        const nextInDays = row.nextEarningsDateIso ? formatDaysToExpiry(daysToExpiry(row.nextEarningsDateIso)) : null;
+        return (
+          <span className="d-inline-flex align-items-center gap-1">
+            {thin && <WarningTriangle reason={`Only ${row.earningsCount} quarter${row.earningsCount === 1 ? "" : "s"} on record; the vol forecast can't correct for earnings until ${quartersForEarningsAdjustment}. Fix: Actions → Backfill Earnings.`} />}
+            {row.earningsCount}
+            {nextInDays && <span className="text-muted small">({nextInDays})</span>}
           </span>
-        ),
+        );
+      },
     },
     {
-      key: "avgOptionVolume",
-      header: "Avg Vol",
-      headerTitle: "Average Option Volume",
+      key: "dividendCadence",
+      header: "Dividend",
+      headerTitle: "Whether a regular ex-dividend cadence could be inferred to project later dividends into the forward",
+      render: (row) => {
+        if (row.dividendHistoryCount === 0) return <span className="text-muted">—</span>;
+        if (row.dividendCadenceUnknown) {
+          return (
+            <span className="d-inline-flex align-items-center gap-1">
+              <WarningTriangle reason="There's an upcoming ex-dividend but no regular cadence could be inferred from the dates on record, so only that next date is used — later dividends aren't projected forward. Not fixable by backfilling: cadence inference only ever needs the next + most recent ex-dividend, which are already captured — this means the actual cadence is irregular, or this is a first-time payer." />
+              Missing
+            </span>
+          );
+        }
+        return "Known";
+      },
+    },
+    {
+      key: "chainSnapshots",
+      header: "Snapshots",
+      headerTitle: "Nightly option-chain captures on record — the only source, nothing to manually backfill",
       align: "right",
-      render: (row) => formatNumber(row.avgOptionVolume),
+      render: (row) => (
+        <span className="d-inline-flex align-items-center gap-1">
+          {row.chainSnapshotCount === 0 && (
+            <WarningTriangle reason="No option-chain snapshot yet, so no surface fit and no Signals score. Not manually backfillable — waits for tonight's nightly capture." />
+          )}
+          {row.chainSnapshotCount}
+        </span>
+      ),
     },
-    { key: "snapshotDate", header: "Refreshed", headerTitle: "Last Refreshed", render: (row) => formatDate(row.snapshotDate) },
     {
-      key: "backfillStatus",
+      key: "latestSurfaceFit",
+      header: "Surface Fit",
+      headerTitle: "Fitted vs. total expiries on the most recent option-chain snapshot",
+      align: "right",
+      render: (row) => {
+        if (row.latestTotalSliceCount === null) return <span className="text-muted">—</span>;
+        const partial = (row.latestFittedSliceCount ?? 0) < row.latestTotalSliceCount;
+        return (
+          <span className="d-inline-flex align-items-center gap-1">
+            {partial && <WarningTriangle reason={`Only ${row.latestFittedSliceCount}/${row.latestTotalSliceCount} expiries fitted on the most recent snapshot — the rest have no usable candidates tonight.`} />}
+            <button type="button" className="btn btn-link p-0 text-decoration-none font-mono" onClick={() => setSurfaceModalSymbol(row.symbol)}>
+              {row.latestFittedSliceCount}/{row.latestTotalSliceCount}
+            </button>
+          </span>
+        );
+      },
+    },
+    {
+      key: "status",
       header: "Status",
       render: (row) =>
         row.backfillStatus === "preparing" ? (
-          <button
-            type="button"
-            className="badge ticker-prep-badge"
-            title="Click to see progress"
+          <PreparingStatusBadge
+            progressPercent={row.backfillProgressPercent ?? 0}
             onClick={() => setPrepTicker({ tickerId: row.tickerId, symbol: row.symbol, companyName: row.companyName })}
-          >
-            <span className="prep-ring" aria-hidden="true" />
-            Preparing {row.backfillProgressPercent ?? 0}%
-          </button>
-        ) : row.historyIncomplete ? (
-          <button
-            type="button"
-            className="badge ticker-prep-badge is-history-missing"
-            disabled={anyTickerPreparing || startingBackfillTickerId !== null}
-            title={
-              anyTickerPreparing || startingBackfillTickerId !== null
-                ? "Another ticker is being prepared. One at a time."
-                : `Only history from ${row.historyStartDate ?? "none"}. Click to load 5 years of prices and implied volatility, the calendar and option chain strikes.`
-            }
-            onClick={() => handleStartBackfill(row)}
-          >
-            {startingBackfillTickerId === row.tickerId ? <span className="prep-ring" aria-hidden="true" /> : null}
-            Backfill history
-          </button>
+          />
         ) : (
           <span className="text-muted">—</span>
         ),
@@ -326,20 +425,56 @@ export function ShortlistTab({ onOpenTickerDetail }: ShortlistTabProps) {
     {
       key: "actions",
       header: "",
-      align: "right",
-      render: (row) => (
-        <div className="d-inline-flex gap-2">
-          <button
-            type="button"
-            className="btn btn-sm btn-outline-danger d-inline-flex align-items-center gap-1"
-            disabled={removingId === row.id}
-            onClick={() => setRemoveConfirmRow(row)}
-          >
-            {removingId === row.id && <Spinner size="sm" />}
-            Remove
-          </button>
-        </div>
-      ),
+      // Not align: "right" -- that adds the .text-end class, which theme.css's numeric-column convention
+      // (.table td.text-end { font-family: "Roboto Mono" }) applies platform-wide. Actions isn't a numeric
+      // column; it just needs to sit at the right edge, done here with plain flex instead (found 2026-09-23:
+      // the Actions dropdown's menu text was rendering in the numeric monospace font because of this).
+      render: (row) => {
+        const items: ActionsMenuItem[] = [
+          {
+            key: "backfill-earnings",
+            label: "Backfill Earnings",
+            onClick: () => handleBackfillEarnings(row),
+            loading: backfillingEarningsTickerId === row.tickerId,
+            disabled: row.isEtf || row.earningsCount >= quartersForEarningsAdjustment,
+            disabledReason: row.isEtf ? "ETFs don't report earnings" : `${row.earningsCount} on record, already sufficient`,
+          },
+          {
+            key: "backfill-price-history",
+            label: "Backfill Price History",
+            onClick: () => handleBackfillPriceHistory(row),
+            loading: backfillingPriceHistoryTickerId === row.tickerId,
+            disabled: !row.historyIncomplete || backfillingPriceHistoryTickerId !== null,
+            disabledReason:
+              backfillingPriceHistoryTickerId !== null
+                ? "Another price-history backfill is already running. One at a time."
+                : `Already backfilled — history starts ${row.historyStartDate ?? "unknown"}, that's everything IBKR has`,
+          },
+          {
+            key: "retry-full-setup",
+            label: "Retry Full Setup",
+            onClick: () => handleStartBackfill(row),
+            loading: startingBackfillTickerId === row.tickerId,
+            disabled: !row.backfillNeedsRetry || anyTickerPreparing || startingBackfillTickerId !== null,
+            disabledReason:
+              anyTickerPreparing || startingBackfillTickerId !== null
+                ? "Another ticker is being prepared. One at a time."
+                : "Nothing failed — the setup pipeline (history, calendar, chain strikes, first snapshot) completed cleanly",
+          },
+          {
+            key: "remove",
+            label: "Remove",
+            onClick: () => setRemoveConfirmRow(row),
+            loading: removingId === row.id,
+            danger: true,
+          },
+        ];
+        return (
+          <div className="d-flex justify-content-end">
+            <ActionsMenu items={items} />
+          </div>
+        );
+      },
     },
   ];
 
@@ -438,6 +573,8 @@ export function ShortlistTab({ onOpenTickerDetail }: ShortlistTabProps) {
           onCancel={() => setRemoveConfirmRow(null)}
         />
       )}
+
+      {surfaceModalSymbol && <VolatilitySurfaceModal symbol={surfaceModalSymbol} onClose={() => setSurfaceModalSymbol(null)} />}
     </>
   );
 }

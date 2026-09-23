@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import { useColumnVisibility } from "./useColumnVisibility";
 import { ColumnVisibilityPopover } from "./ColumnVisibilityPopover";
 import { Spinner } from "../Spinner";
+import { TooltipSpan } from "../TooltipSpan";
 
 export interface DataTableColumn<TRow> {
   key: string;
@@ -59,32 +60,52 @@ export function DataTable<TRow>({
 
   return (
     <div className="card">
-      <div className={`card-body d-flex align-items-center py-2 border-bottom ${toolbar ? "justify-content-between gap-2 flex-wrap" : "justify-content-end"}`}>
-        {toolbar}
-        {/* A column with no header (e.g. a trailing actions column) has
-            nothing meaningful to label a checkbox with and is never meant
-            to be hidden — exclude it from the toggle list rather than show
-            a blank row (found 2026-08-28). */}
-        <ColumnVisibilityPopover
-          columns={columns.filter((column) => column.header !== "")}
-          isColumnVisible={isColumnVisible}
-          onToggleColumn={toggleColumn}
-        />
-      </div>
+      {toolbar && (
+        <div className="card-body d-flex align-items-center py-2 border-bottom justify-content-between gap-2 flex-wrap">
+          {toolbar}
+        </div>
+      )}
       {beforeTable}
       <div className="table-responsive">
         <table className="table table-sm table-hover table-vcenter card-table" style={dense ? { fontSize: "0.8rem" } : undefined}>
           <thead className="table-light">
             <tr>
-              {visibleColumns.map((column) => (
-                <th
-                  key={column.key}
-                  className={column.align === "right" ? "text-end" : undefined}
-                  title={column.headerTitle}
-                >
-                  {column.header}
-                </th>
-              ))}
+              {visibleColumns.map((column, index) => {
+                const isLastColumn = index === visibleColumns.length - 1;
+                return (
+                  <TooltipSpan
+                    as="th"
+                    key={column.key}
+                    text={column.headerTitle}
+                    className={column.align === "right" ? "text-end" : undefined}
+                  >
+                    {isLastColumn ? (
+                      // A blank-header trailing column (e.g. row actions) has no label to sit
+                      // "right after" -- its own cells are right-aligned via their own render
+                      // (see ShortlistTab's actions column, which avoids align: "right" to dodge
+                      // the numeric-column font it triggers), so push the gear right too, or it
+                      // ends up flush left while the column's content sits flush right, reading
+                      // as though it belongs to the column before it (found 2026-09-23).
+                      <div
+                        className={`d-flex align-items-center gap-1 ${column.align === "right" || column.header === "" ? "justify-content-end" : ""}`}
+                      >
+                        <span>{column.header}</span>
+                        {/* A column with no header (e.g. a trailing actions column) has
+                            nothing meaningful to label a checkbox with and is never meant
+                            to be hidden — exclude it from the toggle list rather than show
+                            a blank row (found 2026-08-28). */}
+                        <ColumnVisibilityPopover
+                          columns={columns.filter((c) => c.header !== "")}
+                          isColumnVisible={isColumnVisible}
+                          onToggleColumn={toggleColumn}
+                        />
+                      </div>
+                    ) : (
+                      column.header
+                    )}
+                  </TooltipSpan>
+                );
+              })}
             </tr>
           </thead>
           <tbody>

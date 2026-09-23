@@ -251,6 +251,14 @@ export function formatHourMinute(dateInput: string | Date | number): string {
   return date.toLocaleTimeString("en-US", { hour12: false, hour: "2-digit", minute: "2-digit" });
 }
 
+// Trading days per year, not calendar days -- matches the API's own daily_price_bars convention (one row
+// per trading day). Used to turn a raw bar count into a human "how much history" figure (Shortlist).
+const tradingDaysPerYear = 252;
+
+export function formatBarsAsYears(dailyBarCount: number): string {
+  return `${(dailyBarCount / tradingDaysPerYear).toFixed(1)}y`;
+}
+
 export function formatNumber(value: number | string | null | undefined, maximumFractionDigits = 0): string {
   if (value === null || value === undefined) return "—";
   const numericValue = typeof value === "string" ? Number(value) : value;

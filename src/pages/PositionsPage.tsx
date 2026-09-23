@@ -45,6 +45,8 @@ import {
   positionTotalPnlPercent,
 } from "../lib/positionPnl";
 import { StrategyBadge } from "../components/StrategyBadge";
+import { TooltipSpan } from "../components/TooltipSpan";
+import { useTooltip } from "../hooks/useTooltip";
 
 type RollAlert = TradeAlert & { suggestedStructure: RollStructure };
 
@@ -69,6 +71,19 @@ function structureSummary(position: Position): string {
       return `${sideLabel} ${leg.quantity}x ${strike}${rightLabel}`;
     })
     .join(" / ");
+}
+
+// Extracted so useTooltip (a hook) can be called once per row from inside
+// the actions column's render(row) callback (a plain function, not a
+// component) without violating the Rules of Hooks -- see FlashingNumber.tsx's
+// doc comment for the same constraint.
+function RollButton({ rationale, onClick }: { rationale: string | null | undefined; onClick: () => void }) {
+  const ref = useTooltip<HTMLButtonElement>(rationale ?? "Roll alert pending for this position");
+  return (
+    <button ref={ref} type="button" className="btn btn-sm btn-outline-warning" onClick={onClick}>
+      Roll
+    </button>
+  );
 }
 
 export function PositionsPage() {
@@ -201,13 +216,13 @@ export function PositionsPage() {
     if (!optionLeg || row.status === "closed") return <span className="text-muted">—</span>;
     const greeks = greeksByLegId[optionLeg.id];
     if (!greeks) {
-      if (greeksFetchFailed) return <span className="text-muted" title="Failed to load">—</span>;
+      if (greeksFetchFailed) return <TooltipSpan className="text-muted" text="Failed to load">—</TooltipSpan>;
       return <Spinner size="sm" label="Loading probability" />;
     }
     const value = greeks[field] ?? null;
     if (value === null) {
       const reason = field === "probabilityByD2" ? "Needs live implied volatility, price and a risk-free rate" : "No delta available";
-      return <span className="text-muted" title={reason}>—</span>;
+      return <TooltipSpan className="text-muted" text={reason}>—</TooltipSpan>;
     }
     return (
       <FlashingNumber value={value} precision={2} title={greeks.asOfDate ? `As of ${formatDate(greeks.asOfDate)} close` : undefined}>
@@ -219,9 +234,9 @@ export function PositionsPage() {
   const totals = computePositionTotals(positions, unrealizedPnlByPositionId, totalAccountValue);
   const totalPnlTitle = totals.positionsWithoutPnl > 0 ? `Excludes ${totals.positionsWithoutPnl} position(s) with no live price or snapshot` : undefined;
   const signedTotal = (value: number) => (
-    <span className={`font-mono ${pnlTextClass(value)}`} title={totalPnlTitle}>
+    <TooltipSpan className={`font-mono ${pnlTextClass(value)}`} text={totalPnlTitle}>
       {formatSignedPnl(value)}
-    </span>
+    </TooltipSpan>
   );
   // Closed positions' capital was committed at different times and reused, so
   // summing Exp $ / Exp % (and a P&L % on that base) across them is meaningless —
@@ -230,10 +245,10 @@ export function PositionsPage() {
   const footerCells: Record<string, ReactNode> = {
     symbol: `Total (${positions.length})`,
     pnlPercent: !isOpenView ? null : totals.isLoading ? <Spinner size="sm" label="Loading" /> : totals.pnlPercent === null ? "—" : (
-      <span className={`font-mono ${pnlTextClass(totals.pnlPercent)}`} title={totalPnlTitle}>
+      <TooltipSpan className={`font-mono ${pnlTextClass(totals.pnlPercent)}`} text={totalPnlTitle}>
         {totals.pnlPercent > 0 ? "+" : ""}
         {formatPercentageValue(totals.pnlPercent, 2)}
-      </span>
+      </TooltipSpan>
     ),
     pnl: totals.isLoading ? <Spinner size="sm" label="Loading" /> : signedTotal(totals.totalPnl),
     premiumPnl: totals.isLoading ? <Spinner size="sm" label="Loading" /> : signedTotal(totals.premiumPnl),
@@ -285,7 +300,7 @@ export function PositionsPage() {
       render: (row) => {
         if (row.status === "closed") return "—";
         if (row.breakEven === null || row.breakEven === undefined) {
-          return <span className="text-muted" title={row.breakEvenUnavailableReason ?? "No break-even for this position"}>—</span>;
+          return <TooltipSpan className="text-muted" text={row.breakEvenUnavailableReason ?? "No break-even for this position"}>—</TooltipSpan>;
         }
         if (row.breakEven <= 0) return <span className="badge bg-success-lt">Free</span>;
         const { price } = resolvePrice(row);
@@ -302,9 +317,9 @@ export function PositionsPage() {
         if (pnl === "loading") {
           if (unrealizedPnlFetchFailed) {
             return (
-              <span className="text-muted" title="Failed to load live P&L data">
+              <TooltipSpan className="text-muted" text="Failed to load live P&L data">
                 —
-              </span>
+              </TooltipSpan>
             );
           }
           return <Spinner size="sm" label="Loading P&L" />;
@@ -312,9 +327,9 @@ export function PositionsPage() {
         const pct = positionTotalPnlPercent(row, pnl);
         if (pct === null)
           return (
-            <span className="text-muted" title="No live price or recent snapshot available for this position">
+            <TooltipSpan className="text-muted" text="No live price or recent snapshot available for this position">
               —
-            </span>
+            </TooltipSpan>
           );
         const asOfDate = positionPnlAsOfDate(row, unrealizedPnlByPositionId);
         return (
@@ -335,18 +350,18 @@ export function PositionsPage() {
         if (pnl === "loading") {
           if (unrealizedPnlFetchFailed) {
             return (
-              <span className="text-muted" title="Failed to load live P&L data">
+              <TooltipSpan className="text-muted" text="Failed to load live P&L data">
                 —
-              </span>
+              </TooltipSpan>
             );
           }
           return <Spinner size="sm" label="Loading P&L" />;
         }
         if (pnl === null)
           return (
-            <span className="text-muted" title="No live price or recent snapshot available for this position">
+            <TooltipSpan className="text-muted" text="No live price or recent snapshot available for this position">
               —
-            </span>
+            </TooltipSpan>
           );
         const asOfDate = positionPnlAsOfDate(row, unrealizedPnlByPositionId);
         return (
@@ -364,17 +379,17 @@ export function PositionsPage() {
       render: (row) => {
         if (positionIsStockOnly(row))
           return (
-            <span className="text-muted" title="No live option leg — all P&L on this position is stock P&L">
+            <TooltipSpan className="text-muted" text="No live option leg — all P&L on this position is stock P&L">
               —
-            </span>
+            </TooltipSpan>
           );
         const pnl = positionPremiumPnl(row, unrealizedPnlByPositionId);
         if (pnl === "loading") return <Spinner size="sm" label="Loading premium P&L" />;
         if (pnl === null)
           return (
-            <span className="text-muted" title="No live price or recent snapshot available for this position">
+            <TooltipSpan className="text-muted" text="No live price or recent snapshot available for this position">
               —
-            </span>
+            </TooltipSpan>
           );
         return (
           <FlashingNumber value={pnl} className={pnlTextClass(pnl)}>
@@ -394,9 +409,9 @@ export function PositionsPage() {
         if (pnl === "loading") return <Spinner size="sm" label="Loading stock P&L" />;
         if (pnl === null)
           return (
-            <span className="text-muted" title="No live price or recent snapshot available for this position">
+            <TooltipSpan className="text-muted" text="No live price or recent snapshot available for this position">
               —
-            </span>
+            </TooltipSpan>
           );
         return (
           <FlashingNumber value={pnl} className={pnlTextClass(pnl)}>
@@ -428,7 +443,7 @@ export function PositionsPage() {
       render: (row) => {
         const expiryDate = positionExpiryDate(row);
         if (!expiryDate) return "—";
-        return <span title={formatDate(expiryDate)}>{formatDaysToExpiry(daysToExpiry(expiryDate, todayInEasternIso()))}</span>;
+        return <TooltipSpan text={formatDate(expiryDate)}>{formatDaysToExpiry(daysToExpiry(expiryDate, todayInEasternIso()))}</TooltipSpan>;
       },
     },
     {
@@ -488,14 +503,10 @@ export function PositionsPage() {
           return (
             <div className="d-flex gap-1 justify-content-end">
               {alert && (
-                <button
-                  type="button"
-                  className="btn btn-sm btn-outline-warning"
-                  title={alert.rationale ?? "Roll alert pending for this position"}
+                <RollButton
+                  rationale={alert.rationale}
                   onClick={() => openTickerDetail({ symbol: row.symbol, focusPositionId: row.id, alertId: alert.id })}
-                >
-                  Roll
-                </button>
+                />
               )}
               <button type="button" className="btn btn-sm btn-outline-secondary" onClick={() => setClosePosition(row)}>
                 Close

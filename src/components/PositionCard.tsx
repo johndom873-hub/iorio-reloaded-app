@@ -35,6 +35,8 @@ import {
   positionTotalPnlPercent,
 } from "../lib/positionPnl";
 import { StrategyBadge } from "./StrategyBadge";
+import { TooltipSpan } from "./TooltipSpan";
+import { useTooltip } from "../hooks/useTooltip";
 
 interface PositionCardProps {
   position: Position;
@@ -62,6 +64,18 @@ interface PositionCardProps {
    * parent instead of rendering RollPositionModal itself.
    */
   onRollSelect: (alert: RollAlertLike) => void;
+}
+
+// Extracted so useTooltip (a hook) can be called once per row from inside
+// displayedLegs.map() without violating the Rules of Hooks — see
+// FlashingNumber.tsx's doc comment for the same constraint.
+function RollAlertButton({ rationale, onClick }: { rationale: string | null | undefined; onClick: () => void }) {
+  const ref = useTooltip<HTMLButtonElement>(rationale ?? "Roll alert pending");
+  return (
+    <button ref={ref} type="button" className="btn btn-sm btn-outline-warning" onClick={onClick}>
+      Roll Alert
+    </button>
+  );
 }
 
 const annotationColorsByTheme = {
@@ -147,32 +161,32 @@ export function PositionCard({
           if (pnl === "loading") {
             if (unrealizedPnlFetchFailed) {
               return (
-                <span className="badge bg-secondary-lt" title="Failed to load live P&L data">
+                <TooltipSpan className="badge bg-secondary-lt" text="Failed to load live P&L data">
                   P&L —
-                </span>
+                </TooltipSpan>
               );
             }
             return <Spinner size="sm" label="Loading P&L" />;
           }
           if (pnl === null)
             return (
-              <span className="badge bg-secondary-lt" title="No live price or recent snapshot available for this position">
+              <TooltipSpan className="badge bg-secondary-lt" text="No live price or recent snapshot available for this position">
                 P&L —
-              </span>
+              </TooltipSpan>
             );
           const pct = positionTotalPnlPercent(position, pnl);
           const asOfDate = positionPnlAsOfDate(position, unrealizedPnlByPositionId);
           const asOfTitle = asOfDate ? `As of ${formatDate(asOfDate)} close` : undefined;
           return (
             <>
-              <span className={`badge ${pnlBadgeClass(pnl)}`} title={asOfTitle}>
+              <TooltipSpan className={`badge ${pnlBadgeClass(pnl)}`} text={asOfTitle}>
                 {formatSignedPnl(pnl)}
-              </span>
+              </TooltipSpan>
               {pct !== null && (
-                <span className={`badge ${pnlBadgeClass(pct)}`} title={asOfTitle}>
+                <TooltipSpan className={`badge ${pnlBadgeClass(pct)}`} text={asOfTitle}>
                   {pct > 0 ? "+" : ""}
                   {formatPercentageValue(pct, 2)}
-                </span>
+                </TooltipSpan>
               )}
             </>
           );
@@ -182,53 +196,53 @@ export function PositionCard({
           (() => {
             const premiumPnl = positionPremiumPnl(position, unrealizedPnlByPositionId);
             return (
-              <span className="small" title="Premium collected vs. current buy-back cost of the option contract(s)">
+              <TooltipSpan className="small" text="Premium collected vs. current buy-back cost of the option contract(s)">
                 <span className="text-muted">Premium P&L:</span>{" "}
                 {premiumPnl === "loading" || premiumPnl === null ? (
                   <span className="text-muted">—</span>
                 ) : (
                   <span className={pnlTextClass(premiumPnl)}>{formatSignedPnl(premiumPnl)}</span>
                 )}
-              </span>
+              </TooltipSpan>
             );
           })()}
         {positionHasStockLeg(position) &&
           (() => {
             const stockPnl = positionStockPnl(position, unrealizedPnlByPositionId);
             return (
-              <span className="small" title="Stock price movement vs. entry price">
+              <TooltipSpan className="small" text="Stock price movement vs. entry price">
                 <span className="text-muted">Stock P&L:</span>{" "}
                 {stockPnl === "loading" || stockPnl === null ? (
                   <span className="text-muted">—</span>
                 ) : (
                   <span className={pnlTextClass(stockPnl)}>{formatSignedPnl(stockPnl)}</span>
                 )}
-              </span>
+              </TooltipSpan>
             );
           })()}
         {position.capitalAtRisk !== null && (
-          <span className="small" title="Capital committed to this position — stock cost for covered calls, strike collateral for cash-secured puts">
+          <TooltipSpan className="small" text="Capital committed to this position — stock cost for covered calls, strike collateral for cash-secured puts">
             <span className="text-muted">EXP $:</span> {formatCurrency(Number(position.capitalAtRisk), 0)}
-          </span>
+          </TooltipSpan>
         )}
         {position.capitalAtRisk !== null && totalAccountValue !== null && (
-          <span className="small" title="This position's capital as a share of total account value (positions + cash)">
+          <TooltipSpan className="small" text="This position's capital as a share of total account value (positions + cash)">
             <span className="text-muted">EXP %:</span> {formatPercentageValue((Number(position.capitalAtRisk) / totalAccountValue) * 100, 1)}
-          </span>
+          </TooltipSpan>
         )}
         {position.capitalAtRisk !== null &&
           (() => {
             const pnl = positionTotalPnl(position, unrealizedPnlByPositionId);
             if (pnl === "loading" || pnl === null) return null;
             return (
-              <span className="small" title="Market value — capital committed to this position plus its unrealized P&L">
+              <TooltipSpan className="small" text="Market value — capital committed to this position plus its unrealized P&L">
                 <span className="text-muted">MV:</span> {formatCurrency(Number(position.capitalAtRisk) + pnl, 0)}
-              </span>
+              </TooltipSpan>
             );
           })()}
-        <span className="small" title={formatDateTime(position.openedAt)}>
+        <TooltipSpan className="small" text={formatDateTime(position.openedAt)}>
           <span className="text-muted">Opened:</span> {formatDaysAgo(daysAgo(position.openedAt))}
-        </span>
+        </TooltipSpan>
       </div>
       {rollAlert && (
         <div className="alert alert-warning d-flex flex-wrap align-items-center justify-content-between gap-2">
@@ -256,9 +270,9 @@ export function PositionCard({
                 <th>Expiry</th>
                 <th className="text-end">Entry</th>
                 <th className="text-end">Delta</th>
-                <th className="text-end" title="Rate of change of delta per $1 move in the underlying — higher gamma means delta (and assignment risk) can shift faster">
+                <TooltipSpan as="th" className="text-end" text="Rate of change of delta per $1 move in the underlying — higher gamma means delta (and assignment risk) can shift faster">
                   Gamma
-                </th>
+                </TooltipSpan>
                 <th className="text-end">Exit</th>
                 <th></th>
               </tr>
@@ -280,9 +294,9 @@ export function PositionCard({
                         leg.id in greeksByLegId ? (
                           formatNumber(greeksByLegId[leg.id].delta, 2)
                         ) : greeksFetchFailed ? (
-                          <span className="text-muted" title="Failed to load delta">
+                          <TooltipSpan className="text-muted" text="Failed to load delta">
                             —
-                          </span>
+                          </TooltipSpan>
                         ) : (
                           "—"
                         )
@@ -295,9 +309,9 @@ export function PositionCard({
                         leg.id in greeksByLegId ? (
                           formatNumber(greeksByLegId[leg.id].gamma, 3)
                         ) : greeksFetchFailed ? (
-                          <span className="text-muted" title="Failed to load gamma">
+                          <TooltipSpan className="text-muted" text="Failed to load gamma">
                             —
-                          </span>
+                          </TooltipSpan>
                         ) : (
                           "—"
                         )
@@ -308,10 +322,8 @@ export function PositionCard({
                     <td className="text-end">{leg.exitAt ? formatCurrency(Number(leg.exitPrice)) : "—"}</td>
                     <td className="text-end">
                       {rollEligible && legRollAlert && (
-                        <button
-                          type="button"
-                          className="btn btn-sm btn-outline-warning"
-                          title={legRollAlert.rationale ?? "Roll alert pending"}
+                        <RollAlertButton
+                          rationale={legRollAlert.rationale}
                           onClick={() =>
                             onRollSelect({
                               id: legRollAlert.id,
@@ -320,9 +332,7 @@ export function PositionCard({
                               suggestedStructure: legRollAlert.suggestedStructure,
                             })
                           }
-                        >
-                          Roll Alert
-                        </button>
+                        />
                       )}
                       {rollEligible && !legRollAlert && (
                         <button

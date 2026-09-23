@@ -4,6 +4,7 @@ import type { RoadmapEta, RoadmapItem } from "../../api/signals";
 import { formatDate } from "../../lib/formatters";
 import { roadmapStatusBadgeClass, roadmapStatusLabel, signalsColumnExplanation } from "../../lib/signalsPresentation";
 import { Spinner } from "../Spinner";
+import { useTooltip } from "../../hooks/useTooltip";
 
 const badgeFontSize = { fontSize: "0.72rem" } as const;
 
@@ -77,14 +78,17 @@ export function NotAccountedForChip({ symbol, caveats, generalItems, label, onBa
   }, [isOpen]);
 
   const specificCount = caveats.length;
+  const tooltipRef = useTooltip<HTMLButtonElement>(signalsColumnExplanation.notAccountedFor);
   return (
     <div ref={containerRef} style={{ display: "inline-block" }}>
       <button
-        ref={buttonRef}
+        ref={(el) => {
+          buttonRef.current = el;
+          tooltipRef.current = el;
+        }}
         type="button"
         className={`badge border-0 d-inline-flex align-items-center gap-1 px-2 py-1 ${specificCount > 0 ? "bg-warning-lt" : "bg-secondary-lt"}`}
         style={{ ...badgeFontSize, cursor: "pointer" }}
-        title={signalsColumnExplanation.notAccountedFor}
         onClick={(event) => setPlacement(isOpen ? null : placementFor(event.currentTarget))}
       >
         <IconAlertTriangle size={12} />

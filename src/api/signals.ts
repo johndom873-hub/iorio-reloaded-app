@@ -7,7 +7,7 @@ import { openMultiplexedStream } from "./streamMultiplexer";
 
 export type SignalStrategyKey = "covered_call" | "cash_secured_put";
 export type SignalGrade = "strong" | "good" | "marginal" | "avoid";
-export type SignalFlag = "spans_earnings" | "outside_fitted_range" | "wide_spread" | "no_shares" | "insufficient_cash";
+export type SignalFlag = "earnings_calendar_unresolved" | "outside_fitted_range" | "wide_spread" | "no_shares" | "insufficient_cash";
 export type SignalsUnscoredReason = "no_snapshot" | "no_surface_fit" | "no_forecast" | "suspected_split";
 export type SignalsPriceSource = "live" | "frozen" | "snapshot";
 
@@ -96,6 +96,47 @@ export interface TickerSignals {
 
 export type SignalsScreenRow = Omit<TickerSignals, "candidates">;
 
+export type SviSliceStatus = "ok" | "insufficient_points" | "fit_failed" | "poor_fit" | "butterfly_arbitrage";
+
+/** Raw SVI: w(k) = a + b*(rho*(k-m) + sqrt((k-m)^2 + sigma^2)); w is total variance (IV^2 * yearsToExpiry). */
+export interface RawSviParameters {
+  a: number;
+  b: number;
+  rho: number;
+  m: number;
+  sigma: number;
+}
+
+export interface SignalSurfaceSliceDroppedCounts {
+  inTheMoney: number;
+  noTwoSidedQuote: number;
+  spreadTooWide: number;
+  noImpliedVolatility: number;
+}
+
+export interface SignalSurfaceSlice {
+  expiry: string;
+  status: SviSliceStatus;
+  parameters: RawSviParameters | null;
+  kMin: number | null;
+  kMax: number | null;
+  yearsToExpiry: number;
+  forwardPrice: number;
+  pointCount: number;
+  rmseVolatility: number | null;
+  minButterflyDensity: number | null;
+  droppedCounts: SignalSurfaceSliceDroppedCounts;
+  calendarChecks: number;
+  calendarViolations: number;
+}
+
+/** Single-ticker REST payload only (GET /signals/:symbol) — adds the raw fitted-surface slices for the
+ * volatility-surface modal. Not present on SignalsScreenRow: the whole-screen list endpoint doesn't carry
+ * every ticker's per-expiry SVI parameters. */
+export interface TickerSignalsDetail extends TickerSignals {
+  slices: SignalSurfaceSlice[];
+}
+
 export interface SignalsScreenFrame {
   type: "signalsScreen";
   at: string;
@@ -120,8 +161,8 @@ export function fetchSignalsScreen(): Promise<SignalsScreenRow[]> {
   return apiRequest<SignalsScreenRow[]>("/signals");
 }
 
-export function fetchTickerSignals(symbol: string): Promise<TickerSignals> {
-  return apiRequest<TickerSignals>(`/signals/${encodeURIComponent(symbol)}`);
+export function fetchTickerSignals(symbol: string): Promise<TickerSignalsDetail> {
+  return apiRequest<TickerSignalsDetail>(`/signals/${encodeURIComponent(symbol)}`);
 }
 
 export function fetchSignalsRoadmap(): Promise<SignalsRoadmap> {

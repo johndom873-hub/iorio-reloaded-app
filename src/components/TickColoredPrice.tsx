@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import { flashClassName } from "../hooks/useFlashOnChange";
 import { useTickDirectionColor } from "../hooks/useTickDirectionColor";
+import { useTooltip } from "../hooks/useTooltip";
 
 interface TickColoredPriceProps {
   /** Raw live value to compare against its own previous tick. */
@@ -19,8 +20,9 @@ interface TickColoredPriceProps {
 // Performance's Current cell was wrongly colored vs. the last daily close).
 export function TickColoredPrice({ value, initialReference, precision, title, children }: TickColoredPriceProps) {
   const { colorClass, flashing } = useTickDirectionColor(value, initialReference, precision);
+  const tooltipRef = useTooltip<HTMLSpanElement>(title);
   return (
-    <span className={[colorClass, flashClassName(flashing)].filter(Boolean).join(" ")} title={title}>
+    <span ref={tooltipRef} className={[colorClass, flashClassName(flashing)].filter(Boolean).join(" ")}>
       {children}
     </span>
   );

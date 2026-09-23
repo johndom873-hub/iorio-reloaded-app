@@ -25,6 +25,7 @@ import { useTheme } from "../../contexts/ThemeContext";
 import { BackgroundJobsToastStack } from "./BackgroundJobsToastStack";
 import { NewVersionToast } from "./NewVersionToast";
 import { StreamConnectionToast } from "./StreamConnectionToast";
+import { useTooltip } from "../../hooks/useTooltip";
 
 const navigationItems = [
   { to: "/", label: "Dashboard", icon: IconLayoutDashboard, end: true },
@@ -81,6 +82,12 @@ export function AppLayout() {
   const { theme, toggleTheme } = useTheme();
   const navTitleRefs = useRef<(HTMLSpanElement | null)[]>([]);
   const [sidebarMode, setSidebarMode] = useState<SidebarMode>(readStoredSidebarMode);
+  const themeToggleTooltip = theme === "light" ? "Switch to dark theme" : "Switch to light theme";
+  const mobileThemeToggleRef = useTooltip<HTMLButtonElement>(themeToggleTooltip);
+  const mobileLogoutRef = useTooltip<HTMLButtonElement>("Log out");
+  const desktopThemeToggleRef = useTooltip<HTMLButtonElement>(themeToggleTooltip);
+  const desktopLogoutRef = useTooltip<HTMLButtonElement>("Log out");
+  const sidebarPinToggleRef = useTooltip<HTMLButtonElement>(sidebarMode === "fixed" ? "Unpin sidebar (collapse on hover-away)" : "Pin sidebar open");
 
   const toggleSidebarMode = () => {
     setSidebarMode((current) => {
@@ -137,14 +144,14 @@ export function AppLayout() {
           </div>
           <div className="d-flex align-items-center gap-3 ms-auto d-lg-none">
             <button
+              ref={mobileThemeToggleRef}
               type="button"
               className="btn btn-icon iorio-icon-btn"
-              title={theme === "light" ? "Switch to dark theme" : "Switch to light theme"}
               onClick={toggleTheme}
             >
               {theme === "light" ? <IconMoon size={20} /> : <IconSun size={20} />}
             </button>
-            <button type="button" className="btn btn-icon iorio-icon-btn" title="Log out" onClick={() => void logout()}>
+            <button ref={mobileLogoutRef} type="button" className="btn btn-icon iorio-icon-btn" onClick={() => void logout()}>
               <IconLogout size={20} />
             </button>
           </div>
@@ -186,9 +193,9 @@ export function AppLayout() {
           </div>
         </div>
         <button
+          ref={sidebarPinToggleRef}
           type="button"
           className="iorio-sidebar-pin-toggle d-none d-lg-flex"
-          title={sidebarMode === "fixed" ? "Unpin sidebar (collapse on hover-away)" : "Pin sidebar open"}
           onClick={toggleSidebarMode}
         >
           {sidebarMode === "fixed" ? <IconChevronRight size={14} /> : <IconChevronLeft size={14} />}
@@ -207,14 +214,14 @@ export function AppLayout() {
           </a>
           <div className="ms-auto d-flex align-items-center gap-3">
             <button
+              ref={desktopThemeToggleRef}
               type="button"
               className="btn btn-icon iorio-icon-btn"
-              title={theme === "light" ? "Switch to dark theme" : "Switch to light theme"}
               onClick={toggleTheme}
             >
               {theme === "light" ? <IconMoon size={20} /> : <IconSun size={20} />}
             </button>
-            <button type="button" className="btn btn-icon iorio-icon-btn" title="Log out" onClick={() => void logout()}>
+            <button ref={desktopLogoutRef} type="button" className="btn btn-icon iorio-icon-btn" onClick={() => void logout()}>
               <IconLogout size={20} />
             </button>
           </div>

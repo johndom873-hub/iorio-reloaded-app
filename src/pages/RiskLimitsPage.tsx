@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { PageHeader } from "../components/layout/PageHeader";
 import { Spinner } from "../components/Spinner";
 import { HelpTooltip } from "../components/HelpTooltip";
+import { TooltipSpan } from "../components/TooltipSpan";
 import { TickerDetailModal } from "../components/TickerDetailModal";
 import { ApiError } from "../api/client";
 import {
@@ -118,9 +119,9 @@ function ConcentrationList({ title, rows, labelKey, totalAccountValue, limitPct,
                 )}
                 <span className="d-flex align-items-center gap-2">
                   {isOverLimit && (
-                    <span className="badge bg-danger-lt text-nowrap" title={`Over the ${formatPercentageValue(limitPct)} limit for the selected strategy`}>
+                    <TooltipSpan className="badge bg-danger-lt text-nowrap" text={`Over the ${formatPercentageValue(limitPct)} limit for the selected strategy`}>
                       over limit
-                    </span>
+                    </TooltipSpan>
                   )}
                   <span className={isOverLimit ? "text-danger" : "text-muted"} style={{ fontSize: "0.8rem" }}>
                     {formatCurrency(Number(row.notionalValue), 0)}

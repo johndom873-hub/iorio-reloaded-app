@@ -19,7 +19,7 @@ export function HelpTooltip({ text }: HelpTooltipProps) {
   useEffect(() => {
     const el = iconRef.current;
     if (!el) return;
-    const tooltip = new Tooltip(el, { title: text, placement: "top" });
+    const tooltip = new Tooltip(el, { title: text, placement: "top", delay: { show: 1000, hide: 0 } });
     return () => tooltip.dispose();
   }, [text]);
 
@@ -48,7 +48,7 @@ export function DottedLabelTooltip({ label, tooltipHtml }: DottedLabelTooltipPro
   useEffect(() => {
     const el = labelRef.current;
     if (!el) return;
-    const tooltip = new Tooltip(el, { title: tooltipHtml, html: true, placement: "top", customClass: "footnote-tooltip" });
+    const tooltip = new Tooltip(el, { title: tooltipHtml, html: true, placement: "top", customClass: "footnote-tooltip", delay: { show: 1000, hide: 0 } });
     return () => tooltip.dispose();
   }, [tooltipHtml]);
 

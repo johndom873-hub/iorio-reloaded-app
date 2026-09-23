@@ -22,6 +22,8 @@ import {
 import { formatCurrency, formatDate, formatNumber, formatPercentage, formatPercentageValue, pnlBadgeClass } from "../lib/formatters";
 import { percentChange } from "../lib/priceChange";
 import { useTickerDetailSymbol } from "../hooks/useTickerDetailSymbol";
+import { useTooltip } from "../hooks/useTooltip";
+import { TooltipSpan } from "../components/TooltipSpan";
 
 // Flashes on every live-streamed update, same mechanism as Positions'
 // P&L/Greeks columns — see FlashingNumber's own comment for why it's a
@@ -45,18 +47,16 @@ const macdBadgeClass: Record<MacdSignal, string> = {
 const trendUnavailableTitle = "Not enough daily history yet (needs about 99 trading days of closes)";
 
 function MacdTrendBadge({ trend }: { trend: MacdSignal | null }) {
+  const tooltipText = trend === null ? trendUnavailableTitle : "As of the last completed close: EMA12/EMA26 MACD line vs. its 9-period signal line";
+  const ref = useTooltip<HTMLSpanElement>(tooltipText);
   if (trend === null)
     return (
-      <span className="text-muted" title={trendUnavailableTitle}>
+      <span ref={ref} className="text-muted" tabIndex={0}>
         —
       </span>
     );
   return (
-    <span
-      className={`badge ${macdBadgeClass[trend]}`}
-      style={{ fontSize: "0.72rem" }}
-      title="As of the last completed close: EMA12/EMA26 MACD line vs. its 9-period signal line"
-    >
+    <span ref={ref} className={`badge ${macdBadgeClass[trend]}`} style={{ fontSize: "0.72rem" }} tabIndex={0}>
       {trend}
     </span>
   );
@@ -74,18 +74,16 @@ const maTrendBadgeLabel: Record<MaTrend, string> = {
 };
 
 function MaTrendBadge({ trend }: { trend: MaTrend | null }) {
+  const tooltipText = trend === null ? trendUnavailableTitle : "As of the last completed close: that close vs. the 25-day and 99-day moving averages";
+  const ref = useTooltip<HTMLSpanElement>(tooltipText);
   if (trend === null)
     return (
-      <span className="text-muted" title={trendUnavailableTitle}>
+      <span ref={ref} className="text-muted" tabIndex={0}>
         —
       </span>
     );
   return (
-    <span
-      className={`badge ${maTrendBadgeClass[trend]} text-nowrap`}
-      style={{ fontSize: "0.72rem" }}
-      title="As of the last completed close: that close vs. the 25-day and 99-day moving averages"
-    >
+    <span ref={ref} className={`badge ${maTrendBadgeClass[trend]} text-nowrap`} style={{ fontSize: "0.72rem" }} tabIndex={0}>
       {maTrendBadgeLabel[trend]}
     </span>
   );
@@ -253,9 +251,9 @@ export function PricePerformancePage() {
         <span>
           {formatCurrency(row.latestClose == null ? null : Number(row.latestClose))}
           {row.isBehind && (
-            <span className="ms-1 text-warning" title={`Out of date — this ticker's latest daily bar is ${formatDate(row.latestDate)}`}>
+            <TooltipSpan className="ms-1 text-warning" text={`Out of date — this ticker's latest daily bar is ${formatDate(row.latestDate)}`}>
               <IconAlertTriangle size={14} aria-hidden="true" />
-            </span>
+            </TooltipSpan>
           )}
         </span>
       ),
@@ -271,23 +269,23 @@ export function PricePerformancePage() {
           // Nothing has arrived for this ticker: still connecting, or it will not.
           if (liveConnection === "unavailable")
             return (
-              <span className="text-muted" title="Live prices are unavailable right now">
+              <TooltipSpan className="text-muted" text="Live prices are unavailable right now">
                 —
-              </span>
+              </TooltipSpan>
             );
           if (liveWaitExpired)
             return (
-              <span className="text-muted" title="No live price yet — the market may be closed, or IBKR is slow to respond">
+              <TooltipSpan className="text-muted" text="No live price yet — the market may be closed, or IBKR is slow to respond">
                 —
-              </span>
+              </TooltipSpan>
             );
           return <Spinner size="sm" label="Loading current price" />;
         }
         if (price === null)
           return (
-            <span className="text-muted" title="No live quote for this ticker right now (outside market hours or no market data)">
+            <TooltipSpan className="text-muted" text="No live quote for this ticker right now (outside market hours or no market data)">
               —
-            </span>
+            </TooltipSpan>
           );
         return (
           <TickColoredPrice
@@ -400,19 +398,21 @@ export function PricePerformancePage() {
         title="Price Performance"
         subtitle="Recent price moves across every shortlisted ticker"
         actions={
-          <button type="button" className="btn btn-outline-primary" disabled={refreshDisabled} title={refreshTitle} onClick={() => void handleRefreshClick()}>
-            {refreshBusy ? (
-              <>
-                <Spinner size="sm" className="me-2" />
-                Refreshing…
-              </>
-            ) : (
-              <>
-                <IconRefresh size={18} className="me-2" />
-                Refresh daily data
-              </>
-            )}
-          </button>
+          <TooltipSpan text={refreshTitle} style={{ display: "inline-block" }}>
+            <button type="button" className="btn btn-outline-primary" disabled={refreshDisabled} onClick={() => void handleRefreshClick()}>
+              {refreshBusy ? (
+                <>
+                  <Spinner size="sm" className="me-2" />
+                  Refreshing…
+                </>
+              ) : (
+                <>
+                  <IconRefresh size={18} className="me-2" />
+                  Refresh daily data
+                </>
+              )}
+            </button>
+          </TooltipSpan>
         }
       />
 

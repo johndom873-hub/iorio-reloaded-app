@@ -5,6 +5,7 @@ import { buildRollOrder, openContractQuoteStream, type OrderLegQuote, type Order
 import type { RollStructure } from "../api/tradeAlerts";
 import { formatCurrency, formatCurrencyTrimmed, formatDate, formatNumber } from "../lib/formatters";
 import { flashClassName, useFlashOnChange } from "../hooks/useFlashOnChange";
+import { useTooltip } from "../hooks/useTooltip";
 
 function midPrice(quote: OrderLegQuote): number | null {
   if (quote.bid !== null && quote.ask !== null) return (quote.bid + quote.ask) / 2;
@@ -15,9 +16,10 @@ function midPrice(quote: OrderLegQuote): number | null {
 // these to sit side by side (close leg + replacement).
 function LiveLegQuote({ quote, error }: { quote: OrderLegQuote | null; error: string | null }) {
   const midFlash = useFlashOnChange(quote ? midPrice(quote) : null);
+  const tooltipRef = useTooltip<HTMLSpanElement>(error);
   if (error) {
     return (
-      <span className="text-muted" title={error}>
+      <span ref={tooltipRef} className="text-muted" tabIndex={0}>
         Live quote unavailable
       </span>
     );

@@ -9,6 +9,7 @@ import { ApiError } from "../api/client";
 import { cancelOrder, type PositionStrategyKey } from "../api/positions";
 import { fetchTradeBlotter, type PendingOrder, type Trade } from "../api/tradeBlotter";
 import { StrategyBadge } from "../components/StrategyBadge";
+import { TooltipSpan } from "../components/TooltipSpan";
 import { useTickerDetailSymbol } from "../hooks/useTickerDetailSymbol";
 import {
   formatCurrency,
@@ -130,9 +131,9 @@ export function TradeBlotterPage() {
       render: (row) => {
         const timestamp = row.kind === "trade" ? row.executedAt : row.createdAt;
         return (
-          <span className="text-nowrap" title={formatDateTime(timestamp)}>
+          <TooltipSpan className="text-nowrap" text={formatDateTime(timestamp)}>
             {formatRelativeDate(timestamp)}
-          </span>
+          </TooltipSpan>
         );
       },
     },
@@ -213,9 +214,9 @@ export function TradeBlotterPage() {
           <div>
             <span className={`badge ${orderRequestStatusBadgeClass(row.status)}`}>{orderRequestStatusLabel(row.status)}</span>
             {row.errorMessage && (
-              <div className="text-danger text-truncate" style={{ fontSize: "0.72rem", maxWidth: "12rem" }} title={row.errorMessage}>
+              <TooltipSpan as="div" className="text-danger text-truncate" style={{ fontSize: "0.72rem", maxWidth: "12rem" }} text={row.errorMessage}>
                 {row.errorMessage}
-              </div>
+              </TooltipSpan>
             )}
           </div>
         );
@@ -230,9 +231,9 @@ export function TradeBlotterPage() {
         // one order shows the same ID, and shorten the UUID for display.
         const orderId = row.id.split(":")[0]!;
         return (
-          <span title={orderId} style={{ fontFamily: "monospace", fontSize: "0.8rem" }}>
+          <TooltipSpan text={orderId} style={{ fontFamily: "monospace", fontSize: "0.8rem" }}>
             {orderId.slice(0, 8)}
-          </span>
+          </TooltipSpan>
         );
       },
     },

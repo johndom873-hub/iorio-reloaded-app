@@ -6,6 +6,7 @@ import { CycleBucketBadge } from "./CycleBucketBadge";
 import { Spinner } from "./Spinner";
 import { fetchCycles, type Cycle } from "../api/positions";
 import { formatCurrency, formatDate, formatNumber, formatSignedPnl, pnlTextClass } from "../lib/formatters";
+import { TooltipSpan } from "./TooltipSpan";
 
 // Timeline columns; every data table gets the per-column show/hide gear (project rule), saved in localStorage.
 const timelineColumns = [
@@ -32,6 +33,17 @@ export function CycleCard({ symbol }: { symbol: string }) {
     timelineColumns.map((column) => column.key),
   );
   const visible = (key: string) => isColumnVisible(key);
+  const visibleTimelineKeys = timelineColumns.filter((column) => visible(column.key)).map((column) => column.key);
+  const lastVisibleTimelineKey = visibleTimelineKeys[visibleTimelineKeys.length - 1];
+  const headerLabel = (key: string, label: string, alignRight = false) =>
+    key === lastVisibleTimelineKey ? (
+      <div className={`d-flex align-items-center gap-1 ${alignRight ? "justify-content-end" : ""}`}>
+        <span>{label}</span>
+        <ColumnVisibilityPopover columns={timelineColumns} isColumnVisible={isColumnVisible} onToggleColumn={toggleColumn} />
+      </div>
+    ) : (
+      label
+    );
 
   useEffect(() => {
     setCycles(null);
@@ -124,22 +136,19 @@ export function CycleCard({ symbol }: { symbol: string }) {
             </div>
           </div>
 
-          <div className="d-flex justify-content-end">
-            <ColumnVisibilityPopover columns={timelineColumns} isColumnVisible={isColumnVisible} onToggleColumn={toggleColumn} />
-          </div>
           <div className="table-responsive border rounded">
             <table className="table table-sm table-vcenter card-table mb-0">
               <thead className="table-light">
                 <tr>
-                  {visible("date") && <th>Date</th>}
-                  {visible("type") && <th>Type</th>}
-                  {visible("event") && <th>Event</th>}
-                  {visible("owner") && <th>Strategy</th>}
-                  {visible("quantity") && <th className="text-end" title="Shares-equivalent: 1 option contract = 100">Qty</th>}
-                  {visible("strike") && <th className="text-end">Strike</th>}
-                  {visible("stockPrice") && <th className="text-end" title="Real fill for stock trades, otherwise that day's closing price of the stock">Stock price</th>}
-                  {visible("premium") && <th className="text-end">Premium</th>}
-                  {visible("stock") && <th className="text-end">Stock</th>}
+                  {visible("date") && <th>{headerLabel("date", "Date")}</th>}
+                  {visible("type") && <th>{headerLabel("type", "Type")}</th>}
+                  {visible("event") && <th>{headerLabel("event", "Event")}</th>}
+                  {visible("owner") && <th>{headerLabel("owner", "Strategy")}</th>}
+                  {visible("quantity") && <TooltipSpan as="th" className="text-end" text="Shares-equivalent: 1 option contract = 100">{headerLabel("quantity", "Qty", true)}</TooltipSpan>}
+                  {visible("strike") && <th className="text-end">{headerLabel("strike", "Strike", true)}</th>}
+                  {visible("stockPrice") && <TooltipSpan as="th" className="text-end" text="Real fill for stock trades, otherwise that day's closing price of the stock">{headerLabel("stockPrice", "Stock price", true)}</TooltipSpan>}
+                  {visible("premium") && <th className="text-end">{headerLabel("premium", "Premium", true)}</th>}
+                  {visible("stock") && <th className="text-end">{headerLabel("stock", "Stock", true)}</th>}
                 </tr>
               </thead>
               <tbody>

@@ -108,6 +108,72 @@
   border: 1px solid var(--tblr-border-color);
 }
 
+/* Dropdown-item hover (Actions menus, column-visibility popover, etc.) ships with
+   --tblr-dropdown-link-hover-bg: rgba(var(--tblr-secondary-rgb), 0.08) — a translucent grey tuned for a
+   light background. In light mode that reads about the same intensity as a table row's own hover
+   (rgba(emphasis, 0.075), close enough), but dark mode never got the equivalent fix table rows already
+   have. First attempt at fixing this (2026-09-23) reused .table-dark's hover color, rgb(47,57,70) — still
+   nearly invisible, because that color was calibrated against .table-dark's own background (#1f2937), not
+   a dropdown-menu's actual background here, which is --tblr-bg-surface (#2a3648, already lighter than
+   #1f2937) -- the two colors ended up only 5-16 RGB units apart. Uses --tblr-border-color instead
+   (#45566e in dark mode) -- already validated elsewhere in this file as "clearly visible against both
+   #1f2937 and #0f141d," so visible against #2a3648 too, and a real, unmistakable step up rather than a
+   near-miss. */
+:root[data-bs-theme="dark"] .dropdown-item:hover,
+:root[data-bs-theme="dark"] .dropdown-item:focus {
+  background-color: var(--tblr-border-color);
+}
+
+/* ColumnVisibilityPopover's checkbox rows are plain .form-check labels, not .dropdown-item, so they get
+   none of the hover treatment above by default -- same "review every dropdown" pass (Marcelo, 2026-09-23).
+   Matches the intensity of both the row-hover and dropdown-item-hover fixes: light mode's translucent
+   value approximates the table's own row hover (rgba(emphasis, 0.075)), dark mode reuses the exact solid
+   color .table-dark and .dropdown-item:hover above both use. */
+.column-visibility-row {
+  /* Flex instead of relying on .form-check's padding-left: 2rem +
+     .form-check-input's margin-left: -2rem float trick (two rounds of
+     overflow bugs came from that: the row's own padding kept re-clobbering
+     or under-reserving the exact space that trick needs, 2026-09-23).
+     Flex lays the (now explicitly sized) checkbox and label out directly,
+     so no reserved-space arithmetic to keep in sync at all. */
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.8rem;
+  padding: 0.25rem 0.5rem;
+  margin-left: -0.5rem;
+  margin-right: -0.5rem;
+  border-radius: var(--tblr-border-radius, 4px);
+}
+.column-visibility-row .form-check-input {
+  float: none;
+  margin: 0;
+  width: 1rem;
+  height: 1rem;
+}
+.column-visibility-row:hover {
+  background-color: rgba(var(--tblr-emphasis-color-rgb), 0.075);
+}
+:root[data-bs-theme="dark"] .column-visibility-row:hover {
+  background-color: var(--tblr-border-color);
+}
+
+/* Disabled dropdown items (Actions menu) were too easy to mistake for enabled ones -- Tabler's default
+   --tblr-dropdown-link-disabled-color is only a 50%-opacity tint of the body text, a small enough step
+   that a greyed item still read as plain clickable text at a glance (Marcelo, 2026-09-23). Considered
+   italic to mark it, but that's not actually the convention anywhere else (macOS, GitHub, Linear, Tabler
+   itself use dimmed text + no hover + a blocked cursor for "disabled," never a style change like italic,
+   which usually signals placeholder/secondary text instead) -- so the fix here is making that same
+   convention actually visible: a bigger opacity drop than the default 50%, plus pointer-events left on
+   (Tabler's own rule sets pointer-events: none on .dropdown-item:disabled, which blocks the cursor from
+   changing at all) so a "not-allowed" cursor shows on hover instead of the normal pointer. */
+.dropdown-item:disabled,
+.dropdown-item.disabled {
+  opacity: 0.5;
+  pointer-events: auto;
+  cursor: not-allowed;
+}
+
 /* @fontsource/inter (imported in main.tsx) already registers proper
    @font-face rules for real font files — Tabler's own
    --tblr-font-sans-serif stack already lists "Inter Var, Inter" first,
@@ -697,6 +763,19 @@
 .modal-dialog-inset .modal-content {
   height: 100%;
   max-height: 100%;
+}
+
+/* Volatility Surface modal: chart/table split at an exact 50/50 -- stacks to full width below lg like the
+   col-12/col-lg-N columns it replaces. */
+@media (min-width: 992px) {
+  .volatility-surface-chart-col {
+    flex: 0 0 45%;
+    max-width: 45%;
+  }
+  .volatility-surface-table-col {
+    flex: 0 0 55%;
+    max-width: 55%;
+  }
 }
 
 /* Tabler's default --tblr-toast-header-color (gray-500) sits at ~3.7:1

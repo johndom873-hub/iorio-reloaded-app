@@ -9,10 +9,12 @@ import { PageHeader } from "../components/layout/PageHeader";
 import { NotAccountedForChip, RoadmapEtaText } from "../components/signals/NotAccountedForChip";
 import { SignalsTickerModal } from "../components/SignalsTickerModal";
 import { TickColoredPrice } from "../components/TickColoredPrice";
+import { VolatilitySurfaceModal } from "../components/VolatilitySurfaceModal";
 import { TickerPrepModal } from "../components/shortlist/TickerPrepModal";
 import { useTickerDetailSymbol } from "../hooks/useTickerDetailSymbol";
 import { formatCurrency, formatDate, formatDateTime, formatPercentage, formatRelativeTime, formatSignedPercentageValue, formatSignedPnl, formatVolatilityPoints, pnlTextClass } from "../lib/formatters";
 import { describeCandidate, gradeBadgeClass, gradeExplanation, gradeLabel, priceSourceLabel, roadmapStatusBadgeClass, roadmapStatusLabel, signalsColumnExplanation, unscoredReasonLabel } from "../lib/signalsPresentation";
+import { useTooltip } from "../hooks/useTooltip";
 
 // Signals screen (stage 3 of the build; mockup approved 2026-09-22, v3):
 // every shortlist ticker, scored against the 10:00 ET fitted surface at live
@@ -25,8 +27,9 @@ type StreamState = "connecting" | "live" | "failed";
 const badgeFontSize = { fontSize: "0.72rem" } as const;
 
 function GradeBadge({ grade }: { grade: SignalGrade }) {
+  const ref = useTooltip<HTMLSpanElement>(gradeExplanation);
   return (
-    <span className={`badge ${gradeBadgeClass[grade]}`} style={badgeFontSize} title={gradeExplanation}>
+    <span ref={ref} className={`badge ${gradeBadgeClass[grade]}`} style={badgeFontSize} tabIndex={0}>
       {gradeLabel[grade]}
     </span>
   );
@@ -45,10 +48,13 @@ function UnscoredBadge({ row }: { row: SignalsScreenRow }) {
 
 function VolatilityFlagBadge({ row }: { row: SignalsScreenRow }) {
   const flag = row.elevatedVolatility;
+  const title = flag
+    ? `21-day / 126-day volatility = ${flag.ratio.toFixed(2)} vs threshold ${flag.threshold.toFixed(2)} (${flag.thresholdSource === "own_p90" ? "this ticker's own 90th percentile" : "fixed fallback until a year of history"})`
+    : undefined;
+  const ref = useTooltip<HTMLSpanElement>(title);
   if (!flag) return <span className="text-secondary">n/a</span>;
-  const title = `21-day / 126-day volatility = ${flag.ratio.toFixed(2)} vs threshold ${flag.threshold.toFixed(2)} (${flag.thresholdSource === "own_p90" ? "this ticker's own 90th percentile" : "fixed fallback until a year of history"})`;
   return (
-    <span className={`badge ${flag.elevated ? "bg-danger-lt" : "bg-secondary-lt"}`} style={badgeFontSize} title={title}>
+    <span ref={ref} className={`badge ${flag.elevated ? "bg-danger-lt" : "bg-secondary-lt"}`} style={badgeFontSize} tabIndex={0}>
       {flag.elevated ? "Elevated" : "Normal"}
     </span>
   );
@@ -94,6 +100,7 @@ export function SignalsPage() {
   const [streamState, setStreamState] = useState<StreamState>("connecting");
   const [lastFrameAt, setLastFrameAt] = useState<string | null>(null);
   const [modalSymbol, setModalSymbol] = useTickerDetailSymbol("signal");
+  const [surfaceModalSymbol, setSurfaceModalSymbol] = useState<string | null>(null);
   const [roadmapOpen, setRoadmapOpen] = useState(false);
   const [backfillTicker, setBackfillTicker] = useState<{ tickerId: string; symbol: string; companyName: string | null } | null>(null);
   const [backfillStartingTickerId, setBackfillStartingTickerId] = useState<string | null>(null);
@@ -151,6 +158,7 @@ export function SignalsPage() {
   const liveStatus =
     streamState === "failed" ? { label: "Live prices unavailable — showing snapshot prices", tone: "text-danger" } : anyLivePrice ? { label: "Live prices connected", tone: "text-success" } : streamState === "live" ? { label: "Live stream connected — waiting for prices", tone: "text-secondary" } : { label: "Connecting live prices…", tone: "text-secondary" };
   const snapshotCapturedAt = latestSnapshotCapturedAt(rows);
+  const liveStatusTooltipRef = useTooltip<HTMLSpanElement>(lastFrameAt ? `Last update ${formatDateTime(lastFrameAt)}` : undefined);
 
   const columns = useMemo<DataTableColumn<SignalsScreenRow>[]>(
     () => [
@@ -219,7 +227,19 @@ export function SignalsPage() {
       },
       { key: "volFlag", header: "Vol flag", headerTitle: signalsColumnExplanation.volFlag, render: (row) => <VolatilityFlagBadge row={row} /> },
       { key: "earnings", header: "Earnings", headerTitle: signalsColumnExplanation.earnings, render: (row) => <span className="font-mono text-nowrap">{row.nextEarningsDateIso ? formatDate(row.nextEarningsDateIso) : "—"}</span> },
-      { key: "surface", header: "Surface", headerTitle: signalsColumnExplanation.surface, render: (row) => <span className="text-secondary">{row.totalSliceCount > 0 ? `${row.fittedSliceCount}/${row.totalSliceCount} ok` : "—"}</span> },
+      {
+        key: "surface",
+        header: "Surface",
+        headerTitle: signalsColumnExplanation.surface,
+        render: (row) =>
+          row.totalSliceCount > 0 ? (
+            <button type="button" className="btn btn-link p-0 text-decoration-none text-secondary font-mono" onClick={() => setSurfaceModalSymbol(row.symbol)}>
+              {row.fittedSliceCount}/{row.totalSliceCount} ok
+            </button>
+          ) : (
+            <span className="text-secondary">—</span>
+          ),
+      },
       {
         key: "notAccountedFor",
         header: "Not accounted for",
@@ -249,7 +269,7 @@ export function SignalsPage() {
 
   const toolbar = (
     <div className="d-flex align-items-center gap-3 flex-wrap" style={{ fontSize: "0.8rem" }}>
-      <span className={`d-inline-flex align-items-center gap-2 ${liveStatus.tone}`} title={lastFrameAt ? `Last update ${formatDateTime(lastFrameAt)}` : undefined}>
+      <span ref={liveStatusTooltipRef} className={`d-inline-flex align-items-center gap-2 ${liveStatus.tone}`} tabIndex={lastFrameAt ? 0 : undefined}>
         {anyLivePrice && <span className="iorio-pulse-dot" />}
         {liveStatus.label}
       </span>
@@ -357,6 +377,7 @@ export function SignalsPage() {
       </div>
 
       {modalSymbol && <SignalsTickerModal symbol={modalSymbol} onClose={() => setModalSymbol(null)} />}
+      {surfaceModalSymbol && <VolatilitySurfaceModal symbol={surfaceModalSymbol} onClose={() => setSurfaceModalSymbol(null)} />}
 
       {backfillTicker && (
         <TickerPrepModal

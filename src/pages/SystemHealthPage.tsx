@@ -5,6 +5,7 @@ import { Spinner } from "../components/Spinner";
 import { ApiError } from "../api/client";
 import { fetchJobRuns, fetchJobStatuses, triggerIbkrHealthCheck, type JobRun, type JobRunStatus } from "../api/systemHealth";
 import { formatDateTime, formatDuration, jobRunStatusBadgeClass, jobRunStatusLabel } from "../lib/formatters";
+import { TooltipSpan } from "../components/TooltipSpan";
 
 const jobLabels: Record<string, string> = {
   daily_market_data_capture: "Daily Market Data Capture",
@@ -87,13 +88,13 @@ export function SystemHealthPage() {
       render: (row) => {
         if (row.status === "failure") {
           return (
-            <span
+            <TooltipSpan
               className="text-danger text-truncate d-inline-block align-bottom"
               style={{ maxWidth: "20rem" }}
-              title={row.errorMessage ?? undefined}
+              text={row.errorMessage}
             >
               {row.errorMessage ?? "Failed"}
-            </span>
+            </TooltipSpan>
           );
         }
         const problems = row.details?.problems;

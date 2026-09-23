@@ -18,6 +18,8 @@ import {
 } from "../api/tradeAlerts";
 import type { StrategyKey } from "../api/strategy";
 import { StrategyBadge } from "../components/StrategyBadge";
+import { TooltipSpan } from "../components/TooltipSpan";
+import { useTooltip } from "../hooks/useTooltip";
 import { useTickerDetailSymbol } from "../hooks/useTickerDetailSymbol";
 import {
   formatCurrency,
@@ -49,9 +51,10 @@ function latestRefreshTimestamp(alerts: { createdAt: string; lastRefreshedAt: st
 // than two separate columns, both metrics approved 2026-08-31 (see
 // PROGRESS.md, lib/ivMetrics.ts on the backend).
 function IvMetricsInline({ ivRank, ivPercentile }: { ivRank: number | null; ivPercentile: number | null }) {
+  const ref = useTooltip<HTMLSpanElement>("IV Rank / IV Percentile");
   if (ivRank === null && ivPercentile === null) return <span className="text-muted">—</span>;
   return (
-    <span title="IV Rank / IV Percentile">
+    <span ref={ref} tabIndex={0}>
       {ivRank === null ? "—" : formatPercentageValue(ivRank)}
       <span className="text-secondary"> / </span>
       {ivPercentile === null ? "—" : formatPercentageValue(ivPercentile)}
@@ -77,12 +80,10 @@ const trendBadgeLabel: Record<"uptrend" | "downtrend" | "mixed", string> = {
 // all -- comes back undefined, not null, until the next regen/refresh
 // replaces it. Guard both.
 function TrendBadge({ trendLabel }: { trendLabel: "uptrend" | "downtrend" | "mixed" | null | undefined }) {
+  const ref = useTooltip<HTMLSpanElement>("Spot vs 25-day and 99-day moving averages — informational only, does not affect ranking");
   if (trendLabel !== "uptrend" && trendLabel !== "downtrend" && trendLabel !== "mixed") return <span className="text-muted">—</span>;
   return (
-    <span
-      className={`badge ${trendBadgeClass[trendLabel]} text-nowrap`}
-      title="Spot vs 25-day and 99-day moving averages — informational only, does not affect ranking"
-    >
+    <span ref={ref} className={`badge ${trendBadgeClass[trendLabel]} text-nowrap`} tabIndex={0}>
       {trendBadgeLabel[trendLabel]}
     </span>
   );
@@ -372,20 +373,21 @@ export function TradeAlertsPage() {
                 {status === "pending" && (
                   <div className="d-flex align-items-center gap-2">
                     {lastRefreshed && (
-                      <span className="text-secondary" style={{ fontSize: "0.72rem" }} title={formatDateTime(lastRefreshed)}>
+                      <TooltipSpan className="text-secondary" style={{ fontSize: "0.72rem" }} text={formatDateTime(lastRefreshed)}>
                         Refreshed {formatRelativeDate(lastRefreshed)}
-                      </span>
+                      </TooltipSpan>
                     )}
-                    <button
-                      type="button"
-                      className="btn btn-sm btn-outline-primary d-inline-flex align-items-center gap-1"
-                      disabled={isTickerRefreshing}
-                      onClick={() => handleTickerRefresh(tickerId, symbol, companyName)}
-                      title="Rescan this ticker's new trade alerts (both strategies) against live IBKR data"
-                    >
-                      {isTickerRefreshing && <Spinner size="sm" />}
-                      Refresh
-                    </button>
+                    <TooltipSpan text="Rescan this ticker's new trade alerts (both strategies) against live IBKR data" style={{ display: "inline-block" }}>
+                      <button
+                        type="button"
+                        className="btn btn-sm btn-outline-primary d-inline-flex align-items-center gap-1"
+                        disabled={isTickerRefreshing}
+                        onClick={() => handleTickerRefresh(tickerId, symbol, companyName)}
+                      >
+                        {isTickerRefreshing && <Spinner size="sm" />}
+                        Refresh
+                      </button>
+                    </TooltipSpan>
                   </div>
                 )}
               </div>
@@ -408,22 +410,23 @@ export function TradeAlertsPage() {
                               <th className="text-end">Strike</th>
                               <th className="text-end">Delta</th>
                               <th className="text-end">Premium</th>
-                              <th className="text-end" title="Annualized yield = (premium ÷ capital at risk) × (365 ÷ days to expiry)">
+                              <TooltipSpan as="th" className="text-end" text="Annualized yield = (premium ÷ capital at risk) × (365 ÷ days to expiry)">
                                 Ann. Yield
-                              </th>
-                              <th
+                              </TooltipSpan>
+                              <TooltipSpan
+                                as="th"
                                 className="text-end"
-                                title="Black-Scholes estimate, breakeven-adjusted — pending validation against IBKR's own TWS probability display, not yet a confirmed formula"
+                                text="Black-Scholes estimate, breakeven-adjusted — pending validation against IBKR's own TWS probability display, not yet a confirmed formula"
                               >
                                 POP
-                              </th>
-                              <th className="text-end" title="IV Rank / IV Percentile — see the header tooltip on Screener for each formula">
+                              </TooltipSpan>
+                              <TooltipSpan as="th" className="text-end" text="IV Rank / IV Percentile — see the header tooltip on Screener for each formula">
                                 IV Rk/%ile
-                              </th>
-                              <th className="text-end" title="(Ask − Bid) ÷ Premium — how much of the quoted mid premium is spread risk if the real fill lands away from the mid">
+                              </TooltipSpan>
+                              <TooltipSpan as="th" className="text-end" text="(Ask − Bid) ÷ Premium — how much of the quoted mid premium is spread risk if the real fill lands away from the mid">
                                 Spread
-                              </th>
-                              <th title="Spot vs 25-day and 99-day moving averages — informational only, does not affect ranking">Trend</th>
+                              </TooltipSpan>
+                              <TooltipSpan as="th" text="Spot vs 25-day and 99-day moving averages — informational only, does not affect ranking">Trend</TooltipSpan>
                               <th>Why</th>
                               <th style={{ width: 110 }}></th>
                             </tr>
@@ -548,22 +551,23 @@ export function TradeAlertsPage() {
                             <th className="text-end">Current / Credit</th>
                             <th>Replacement</th>
                             <th className="text-end">New Premium</th>
-                            <th className="text-end" title="Annualized yield = (premium ÷ capital at risk) × (365 ÷ days to expiry)">
+                            <TooltipSpan as="th" className="text-end" text="Annualized yield = (premium ÷ capital at risk) × (365 ÷ days to expiry)">
                               New Yield
-                            </th>
-                            <th
+                            </TooltipSpan>
+                            <TooltipSpan
+                              as="th"
                               className="text-end"
-                              title="Black-Scholes estimate, breakeven-adjusted — pending validation against IBKR's own TWS probability display, not yet a confirmed formula"
+                              text="Black-Scholes estimate, breakeven-adjusted — pending validation against IBKR's own TWS probability display, not yet a confirmed formula"
                             >
                               POP
-                            </th>
-                            <th className="text-end" title="IV Rank / IV Percentile — see the header tooltip on Screener for each formula">
+                            </TooltipSpan>
+                            <TooltipSpan as="th" className="text-end" text="IV Rank / IV Percentile — see the header tooltip on Screener for each formula">
                               IV Rk/%ile
-                            </th>
-                            <th className="text-end" title="(Ask − Bid) ÷ Premium — how much of the quoted mid premium is spread risk if the real fill lands away from the mid">
+                            </TooltipSpan>
+                            <TooltipSpan as="th" className="text-end" text="(Ask − Bid) ÷ Premium — how much of the quoted mid premium is spread risk if the real fill lands away from the mid">
                               Spread
-                            </th>
-                            <th title="Spot vs 25-day and 99-day moving averages — informational only, does not affect ranking">Trend</th>
+                            </TooltipSpan>
+                            <TooltipSpan as="th" text="Spot vs 25-day and 99-day moving averages — informational only, does not affect ranking">Trend</TooltipSpan>
                             <th style={{ width: 170 }}></th>
                           </tr>
                         </thead>
@@ -622,16 +626,17 @@ export function TradeAlertsPage() {
                                         <button type="button" className="btn btn-sm btn-primary" onClick={() => handleReview(alert)}>
                                           Roll
                                         </button>
-                                        <button
-                                          type="button"
-                                          className="btn btn-sm btn-outline-secondary d-inline-flex align-items-center gap-1"
-                                          disabled={refreshingId === alert.id}
-                                          onClick={() => handleRefresh(alert.id)}
-                                          title="Re-quote this alert's contracts against live IBKR data"
-                                        >
-                                          {refreshingId === alert.id && <Spinner size="sm" />}
-                                          Refresh
-                                        </button>
+                                        <TooltipSpan text="Re-quote this alert's contracts against live IBKR data" style={{ display: "inline-block" }}>
+                                          <button
+                                            type="button"
+                                            className="btn btn-sm btn-outline-secondary d-inline-flex align-items-center gap-1"
+                                            disabled={refreshingId === alert.id}
+                                            onClick={() => handleRefresh(alert.id)}
+                                          >
+                                            {refreshingId === alert.id && <Spinner size="sm" />}
+                                            Refresh
+                                          </button>
+                                        </TooltipSpan>
                                       </div>
                                     ) : (
                                       <StatusCell alert={alert} />

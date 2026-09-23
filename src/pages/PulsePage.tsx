@@ -32,6 +32,7 @@ import {
 import { daysToExpiry, todayInEasternIso, formatSignedPnl, formatSignedPercentageValue, formatCompactDollars, formatDateTime, formatFeedTime, formatNumber, formatPercentageValue, formatRelativeDate, ibkrExpiryToIsoDate } from "../lib/formatters";
 import { positionExpiryDate, strategyAbbrev as positionStrategyAbbrev, strategyTooltip } from "../lib/positionPnl";
 import { FlashingNumber } from "../components/FlashingNumber";
+import { TooltipSpan } from "../components/TooltipSpan";
 import { AVAILABLE_CASH_PERCENT_BANDS, higherIsWorseStatus, lowerIsWorseStatus } from "../lib/statusThresholds";
 import { TopologyMap, type PulseEvent } from "../components/pulse/TopologyMap";
 import { ResizableRail } from "../components/pulse/ResizableRail";
@@ -847,9 +848,9 @@ export function PulsePage() {
               return (
                 <div className="pos-row" key={position.id}>
                   <span className="pos-sym">{position.symbol}</span>
-                  <span className={`strat-badge ${strategyBadgeModifier[position.strategyKey] ?? "ns"}`} title={strategyTooltip(position.strategyKey)}>
+                  <TooltipSpan className={`strat-badge ${strategyBadgeModifier[position.strategyKey] ?? "ns"}`} text={strategyTooltip(position.strategyKey)}>
                     {positionStrategyAbbrev(position.strategyKey)}
-                  </span>
+                  </TooltipSpan>
                   <span className="pos-num">{dte ?? "—"}</span>
                   <FlashingNumber value={capitalAtRisk} className="pos-exp">
                     {formatCompactDollars(capitalAtRisk)}
@@ -1192,9 +1193,9 @@ export function PulsePage() {
                       online
                     </span>
                   ) : (
-                    <span className="avatar-status offline" title={user.lastSeenAt ? formatDateTime(user.lastSeenAt) : undefined}>
+                    <TooltipSpan className="avatar-status offline" text={user.lastSeenAt ? formatDateTime(user.lastSeenAt) : undefined}>
                       {formatRelativeDate(user.lastSeenAt)}
-                    </span>
+                    </TooltipSpan>
                   )}
                 </div>
               ))}

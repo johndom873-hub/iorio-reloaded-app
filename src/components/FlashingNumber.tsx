@@ -1,5 +1,6 @@
 import type { CSSProperties, ReactNode } from "react";
 import { flashClassName, useFlashOnChange } from "../hooks/useFlashOnChange";
+import { useTooltip } from "../hooks/useTooltip";
 
 interface FlashingNumberProps {
   /** Raw value to compare across renders — pass the same number the displayed text (children) is formatted from. */
@@ -21,8 +22,9 @@ interface FlashingNumberProps {
 // would violate the Rules of Hooks once called from inside a loop over rows.
 export function FlashingNumber({ value, precision, className, title, style, children }: FlashingNumberProps) {
   const flashing = useFlashOnChange(value, 1200, precision);
+  const tooltipRef = useTooltip<HTMLSpanElement>(title);
   return (
-    <span className={[className, flashClassName(flashing)].filter(Boolean).join(" ")} title={title} style={style}>
+    <span ref={tooltipRef} className={[className, flashClassName(flashing)].filter(Boolean).join(" ")} style={style}>
       {children}
     </span>
   );

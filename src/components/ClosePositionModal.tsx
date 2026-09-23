@@ -13,6 +13,7 @@ import {
 import { openPositionQuoteStream, type TickerPricing } from "../api/tickerDetail";
 import { formatCurrency, formatCurrencyTrimmed, formatExpiryWithDte, todayInEasternIso } from "../lib/formatters";
 import { flashClassName, useFlashOnChange } from "../hooks/useFlashOnChange";
+import { useTooltip } from "../hooks/useTooltip";
 
 interface ClosePositionModalProps {
   position: Position;
@@ -46,9 +47,10 @@ function LiveMidQuote({ quote, error }: { quote: LegQuote | null; error: string 
   // initial null-to-loaded transition either, same as everywhere else this
   // hook's used).
   const midFlash = useFlashOnChange(quote ? midPrice(quote) : null);
+  const tooltipRef = useTooltip<HTMLSpanElement>(error);
   if (error) {
     return (
-      <span className="text-muted" title={error}>
+      <span ref={tooltipRef} className="text-muted" tabIndex={0}>
         Live quote unavailable
       </span>
     );
