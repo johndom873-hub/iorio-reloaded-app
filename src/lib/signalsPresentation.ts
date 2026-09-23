@@ -16,6 +16,7 @@ export const unscoredReasonLabel: Record<SignalsUnscoredReason, string> = {
   no_snapshot: "No chain snapshot yet",
   no_surface_fit: "No fitted surface",
   no_forecast: "No volatility forecast (price history too short)",
+  suspected_split: "No volatility forecast (suspected stock split in the price history)",
 };
 
 export const priceSourceLabel: Record<SignalsPriceSource, string> = {
@@ -29,6 +30,7 @@ export const roadmapStatusLabel: Record<RoadmapStatus, string> = {
   waiting_on_sign_off: "Waiting on your sign-off",
   waiting_on_decision: "Waiting on a decision",
   waiting_on_later_phase: "Waiting on later phases",
+  waiting_on_build: "Approved, building",
 };
 
 export const roadmapStatusBadgeClass: Record<RoadmapStatus, string> = {
@@ -36,6 +38,7 @@ export const roadmapStatusBadgeClass: Record<RoadmapStatus, string> = {
   waiting_on_sign_off: "bg-warning-lt",
   waiting_on_decision: "bg-danger-lt",
   waiting_on_later_phase: "bg-secondary-lt",
+  waiting_on_build: "bg-teal-lt",
 };
 
 export const signalFlagLetter: Record<SignalFlag, string> = { spans_earnings: "E", outside_fitted_range: "X", wide_spread: "W", no_shares: "S", insufficient_cash: "$" };

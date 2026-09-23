@@ -16,6 +16,8 @@ interface TickerPrepModalProps {
   /** Latest run state, pushed to the parent so the shortlist badge and rows stay current. */
   onRunChange: (run: TickerBackfillRun | null) => void;
   onClose: () => void;
+  /** Note shown once a full run finishes cleanly; defaults to the shortlist's nightly-scan wording. Callers whose screen re-scores live (e.g. Signals) should override it. */
+  completionNote?: string;
 }
 
 // Shown for the step that is running until the server sends its own message.
@@ -73,7 +75,7 @@ function isFinishedStep(step: BackfillStep): boolean {
 // Informational modal (progress display, no destructive action): closes on
 // backdrop click and Esc, per the app's convention. Closing never stops the
 // run — it lives on the server. Design approved via mockup 2026-09-21.
-export function TickerPrepModal({ tickerId, symbol, companyName, onRunChange, onClose }: TickerPrepModalProps) {
+export function TickerPrepModal({ tickerId, symbol, companyName, onRunChange, onClose, completionNote }: TickerPrepModalProps) {
   const [run, setRun] = useState<TickerBackfillRun | null>(null);
   const [streamKey, setStreamKey] = useState(0);
   const [retrying, setRetrying] = useState(false);
@@ -198,7 +200,7 @@ export function TickerPrepModal({ tickerId, symbol, companyName, onRunChange, on
                   )}
                   {!isRunning && !isPartial && (
                     <div className="prep-note is-ok">
-                      <p>{symbol} will be included in tomorrow's trade-alert scan.</p>
+                      <p>{completionNote ?? `${symbol} will be included in tomorrow's trade-alert scan.`}</p>
                     </div>
                   )}
                   {isPartial && (

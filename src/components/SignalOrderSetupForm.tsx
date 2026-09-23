@@ -59,6 +59,12 @@ export function SignalOrderSetupForm({ symbol, signals, candidate, spotPrice, ne
   const concession = expectedSpreadConcession[adaptivePriority];
   const netEdgeExpected = candidate.netEdgeAtMid - (candidate.netEdgeAtMid - candidate.netEdge) * concession;
   const edgeDollarsExpected = netEdgeExpected * candidate.vega * 100;
+  // Same mid-to-bid interpolation as netEdgeExpected, so the expected fill price backing the risk
+  // denominator matches the same Adaptive priority assumption as the expected Edge $ numerator.
+  const premiumExpected = mid - (mid - candidate.bid) * concession;
+  const capitalAtRiskPerContract = isCall ? (spotPrice ?? 0) * 100 : candidate.strike * 100;
+  const dollarRiskExpected = capitalAtRiskPerContract - premiumExpected;
+  const riskAdjustedRatioExpected = edgeDollarsExpected / dollarRiskExpected;
   const decay = candidate.netEdge - netEdgeAtSelection;
   const decayed = Math.abs(decay) >= decayWarningVolatilityPoints / 100;
   const netEdgeFlash = useFlashOnChange(candidate.netEdge, 1200, 3);
@@ -92,7 +98,7 @@ export function SignalOrderSetupForm({ symbol, signals, candidate, spotPrice, ne
                 nextEarningsDateIso: signals.nextEarningsDateIso,
                 gradeCounts: signals.gradeCounts,
               },
-              order: { quantity, adaptivePriority, referencePremium: Number(mid.toFixed(2)), netEdgeExpected, edgeDollarsExpected },
+              order: { quantity, adaptivePriority, referencePremium: Number(mid.toFixed(2)), netEdgeExpected, edgeDollarsExpected, riskAdjustedRatioExpected },
               timing: { selectedAtIso, builtAtIso, netEdgeAtSelection, netEdgeAtBuild: candidate.netEdge },
             }
           : undefined,

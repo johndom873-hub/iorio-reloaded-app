@@ -1,13 +1,15 @@
-import { useEffect, useMemo, useState } from "react";
-import { IconAlertTriangle } from "@tabler/icons-react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { IconAlertTriangle, IconChevronDown } from "@tabler/icons-react";
 import { ApiError } from "../api/client";
 import { fetchSignalsRoadmap, fetchSignalsScreen, openSignalsScreenStream, type RoadmapItem, type SignalGrade, type SignalsScreenRow } from "../api/signals";
+import { retryTickerBackfill, type TickerBackfillRun } from "../api/shortlist";
 import { DataTable, type DataTableColumn } from "../components/DataTable/DataTable";
 import { FlashingNumber } from "../components/FlashingNumber";
 import { PageHeader } from "../components/layout/PageHeader";
 import { NotAccountedForChip, RoadmapEtaText } from "../components/signals/NotAccountedForChip";
 import { SignalsTickerModal } from "../components/SignalsTickerModal";
 import { TickColoredPrice } from "../components/TickColoredPrice";
+import { TickerPrepModal } from "../components/shortlist/TickerPrepModal";
 import { useTickerDetailSymbol } from "../hooks/useTickerDetailSymbol";
 import { formatCurrency, formatDate, formatDateTime, formatPercentage, formatRelativeTime, formatSignedPercentageValue, formatSignedPnl, formatVolatilityPoints, pnlTextClass } from "../lib/formatters";
 import { describeCandidate, gradeBadgeClass, gradeExplanation, gradeLabel, priceSourceLabel, roadmapStatusBadgeClass, roadmapStatusLabel, signalsColumnExplanation, unscoredReasonLabel } from "../lib/signalsPresentation";
@@ -92,6 +94,26 @@ export function SignalsPage() {
   const [streamState, setStreamState] = useState<StreamState>("connecting");
   const [lastFrameAt, setLastFrameAt] = useState<string | null>(null);
   const [modalSymbol, setModalSymbol] = useTickerDetailSymbol("signal");
+  const [roadmapOpen, setRoadmapOpen] = useState(false);
+  const [backfillTicker, setBackfillTicker] = useState<{ tickerId: string; symbol: string; companyName: string | null } | null>(null);
+  const [backfillStartingTickerId, setBackfillStartingTickerId] = useState<string | null>(null);
+  const [backfillError, setBackfillError] = useState<string | null>(null);
+  // Bumped when a backfill finishes so the screen stream reconnects and re-reads the ticker's
+  // (now longer/adjusted) daily bars — the running stream loaded its inputs once at connection time.
+  const [streamKey, setStreamKey] = useState(0);
+
+  const handleStartBackfill = useCallback(async (row: SignalsScreenRow) => {
+    setBackfillStartingTickerId(row.tickerId);
+    try {
+      setBackfillError(null);
+      await retryTickerBackfill(row.tickerId);
+      setBackfillTicker({ tickerId: row.tickerId, symbol: row.symbol, companyName: row.companyName });
+    } catch (err) {
+      setBackfillError(err instanceof ApiError ? err.message : `Failed to start the backfill for ${row.symbol}.`);
+    } finally {
+      setBackfillStartingTickerId(null);
+    }
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -123,7 +145,7 @@ export function SignalsPage() {
       },
       () => setStreamState("failed"),
     );
-  }, []);
+  }, [streamKey]);
 
   const anyLivePrice = rows.some((row) => row.priceSource === "live");
   const liveStatus =
@@ -132,7 +154,15 @@ export function SignalsPage() {
 
   const columns = useMemo<DataTableColumn<SignalsScreenRow>[]>(
     () => [
-      { key: "ticker", header: "Ticker", render: (row) => <span className="fw-bold">{row.symbol}</span> },
+      {
+        key: "ticker",
+        header: "Ticker",
+        render: (row) => (
+          <button type="button" className="btn btn-link p-0 text-decoration-none fw-bold" onClick={() => setModalSymbol(row.symbol)}>
+            {row.symbol}
+          </button>
+        ),
+      },
       { key: "name", header: "Name", render: (row) => <span className="text-secondary">{row.companyName ?? "—"}</span> },
       {
         key: "price",
@@ -195,14 +225,17 @@ export function SignalsPage() {
         header: "Not accounted for",
         headerTitle: signalsColumnExplanation.notAccountedFor,
         render: (row) => (
-          // Stops the row click (which opens the modal) when the chip itself is clicked.
-          <span onClick={(event) => event.stopPropagation()}>
-            <NotAccountedForChip symbol={row.symbol} caveats={row.caveats} generalItems={roadmap} />
-          </span>
+          <NotAccountedForChip
+            symbol={row.symbol}
+            caveats={row.caveats}
+            generalItems={roadmap}
+            onBackfillHistory={() => handleStartBackfill(row)}
+            backfillStarting={backfillStartingTickerId === row.tickerId}
+          />
         ),
       },
     ],
-    [roadmap],
+    [roadmap, backfillStartingTickerId, handleStartBackfill],
   );
 
   if (error) {
@@ -225,12 +258,17 @@ export function SignalsPage() {
   );
 
   const roadmapSection = roadmap.length > 0 && (
-    <details className="px-3 py-2 border-bottom">
-      <summary className="d-flex align-items-center gap-2" style={{ cursor: "pointer", fontSize: "0.85rem" }}>
+    <details className="px-3 py-2 border-bottom" open={roadmapOpen} onToggle={(event) => setRoadmapOpen(event.currentTarget.open)}>
+      <summary className="d-flex align-items-center gap-2 iorio-summary-no-marker" style={{ cursor: "pointer", fontSize: "0.85rem" }}>
         <IconAlertTriangle size={16} className="text-warning" />
         <span>
           <strong>{roadmap.length}</strong> measures are not accounted for yet. Open for what each one is waiting on and when it should be ready.
         </span>
+        <IconChevronDown
+          size={18}
+          className="text-muted ms-auto"
+          style={{ transform: roadmapOpen ? "rotate(180deg)" : "none", transition: "transform 0.15s ease" }}
+        />
       </summary>
       <div className="pt-2">
         <RoadmapItemRows items={roadmap} />
@@ -251,6 +289,8 @@ export function SignalsPage() {
     <>
       <PageHeader title="Signals" subtitle="Live opportunity scoring for your shortlist · scores use the 10:00 ET surface, live prices" />
 
+      {backfillError && <div className="alert alert-danger mt-2">{backfillError}</div>}
+
       <div className="d-none d-md-block">
         <DataTable
           tableId="signals"
@@ -262,7 +302,6 @@ export function SignalsPage() {
           toolbar={toolbar}
           beforeTable={roadmapSection}
           afterTable={gradesNote}
-          onRowClick={(row) => setModalSymbol(row.symbol)}
         />
       </div>
 
@@ -273,11 +312,13 @@ export function SignalsPage() {
         </div>
         <div className="d-flex flex-column gap-2">
           {rows.map((row) => (
-            <div key={row.tickerId} className="card" style={{ cursor: "pointer" }} onClick={() => setModalSymbol(row.symbol)}>
+            <div key={row.tickerId} className="card">
               <div className="card-body py-2">
                 <div className="d-flex justify-content-between align-items-center">
                   <span>
-                    <span className="fw-bold">{row.symbol}</span>{" "}
+                    <button type="button" className="btn btn-link p-0 text-decoration-none fw-bold" onClick={() => setModalSymbol(row.symbol)}>
+                      {row.symbol}
+                    </button>{" "}
                     <TickColoredPrice value={row.spotPrice} initialReference={row.previousClose?.close ?? null} precision={2} title={priceSourceLabel[row.priceSource]}>
                       <span className="font-mono">{formatCurrency(row.spotPrice)}</span>
                     </TickColoredPrice>{" "}
@@ -301,9 +342,13 @@ export function SignalsPage() {
                 <div className="d-flex justify-content-between align-items-center gap-2 text-secondary" style={{ fontSize: "0.8rem" }}>
                   <span>Mom {row.momentum === null ? "n/a" : formatSignedPercentageValue(row.momentum * 100, 0)}</span>
                   <span>Vol {row.elevatedVolatility ? (row.elevatedVolatility.elevated ? "elevated" : "normal") : "n/a"}</span>
-                  <span onClick={(event) => event.stopPropagation()}>
-                    <NotAccountedForChip symbol={row.symbol} caveats={row.caveats} generalItems={roadmap} />
-                  </span>
+                  <NotAccountedForChip
+                    symbol={row.symbol}
+                    caveats={row.caveats}
+                    generalItems={roadmap}
+                    onBackfillHistory={() => handleStartBackfill(row)}
+                    backfillStarting={backfillStartingTickerId === row.tickerId}
+                  />
                 </div>
               </div>
             </div>
@@ -312,6 +357,19 @@ export function SignalsPage() {
       </div>
 
       {modalSymbol && <SignalsTickerModal symbol={modalSymbol} onClose={() => setModalSymbol(null)} />}
+
+      {backfillTicker && (
+        <TickerPrepModal
+          tickerId={backfillTicker.tickerId}
+          symbol={backfillTicker.symbol}
+          companyName={backfillTicker.companyName}
+          onRunChange={(run: TickerBackfillRun | null) => {
+            if (run && run.status !== "running") setStreamKey((key) => key + 1);
+          }}
+          onClose={() => setBackfillTicker(null)}
+          completionNote={`${backfillTicker.symbol} is already re-scored live on the Signals screen — no need to wait.`}
+        />
+      )}
     </>
   );
 }

@@ -198,6 +198,12 @@
   background-color: rgba(14, 165, 233, 0.08);
   border-color: rgba(14, 165, 233, 0.6);
 }
+.iorio-summary-no-marker {
+  list-style: none;
+}
+.iorio-summary-no-marker::-webkit-details-marker {
+  display: none;
+}
 .iorio-pulse-dot {
   width: 7px;
   height: 7px;
@@ -607,6 +613,14 @@
 .badge.bg-secondary,
 .badge.bg-secondary-lt {
   background-color: #6c757d !important;
+  color: #fff !important;
+}
+
+/* Signals roadmap "Approved, building" badge — same -lt contrast bug.
+   #0f766e (dark teal) passes >4.5:1 with white text. */
+.badge.bg-teal,
+.badge.bg-teal-lt {
+  background-color: #0f766e !important;
   color: #fff !important;
 }
 

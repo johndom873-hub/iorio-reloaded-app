@@ -8,7 +8,7 @@ import { openMultiplexedStream } from "./streamMultiplexer";
 export type SignalStrategyKey = "covered_call" | "cash_secured_put";
 export type SignalGrade = "strong" | "good" | "marginal" | "avoid";
 export type SignalFlag = "spans_earnings" | "outside_fitted_range" | "wide_spread" | "no_shares" | "insufficient_cash";
-export type SignalsUnscoredReason = "no_snapshot" | "no_surface_fit" | "no_forecast";
+export type SignalsUnscoredReason = "no_snapshot" | "no_surface_fit" | "no_forecast" | "suspected_split";
 export type SignalsPriceSource = "live" | "frozen" | "snapshot";
 
 export interface SignalCandidate {
@@ -30,6 +30,9 @@ export interface SignalCandidate {
   vega: number;
   netEdgeAtMid: number;
   edgeDollarsAtMid: number;
+  dollarRisk: number;
+  riskAdjustedRatio: number;
+  riskAdjustedRatioAtMid: number;
   annualizedYield: number;
   uncompensatedSharePercent: number | null;
   quoteSource: "live" | "snapshot";
@@ -45,7 +48,7 @@ export interface ElevatedVolatilityFlag {
   elevated: boolean;
 }
 
-export type RoadmapStatus = "waiting_on_data" | "waiting_on_sign_off" | "waiting_on_decision" | "waiting_on_later_phase";
+export type RoadmapStatus = "waiting_on_data" | "waiting_on_sign_off" | "waiting_on_decision" | "waiting_on_later_phase" | "waiting_on_build";
 export interface RoadmapProgress {
   have: number;
   need: number;
@@ -84,7 +87,7 @@ export interface TickerSignals {
   atmImpliedVolatility: number | null;
   forecast: { volatility: number; windowDays: number } | null;
   dailyBarCount: number;
-  hasDividendEvents: boolean;
+  dividendCadenceUnknown: boolean;
   caveats: RoadmapItem[];
   freeShares: number;
   freeCash: number;

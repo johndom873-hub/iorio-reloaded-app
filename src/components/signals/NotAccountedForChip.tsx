@@ -3,6 +3,7 @@ import { IconAlertTriangle } from "@tabler/icons-react";
 import type { RoadmapEta, RoadmapItem } from "../../api/signals";
 import { formatDate } from "../../lib/formatters";
 import { roadmapStatusBadgeClass, roadmapStatusLabel, signalsColumnExplanation } from "../../lib/signalsPresentation";
+import { Spinner } from "../Spinner";
 
 const badgeFontSize = { fontSize: "0.72rem" } as const;
 
@@ -44,9 +45,12 @@ interface NotAccountedForChipProps {
   generalItems: RoadmapItem[];
   /** Chip text when the ticker has no specific caveat; defaults to "N general". */
   label?: string;
+  /** Starts the history backfill for this ticker; shown as a button on the suspected-split caveat. */
+  onBackfillHistory?: () => void;
+  backfillStarting?: boolean;
 }
 
-export function NotAccountedForChip({ symbol, caveats, generalItems, label }: NotAccountedForChipProps) {
+export function NotAccountedForChip({ symbol, caveats, generalItems, label, onBackfillHistory, backfillStarting = false }: NotAccountedForChipProps) {
   const [placement, setPlacement] = useState<PopoverPlacement | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const buttonRef = useRef<HTMLButtonElement>(null);
@@ -107,6 +111,20 @@ export function NotAccountedForChip({ symbol, caveats, generalItems, label }: No
                 </span>
                 <RoadmapEtaText eta={caveat.eta} />
               </div>
+              {caveat.id === "suspected_split" && onBackfillHistory && (
+                <button
+                  type="button"
+                  className="btn btn-sm btn-outline-primary mt-1 d-inline-flex align-items-center gap-1"
+                  disabled={backfillStarting}
+                  onClick={() => {
+                    setPlacement(null);
+                    onBackfillHistory();
+                  }}
+                >
+                  {backfillStarting && <Spinner size="sm" />}
+                  Backfill history
+                </button>
+              )}
             </div>
           ))
         )}
