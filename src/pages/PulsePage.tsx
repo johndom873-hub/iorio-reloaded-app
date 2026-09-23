@@ -10,7 +10,18 @@ import "@fontsource/ibm-plex-mono/700.css";
 import "./PulsePage.css";
 import { useExposureStream } from "../hooks/useExposureStream";
 import { fetchAccountValue, fetchDashboardSummary, fetchAvailableCash, type AccountValue, type AvailableCash, type DashboardSummary } from "../api/dashboard";
-import { fetchPositions, openUnrealizedPnlStream, openGreeksStream, fetchOrder, type Position, type UnrealizedPnlResult, type Greeks, type OrderLeg, type OrderRequestStatus } from "../api/positions";
+import {
+  fetchPositions,
+  openUnrealizedPnlStream,
+  openGreeksStream,
+  fetchOrder,
+  fetchPulseChartHistory,
+  type Position,
+  type UnrealizedPnlResult,
+  type Greeks,
+  type OrderLeg,
+  type OrderRequestStatus,
+} from "../api/positions";
 import { fetchTradeAlerts, isRollAlert, type NewTradeCandidate, type TradeAlert } from "../api/tradeAlerts";
 import { fetchTradeBlotter, type Trade } from "../api/tradeBlotter";
 import { openNotificationStream, fetchRecentNotifications, type AppNotification } from "../api/notifications";
@@ -42,8 +53,10 @@ import { EnvironmentBadges } from "../components/layout/EnvironmentBadges";
 import { useEnvironmentStatus } from "../hooks/useEnvironmentStatus";
 
 const CHART_SAMPLE_INTERVAL_MS = 60_000;
-// 4 hours of history at one sample/minute.
-const CHART_MAX_SAMPLES = 240;
+// 8 hours of history at one sample/minute — matches the backend's rolling
+// buffer (pulseChartSampleCollector.ts), which is what backfills these
+// charts on load/reconnect.
+const CHART_MAX_SAMPLES = 480;
 const HEALTH_POLL_INTERVAL_MS = 30_000;
 const ACCOUNT_POLL_INTERVAL_MS = 60_000;
 const TRADES_LIMIT = 30;
@@ -678,9 +691,9 @@ export function PulsePage() {
   const activeEdgeIds = useMemo(() => new Set(pulses.map((pulse) => pulse.edgeId)), [pulses]);
 
   // --- Charts: live client-side rolling sample of the already-open SSE
-  // streams above — no persisted intraday history exists on the backend
-  // (approved tradeoff, 2026-09-13). Starts empty and fills in as the tab
-  // stays open. ---
+  // streams above, seeded from the backend's rolling 8h buffer on mount
+  // (approved 2026-09-23, superseding the earlier "no persisted intraday
+  // history" tradeoff from 2026-09-13) so a refresh doesn't blank them. ---
   const [pnlSeries, setPnlSeries] = useState<number[]>([]);
   const [pnlTimestamps, setPnlTimestamps] = useState<number[]>([]);
   // Keyed by position id, not symbol — a rolled position can leave two
@@ -691,6 +704,26 @@ export function PulsePage() {
   useEffect(() => {
     latestDataRef.current = { unrealizedPnlByPositionId, greeksByLegId, positions };
   }, [unrealizedPnlByPositionId, greeksByLegId, positions]);
+
+  // Runs once on mount, before the live sampling interval below has had a
+  // chance to append anything — the `prev.length > 0` guards mean a slow
+  // response here never clobbers live data that already started arriving.
+  useEffect(() => {
+    fetchPulseChartHistory()
+      .then((history) => {
+        setPnlTimestamps((prev) => (prev.length > 0 ? prev : history.pnlSamples.slice(-CHART_MAX_SAMPLES).map((sample) => sample.sampledAtMs)));
+        setPnlSeries((prev) => (prev.length > 0 ? prev : history.pnlSamples.slice(-CHART_MAX_SAMPLES).map((sample) => sample.totalUnrealizedPnl)));
+        setProbabilitySeriesByPositionId((prev) => {
+          if (Object.keys(prev).length > 0) return prev;
+          const next: Record<string, number[]> = {};
+          for (const [positionId, samples] of Object.entries(history.probabilitySamplesByPositionId)) {
+            next[positionId] = samples.slice(-CHART_MAX_SAMPLES).map((sample) => sample.probability);
+          }
+          return next;
+        });
+      })
+      .catch(() => {});
+  }, []);
 
   useEffect(() => {
     const interval = window.setInterval(() => {

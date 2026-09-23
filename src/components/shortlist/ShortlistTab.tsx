@@ -7,12 +7,14 @@ import { WarningTriangle } from "./WarningTriangle";
 import { VolatilitySurfaceModal } from "../VolatilitySurfaceModal";
 import { ActionsMenu, type ActionsMenuItem } from "./ActionsMenu";
 import { useTooltip } from "../../hooks/useTooltip";
+import { DottedLabelTooltip } from "../HelpTooltip";
 import { ApiError } from "../../api/client";
 import {
   addToShortlist,
   backfillTickerEarnings,
   backfillTickerPriceHistory,
   fetchShortlist,
+  refreshTickerOptionChain,
   removeFromShortlist,
   retryTickerBackfill,
   searchTickers,
@@ -21,7 +23,7 @@ import {
   type TickerBackfillRun,
   type TickerSearchResult,
 } from "../../api/shortlist";
-import { daysToExpiry, formatBarsAsYears, formatDaysToExpiry } from "../../lib/formatters";
+import { daysToExpiry, formatBarsAsYears, formatDaysToExpiry, ibkrExpiryToIsoDate, formatDate } from "../../lib/formatters";
 
 const searchDebounceMs = 400;
 
@@ -118,6 +120,19 @@ function PreparingStatusBadge({ progressPercent, onClick }: { progressPercent: n
   );
 }
 
+function OptionChainExpiriesCell({ expiries }: { expiries: ShortlistRow["optionChainExpiries"] }) {
+  if (expiries.length === 0) {
+    return (
+      <span className="d-inline-flex align-items-center gap-1">
+        <WarningTriangle reason="No option-chain expiries captured yet — waits for tonight's nightly capture, or Actions → Refresh Option Chain." />
+        0
+      </span>
+    );
+  }
+  const tooltipHtml = expiries.map((entry) => `${formatDate(ibkrExpiryToIsoDate(entry.expiry))}: ${entry.strikeCount} strikes`).join("<br>");
+  return <DottedLabelTooltip label={String(expiries.length)} tooltipHtml={tooltipHtml} className="option-chain-expiries-count" />;
+}
+
 interface ShortlistTabProps {
   onOpenTickerDetail: (symbol: string) => void;
 }
@@ -137,8 +152,10 @@ export function ShortlistTab({ onOpenTickerDetail }: ShortlistTabProps) {
   const [startingBackfillTickerId, setStartingBackfillTickerId] = useState<string | null>(null);
   const [backfillingEarningsTickerId, setBackfillingEarningsTickerId] = useState<string | null>(null);
   const [backfillingPriceHistoryTickerId, setBackfillingPriceHistoryTickerId] = useState<string | null>(null);
+  const [refreshingOptionChainTickerId, setRefreshingOptionChainTickerId] = useState<string | null>(null);
   const [confirmEarningsRow, setConfirmEarningsRow] = useState<ShortlistRow | null>(null);
   const [confirmPriceHistoryRow, setConfirmPriceHistoryRow] = useState<ShortlistRow | null>(null);
+  const [confirmRefreshOptionChainRow, setConfirmRefreshOptionChainRow] = useState<ShortlistRow | null>(null);
   const [prepTicker, setPrepTicker] = useState<{ tickerId: string; symbol: string; companyName: string | null } | null>(null);
   const [surfaceModalSymbol, setSurfaceModalSymbol] = useState<string | null>(null);
 
@@ -251,6 +268,24 @@ export function ShortlistTab({ onOpenTickerDetail }: ShortlistTabProps) {
       setError(err instanceof ApiError ? err.message : `Failed to backfill price history for ${row.symbol}.`);
     } finally {
       setBackfillingPriceHistoryTickerId(null);
+    }
+  }
+
+  // Re-runs refreshStoredOptionChain for just this ticker (expiries + per-expiry strikes) -- same
+  // fetch the nightly capture does, without touching history/earnings/calendar. Hits IBKR and can
+  // take a while (one wildcard per expiry, sequential), so it's confirmed and single-in-flight like
+  // Backfill Price History above.
+  async function handleRefreshOptionChain(row: ShortlistRow) {
+    setConfirmRefreshOptionChainRow(null);
+    setRefreshingOptionChainTickerId(row.tickerId);
+    try {
+      setError(null);
+      await refreshTickerOptionChain(row.tickerId);
+      await loadRows();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : `Failed to refresh the option chain for ${row.symbol}.`);
+    } finally {
+      setRefreshingOptionChainTickerId(null);
     }
   }
 
@@ -402,6 +437,18 @@ export function ShortlistTab({ onOpenTickerDetail }: ShortlistTabProps) {
       ),
     },
     {
+      key: "optionChainExpiries",
+      header: "Chain Expiries",
+      headerTitle: "Expiries with strikes captured (option_chain_expiry_strikes) — hover for per-expiry strike counts",
+      align: "right",
+      render: (row) =>
+        refreshingOptionChainTickerId === row.tickerId ? (
+          <Spinner size="sm" label={`Refreshing option chain for ${row.symbol}`} />
+        ) : (
+          <OptionChainExpiriesCell expiries={row.optionChainExpiries} />
+        ),
+    },
+    {
       key: "latestSurfaceFit",
       header: "Surface Fit",
       headerTitle: "Fitted vs. total expiries on the most recent option-chain snapshot",
@@ -460,6 +507,14 @@ export function ShortlistTab({ onOpenTickerDetail }: ShortlistTabProps) {
               backfillingPriceHistoryTickerId !== null
                 ? "Another price-history backfill is already running. One at a time."
                 : `Already backfilled — history starts ${row.historyStartDate ?? "unknown"}, that's everything IBKR has`,
+          },
+          {
+            key: "refresh-option-chain",
+            label: "Refresh Option Chain",
+            onClick: () => setConfirmRefreshOptionChainRow(row),
+            loading: refreshingOptionChainTickerId === row.tickerId,
+            disabled: refreshingOptionChainTickerId !== null,
+            disabledReason: "Another option-chain refresh is already running. One at a time.",
           },
           {
             key: "retry-full-setup",
@@ -612,6 +667,21 @@ export function ShortlistTab({ onOpenTickerDetail }: ShortlistTabProps) {
           danger={false}
           onConfirm={() => handleBackfillPriceHistory(confirmPriceHistoryRow)}
           onCancel={() => setConfirmPriceHistoryRow(null)}
+        />
+      )}
+
+      {confirmRefreshOptionChainRow && (
+        <ConfirmModal
+          title="Refresh Option Chain"
+          message={
+            <>
+              Re-fetch expiries and strikes for <strong>{confirmRefreshOptionChainRow.symbol}</strong> from IBKR?
+            </>
+          }
+          confirmLabel="Refresh"
+          danger={false}
+          onConfirm={() => handleRefreshOptionChain(confirmRefreshOptionChainRow)}
+          onCancel={() => setConfirmRefreshOptionChainRow(null)}
         />
       )}
 

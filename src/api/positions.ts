@@ -457,6 +457,19 @@ export function openUnrealizedPnlStream(
   });
 }
 
+export interface PulseChartHistory {
+  pnlSamples: { sampledAtMs: number; totalUnrealizedPnl: number }[];
+  probabilitySamplesByPositionId: Record<string, { sampledAtMs: number; probability: number }[]>;
+}
+
+// Backfills Pulse's two charts from the backend's rolling 8h sample buffer
+// (approved 2026-09-23) — called once on mount so a refresh or a brief live-
+// stream outage doesn't blank the charts; the live streams above keep
+// appending to the same series afterward.
+export function fetchPulseChartHistory(): Promise<PulseChartHistory> {
+  return apiRequest<PulseChartHistory>("/positions/pulse-chart-history");
+}
+
 function openLegacyUnrealizedPnlStream(
   positionIds: string[],
   onUpdate: (result: Record<string, UnrealizedPnlResult>) => void,

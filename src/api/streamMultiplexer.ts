@@ -18,7 +18,8 @@ type ServerFrame =
   | { type: "hello"; connectionId: string; protocolVersion: number }
   | { type: "data"; subscriptionId: string; data: unknown }
   | { type: "error"; subscriptionId: string; message: string }
-  | { type: "end"; subscriptionId: string };
+  | { type: "end"; subscriptionId: string }
+  | { type: "heartbeat" };
 
 interface Subscription {
   subscriptionId: string;
@@ -31,6 +32,10 @@ interface Subscription {
   closeLegacy: (() => void) | null;
   /** True once a subscribe request for the CURRENT connection has been sent. */
   isSentToServer: boolean;
+  /** Pending re-subscribe after this subscription's producer sent "error"/"end", if any. */
+  retryTimer: ReturnType<typeof setTimeout> | null;
+  /** Resets to 0 on the next successful data frame; paces retrySubscriptionDelaysMs. */
+  consecutiveFailures: number;
 }
 
 export interface MultiplexerConnectionStatus {
@@ -48,6 +53,24 @@ type ConnectionState = "idle" | "connecting" | "ready" | "reconnecting" | "unava
 // until the connection is back and the subscriptions are re-sent. ±25%
 // jitter keeps every open tab from hitting a recovering dyno at once.
 const reconnectDelaysMs = [1_000, 2_000, 5_000, 10_000, 30_000];
+
+// Backoff before re-sending a subscribe for one subscription whose producer
+// sent "error" or "end" — e.g. the IBKR Gateway restarting mid-stream (see
+// waitForAbortOrGatewayDisconnect on the backend). The same subscriptionId is
+// reused: the backend removes it from its active set before sending that
+// frame, so re-subscribing under the same id lands cleanly.
+const retrySubscriptionDelaysMs = [1_000, 3_000, 10_000, 30_000];
+
+// The backend sends a heartbeat frame every 20s regardless of subscription
+// activity (src/streams/streamMultiplexer.ts). No frame of ANY kind for this
+// long means the transport itself is stuck even though EventSource still
+// thinks it's open (e.g. the server process wedged) — treat it the same as a
+// dropped connection. Comfortably above 2x the heartbeat interval to avoid
+// false positives from one slow tick.
+const staleConnectionThresholdMs = 50_000;
+const staleConnectionCheckIntervalMs = 10_000;
+let lastActivityAtMs = 0;
+let staleConnectionCheckTimer: ReturnType<typeof setInterval> | null = null;
 
 const subscriptions = new Map<string, Subscription>();
 let connectionState: ConnectionState = "idle";
@@ -129,6 +152,8 @@ export function openMultiplexedStream<TData>(options: {
     openLegacy: options.openLegacy,
     closeLegacy: null,
     isSentToServer: false,
+    retryTimer: null,
+    consecutiveFailures: 0,
   };
   subscriptions.set(subscription.subscriptionId, subscription);
 
@@ -145,6 +170,10 @@ export function openMultiplexedStream<TData>(options: {
 function removeSubscription(subscription: Subscription) {
   if (subscriptions.get(subscription.subscriptionId) !== subscription) return;
   subscriptions.delete(subscription.subscriptionId);
+  if (subscription.retryTimer !== null) {
+    clearTimeout(subscription.retryTimer);
+    subscription.retryTimer = null;
+  }
   if (subscription.closeLegacy) {
     subscription.closeLegacy();
     subscription.closeLegacy = null;
@@ -218,6 +247,7 @@ function closeConnection() {
   connectionGeneration += 1;
   if (reconnectTimer !== null) clearTimeout(reconnectTimer);
   reconnectTimer = null;
+  stopStaleConnectionWatchdog();
   source?.close();
   source = null;
   connectionId = null;
@@ -225,6 +255,27 @@ function closeConnection() {
   controlQueue = Promise.resolve();
   for (const subscription of subscriptions.values()) subscription.isSentToServer = false;
   setConnectionState("idle");
+}
+
+// EventSource only tells us a connection died via onerror, which fires on a
+// closed socket — not on a server process that's still holding the socket
+// open but has stopped writing anything at all, heartbeat included. Polls
+// for that specific silent-hang case; a real transport drop is still caught
+// faster by onerror itself.
+function startStaleConnectionWatchdog() {
+  if (staleConnectionCheckTimer !== null) return;
+  lastActivityAtMs = Date.now();
+  staleConnectionCheckTimer = setInterval(() => {
+    if (connectionState !== "ready") return;
+    if (Date.now() - lastActivityAtMs < staleConnectionThresholdMs) return;
+    handleConnectionLost(true);
+  }, staleConnectionCheckIntervalMs);
+}
+
+function stopStaleConnectionWatchdog() {
+  if (staleConnectionCheckTimer === null) return;
+  clearInterval(staleConnectionCheckTimer);
+  staleConnectionCheckTimer = null;
 }
 
 async function connect() {
@@ -256,6 +307,7 @@ async function connect() {
 
   const eventSource = new EventSource(`${apiBaseUrl}/stream`, { withCredentials: true });
   source = eventSource;
+  startStaleConnectionWatchdog();
 
   eventSource.onmessage = (message) => {
     if (generationAtStart !== connectionGeneration) return;
@@ -278,12 +330,22 @@ async function connect() {
 }
 
 function handleServerFrame(frame: ServerFrame) {
+  lastActivityAtMs = Date.now();
+
+  if (frame.type === "heartbeat") return;
+
   if (frame.type === "hello") {
     connectionId = frame.connectionId;
     consecutiveFailures = 0;
     setConnectionState("ready");
     // Fresh connection id: nothing is subscribed server-side yet.
-    for (const subscription of subscriptions.values()) subscription.isSentToServer = false;
+    for (const subscription of subscriptions.values()) {
+      subscription.isSentToServer = false;
+      if (subscription.retryTimer !== null) {
+        clearTimeout(subscription.retryTimer);
+        subscription.retryTimer = null;
+      }
+    }
     for (const subscription of [...subscriptions.values()]) sendSubscribe(subscription);
     return;
   }
@@ -291,6 +353,7 @@ function handleServerFrame(frame: ServerFrame) {
   const subscription = subscriptions.get(frame.subscriptionId);
   if (!subscription) return; // unsubscribed meanwhile
   if (frame.type === "data") {
+    subscription.consecutiveFailures = 0;
     try {
       subscription.onData(frame.data);
     } catch {
@@ -298,11 +361,28 @@ function handleServerFrame(frame: ServerFrame) {
     }
     return;
   }
-  // "error" (the producer failed) or "end" (it stopped on its own — the
-  // legacy streams only ever do that on failure): same outcome the legacy
-  // stream gave, a failed subscription.
-  subscriptions.delete(subscription.subscriptionId);
+  // "error" (the producer failed) or "end" (the producer stopped on its own —
+  // either a real failure, or a recoverable condition it chose to end over,
+  // e.g. the IBKR Gateway restarting mid-stream). Tell the caller (same as
+  // before) but keep the subscription and re-send it with backoff rather than
+  // dropping it forever — the backend already removed its own copy before
+  // sending this frame, so the same subscriptionId is free to reuse.
+  subscription.isSentToServer = false;
   subscription.onError();
+  scheduleSubscriptionRetry(subscription);
+}
+
+function scheduleSubscriptionRetry(subscription: Subscription) {
+  if (subscription.retryTimer !== null) return;
+  const delay = retrySubscriptionDelaysMs[Math.min(subscription.consecutiveFailures, retrySubscriptionDelaysMs.length - 1)] ?? 30_000;
+  subscription.consecutiveFailures += 1;
+  const generationAtCall = connectionGeneration;
+  subscription.retryTimer = setTimeout(() => {
+    subscription.retryTimer = null;
+    if (generationAtCall !== connectionGeneration) return; // connection was replaced; its own hello already resubscribed everything
+    if (subscriptions.get(subscription.subscriptionId) !== subscription) return; // unsubscribed meanwhile
+    if (connectionState === "ready") sendSubscribe(subscription);
+  }, delay);
 }
 
 /**
@@ -338,6 +418,7 @@ function fallBackToLegacyStreams(reason: string) {
   connectionGeneration += 1;
   if (reconnectTimer !== null) clearTimeout(reconnectTimer);
   reconnectTimer = null;
+  stopStaleConnectionWatchdog();
   source?.close();
   source = null;
   connectionId = null;

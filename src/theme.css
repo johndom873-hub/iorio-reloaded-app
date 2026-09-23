@@ -890,6 +890,13 @@
   cursor: help;
 }
 
+/* Shortlist's Chain Expiries count: same dotted-underline tooltip affordance, but the value itself
+   isn't clickable, so a plain arrow cursor (not "help") and no accidental text selection on hover. */
+.dotted-underline-label.option-chain-expiries-count {
+  cursor: default;
+  user-select: none;
+}
+
 .footnote-tooltip .tooltip-inner {
   max-width: min(22rem, 85vw);
   text-align: left;
