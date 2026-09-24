@@ -7,6 +7,7 @@ import { ApexChart, textColorByTheme } from "../components/charts/ApexChart";
 import { CollapsibleCard } from "../components/CollapsibleCard";
 import { DottedLabelTooltip, HelpTooltip } from "../components/HelpTooltip";
 import { TickerDetailModal } from "../components/TickerDetailModal";
+import { TickColoredPrice } from "../components/TickColoredPrice";
 import { useTheme } from "../contexts/ThemeContext";
 import { ApiError } from "../api/client";
 import {
@@ -22,6 +23,7 @@ import {
   type PositionEvent,
   type StrategyPeriodPnlRow,
 } from "../api/dashboard";
+import { openTradeAlertCurrentPricesStream } from "../api/tradeAlerts";
 import { fetchPositions, fetchUnrealizedPnl, type Position, type UnrealizedPnlResult } from "../api/positions";
 import { AVAILABLE_CASH_PERCENT_BANDS, lowerIsWorseStatus, statusTextClass } from "../lib/statusThresholds";
 import { type ConcentrationRow, type StrategyAllocationRow, type TopPositionRow } from "../api/riskLimits";
@@ -493,6 +495,8 @@ export function DashboardPage() {
   const [needsAttention, setNeedsAttention] = useState<Position[]>([]);
   const [needsAttentionLoading, setNeedsAttentionLoading] = useState(true);
   const [needsAttentionError, setNeedsAttentionError] = useState<string | null>(null);
+  const [needsAttentionPriceBySymbol, setNeedsAttentionPriceBySymbol] = useState<Record<string, number | null>>({});
+  const [needsAttentionPriceStreamFailed, setNeedsAttentionPriceStreamFailed] = useState(false);
   const [detailSymbol, setDetailSymbol] = useTickerDetailSymbol();
   // Not persisted across a refresh (unlike detailSymbol) -- it's a one-shot
   // "scroll to this position" aid, not state worth surviving a reload.
@@ -581,6 +585,21 @@ export function DashboardPage() {
   useEffect(() => {
     loadNeedsAttention();
   }, [loadNeedsAttention]);
+
+  const needsAttentionSymbols = Array.from(new Set(needsAttention.map((position) => position.symbol))).sort().join(",");
+
+  useEffect(() => {
+    if (!needsAttentionSymbols) return;
+    setNeedsAttentionPriceStreamFailed(false);
+    return openTradeAlertCurrentPricesStream(
+      needsAttentionSymbols.split(","),
+      (result) => {
+        setNeedsAttentionPriceStreamFailed(false);
+        setNeedsAttentionPriceBySymbol(result);
+      },
+      () => setNeedsAttentionPriceStreamFailed(true),
+    );
+  }, [needsAttentionSymbols]);
 
   const accountValueNumber = summary?.netLiquidationValue ? Number(summary.netLiquidationValue) : null;
   const yesterdaysPnl = summary?.periods.day ? Number(summary.periods.day) : null;
@@ -687,6 +706,8 @@ export function DashboardPage() {
                   <tr>
                     <th>Ticker</th>
                     <th>Shares</th>
+                    <th>Price</th>
+                    <th>Value</th>
                     <th>Reason</th>
                     <th className="text-end"></th>
                   </tr>
@@ -694,6 +715,9 @@ export function DashboardPage() {
                 <tbody>
                   {needsAttention.map((position) => {
                     const stockLeg = position.legs.find((leg) => leg.legType === "stock" && !leg.exitAt);
+                    const shares = stockLeg?.quantity ?? null;
+                    const currentPrice = needsAttentionPriceBySymbol[position.symbol];
+                    const value = shares !== null && currentPrice != null ? shares * currentPrice : null;
                     return (
                       <tr key={position.id}>
                         <td>
@@ -705,7 +729,19 @@ export function DashboardPage() {
                             {position.symbol}
                           </button>
                         </td>
-                        <td className="font-mono">{stockLeg?.quantity ?? "—"}</td>
+                        <td className="font-mono">{shares ?? "—"}</td>
+                        <td className="font-mono">
+                          {currentPrice === undefined ? (
+                            needsAttentionPriceStreamFailed ? "—" : <Spinner size="sm" label="Loading current price" />
+                          ) : currentPrice === null ? (
+                            "—"
+                          ) : (
+                            <TickColoredPrice value={currentPrice} initialReference={null} precision={2} title="Live current price">
+                              {formatCurrency(currentPrice)}
+                            </TickColoredPrice>
+                          )}
+                        </td>
+                        <td className="font-mono">{value !== null ? formatCurrency(value, 0) : "—"}</td>
                         <td className="text-secondary">
                           {(position.unstructuredReason && unstructuredReasonLabels[position.unstructuredReason]) ?? "cause unclear — flagged for review"}
                         </td>
