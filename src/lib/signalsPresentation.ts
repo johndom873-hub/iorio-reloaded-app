@@ -42,12 +42,11 @@ export const roadmapStatusBadgeClass: Record<RoadmapStatus, string> = {
   waiting_on_build: "bg-teal-lt",
 };
 
-export const signalFlagLetter: Record<SignalFlag, string> = { earnings_calendar_unresolved: "?", outside_fitted_range: "X", wide_spread: "W", no_shares: "S", insufficient_cash: "$" };
+export const signalFlagLetter: Record<SignalFlag, string> = { earnings_calendar_unresolved: "?", outside_fitted_range: "X", wide_spread: "W", insufficient_cash: "$" };
 export const signalFlagExplanation: Record<SignalFlag, string> = {
   earnings_calendar_unresolved: "Earnings calendar not resolved for this ticker — trade could span an undetected report date",
   outside_fitted_range: "Strike is outside the fitted curve — extrapolated",
   wide_spread: "Spread wider than 50% of the mid",
-  no_shares: "No free 100 shares to cover this call",
   insufficient_cash: "Not enough free cash to secure this put",
 };
 

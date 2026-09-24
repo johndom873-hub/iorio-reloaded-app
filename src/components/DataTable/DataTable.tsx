@@ -35,6 +35,8 @@ interface DataTableProps<TRow> {
   rowClassName?: (row: TRow) => string | undefined;
   /** Smaller type (0.8rem) for dense, many-column tables. */
   dense?: boolean;
+  /** Caps the table body to roughly this many rows and makes it scroll (sticky header) instead of growing the page. */
+  maxVisibleRows?: number;
 }
 
 export function DataTable<TRow>({
@@ -51,12 +53,15 @@ export function DataTable<TRow>({
   onRowClick,
   rowClassName,
   dense = false,
+  maxVisibleRows,
 }: DataTableProps<TRow>) {
   const { isColumnVisible, toggleColumn } = useColumnVisibility(
     tableId,
     columns.map((column) => column.key),
   );
   const visibleColumns = columns.filter((column) => isColumnVisible(column.key));
+  const rowHeightRem = dense ? 1.9 : 2.25;
+  const maxBodyHeight = maxVisibleRows ? `${(maxVisibleRows + 1) * rowHeightRem}rem` : undefined;
 
   return (
     <div className="card">
@@ -66,9 +71,9 @@ export function DataTable<TRow>({
         </div>
       )}
       {beforeTable}
-      <div className="table-responsive">
+      <div className="table-responsive" style={maxBodyHeight ? { maxHeight: maxBodyHeight, overflowY: "auto" } : undefined}>
         <table className="table table-sm table-hover table-vcenter card-table" style={dense ? { fontSize: "0.8rem" } : undefined}>
-          <thead className="table-light">
+          <thead className="table-light" style={maxBodyHeight ? { position: "sticky", top: 0, zIndex: 1 } : undefined}>
             <tr>
               {visibleColumns.map((column, index) => {
                 const isLastColumn = index === visibleColumns.length - 1;

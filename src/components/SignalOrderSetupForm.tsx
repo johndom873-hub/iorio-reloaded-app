@@ -91,7 +91,9 @@ export function SignalOrderSetupForm({ symbol, signals, candidate, spotPrice, ne
   const decayed = Math.abs(decay) >= decayWarningVolatilityPoints / 100;
   const netEdgeFlash = useFlashOnChange(candidate.netEdge, 1200, 3);
 
-  const blockingFlag = candidate.flags.find((flag) => flag === "no_shares" || flag === "insufficient_cash");
+  // A covered call always sends both legs (buy the shares, sell the call) in one order, so having
+  // no free shares yet is the normal case, not a blocker -- only a cash-secured put needs the cash upfront.
+  const blockingFlag = candidate.flags.find((flag) => flag === "insufficient_cash");
   const capitalAtRisk = isCall ? (spotPrice ?? 0) * 100 * quantity : candidate.strike * 100 * quantity;
   const maxGainAtMid = mid * 100 * quantity;
 
@@ -151,7 +153,13 @@ export function SignalOrderSetupForm({ symbol, signals, candidate, spotPrice, ne
 
       {blockingFlag && (
         <div className="alert alert-warning mb-0 py-2" style={{ fontSize: "0.85rem" }}>
-          <strong>Cannot place now:</strong> {blockingFlag === "no_shares" ? "you have no free 100 shares to cover this call." : "not enough free cash to secure this put."} The score is still shown.
+          <strong>Cannot place now:</strong> not enough free cash to secure this put. The score is still shown.
+        </div>
+      )}
+
+      {isCall && signals.freeShares > 0 && (
+        <div className="alert alert-info mb-0 py-2" style={{ fontSize: "0.85rem" }}>
+          {signals.freeShares} share{signals.freeShares === 1 ? "" : "s"} available to cover this call.
         </div>
       )}
 

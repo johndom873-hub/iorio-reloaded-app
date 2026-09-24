@@ -402,6 +402,20 @@ export function SignalsTickerModal({ symbol, onClose }: SignalsTickerModalProps)
 
   const liveLabel = streamFailed ? "Live stream unavailable — snapshot values" : signals?.priceSource === "live" ? `Live · quotes streaming for ${liveQuoteContractCount ?? 0} contracts` : "Connecting live prices…";
 
+  const positionsCards = (
+    <TickerPositionsCards
+      symbol={symbol}
+      data={tickerPositions}
+      currentPrice={spotPrice}
+      onRollSelect={() => setRollNotice("Rolls are reviewed from the Ticker Detail modal (Trade Alerts or Positions), not from Signals.")}
+      onSellCall={(prefill) => {
+        const match = prefill ? signals?.candidates.find((candidate) => candidate.strategyKey === "covered_call" && candidate.strike === prefill.strike && candidate.expiry === prefill.expiry) : undefined;
+        if (match) selectCandidate(match);
+        else setRollNotice(prefill ? "That call is not among the scored candidates for this ticker." : "Pick a call from the opportunities below.");
+      }}
+    />
+  );
+
   return (
     <>
       <div className="modal-backdrop show" style={{ zIndex: 1050, backgroundColor: "rgba(0,0,0,0.5)", opacity: 1 }} />
@@ -461,25 +475,16 @@ export function SignalsTickerModal({ symbol, onClose }: SignalsTickerModalProps)
                   {rollNotice}
                 </div>
               )}
-              <TickerPositionsCards
-                symbol={symbol}
-                data={tickerPositions}
-                currentPrice={spotPrice}
-                onRollSelect={() => setRollNotice("Rolls are reviewed from the Ticker Detail modal (Trade Alerts or Positions), not from Signals.")}
-                onSellCall={(prefill) => {
-                  const match = prefill ? signals?.candidates.find((candidate) => candidate.strategyKey === "covered_call" && candidate.strike === prefill.strike && candidate.expiry === prefill.expiry) : undefined;
-                  if (match) selectCandidate(match);
-                  else setRollNotice(prefill ? "That call is not among the scored candidates for this ticker." : "Pick a call from the opportunities below.");
-                }}
-              />
-
               {signals && signals.unscoredReason && (
-                <div className="alert alert-secondary">
-                  <span className="badge bg-secondary-lt me-2" style={badgeFontSize}>
-                    Unscored
-                  </span>
-                  {unscoredReasonLabel[signals.unscoredReason]}
-                </div>
+                <>
+                  <div className="alert alert-secondary">
+                    <span className="badge bg-secondary-lt me-2" style={badgeFontSize}>
+                      Unscored
+                    </span>
+                    {unscoredReasonLabel[signals.unscoredReason]}
+                  </div>
+                  {positionsCards}
+                </>
               )}
 
               {signals && !signals.unscoredReason && (
@@ -488,6 +493,7 @@ export function SignalsTickerModal({ symbol, onClose }: SignalsTickerModalProps)
                     <DataTable
                       tableId="signals-opportunities"
                       dense
+                      maxVisibleRows={15}
                       columns={opportunityColumns}
                       rows={opportunityRows}
                       rowKey={(row) => candidateKey(row)}
@@ -513,7 +519,7 @@ export function SignalsTickerModal({ symbol, onClose }: SignalsTickerModalProps)
                             <input type="checkbox" className="form-check-input" checked={showAvoid} onChange={(event) => setShowAvoid(event.target.checked)} />
                             <span className="form-check-label">Show Avoid ({hiddenAvoidCount} hidden)</span>
                           </label>
-                          <span className="text-secondary">Sorted by Edge $, best first{uncompensatedAsOf ? ` · Uncomp. as of ${formatCurrency(uncompensatedAsOf.spotPrice)}` : ""}</span>
+                          {uncompensatedAsOf && <span className="text-secondary">Uncomp. as of {formatCurrency(uncompensatedAsOf.spotPrice)}</span>}
                         </div>
                       }
                       afterTable={
@@ -536,6 +542,8 @@ export function SignalsTickerModal({ symbol, onClose }: SignalsTickerModalProps)
                         <ExpiryChainGrid candidates={signals.candidates} expiry={effectiveExpiry} spotPrice={spotPrice} selectedKey={selectedKey} onSelect={selectCandidate} />
                       </div>
                     )}
+
+                    <div className="mt-3">{positionsCards}</div>
                   </div>
 
                   <div style={{ flex: "1 1 32%", minWidth: "19rem" }}>
