@@ -65,18 +65,35 @@ function readStoredSidebarMode(): SidebarMode {
   return localStorage.getItem(SIDEBAR_MODE_STORAGE_KEY) === "fixed" ? "fixed" : "retractable";
 }
 
-/** "Live data restricted" while a scheduled scan (the 10:00 ET chain capture or the trade-alert scan) holds its priority market-data lines (mockup rev 2, 2026-09-24). */
-function MarketDataRestrictionPill({ restriction, compact = false }: { restriction: { priorityLines: number } | null | undefined; compact?: boolean }) {
+/**
+ * "Real-time data disabled" when IBKR_MARKET_DATA_LINES_ENABLED=false refuses every market-data
+ * line reservation outright (typically dev), or "Live data restricted" while a scheduled scan
+ * (the 10:00 ET chain capture or the trade-alert scan) holds its priority lines instead (mockup
+ * rev 2, 2026-09-24). The two states don't overlap in practice — a disabled environment never
+ * has an active priority reservation to report — but disabled takes precedence if it ever does.
+ */
+function MarketDataRestrictionPill({
+  restriction,
+  linesEnabled = true,
+  compact = false,
+}: {
+  restriction: { priorityLines: number } | null | undefined;
+  linesEnabled?: boolean;
+  compact?: boolean;
+}) {
+  const disabled = !linesEnabled;
   const ref = useTooltip<HTMLSpanElement>(
-    restriction
-      ? `A scheduled scan (the 10:00 ET chain capture, or the trade-alert scan) holds ${restriction.priorityLines} of IBKR's market-data lines while it runs. Live prices and quotes are served with the ${90 - restriction.priorityLines} lines left, most recent requests first; anything that could not get a line shows its last received value and catches up on its own.`
-      : undefined,
+    disabled
+      ? "IBKR_MARKET_DATA_LINES_ENABLED=false in this environment — every market-data line reservation is refused, so screens show no live prices or quotes."
+      : restriction
+        ? `A scheduled scan (the 10:00 ET chain capture, or the trade-alert scan) holds ${restriction.priorityLines} of IBKR's market-data lines while it runs. Live prices and quotes are served with the ${90 - restriction.priorityLines} lines left, most recent requests first; anything that could not get a line shows its last received value and catches up on its own.`
+        : undefined,
   );
-  if (!restriction) return null;
+  if (!disabled && !restriction) return null;
   return (
     <span ref={ref} className={`iorio-topbar-status${compact ? " iorio-topbar-status-compact" : ""}`} tabIndex={0} role="status">
       <IconClock size={compact ? 14 : 16} aria-hidden="true" />
-      Live data restricted
+      {disabled ? "Real-time data disabled" : "Live data restricted"}
     </span>
   );
 }
@@ -174,7 +191,11 @@ export function AppLayout() {
           </div>
           <div className="env-mobile-strip d-lg-none d-flex align-items-center gap-2 flex-wrap">
             <EnvironmentBadges status={environmentStatus} />
-            <MarketDataRestrictionPill restriction={environmentStatus.details?.marketDataRestriction} compact />
+            <MarketDataRestrictionPill
+              restriction={environmentStatus.details?.marketDataRestriction}
+              linesEnabled={environmentStatus.details?.marketDataLinesEnabled ?? true}
+              compact
+            />
           </div>
           <div className="collapse navbar-collapse" id="sidebar-menu">
             <ul
@@ -227,7 +248,10 @@ export function AppLayout() {
           </h1>
           <EnvironmentBadges status={environmentStatus} />
           <div className="iorio-topbar-center">
-            <MarketDataRestrictionPill restriction={environmentStatus.details?.marketDataRestriction} />
+            <MarketDataRestrictionPill
+              restriction={environmentStatus.details?.marketDataRestriction}
+              linesEnabled={environmentStatus.details?.marketDataLinesEnabled ?? true}
+            />
           </div>
           <div className="ms-auto d-flex align-items-center gap-3">
             <a href="/pulse" target="_blank" rel="noopener noreferrer" className="iorio-pulse-nav-link">

@@ -14,6 +14,8 @@ export interface EnvironmentDetails extends PublicEnvironment {
   trading: { state: TradingState; reason: string | null };
   /** Non-null while a scheduled scan (the 10:00 ET chain capture or the trade-alert scan) holds its priority market-data lines (the top bar's "Live data restricted"). */
   marketDataRestriction: { priorityLines: number; holders: string[] } | null;
+  /** False when IBKR_MARKET_DATA_LINES_ENABLED=false (typically dev) — the top bar's "Real-time data disabled" state. */
+  marketDataLinesEnabled: boolean;
   worker: {
     gitSha: string | null;
     accountId: string | null;
