@@ -90,6 +90,7 @@ const DB_AVERAGE_RESPONSE_MS_BANDS = [50, 200] as const;
 const DB_SLOWEST_RESPONSE_MS_BANDS = [500, 2000] as const;
 const GATEWAY_RECONNECT_BANDS = [1, 5] as const;
 const GATEWAY_IN_FLIGHT_BANDS = [1, 5] as const;
+const GATEWAY_LIVE_CONNECTIONS_BANDS = [50, 80] as const;
 const GATEWAY_HEALTHY_UPTIME_MS = 30 * 60_000;
 
 // Alert notifications only ever carry the two structured strategies.
@@ -1192,15 +1193,20 @@ export function PulsePage() {
                 </div>
                 <div className="sub-row">
                   <span className="sub-name">IBKR live connections</span>
-                  <FlashingNumber value={gatewayHealth?.marketDataLineCount ?? null} className="sub-value ok">
-                    {gatewayHealth?.marketDataLineCount ?? "—"}
-                  </FlashingNumber>
-                </div>
-                <div className="sub-row">
-                  <span className="sub-name">Reserved lines</span>
-                  <FlashingNumber value={gatewayHealth?.reservedLineCount ?? null} className="sub-value">
-                    {gatewayHealth?.reservedLineCount ?? "—"}
-                  </FlashingNumber>
+                  <span className="sub-value-group">
+                    <FlashingNumber value={gatewayHealth?.marketDataLineCount ?? null} className={`sub-value ${higherIsWorseStatus(gatewayHealth?.marketDataLineCount, ...GATEWAY_LIVE_CONNECTIONS_BANDS)}`}>
+                      {gatewayHealth?.marketDataLineCount ?? "—"}
+                    </FlashingNumber>
+                    {gatewayHealth?.priorityReservedLineCount != null && (
+                      <span className="sub-unit">
+                        {" ("}
+                        <FlashingNumber value={gatewayHealth.priorityReservedLineCount} className="sub-value">
+                          {gatewayHealth.priorityReservedLineCount}
+                        </FlashingNumber>
+                        {" reserved)"}
+                      </span>
+                    )}
+                  </span>
                 </div>
               </>
             )}
