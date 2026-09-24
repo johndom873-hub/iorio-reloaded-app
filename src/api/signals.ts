@@ -6,7 +6,7 @@ import { openMultiplexedStream } from "./streamMultiplexer";
 // signalCandidates.ts / signalsRoadmap.ts shapes.
 
 export type SignalStrategyKey = "covered_call" | "cash_secured_put";
-export type SignalGrade = "strong" | "good" | "marginal" | "avoid";
+export type SignalGrade = "strong" | "good" | "weak" | "avoid";
 export type SignalFlag = "earnings_calendar_unresolved" | "outside_fitted_range" | "wide_spread" | "insufficient_cash";
 export type SignalsUnscoredReason = "no_snapshot" | "no_surface_fit" | "no_forecast" | "suspected_split";
 export type SignalsPriceSource = "live" | "frozen" | "snapshot";

@@ -5,13 +5,13 @@ import { formatCurrencyTrimmed, formatDate } from "./formatters";
 // modal (mockup approved 2026-09-22). Every label a user can see has a plain
 // explanation here so the screen can show it as a tooltip.
 
-export const gradeLabel: Record<SignalGrade, string> = { strong: "Strong", good: "Good", marginal: "Marginal", avoid: "Avoid" };
+export const gradeLabel: Record<SignalGrade, string> = { strong: "Strong", good: "Good", weak: "Weak", avoid: "Avoid" };
 
 // Dedicated badge-grade-* classes (theme.css) rather than Tabler's bg-success/bg-cyan/bg-yellow/bg-secondary,
 // so this grade scale doesn't drift if those general-purpose semantic colors change elsewhere.
-export const gradeBadgeClass: Record<SignalGrade, string> = { strong: "badge-grade-strong", good: "badge-grade-good", marginal: "badge-grade-marginal", avoid: "badge-grade-avoid" };
+export const gradeBadgeClass: Record<SignalGrade, string> = { strong: "badge-grade-strong", good: "badge-grade-good", weak: "badge-grade-weak", avoid: "badge-grade-avoid" };
 
-export const gradeExplanation = "Grades are cut from this ticker's own live net-Edge distribution across its candidates: Strong = top 10%, Good = next 20%, Marginal = next 30%, the rest Avoid. Any contract with net Edge at or below zero is Avoid whatever its rank.";
+export const gradeExplanation = "Grades are fixed net Edge cut points: Strong = 10vp or more, Good = 5-10vp, Weak = 0-5vp, Avoid = net Edge at or below zero.";
 
 export const unscoredReasonLabel: Record<SignalsUnscoredReason, string> = {
   no_snapshot: "No chain snapshot yet",

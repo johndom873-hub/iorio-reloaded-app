@@ -716,7 +716,7 @@
 
 /* Signals opportunities "Grade" badges — dedicated classes so this scale
    never drifts if bg-success/bg-yellow/bg-secondary get restyled elsewhere.
-   Strong/marginal/avoid verified >4.5:1 with white text; good is intentionally
+   Strong/weak/avoid verified >4.5:1 with white text; good is intentionally
    lighter at ~3.6:1 (Marcelo's call 2026-09-24 — below the 4.5:1 text floor,
    above the 3:1 non-text minimum). */
 .badge-grade-strong {
@@ -729,7 +729,7 @@
   color: #fff;
 }
 
-.badge-grade-marginal {
+.badge-grade-weak {
   background-color: #a35f00;
   color: #fff;
 }
