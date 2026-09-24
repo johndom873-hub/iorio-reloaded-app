@@ -331,7 +331,7 @@ export function SignalsTickerModal({ symbol, onClose }: SignalsTickerModalProps)
   const opportunityColumns = useMemo<DataTableColumn<SignalCandidate & { rank: number }>[]>(
     () => [
       { key: "rank", header: "#", render: (row) => <span className="text-secondary font-mono">{row.rank}</span> },
-      { key: "strategy", header: "Type", render: (row) => <StrategyBadge strategyKey={row.strategyKey} /> },
+      { key: "strategy", header: "Type", align: "center", render: (row) => <StrategyBadge strategyKey={row.strategyKey} /> },
       {
         key: "trade",
         header: "Trade",
@@ -344,7 +344,7 @@ export function SignalsTickerModal({ symbol, onClose }: SignalsTickerModalProps)
           </span>
         ),
       },
-      { key: "grade", header: "Grade", headerTitle: gradeExplanation, render: (row) => <GradeBadge candidate={row} /> },
+      { key: "grade", header: "Grade", align: "center", headerTitle: gradeExplanation, render: (row) => <GradeBadge candidate={row} /> },
       {
         key: "netEdge",
         header: "Net Edge",

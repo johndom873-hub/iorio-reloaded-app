@@ -8,8 +8,8 @@ export interface DataTableColumn<TRow> {
   key: string;
   header: string;
   render: (row: TRow) => ReactNode;
-  /** Right-align numeric/currency columns. */
-  align?: "left" | "right";
+  /** Right-align numeric/currency columns, or center a short fixed-width one (e.g. a badge). */
+  align?: "left" | "right" | "center";
   /** Full-text tooltip for an abbreviated header (e.g. header: "Avg Vol", headerTitle: "Average Option Volume"). */
   headerTitle?: string;
 }
@@ -60,6 +60,7 @@ export function DataTable<TRow>({
     columns.map((column) => column.key),
   );
   const visibleColumns = columns.filter((column) => isColumnVisible(column.key));
+  const alignClassName = (align: DataTableColumn<TRow>["align"]) => (align === "right" ? "text-end" : align === "center" ? "text-center" : undefined);
   const rowHeightRem = dense ? 1.9 : 2.25;
   const maxBodyHeight = maxVisibleRows ? `${(maxVisibleRows + 1) * rowHeightRem}rem` : undefined;
 
@@ -82,7 +83,7 @@ export function DataTable<TRow>({
                     as="th"
                     key={column.key}
                     text={column.headerTitle}
-                    className={column.align === "right" ? "text-end" : undefined}
+                    className={alignClassName(column.align)}
                   >
                     {isLastColumn ? (
                       // A blank-header trailing column (e.g. row actions) has no label to sit
@@ -92,7 +93,7 @@ export function DataTable<TRow>({
                       // ends up flush left while the column's content sits flush right, reading
                       // as though it belongs to the column before it (found 2026-09-23).
                       <div
-                        className={`d-flex align-items-center gap-1 ${column.align === "right" || column.header === "" ? "justify-content-end" : ""}`}
+                        className={`d-flex align-items-center gap-1 ${column.align === "right" || column.header === "" ? "justify-content-end" : column.align === "center" ? "justify-content-center" : ""}`}
                       >
                         <span>{column.header}</span>
                         {/* A column with no header (e.g. a trailing actions column) has
@@ -134,7 +135,7 @@ export function DataTable<TRow>({
                   onClick={onRowClick ? () => onRowClick(row) : undefined}
                 >
                   {visibleColumns.map((column) => (
-                    <td key={column.key} className={column.align === "right" ? "text-end" : undefined}>
+                    <td key={column.key} className={alignClassName(column.align)}>
                       {column.render(row)}
                     </td>
                   ))}
@@ -146,7 +147,7 @@ export function DataTable<TRow>({
             <tfoot className="table-totals-row">
               <tr>
                 {visibleColumns.map((column) => (
-                  <td key={column.key} className={column.align === "right" ? "text-end" : undefined}>
+                  <td key={column.key} className={alignClassName(column.align)}>
                     {footerCells[column.key]}
                   </td>
                 ))}
