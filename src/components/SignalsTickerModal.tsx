@@ -8,7 +8,7 @@ import type { AdaptivePriority, OrderRequest } from "../api/positions";
 import { OrderReviewPanel } from "./OrderReviewPanel";
 import { SignalOrderSetupForm } from "./SignalOrderSetupForm";
 import { formatCurrency, formatCurrencyTrimmed, formatDate, formatNumber, formatPercentage, formatPercentageValue, formatQuotePrice, formatSignedPercentageValue, formatSignedPnl, formatVolatilityPoints, pnlTextClass } from "../lib/formatters";
-import { describeCandidate, gradeBadgeClass, gradeExplanation, gradeLabel, signalFlagExplanation, signalFlagLetter, unscoredReasonLabel } from "../lib/signalsPresentation";
+import { gradeBadgeClass, gradeExplanation, gradeLabel, signalFlagExplanation, signalFlagLetter, unscoredReasonLabel } from "../lib/signalsPresentation";
 import { IvHistoryChart } from "./charts/IvHistoryChart";
 import { TickerPriceChart } from "./charts/TickerPriceChart";
 import { DataTable, type DataTableColumn } from "./DataTable/DataTable";
@@ -331,13 +331,16 @@ export function SignalsTickerModal({ symbol, onClose }: SignalsTickerModalProps)
   const opportunityColumns = useMemo<DataTableColumn<SignalCandidate & { rank: number }>[]>(
     () => [
       { key: "rank", header: "#", render: (row) => <span className="text-secondary font-mono">{row.rank}</span> },
+      { key: "strategy", header: "Type", render: (row) => <StrategyBadge strategyKey={row.strategyKey} /> },
       {
         key: "trade",
         header: "Trade",
         render: (row) => (
           <span className="text-nowrap">
-            <StrategyBadge strategyKey={row.strategyKey} className="me-1" />
-            <strong>{describeCandidate(row).split(" · ")[0]}</strong> <span className="text-secondary">{formatDate(row.expiry)} · {row.dte}d</span>
+            <strong>
+              {row.strategyKey === "covered_call" ? "C" : "P"}
+              {formatCurrencyTrimmed(row.strike).replace("$", "")}
+            </strong> <span className="text-secondary">{row.dte}DTE</span>
           </span>
         ),
       },

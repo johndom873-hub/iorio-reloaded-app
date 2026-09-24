@@ -714,6 +714,29 @@
   font-weight: 700;
 }
 
+/* Signals opportunities "Grade" badges — dedicated classes so this scale
+   never drifts if bg-success/bg-yellow/bg-secondary get restyled elsewhere.
+   All four verified >4.5:1 with white text. */
+.badge-grade-strong {
+  background-color: #1a6b2e;
+  color: #fff;
+}
+
+.badge-grade-good {
+  background-color: #278046;
+  color: #fff;
+}
+
+.badge-grade-marginal {
+  background-color: #a35f00;
+  color: #fff;
+}
+
+.badge-grade-avoid {
+  background-color: #6c757d;
+  color: #fff;
+}
+
 /* Flash effect for live-ticking quote values (Order Review / Roll Position
    live quotes) — same green/red as the badge-change-* colors above, applied
    as a transient background instead of a permanent one so a value visibly

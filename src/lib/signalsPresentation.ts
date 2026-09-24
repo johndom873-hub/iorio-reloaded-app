@@ -7,8 +7,9 @@ import { formatCurrencyTrimmed, formatDate } from "./formatters";
 
 export const gradeLabel: Record<SignalGrade, string> = { strong: "Strong", good: "Good", marginal: "Marginal", avoid: "Avoid" };
 
-// Tabler semantic badges in the mockup's palette: green / teal / amber (dark text) / grey.
-export const gradeBadgeClass: Record<SignalGrade, string> = { strong: "bg-success", good: "bg-cyan", marginal: "bg-yellow text-dark", avoid: "bg-secondary" };
+// Dedicated badge-grade-* classes (theme.css) rather than Tabler's bg-success/bg-cyan/bg-yellow/bg-secondary,
+// so this grade scale doesn't drift if those general-purpose semantic colors change elsewhere.
+export const gradeBadgeClass: Record<SignalGrade, string> = { strong: "badge-grade-strong", good: "badge-grade-good", marginal: "badge-grade-marginal", avoid: "badge-grade-avoid" };
 
 export const gradeExplanation = "Grades are cut from this ticker's own live net-Edge distribution across its candidates: Strong = top 10%, Good = next 20%, Marginal = next 30%, the rest Avoid. Any contract with net Edge at or below zero is Avoid whatever its rank.";
 
