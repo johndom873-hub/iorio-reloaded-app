@@ -553,6 +553,10 @@ export function PulsePage() {
     const described = await Promise.all(
       recentEvents.map(async ({ notification, occurredAt, order }) => {
         switch (notification.type) {
+          case "job_started": {
+            if (notification.jobName === "ibkr_health_check") return null;
+            return { occurredAt, text: `Job started — ${notification.jobName}`, color: "var(--text-secondary)" };
+          }
           case "job_completed": {
             if (notification.jobName === "ibkr_health_check") return null;
             const color = notification.status === "success" ? "var(--accent-glow)" : "var(--danger)";
@@ -632,6 +636,15 @@ export function PulsePage() {
   useEffect(() => {
     return openNotificationStream((notification: AppNotification) => {
       switch (notification.type) {
+        case "job_started": {
+          // Runs every 10 minutes for ibkr_health_check — logging/pulsing it
+          // here would crowd out every other event; its own status already
+          // surfaces on the Gateway node/status pill.
+          if (notification.jobName === "ibkr_health_check") break;
+          firePulse("heroku-gateway", "var(--text-secondary)");
+          appendEvent(`Job started — ${notification.jobName}`, "var(--text-secondary)");
+          break;
+        }
         case "job_completed": {
           const color = notification.status === "success" ? "var(--accent-glow)" : "var(--danger)";
           firePulse("heroku-gateway", color);

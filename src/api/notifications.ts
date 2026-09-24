@@ -7,6 +7,7 @@ export type AppNotification =
   | { type: "position_closed"; positionId: string; symbol: string; message: string }
   | { type: "position_opened"; positionId: string; symbol: string }
   // Iorio Pulse — see notificationChannel.ts on the backend.
+  | { type: "job_started"; jobName: string }
   | { type: "job_completed"; jobName: string; status: "success" | "failure" }
   | { type: "alert_generated"; strategyKey: string; symbol: string; annualizedYield: number }
   // Day Signals: a pooled contract's grade went up between two refresh cycles.
