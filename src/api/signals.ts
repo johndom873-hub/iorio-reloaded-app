@@ -7,7 +7,13 @@ import { openMultiplexedStream } from "./streamMultiplexer";
 
 export type SignalStrategyKey = "covered_call" | "cash_secured_put";
 export type SignalGrade = "strong" | "good" | "weak" | "avoid";
-export type SignalFlag = "earnings_calendar_unresolved" | "outside_fitted_range" | "wide_spread" | "insufficient_cash";
+export type SignalFlag = "earnings_calendar_unresolved" | "outside_fitted_range" | "wide_spread" | "insufficient_cash" | "macro_event_before_expiry";
+
+/** A major US macro release (FOMC, CPI, jobs report, PCE, GDP) the macro_event_before_expiry flag was judged against. */
+export interface MacroEvent {
+  dateIso: string;
+  title: string;
+}
 export type SignalsUnscoredReason = "no_snapshot" | "no_surface_fit" | "no_forecast" | "suspected_split";
 export type SignalsPriceSource = "live" | "frozen" | "snapshot";
 /** live = a pooled IBKR line (modal / screen best line), day = the Day Signals refresh loop, snapshot = the 10:00 ET capture. */
@@ -42,6 +48,62 @@ export interface SignalCandidate {
   quotedAt: string | null;
   flags: SignalFlag[];
   executable: boolean;
+  grade: SignalGrade;
+}
+
+// Roll Signals (Formula 3j, approved 2026-09-24): every open short option leg scored as a contract to keep,
+// and every (held leg, replacement) pair that passes the lower-delta and credit filters.
+export type RollSignalFlag = "near_expiry" | "assignment_risk" | "decayed";
+export type HeldLegUnscoredReason = "no_slice" | "no_quote" | "no_forecast";
+
+export interface HeldLegScore {
+  legId: string;
+  positionId: string;
+  strategyKey: SignalStrategyKey;
+  expiry: string;
+  strike: number;
+  right: "C" | "P";
+  quantity: number;
+  entryPrice: number;
+  entryAtIso: string;
+  dte: number | null;
+  delta: number | null;
+  bid: number | null;
+  ask: number | null;
+  mid: number | null;
+  surfaceImpliedVolatility: number | null;
+  midImpliedVolatility: number | null;
+  /** Surface IV minus the forecast: what holding still offers, in annualised volatility. */
+  edge: number | null;
+  /** Cost of buying the leg back (half-spread + commission over vega), in annualised volatility. */
+  frictionVolatility: number | null;
+  vega: number | null;
+  holdEdgeDollars: number | null;
+  closeCostDollars: number | null;
+  dollarRisk: number | null;
+  quoteSource: SignalQuoteSource | null;
+  quotedAt: string | null;
+  flags: RollSignalFlag[];
+  unscoredReason: HeldLegUnscoredReason | null;
+}
+
+export interface RollSignalCandidate {
+  legId: string;
+  positionId: string;
+  strategyKey: SignalStrategyKey;
+  quantity: number;
+  replacement: SignalCandidate;
+  /** netEdge(B) − edge(A) − friction(A), a fraction (0.056 = 5.6 vp). */
+  netRollEdge: number;
+  netRollEdgeDollarsPerContract: number;
+  /** × quantity. */
+  netRollEdgeDollars: number;
+  /** mid(B) − mid(A), per share; always > 0 (credit rolls only). */
+  netCreditPerShare: number;
+  /** |delta(B)| − |delta(A)|; never positive (lower-delta filter). */
+  deltaChange: number;
+  dollarRiskChange: number;
+  flags: RollSignalFlag[];
   grade: SignalGrade;
 }
 
@@ -82,12 +144,18 @@ export interface TickerSignals {
   candidates: SignalCandidate[];
   best: SignalCandidate | null;
   gradeCounts: Record<SignalGrade, number>;
+  heldLegs: HeldLegScore[];
+  rolls: RollSignalCandidate[];
+  bestRoll: RollSignalCandidate | null;
+  /** Held legs with at least one roll graded above Avoid: what the screen badge counts. */
+  rollCount: number;
   fittedSliceCount: number;
   totalSliceCount: number;
   momentum: number | null;
   skew: { skew: number; daysToExpiry: number } | null;
   elevatedVolatility: ElevatedVolatilityFlag | null;
   nextEarningsDateIso: string | null;
+  macroEvents: MacroEvent[];
   atmImpliedVolatility: number | null;
   forecast: { volatility: number; windowDays: number } | null;
   dailyBarCount: number;
@@ -103,7 +171,7 @@ export interface TickerSignals {
   unscoredReason: SignalsUnscoredReason | null;
 }
 
-export type SignalsScreenRow = Omit<TickerSignals, "candidates">;
+export type SignalsScreenRow = Omit<TickerSignals, "candidates" | "rolls">;
 
 export interface DaySignalsLoopStatus {
   state: "disabled" | "idle" | "running";

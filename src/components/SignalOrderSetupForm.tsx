@@ -5,7 +5,7 @@ import type { SignalCandidate, TickerSignals } from "../api/signals";
 import { checkSignalOrderLimits } from "../api/signalSettings";
 import { flashClassName, useFlashOnChange } from "../hooks/useFlashOnChange";
 import { formatCurrency, formatDate, formatPercentage, formatSignedPercentageValue, formatSignedPnl, formatVolatilityPoints } from "../lib/formatters";
-import { describeCandidate, gradeBadgeClass, gradeLabel, signalFlagExplanation, signalFlagLetter } from "../lib/signalsPresentation";
+import { describeCandidate, describeSignalFlag, gradeBadgeClass, gradeLabel, signalFlagLetter } from "../lib/signalsPresentation";
 import { Spinner } from "./Spinner";
 import { useTooltip } from "../hooks/useTooltip";
 
@@ -227,7 +227,7 @@ export function SignalOrderSetupForm({ symbol, signals, candidate, spotPrice, ne
               <span className="badge bg-warning-lt" style={{ fontSize: "0.72rem", flex: "none" }}>
                 {signalFlagLetter[flag]}
               </span>
-              <span>{signalFlagExplanation[flag]}</span>
+              <span>{describeSignalFlag(flag, candidate, signals.macroEvents)}</span>
             </div>
           ))
         )}

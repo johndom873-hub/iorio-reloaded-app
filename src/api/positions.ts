@@ -223,6 +223,8 @@ export interface RollOrderInput {
   closeLegId: string;
   closeLimitPrice: number;
   newLeg: RollLegInput;
+  /** Roll Signals only: both legs' scores at build time, stored as-is on the order request. */
+  signalSnapshot?: unknown;
 }
 
 export function buildRollOrder(positionId: string, input: RollOrderInput): Promise<OrderRequest> {

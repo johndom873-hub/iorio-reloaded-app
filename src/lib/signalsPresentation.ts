@@ -1,5 +1,5 @@
 import type { AppNotification } from "../api/notifications";
-import type { DayQuotesFrameStatus, RoadmapStatus, SignalCandidate, SignalFlag, SignalGrade, SignalQuoteSource, SignalsPriceSource, SignalsUnscoredReason } from "../api/signals";
+import type { DayQuotesFrameStatus, HeldLegScore, HeldLegUnscoredReason, RoadmapStatus, RollSignalCandidate, RollSignalFlag, SignalCandidate, SignalFlag, SignalGrade, SignalQuoteSource, SignalsPriceSource, SignalsUnscoredReason, MacroEvent } from "../api/signals";
 import { formatCurrencyTrimmed, formatDate, formatLocalTime, formatShortAge, formatSignedPnl, formatVolatilityPoints } from "./formatters";
 
 // Labels, badge classes and short explanations for the Signals screen and
@@ -93,17 +93,68 @@ export const roadmapStatusBadgeClass: Record<RoadmapStatus, string> = {
   waiting_on_build: "bg-teal-lt",
 };
 
-export const signalFlagLetter: Record<SignalFlag, string> = { earnings_calendar_unresolved: "?", outside_fitted_range: "X", wide_spread: "W", insufficient_cash: "$" };
+export const signalFlagLetter: Record<SignalFlag, string> = { earnings_calendar_unresolved: "?", outside_fitted_range: "X", wide_spread: "W", insufficient_cash: "$", macro_event_before_expiry: "M" };
 export const signalFlagExplanation: Record<SignalFlag, string> = {
   earnings_calendar_unresolved: "Earnings calendar not resolved for this ticker — trade could span an undetected report date",
   outside_fitted_range: "Strike is outside the fitted curve — extrapolated",
   wide_spread: "Spread wider than 50% of the mid",
   insufficient_cash: "Not enough free cash to secure this put",
+  macro_event_before_expiry: "A major US macro release (FOMC, CPI, PPI, jobs report, PCE or GDP) lands before expiry — a short-dated IV spike may be an event premium, not mispricing",
 };
+
+/** The flag's explanation, naming the actual releases for the macro flag: "… — CPI: Inflation Rate MoM (Oct 14)". */
+export function describeSignalFlag(flag: SignalFlag, candidate: SignalCandidate, macroEvents: MacroEvent[]): string {
+  const base = signalFlagExplanation[flag];
+  if (flag !== "macro_event_before_expiry") return base;
+  const spanned = macroEvents.filter((event) => event.dateIso <= candidate.expiry);
+  if (spanned.length === 0) return base;
+  return `${base}: ${spanned.map((event) => `${event.title} (${formatDate(event.dateIso)})`).join("; ")}`;
+}
 
 /** "Put $106 · Oct 23, 2026" */
 export function describeCandidate(candidate: SignalCandidate): string {
   return `${candidate.strategyKey === "covered_call" ? "Call" : "Put"} ${formatCurrencyTrimmed(candidate.strike)} · ${formatDate(candidate.expiry)}`;
+}
+
+// --- Roll Signals (Formula 3j, approved 2026-09-24) ---------------------------------------------
+
+export const rollFlagLetter: Record<RollSignalFlag, string> = { near_expiry: "E", assignment_risk: "A", decayed: "D" };
+
+export function describeRollSignalFlag(flag: RollSignalFlag, held: Pick<HeldLegScore, "dte" | "delta" | "entryPrice" | "mid">): string {
+  switch (flag) {
+    case "near_expiry":
+      return `Held leg expires in ${held.dte ?? "?"} days: gamma and pin risk are rising.`;
+    case "assignment_risk":
+      return `Held leg delta ${held.delta === null ? "n/a" : held.delta.toFixed(2)}: assignment is more likely than not if held.`;
+    case "decayed":
+      return `Held leg has decayed to ${held.mid === null || !(held.entryPrice > 0) ? "under half" : `${Math.round((held.mid / held.entryPrice) * 100)}%`} of the ${formatCurrencyTrimmed(held.entryPrice)} credit collected.`;
+  }
+}
+
+export const heldLegUnscoredReasonLabel: Record<HeldLegUnscoredReason, string> = {
+  no_slice: "no fitted surface for this expiry (over 90 days out, or expiring today)",
+  no_quote: "no two-sided quote for this contract yet",
+  no_forecast: "no volatility forecast for this ticker",
+};
+
+export const netRollEdgeExplanation = "Net roll Edge = net Edge of the new contract (sold at the bid) − Edge of holding the current leg − friction to buy it back at the ask, in volatility points. Graded on the same cut points as a new trade.";
+
+/** "Put $95 · 9 DTE" for a held leg. */
+export function describeHeldLeg(leg: Pick<HeldLegScore, "right" | "strike" | "dte">): string {
+  return `${leg.right === "C" ? "Call" : "Put"} ${formatCurrencyTrimmed(leg.strike)}${leg.dte === null ? "" : ` · ${leg.dte} DTE`}`;
+}
+
+/** "Put $95 · 9 DTE → Put $90 · 23 DTE" for a roll. */
+export function describeRoll(roll: RollSignalCandidate, held: Pick<HeldLegScore, "right" | "strike" | "dte">): string {
+  return `${describeHeldLeg(held)} → ${describeHeldLeg({ right: roll.replacement.strategyKey === "covered_call" ? "C" : "P", strike: roll.replacement.strike, dte: roll.replacement.dte })}`;
+}
+
+/** "COIN Put $177.50 → Put $170 · Oct 17 upgraded Weak → Good (+5.6vp, +$262)" — the in-app toast and Pulse's Latest Events. */
+export function describeRollSignalUpgrade(notification: Extract<AppNotification, { type: "roll_signal_upgraded" }>): string {
+  const right = notification.strategyKey === "covered_call" ? "Call" : "Put";
+  const previous = gradeLabel[notification.previousGrade as SignalGrade] ?? notification.previousGrade;
+  const next = gradeLabel[notification.grade as SignalGrade] ?? notification.grade;
+  return `${notification.symbol} ${right} ${formatCurrencyTrimmed(notification.heldStrike)} → ${right} ${formatCurrencyTrimmed(notification.strike)} · ${formatDate(notification.expiry)} roll upgraded ${previous} → ${next} (${formatVolatilityPoints(notification.netRollEdge)}, ${formatSignedPnl(notification.netRollEdgeDollars, 0)})`;
 }
 
 /** Column explanations, shown as header tooltips and in the mobile cards. */
@@ -121,5 +172,7 @@ export const signalsColumnExplanation = {
   earnings: "Next earnings date on record.",
   surface: "Fitted expiries / expiries captured in the 10:00 ET snapshot.",
   notAccountedFor: "Measures the ranking does not use yet, what each is waiting on, and when it should be ready.",
+  model: "This ticker has a caveat of its own in the model (missing history, an unresolved calendar, a suspected split). Click for what it is waiting on.",
+  roll: "Open short legs on this ticker with a credit roll graded above Avoid; the colour is the best roll's grade. Click to review it.",
   quotes: "What the best opportunity's numbers are based on: a live IBKR line, a Day Signals quote (age shown), or still the 10:00 ET snapshot quote.",
 } as const;

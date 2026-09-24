@@ -1,7 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from "react";
 import { fetchOrder, type OrderRequest } from "../api/positions";
 import { openNotificationStream } from "../api/notifications";
-import { describeSignalUpgrade } from "../lib/signalsPresentation";
+import { describeRollSignalUpgrade, describeSignalUpgrade } from "../lib/signalsPresentation";
 import { useAuth } from "./AuthContext";
 
 export type BackgroundJobKind = "order" | "position-closed" | "signal-upgraded";
@@ -164,6 +164,16 @@ export function BackgroundJobsProvider({ children }: { children: ReactNode }) {
           status: "done",
           message: notification.message,
           dismissed: false,
+        });
+      } else if (notification.type === "roll_signal_upgraded") {
+        upsertJob({
+          id: `roll-signal-upgraded-${notification.legId}-${notification.expiry}-${notification.strike}-${Date.now()}`,
+          kind: "signal-upgraded",
+          label: `Roll signal upgraded — ${notification.symbol}`,
+          status: "done",
+          message: describeRollSignalUpgrade(notification).replace(`${notification.symbol} `, ""),
+          dismissed: false,
+          link: { to: `/signals?signal=${encodeURIComponent(notification.symbol)}&roll=${encodeURIComponent(notification.legId)}`, label: "Open in Signals" },
         });
       } else if (notification.type === "signal_upgraded") {
         upsertJob({

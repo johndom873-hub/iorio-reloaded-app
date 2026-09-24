@@ -1,20 +1,19 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { IconAlertTriangle, IconChevronDown } from "@tabler/icons-react";
+import { IconAlertTriangle, IconChevronDown, IconRefresh } from "@tabler/icons-react";
+import { useSearchParams } from "react-router-dom";
 import { ApiError } from "../api/client";
 import { fetchSignalsRoadmap, fetchSignalsScreen, openSignalsScreenStream, type DayQuotesFrameStatus, type RoadmapItem, type SignalGrade, type SignalsScreenRow } from "../api/signals";
-import { retryTickerBackfill, type TickerBackfillRun } from "../api/shortlist";
 import { DataTable, type DataTableColumn } from "../components/DataTable/DataTable";
 import { FlashingNumber } from "../components/FlashingNumber";
 import { PageHeader } from "../components/layout/PageHeader";
-import { NotAccountedForChip, RoadmapEtaText } from "../components/signals/NotAccountedForChip";
+import { ModelCaveatBadge, RoadmapEtaText } from "../components/signals/ModelCaveatBadge";
 import { SignalsTickerModal } from "../components/SignalsTickerModal";
 import { TickColoredPrice } from "../components/TickColoredPrice";
 import { TooltipSpan } from "../components/TooltipSpan";
 import { VolatilitySurfaceModal } from "../components/VolatilitySurfaceModal";
-import { TickerPrepModal } from "../components/shortlist/TickerPrepModal";
 import { useTickerDetailSymbol } from "../hooks/useTickerDetailSymbol";
 import { formatCurrency, formatDate, formatDateTime, formatPercentage, formatRelativeTime, formatSignedPercentageValue, formatSignedPnl, formatVolatilityPoints, pnlTextClass, formatShortAge, todayInEasternIso } from "../lib/formatters";
-import { describeCandidate, describeDayQuotesStatus, gradeBadgeClass, gradeExplanation, gradeLabel, priceSourceLabel, quoteSourceLabel, roadmapStatusBadgeClass, roadmapStatusLabel, signalsColumnExplanation, unscoredReasonLabel } from "../lib/signalsPresentation";
+import { describeCandidate, describeDayQuotesStatus, describeRoll, gradeBadgeClass, gradeExplanation, gradeLabel, priceSourceLabel, quoteSourceLabel, roadmapStatusBadgeClass, roadmapStatusLabel, signalsColumnExplanation, unscoredReasonLabel } from "../lib/signalsPresentation";
 import { useTooltip } from "../hooks/useTooltip";
 
 // Signals screen (stage 3 of the build; mockup approved 2026-09-22, v3):
@@ -33,6 +32,24 @@ function GradeBadge({ grade }: { grade: SignalGrade }) {
     <span ref={ref} className={`badge ${gradeBadgeClass[grade]}`} style={badgeFontSize} tabIndex={0}>
       {gradeLabel[grade]}
     </span>
+  );
+}
+
+/**
+ * Roll Signals badge (variant B, approved 2026-09-24): solid, in the best roll's grade colour, counting the
+ * held legs with a roll above Avoid. Click opens the modal on that roll.
+ */
+function RollBadge({ row, onClick }: { row: SignalsScreenRow; onClick: (legId: string) => void }) {
+  const best = row.bestRoll;
+  const held = best ? row.heldLegs.find((leg) => leg.legId === best.legId) : undefined;
+  const tooltip = best && held ? `${signalsColumnExplanation.roll} Best: ${describeRoll(best, held)} · ${formatVolatilityPoints(best.netRollEdge)} (${formatSignedPnl(best.netRollEdgeDollars, 0)}) · net credit ${formatCurrency(best.netCreditPerShare)}/sh.` : "";
+  const ref = useTooltip<HTMLButtonElement>(tooltip);
+  if (!best || row.rollCount === 0) return null;
+  return (
+    <button ref={ref} type="button" className={`badge border-0 d-inline-flex align-items-center gap-1 px-2 py-1 ${gradeBadgeClass[best.grade]}`} style={{ ...badgeFontSize, cursor: "pointer" }} onClick={() => onClick(best.legId)}>
+      <IconRefresh size={12} />
+      {row.rollCount} roll{row.rollCount === 1 ? "" : "s"} · {gradeLabel[best.grade]}
+    </button>
   );
 }
 
@@ -129,27 +146,37 @@ export function SignalsPage() {
   const [lastFrameAt, setLastFrameAt] = useState<string | null>(null);
   const [dayQuotes, setDayQuotes] = useState<DayQuotesFrameStatus | null>(null);
   const [modalSymbol, setModalSymbol] = useTickerDetailSymbol("signal");
+  // Roll Signals: `?roll=<legId>` beside `?signal=` pre-selects that leg's best roll in the modal (badge click, Telegram link).
+  const [searchParams, setSearchParams] = useSearchParams();
+  const modalRollLegId = searchParams.get("roll");
+  const openModalOnRoll = useCallback(
+    (symbol: string, legId: string) =>
+      setSearchParams(
+        (previous) => {
+          const params = new URLSearchParams(previous);
+          params.set("signal", symbol);
+          params.set("roll", legId);
+          return params;
+        },
+        { replace: true },
+      ),
+    [setSearchParams],
+  );
+  const closeModal = useCallback(
+    () =>
+      setSearchParams(
+        (previous) => {
+          const params = new URLSearchParams(previous);
+          params.delete("signal");
+          params.delete("roll");
+          return params;
+        },
+        { replace: true },
+      ),
+    [setSearchParams],
+  );
   const [surfaceModalSymbol, setSurfaceModalSymbol] = useState<string | null>(null);
   const [roadmapOpen, setRoadmapOpen] = useState(false);
-  const [backfillTicker, setBackfillTicker] = useState<{ tickerId: string; symbol: string; companyName: string | null } | null>(null);
-  const [backfillStartingTickerId, setBackfillStartingTickerId] = useState<string | null>(null);
-  const [backfillError, setBackfillError] = useState<string | null>(null);
-  // Bumped when a backfill finishes so the screen stream reconnects and re-reads the ticker's
-  // (now longer/adjusted) daily bars — the running stream loaded its inputs once at connection time.
-  const [streamKey, setStreamKey] = useState(0);
-
-  const handleStartBackfill = useCallback(async (row: SignalsScreenRow) => {
-    setBackfillStartingTickerId(row.tickerId);
-    try {
-      setBackfillError(null);
-      await retryTickerBackfill(row.tickerId);
-      setBackfillTicker({ tickerId: row.tickerId, symbol: row.symbol, companyName: row.companyName });
-    } catch (err) {
-      setBackfillError(err instanceof ApiError ? err.message : `Failed to start the backfill for ${row.symbol}.`);
-    } finally {
-      setBackfillStartingTickerId(null);
-    }
-  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -185,7 +212,7 @@ export function SignalsPage() {
       () => setStreamState("failed"),
       { bestContractLines: modalSymbol === null },
     );
-  }, [streamKey, modalSymbol]);
+  }, [modalSymbol]);
 
   const anyLivePrice = rows.some((row) => row.priceSource === "live");
   const liveStatus =
@@ -298,21 +325,19 @@ export function SignalsPage() {
           ),
       },
       {
-        key: "notAccountedFor",
-        header: "Not accounted for",
-        headerTitle: signalsColumnExplanation.notAccountedFor,
+        // Badges column (2026-09-24): blank header; a "model" badge only when the ticker has a caveat of its own,
+        // a roll badge only when an open short leg has a credit roll above Avoid. Empty otherwise.
+        key: "badges",
+        header: "",
         render: (row) => (
-          <NotAccountedForChip
-            symbol={row.symbol}
-            caveats={row.caveats}
-            generalItems={roadmap}
-            onBackfillHistory={() => handleStartBackfill(row)}
-            backfillStarting={backfillStartingTickerId === row.tickerId}
-          />
+          <span className="d-inline-flex align-items-center gap-1 justify-content-end w-100">
+            <ModelCaveatBadge symbol={row.symbol} caveats={row.caveats} />
+            <RollBadge row={row} onClick={(legId) => openModalOnRoll(row.symbol, legId)} />
+          </span>
         ),
       },
     ],
-    [roadmap, backfillStartingTickerId, handleStartBackfill],
+    [setModalSymbol, openModalOnRoll],
   );
 
   if (error) {
@@ -370,8 +395,6 @@ export function SignalsPage() {
     <>
       <PageHeader title="Signals" subtitle="Live opportunity scoring for your shortlist · scores use the 10:00 ET surface, live prices" />
 
-      {backfillError && <div className="alert alert-danger mt-2">{backfillError}</div>}
-
       <div className="d-none d-md-block">
         <DataTable
           tableId="signals"
@@ -423,36 +446,23 @@ export function SignalsPage() {
                 <div className="d-flex justify-content-between align-items-center gap-2 text-secondary" style={{ fontSize: "0.8rem" }}>
                   <span>Mom {row.momentum === null ? "n/a" : formatSignedPercentageValue(row.momentum * 100, 0)}</span>
                   <span>Vol {row.elevatedVolatility ? (row.elevatedVolatility.elevated ? "elevated" : "normal") : "n/a"}</span>
-                  <NotAccountedForChip
-                    symbol={row.symbol}
-                    caveats={row.caveats}
-                    generalItems={roadmap}
-                    onBackfillHistory={() => handleStartBackfill(row)}
-                    backfillStarting={backfillStartingTickerId === row.tickerId}
-                  />
                   <QuoteSourceCell row={row} />
                 </div>
+                {(row.caveats.length > 0 || (row.bestRoll !== null && row.rollCount > 0)) && (
+                  <div className="d-flex justify-content-end align-items-center gap-1 mt-1">
+                    <ModelCaveatBadge symbol={row.symbol} caveats={row.caveats} />
+                    <RollBadge row={row} onClick={(legId) => openModalOnRoll(row.symbol, legId)} />
+                  </div>
+                )}
               </div>
             </div>
           ))}
         </div>
       </div>
 
-      {modalSymbol && <SignalsTickerModal symbol={modalSymbol} onClose={() => setModalSymbol(null)} />}
+      {modalSymbol && <SignalsTickerModal key={`${modalSymbol}|${modalRollLegId ?? ""}`} symbol={modalSymbol} initialRollLegId={modalRollLegId} onClose={closeModal} />}
       {surfaceModalSymbol && <VolatilitySurfaceModal symbol={surfaceModalSymbol} onClose={() => setSurfaceModalSymbol(null)} />}
 
-      {backfillTicker && (
-        <TickerPrepModal
-          tickerId={backfillTicker.tickerId}
-          symbol={backfillTicker.symbol}
-          companyName={backfillTicker.companyName}
-          onRunChange={(run: TickerBackfillRun | null) => {
-            if (run && run.status !== "running") setStreamKey((key) => key + 1);
-          }}
-          onClose={() => setBackfillTicker(null)}
-          completionNote={`${backfillTicker.symbol} is already re-scored live on the Signals screen — no need to wait.`}
-        />
-      )}
     </>
   );
 }

@@ -49,6 +49,8 @@ export interface SignalOrderLimitsCheckParams {
   strike: number;
   /** The modal's own live spot, when known — avoids an extra IBKR round trip on the backend. */
   spotPrice?: number | null;
+  /** Roll Signals: the strike of the leg being closed; only the strike difference adds notional. */
+  rollFromStrike?: number;
 }
 
 export interface SignalOrderLimitsResult {
@@ -67,6 +69,7 @@ export async function checkSignalOrderLimits(params: SignalOrderLimitsCheckParam
     strike: String(params.strike),
   });
   if (params.spotPrice) query.set("spotPrice", String(params.spotPrice));
+  if (params.rollFromStrike !== undefined) query.set("rollFromStrike", String(params.rollFromStrike));
   return apiRequest<SignalOrderLimitsResult>(`/signal-settings/order-limits-check?${query.toString()}`);
 }
 

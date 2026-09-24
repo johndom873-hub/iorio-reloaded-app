@@ -1,19 +1,20 @@
 import { useEffect, useMemo, useState, type ReactNode, useCallback } from "react";
 import { fetchNextTickerCalendarEvents, type NextTickerCalendarEvents } from "../api/calendarEvents";
 import { ApiError } from "../api/client";
-import { fetchSignalsRoadmap, fetchTickerSignals, openSignalsTickerStream, type RoadmapItem, type SignalCandidate, type SignalStrategyKey, type TickerSignals } from "../api/signals";
+import { fetchTickerSignals, openSignalsTickerStream, type HeldLegScore, type MacroEvent, type RollSignalCandidate, type SignalCandidate, type SignalStrategyKey, type TickerSignals } from "../api/signals";
 import { openTickerDetailStream, type PriceBar, type TickerOverview, type TickerTechnicals } from "../api/tickerDetail";
 import { useTickerPositions } from "../hooks/useTickerPositions";
 import { cancelUnconfirmedOrder, type AdaptivePriority, type OrderRequest } from "../api/positions";
 import { OrderReviewPanel } from "./OrderReviewPanel";
+import { RollSignalOrderSetupForm } from "./RollSignalOrderSetupForm";
 import { SignalOrderSetupForm } from "./SignalOrderSetupForm";
 import { formatCurrency, formatCurrencyTrimmed, formatDate, formatDateTime, formatNumber, formatPercentage, formatPercentageValue, formatQuotePrice, formatShortAge, formatSignedPercentageValue, formatSignedPnl, formatVolatilityPoints, pnlTextClass } from "../lib/formatters";
-import { describeQuoteAgeRange, gradeBadgeClass, gradeExplanation, gradeLabel, quoteSourceLabel, signalFlagExplanation, signalFlagLetter, unscoredReasonLabel } from "../lib/signalsPresentation";
+import { describeHeldLeg, describeQuoteAgeRange, describeRollSignalFlag, describeSignalFlag, gradeBadgeClass, gradeExplanation, gradeLabel, heldLegUnscoredReasonLabel, netRollEdgeExplanation, quoteSourceLabel, rollFlagLetter, signalFlagLetter, unscoredReasonLabel } from "../lib/signalsPresentation";
 import { IvHistoryChart } from "./charts/IvHistoryChart";
 import { TickerPriceChart } from "./charts/TickerPriceChart";
 import { DataTable, type DataTableColumn } from "./DataTable/DataTable";
 import { FlashingNumber } from "./FlashingNumber";
-import { NotAccountedForChip } from "./signals/NotAccountedForChip";
+import { ModelCaveatBadge } from "./signals/ModelCaveatBadge";
 import { Spinner } from "./Spinner";
 import { StrategyBadge } from "./StrategyBadge";
 import { TickerHeaderStrip } from "./TickerHeaderStrip";
@@ -31,6 +32,8 @@ import { useTooltip } from "../hooks/useTooltip";
 
 interface SignalsTickerModalProps {
   symbol: string;
+  /** Roll Signals: pre-select the best roll of this open short leg on open (the screen's roll badge, a Telegram link). */
+  initialRollLegId?: string | null;
   onClose: () => void;
 }
 
@@ -45,6 +48,134 @@ const dteFilters: { key: DteFilter; label: string; matches: (dte: number) => boo
 
 const badgeFontSize = { fontSize: "0.72rem" } as const;
 const candidateKey = (candidate: SignalCandidate) => `${candidate.expiry}|${candidate.strike}|${candidate.strategyKey === "covered_call" ? "C" : "P"}`;
+const rollKey = (roll: RollSignalCandidate) => `${roll.legId}|${candidateKey(roll.replacement)}`;
+
+function RollGradeBadge({ roll }: { roll: RollSignalCandidate }) {
+  const ref = useTooltip<HTMLSpanElement>(netRollEdgeExplanation);
+  return (
+    <span ref={ref} className={`badge ${gradeBadgeClass[roll.grade]}`} style={badgeFontSize} tabIndex={0}>
+      {gradeLabel[roll.grade]}
+    </span>
+  );
+}
+
+function RollFlagBadges({ roll, held }: { roll: RollSignalCandidate; held: HeldLegScore }) {
+  if (roll.flags.length === 0) return null;
+  return (
+    <span className="d-inline-flex gap-1">
+      {roll.flags.map((flag) => (
+        <TooltipSpan key={flag} className="badge bg-warning-lt" style={badgeFontSize} text={describeRollSignalFlag(flag, held)}>
+          {rollFlagLetter[flag]}
+        </TooltipSpan>
+      ))}
+    </span>
+  );
+}
+
+/**
+ * "Your positions" (Roll Signals, mockup rev 4 approved 2026-09-24): one block per open short leg with
+ * what holding it still offers and its ranked credit rolls; selecting a roll fills the order pane.
+ */
+function HeldLegRolls({ held, rolls, showAvoid, selectedRollKey, disabled, onSelect }: { held: HeldLegScore; rolls: RollSignalCandidate[]; showAvoid: boolean; selectedRollKey: string | null; disabled: boolean; onSelect: (roll: RollSignalCandidate) => void }) {
+  const shown = showAvoid ? rolls : rolls.filter((roll) => roll.grade !== "avoid");
+  const hiddenAvoid = rolls.length - shown.length;
+  return (
+    <div className="border rounded mb-2">
+      <div className="d-flex flex-wrap justify-content-between align-items-center gap-2 px-2 py-1 border-bottom bg-secondary-lt" style={{ fontSize: "0.8rem" }}>
+        <span>
+          Short <strong>{describeHeldLeg(held)}</strong> · {held.quantity} contract{held.quantity === 1 ? "" : "s"} · sold at {formatCurrency(held.entryPrice)}
+        </span>
+        {held.unscoredReason ? (
+          <span className="text-secondary">Not scored: {heldLegUnscoredReasonLabel[held.unscoredReason]}</span>
+        ) : (
+          <span className="text-secondary">
+            <span className="text-nowrap">
+              Edge of holding <span className={`font-mono ${pnlTextClass(held.edge)}`}>{formatVolatilityPoints(held.edge)}</span>
+            </span>{" "}
+            · <span className="text-nowrap">
+              friction to close <span className="font-mono">{formatVolatilityPoints(held.frictionVolatility).replace("+", "")}</span>
+            </span>{" "}
+            · <span className="text-nowrap">
+              Δ <span className="font-mono">{held.delta === null ? "—" : held.delta.toFixed(2)}</span>
+            </span>
+            {held.flags.length > 0 && (
+              <>
+                {" "}
+                · <RollFlagBadges roll={{ ...rolls[0]!, flags: held.flags } as RollSignalCandidate} held={held} />
+              </>
+            )}
+          </span>
+        )}
+      </div>
+      {shown.length === 0 ? (
+        <div className="text-secondary px-2 py-1" style={{ fontSize: "0.78rem" }}>
+          {held.unscoredReason ? "" : hiddenAvoid > 0 ? `No roll with positive net roll Edge right now (${hiddenAvoid} Avoid hidden).` : "No credit roll to a lower-delta contract right now."}
+        </div>
+      ) : (
+        <div className="table-responsive">
+          <table className="table table-sm table-hover table-vcenter card-table mb-0" style={{ fontSize: "0.8rem" }}>
+            <thead className="table-light">
+              <tr>
+                <th></th>
+                <th>Roll to</th>
+                <th className="text-center">Grade</th>
+                <th className="text-end">Net Edge new</th>
+                <th className="text-end">Net roll Edge</th>
+                <th className="text-end">$</th>
+                <th className="text-end">Net credit</th>
+                <th className="text-end">Δ new</th>
+                <th className="text-end">DTE</th>
+                <th className="text-center">Flags</th>
+              </tr>
+            </thead>
+            <tbody>
+              {shown.map((roll) => {
+                const key = rollKey(roll);
+                const isCall = roll.strategyKey === "covered_call";
+                return (
+                  <tr key={key} className={[selectedRollKey === key ? "table-active" : "", roll.grade === "avoid" ? "text-secondary" : ""].filter(Boolean).join(" ") || undefined} style={{ cursor: disabled ? undefined : "pointer" }} onClick={disabled ? undefined : () => onSelect(roll)}>
+                    <td>
+                      <input type="radio" className="form-check-input" checked={selectedRollKey === key} readOnly aria-label={`Select roll to ${describeHeldLeg({ right: isCall ? "C" : "P", strike: roll.replacement.strike, dte: roll.replacement.dte })}`} />
+                    </td>
+                    <td className="text-nowrap">
+                      <strong>
+                        {isCall ? "C" : "P"}
+                        {formatCurrencyTrimmed(roll.replacement.strike).replace("$", "")}
+                      </strong>{" "}
+                      <span className="text-secondary">{formatDate(roll.replacement.expiry)}</span>
+                    </td>
+                    <td className="text-center">
+                      <RollGradeBadge roll={roll} />
+                    </td>
+                    <td className="text-end">
+                      <span className={`font-mono ${pnlTextClass(roll.replacement.netEdge)}`}>{formatVolatilityPoints(roll.replacement.netEdge)}</span>
+                    </td>
+                    <td className="text-end">
+                      <FlashingNumber value={roll.netRollEdge} precision={3} className={`font-mono ${pnlTextClass(roll.netRollEdge)}`}>
+                        {formatVolatilityPoints(roll.netRollEdge)}
+                      </FlashingNumber>
+                    </td>
+                    <td className="text-end">
+                      <FlashingNumber value={roll.netRollEdgeDollars} precision={0} className={`font-mono ${pnlTextClass(roll.netRollEdgeDollars)}`}>
+                        {formatSignedPnl(roll.netRollEdgeDollars, 0)}
+                      </FlashingNumber>
+                    </td>
+                    <td className="text-end font-mono">{formatCurrency(roll.netCreditPerShare)}</td>
+                    <td className="text-end font-mono">{formatSignedDelta(roll.replacement.delta)}</td>
+                    <td className="text-end font-mono">{roll.replacement.dte}</td>
+                    <td className="text-center">
+                      <RollFlagBadges roll={roll} held={held} />
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
 
 function GradeBadge({ candidate }: { candidate: SignalCandidate }) {
   const ref = useTooltip<HTMLSpanElement>(gradeExplanation);
@@ -55,12 +186,12 @@ function GradeBadge({ candidate }: { candidate: SignalCandidate }) {
   );
 }
 
-function FlagBadges({ candidate }: { candidate: SignalCandidate }) {
+function FlagBadges({ candidate, macroEvents }: { candidate: SignalCandidate; macroEvents: MacroEvent[] }) {
   if (candidate.flags.length === 0) return null;
   return (
     <span className="d-inline-flex gap-1">
       {candidate.flags.map((flag) => (
-        <TooltipSpan key={flag} className="badge bg-warning-lt" style={badgeFontSize} text={signalFlagExplanation[flag]}>
+        <TooltipSpan key={flag} className="badge bg-warning-lt" style={badgeFontSize} text={describeSignalFlag(flag, candidate, macroEvents)}>
           {signalFlagLetter[flag]}
         </TooltipSpan>
       ))}
@@ -182,13 +313,12 @@ function formatSignedDelta(delta: number): string {
   return `${delta > 0 ? "+" : ""}${delta.toFixed(2)}`;
 }
 
-export function SignalsTickerModal({ symbol, onClose }: SignalsTickerModalProps) {
+export function SignalsTickerModal({ symbol, initialRollLegId = null, onClose }: SignalsTickerModalProps) {
   const [signals, setSignals] = useState<TickerSignals | null>(null);
   const [signalsError, setSignalsError] = useState<string | null>(null);
   const [liveQuoteContractCount, setLiveQuoteContractCount] = useState<number | null>(null);
   const [uncompensatedAsOf, setUncompensatedAsOf] = useState<{ spotPrice: number; at: string } | null>(null);
   const [streamFailed, setStreamFailed] = useState(false);
-  const [roadmap, setRoadmap] = useState<RoadmapItem[]>([]);
 
   const [overview, setOverview] = useState<TickerOverview | null>(null);
   const [overviewError, setOverviewError] = useState<string | null>(null);
@@ -200,6 +330,11 @@ export function SignalsTickerModal({ symbol, onClose }: SignalsTickerModalProps)
   const [selectedExpiry, setSelectedExpiry] = useState<string | null>(null);
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
   const [selectionReference, setSelectionReference] = useState<{ netEdge: number; atIso: string } | null>(null);
+  const [selectedRollKey, setSelectedRollKey] = useState<string | null>(null);
+  const [rollSelectionReference, setRollSelectionReference] = useState<{ netRollEdge: number; atIso: string } | null>(null);
+  const [pendingRollLegId, setPendingRollLegId] = useState<string | null>(initialRollLegId);
+  // Bumped on a fill so the stream reloads its inputs (a rolled leg is a new open leg the running stream never saw).
+  const [streamKey, setStreamKey] = useState(0);
   const [pendingOrder, setPendingOrder] = useState<{ order: OrderRequest; adaptivePriority: AdaptivePriority } | null>(null);
   const [strategyFilter, setStrategyFilter] = useState<StrategyFilter>("all");
   const [dteFilter, setDteFilter] = useState<DteFilter>("all");
@@ -238,11 +373,10 @@ export function SignalsTickerModal({ symbol, onClose }: SignalsTickerModalProps)
     setSignalsError(null);
     setSelectedExpiry(null);
     setSelectedKey(null);
-    Promise.all([fetchTickerSignals(symbol), fetchSignalsRoadmap()])
-      .then(([result, roadmapResponse]) => {
+    fetchTickerSignals(symbol)
+      .then((result) => {
         if (cancelled) return;
         setSignals((current) => current ?? result); // a live frame may already have arrived
-        setRoadmap(roadmapResponse.items);
       })
       .catch((err) => {
         if (!cancelled) setSignalsError(err instanceof ApiError ? err.message : "Could not load the signals for this ticker.");
@@ -308,7 +442,7 @@ export function SignalsTickerModal({ symbol, onClose }: SignalsTickerModalProps)
       },
       () => setStreamFailed(true),
     );
-  }, [symbol, selectedExpiry]);
+  }, [symbol, selectedExpiry, streamKey]);
 
   const effectiveExpiry = selectedExpiry ?? signals?.best?.expiry ?? null;
   const spotPrice = signals?.spotPrice ?? overview?.pricing.last ?? null;
@@ -336,18 +470,47 @@ export function SignalsTickerModal({ symbol, onClose }: SignalsTickerModalProps)
     return tiers;
   }, [shownCandidates]);
   const selectedCandidate = useMemo(() => (selectedKey ? (signals?.candidates.find((candidate) => candidateKey(candidate) === selectedKey) ?? null) : null), [signals, selectedKey]);
+  const selectedRoll = useMemo(() => (selectedRollKey ? (signals?.rolls.find((roll) => rollKey(roll) === selectedRollKey) ?? null) : null), [signals, selectedRollKey]);
+  const selectedRollHeldLeg = useMemo(() => (selectedRoll ? (signals?.heldLegs.find((leg) => leg.legId === selectedRoll.legId) ?? null) : null), [signals, selectedRoll]);
+  const rollsByLegId = useMemo(() => {
+    const byLeg = new Map<string, RollSignalCandidate[]>();
+    for (const roll of signals?.rolls ?? []) byLeg.set(roll.legId, [...(byLeg.get(roll.legId) ?? []), roll]);
+    return byLeg;
+  }, [signals]);
 
   function selectCandidate(candidate: SignalCandidate) {
     if (pendingOrder) return; // an order under review keeps its contract until cancelled or filled
+    setSelectedRollKey(null);
+    setRollSelectionReference(null);
     setSelectedKey(candidateKey(candidate));
     setSelectionReference({ netEdge: candidate.netEdge, atIso: new Date().toISOString() });
     if (candidate.expiry !== effectiveExpiry) setSelectedExpiry(candidate.expiry);
   }
+  const selectRoll = useCallback(
+    (roll: RollSignalCandidate) => {
+      if (pendingOrder) return;
+      setSelectedKey(null);
+      setSelectionReference(null);
+      setSelectedRollKey(rollKey(roll));
+      setRollSelectionReference({ netRollEdge: roll.netRollEdge, atIso: new Date().toISOString() });
+    },
+    [pendingOrder],
+  );
   function clearSelection() {
     setPendingOrder(null);
     setSelectedKey(null);
     setSelectionReference(null);
+    setSelectedRollKey(null);
+    setRollSelectionReference(null);
   }
+  // A roll badge / Telegram link opens on a leg: pre-select its best roll once the scores are in.
+  useEffect(() => {
+    if (!pendingRollLegId || !signals) return;
+    const best = signals.rolls.find((roll) => roll.legId === pendingRollLegId); // rolls arrive best-first
+    if (best) selectRoll(best);
+    else if (signals.heldLegs.some((leg) => leg.legId === pendingRollLegId)) setRollNotice("No credit roll to a lower-delta contract passes the Signals filters for that leg right now.");
+    setPendingRollLegId(null);
+  }, [pendingRollLegId, signals, selectRoll]);
 
   const opportunityColumns = useMemo<DataTableColumn<SignalCandidate & { rank: number }>[]>(
     () => [
@@ -436,7 +599,7 @@ export function SignalsTickerModal({ symbol, onClose }: SignalsTickerModalProps)
       },
       { key: "yield", header: "Ann. yield", align: "right", render: (row) => <span className={`font-mono heat-yield-${yieldTierByKey.get(candidateKey(row)) ?? 1}`}>{formatPercentage(row.annualizedYield, 0)}</span> },
       { key: "uncompensated", header: "Drift", align: "right", headerTitle: "Share of P&L variance from delta drift (UncompensatedShare)", render: (row) => <span className="font-mono text-secondary">{row.uncompensatedSharePercent === null ? "…" : `${row.uncompensatedSharePercent.toFixed(0)}%`}</span> },
-      { key: "flags", header: "Flags", render: (row) => <FlagBadges candidate={row} /> },
+      { key: "flags", header: "Flags", align: "center", render: (row) => <FlagBadges candidate={row} macroEvents={signals?.macroEvents ?? []} /> },
     ],
     [yieldTierByKey],
   );
@@ -454,7 +617,12 @@ export function SignalsTickerModal({ symbol, onClose }: SignalsTickerModalProps)
       symbol={symbol}
       data={tickerPositions}
       currentPrice={spotPrice}
-      onRollSelect={() => setRollNotice("Rolls are reviewed from the Ticker Detail modal (Trade Alerts or Positions), not from Signals.")}
+      onRollSelect={(alert) => {
+        const legId = alert.suggestedStructure.closeLeg.legId;
+        const best = signals?.rolls.find((roll) => roll.legId === legId);
+        if (best) selectRoll(best);
+        else setRollNotice("No credit roll to a lower-delta contract passes the Signals filters for that leg right now.");
+      }}
       onSellCall={(prefill) => {
         const match = prefill ? signals?.candidates.find((candidate) => candidate.strategyKey === "covered_call" && candidate.strike === prefill.strike && candidate.expiry === prefill.expiry) : undefined;
         if (match) selectCandidate(match);
@@ -513,7 +681,7 @@ export function SignalsTickerModal({ symbol, onClose }: SignalsTickerModalProps)
                   <SignalMetric label="Shares free" value={formatNumber(signals.freeShares, 0)} />
                   <SignalMetric label="Cash free" value={formatCurrency(signals.freeCash, 0)} />
                   <span className="ms-auto">
-                    <NotAccountedForChip symbol={symbol} caveats={signals.caveats} generalItems={roadmap} label="not accounted for" />
+                    <ModelCaveatBadge symbol={symbol} caveats={signals.caveats} />
                   </span>
                 </div>
               )}
@@ -538,6 +706,23 @@ export function SignalsTickerModal({ symbol, onClose }: SignalsTickerModalProps)
               {signals && !signals.unscoredReason && (
                 <div className="d-flex flex-column flex-lg-row gap-3">
                   <div style={{ minWidth: 0, flex: "1 1 68%" }}>
+                    {signals.heldLegs.length > 0 && (
+                      <div className="card mb-3">
+                        <div className="card-header py-2 d-flex flex-wrap align-items-center gap-2">
+                          <span className="text-secondary text-uppercase fw-bold" style={{ fontSize: "0.72rem", letterSpacing: "0.06em" }}>
+                            Your positions
+                          </span>
+                          <span className="text-secondary" style={{ fontSize: "0.75rem" }}>
+                            credit rolls to a lower-delta contract, graded on net roll Edge; click a roll to set up the order
+                          </span>
+                        </div>
+                        <div className="card-body py-2">
+                          {signals.heldLegs.map((held) => (
+                            <HeldLegRolls key={held.legId} held={held} rolls={rollsByLegId.get(held.legId) ?? []} showAvoid={showAvoid} selectedRollKey={selectedRollKey} disabled={pendingOrder !== null} onSelect={selectRoll} />
+                          ))}
+                        </div>
+                      </div>
+                    )}
                     <DataTable
                       tableId="signals-opportunities"
                       dense
@@ -609,7 +794,20 @@ export function SignalsTickerModal({ symbol, onClose }: SignalsTickerModalProps)
                             onFilled={() => {
                               clearSelection();
                               void tickerPositions.loadPositions();
+                              setStreamKey((key) => key + 1);
                             }}
+                          />
+                        ) : selectedRoll && selectedRollHeldLeg && rollSelectionReference ? (
+                          <RollSignalOrderSetupForm
+                            symbol={symbol}
+                            signals={signals}
+                            roll={selectedRoll}
+                            held={selectedRollHeldLeg}
+                            spotPrice={spotPrice}
+                            netRollEdgeAtSelection={rollSelectionReference.netRollEdge}
+                            selectedAtIso={rollSelectionReference.atIso}
+                            onCancel={clearSelection}
+                            onSubmitted={(order, adaptivePriority) => setPendingOrder({ order, adaptivePriority })}
                           />
                         ) : selectedCandidate && selectionReference ? (
                           <SignalOrderSetupForm
@@ -628,7 +826,7 @@ export function SignalsTickerModal({ symbol, onClose }: SignalsTickerModalProps)
                               Order setup
                             </div>
                             <p className="text-secondary mb-0" style={{ fontSize: "0.85rem" }}>
-                              Select an opportunity or a chain quote.
+                              Select an opportunity, a chain quote{signals.heldLegs.length > 0 ? " or a roll of one of your positions" : ""}.
                             </p>
                           </>
                         )}
