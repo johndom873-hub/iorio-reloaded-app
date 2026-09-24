@@ -51,6 +51,7 @@ import { TotalPnlChart } from "../components/pulse/TotalPnlChart";
 import { NetDeltaChart, type DeltaSeries } from "../components/pulse/NetDeltaChart";
 import { EnvironmentBadges } from "../components/layout/EnvironmentBadges";
 import { useEnvironmentStatus } from "../hooks/useEnvironmentStatus";
+import { describeSignalUpgrade } from "../lib/signalsPresentation";
 
 const CHART_SAMPLE_INTERVAL_MS = 60_000;
 // 8 hours of history at one sample/minute — matches the backend's rolling
@@ -563,6 +564,8 @@ export function PulsePage() {
               text: `Alert — ${notification.symbol} ${strategyAbbrev(notification.strategyKey)}, ${(notification.annualizedYield * 100).toFixed(1)}% yield`,
               color: "var(--warning)",
             };
+          case "signal_upgraded":
+            return { occurredAt, text: `Signal — ${describeSignalUpgrade(notification)}`, color: "var(--success)" };
           case "order_status": {
             // Resolved server-side in the same response — no per-order request.
             if (!order) return null;
@@ -643,6 +646,11 @@ export function PulsePage() {
           firePulse("gateway-db", "var(--warning)");
           appendEvent(`Alert — ${notification.symbol} ${strategyAbbrev(notification.strategyKey)}, ${(notification.annualizedYield * 100).toFixed(1)}% yield`, "var(--warning)");
           fetchTradeAlerts({ status: "pending", sort: "yield" }).then(setPendingAlerts).catch(() => {});
+          break;
+        }
+        case "signal_upgraded": {
+          firePulse("heroku-db", "var(--success)");
+          appendEvent(`Signal — ${describeSignalUpgrade(notification)}`, "var(--success)");
           break;
         }
         case "order_status": {

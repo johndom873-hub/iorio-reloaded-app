@@ -6,6 +6,7 @@ import { Collapse } from "@tabler/core/dist/js/tabler.esm.min.js";
 import {
   IconCalendarEvent,
   IconChartCandle,
+  IconClock,
   IconChevronLeft,
   IconChevronRight,
   IconClipboardList,
@@ -62,6 +63,22 @@ type SidebarMode = "retractable" | "fixed";
 
 function readStoredSidebarMode(): SidebarMode {
   return localStorage.getItem(SIDEBAR_MODE_STORAGE_KEY) === "fixed" ? "fixed" : "retractable";
+}
+
+/** "Live data restricted" while the 10:00 ET chain capture holds its priority market-data lines (mockup rev 2, 2026-09-24). */
+function MarketDataRestrictionPill({ restriction, compact = false }: { restriction: { priorityLines: number } | null | undefined; compact?: boolean }) {
+  const ref = useTooltip<HTMLSpanElement>(
+    restriction
+      ? `The 10:00 ET chain capture holds ${restriction.priorityLines} of IBKR's market-data lines until about 10:30 ET. Live prices and quotes are served with the ${90 - restriction.priorityLines} lines left, most recent requests first; anything that could not get a line shows its last received value and catches up on its own.`
+      : undefined,
+  );
+  if (!restriction) return null;
+  return (
+    <span ref={ref} className={`iorio-topbar-status${compact ? " iorio-topbar-status-compact" : ""}`} tabIndex={0} role="status">
+      <IconClock size={compact ? 14 : 16} aria-hidden="true" />
+      Live data restricted
+    </span>
+  );
 }
 
 function BrandMark() {
@@ -155,8 +172,9 @@ export function AppLayout() {
               <IconLogout size={20} />
             </button>
           </div>
-          <div className="env-mobile-strip d-lg-none">
+          <div className="env-mobile-strip d-lg-none d-flex align-items-center gap-2 flex-wrap">
             <EnvironmentBadges status={environmentStatus} />
+            <MarketDataRestrictionPill restriction={environmentStatus.details?.marketDataRestriction} compact />
           </div>
           <div className="collapse navbar-collapse" id="sidebar-menu">
             <ul
@@ -208,11 +226,14 @@ export function AppLayout() {
             <BrandMark />
           </h1>
           <EnvironmentBadges status={environmentStatus} />
-          <a href="/pulse" target="_blank" rel="noopener noreferrer" className="iorio-pulse-nav-link">
-            <span className="iorio-pulse-dot" aria-hidden="true" />
-            IORIO Pulse
-          </a>
+          <div className="iorio-topbar-center">
+            <MarketDataRestrictionPill restriction={environmentStatus.details?.marketDataRestriction} />
+          </div>
           <div className="ms-auto d-flex align-items-center gap-3">
+            <a href="/pulse" target="_blank" rel="noopener noreferrer" className="iorio-pulse-nav-link">
+              <span className="iorio-pulse-dot" aria-hidden="true" />
+              IORIO Pulse
+            </a>
             <button
               ref={desktopThemeToggleRef}
               type="button"

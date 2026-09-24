@@ -10,6 +10,8 @@ export type SignalGrade = "strong" | "good" | "weak" | "avoid";
 export type SignalFlag = "earnings_calendar_unresolved" | "outside_fitted_range" | "wide_spread" | "insufficient_cash";
 export type SignalsUnscoredReason = "no_snapshot" | "no_surface_fit" | "no_forecast" | "suspected_split";
 export type SignalsPriceSource = "live" | "frozen" | "snapshot";
+/** live = a pooled IBKR line (modal / screen best line), day = the Day Signals refresh loop, snapshot = the 10:00 ET capture. */
+export type SignalQuoteSource = "live" | "day" | "snapshot";
 
 export interface SignalCandidate {
   strategyKey: SignalStrategyKey;
@@ -35,7 +37,9 @@ export interface SignalCandidate {
   riskAdjustedRatioAtMid: number;
   annualizedYield: number;
   uncompensatedSharePercent: number | null;
-  quoteSource: "live" | "snapshot";
+  quoteSource: SignalQuoteSource;
+  /** When the quote behind bid/ask was received (day/live); null for the snapshot. */
+  quotedAt: string | null;
   flags: SignalFlag[];
   executable: boolean;
   grade: SignalGrade;
@@ -91,10 +95,42 @@ export interface TickerSignals {
   caveats: RoadmapItem[];
   freeShares: number;
   freeCash: number;
+  /** Age range of the Day Signals quotes merged into this ticker's scoring. */
+  dayQuotesAsOf: { oldest: string; newest: string; count: number } | null;
+  /** Formula 3h per expiry: the parallel IV shift applied (volatility points) and the fresh quotes it came from. */
+  ivShiftByExpiry: Record<string, { shiftVolatilityPoints: number; quoteCount: number }>;
+  quoteSourceCounts: Record<SignalQuoteSource, number>;
   unscoredReason: SignalsUnscoredReason | null;
 }
 
 export type SignalsScreenRow = Omit<TickerSignals, "candidates">;
+
+export interface DaySignalsLoopStatus {
+  state: "disabled" | "idle" | "running";
+  reason: string;
+  stateSince: string;
+  tradingDateIso: string | null;
+  cycleNumber: number;
+  cycleStartedAt: string | null;
+  lastCycleDurationMs: number | null;
+  contractsInPool: number;
+  lastError: string | null;
+}
+
+export interface DayQuotesStatus {
+  tradingDateIso: string | null;
+  quoteCount: number;
+  oldestQuotedAt: string | null;
+  newestQuotedAt: string | null;
+  expiryCount: number;
+  tickerCount: number;
+}
+
+export interface DayQuotesFrameStatus {
+  /** null when the API process is not running the loop (DAY_SIGNALS_LOOP_ENABLED=false). */
+  loop: DaySignalsLoopStatus | null;
+  status: DayQuotesStatus;
+}
 
 export type SviSliceStatus = "ok" | "insufficient_points" | "fit_failed" | "poor_fit" | "butterfly_arbitrage";
 
@@ -141,6 +177,7 @@ export interface SignalsScreenFrame {
   type: "signalsScreen";
   at: string;
   rows: SignalsScreenRow[];
+  dayQuotes: DayQuotesFrameStatus;
 }
 
 export interface SignalsTickerFrame {
@@ -183,11 +220,15 @@ export function openSignalsTickerStream(symbol: string, expiry: string | null, o
   });
 }
 
-/** Live screen rows, at most one frame per second. There is no legacy per-stream route: an API without the multiplexer has no Signals either. */
-export function openSignalsScreenStream(onFrame: (frame: SignalsScreenFrame) => void, onError: () => void): () => void {
+/**
+ * Live screen rows, at most one frame per second. `bestContractLines: false` while the Signals modal is open —
+ * the modal holds its own live lines, so the screen's one-per-ticker best-contract lines are released meanwhile.
+ * There is no legacy per-stream route: an API without the multiplexer has no Signals either.
+ */
+export function openSignalsScreenStream(onFrame: (frame: SignalsScreenFrame) => void, onError: () => void, options: { bestContractLines: boolean }): () => void {
   return openMultiplexedStream<SignalsScreenFrame>({
     kind: "signalsScreen",
-    parameters: {},
+    parameters: options.bestContractLines ? {} : { bestContractLines: false },
     onData: onFrame,
     onError,
     openLegacy: () => {

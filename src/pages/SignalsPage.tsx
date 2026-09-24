@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { IconAlertTriangle, IconChevronDown } from "@tabler/icons-react";
 import { ApiError } from "../api/client";
-import { fetchSignalsRoadmap, fetchSignalsScreen, openSignalsScreenStream, type RoadmapItem, type SignalGrade, type SignalsScreenRow } from "../api/signals";
+import { fetchSignalsRoadmap, fetchSignalsScreen, openSignalsScreenStream, type DayQuotesFrameStatus, type RoadmapItem, type SignalGrade, type SignalsScreenRow } from "../api/signals";
 import { retryTickerBackfill, type TickerBackfillRun } from "../api/shortlist";
 import { DataTable, type DataTableColumn } from "../components/DataTable/DataTable";
 import { FlashingNumber } from "../components/FlashingNumber";
@@ -9,11 +9,12 @@ import { PageHeader } from "../components/layout/PageHeader";
 import { NotAccountedForChip, RoadmapEtaText } from "../components/signals/NotAccountedForChip";
 import { SignalsTickerModal } from "../components/SignalsTickerModal";
 import { TickColoredPrice } from "../components/TickColoredPrice";
+import { TooltipSpan } from "../components/TooltipSpan";
 import { VolatilitySurfaceModal } from "../components/VolatilitySurfaceModal";
 import { TickerPrepModal } from "../components/shortlist/TickerPrepModal";
 import { useTickerDetailSymbol } from "../hooks/useTickerDetailSymbol";
-import { formatCurrency, formatDate, formatDateTime, formatPercentage, formatRelativeTime, formatSignedPercentageValue, formatSignedPnl, formatVolatilityPoints, pnlTextClass } from "../lib/formatters";
-import { describeCandidate, gradeBadgeClass, gradeExplanation, gradeLabel, priceSourceLabel, roadmapStatusBadgeClass, roadmapStatusLabel, signalsColumnExplanation, unscoredReasonLabel } from "../lib/signalsPresentation";
+import { formatCurrency, formatDate, formatDateTime, formatPercentage, formatRelativeTime, formatSignedPercentageValue, formatSignedPnl, formatVolatilityPoints, pnlTextClass, formatShortAge } from "../lib/formatters";
+import { describeCandidate, describeDayQuotesStatus, gradeBadgeClass, gradeExplanation, gradeLabel, priceSourceLabel, quoteSourceLabel, roadmapStatusBadgeClass, roadmapStatusLabel, signalsColumnExplanation, unscoredReasonLabel } from "../lib/signalsPresentation";
 import { useTooltip } from "../hooks/useTooltip";
 
 // Signals screen (stage 3 of the build; mockup approved 2026-09-22, v3):
@@ -60,6 +61,33 @@ function VolatilityFlagBadge({ row }: { row: SignalsScreenRow }) {
   );
 }
 
+/** What the best opportunity's numbers rest on: a live line (pulse dot), a day quote (age), or the snapshot (mockup rev 2). */
+function QuoteSourceCell({ row }: { row: SignalsScreenRow }) {
+  const best = row.best;
+  if (!best) return <span className="text-secondary">—</span>;
+  if (best.quoteSource === "live") {
+    return (
+      <TooltipSpan className="d-inline-flex align-items-center gap-2" text={quoteSourceLabel.live}>
+        <span className="iorio-pulse-dot" />
+        Live
+      </TooltipSpan>
+    );
+  }
+  if (best.quoteSource === "day") {
+    return (
+      <TooltipSpan className="d-inline-flex align-items-center gap-2 font-mono" text={`${quoteSourceLabel.day}${best.quotedAt ? ` · received ${formatDateTime(best.quotedAt)}` : ""}`}>
+        <span className="iorio-still-dot" />
+        {formatShortAge(best.quotedAt) ?? "—"}
+      </TooltipSpan>
+    );
+  }
+  return (
+    <TooltipSpan className="font-mono text-secondary" text={quoteSourceLabel.snapshot}>
+      10:00
+    </TooltipSpan>
+  );
+}
+
 function RoadmapItemRows({ items }: { items: RoadmapItem[] }) {
   return (
     <div className="list-group list-group-flush">
@@ -99,6 +127,7 @@ export function SignalsPage() {
   const [error, setError] = useState<string | null>(null);
   const [streamState, setStreamState] = useState<StreamState>("connecting");
   const [lastFrameAt, setLastFrameAt] = useState<string | null>(null);
+  const [dayQuotes, setDayQuotes] = useState<DayQuotesFrameStatus | null>(null);
   const [modalSymbol, setModalSymbol] = useTickerDetailSymbol("signal");
   const [surfaceModalSymbol, setSurfaceModalSymbol] = useState<string | null>(null);
   const [roadmapOpen, setRoadmapOpen] = useState(false);
@@ -142,23 +171,33 @@ export function SignalsPage() {
     };
   }, []);
 
+  // Re-opened when the modal opens/closes: the modal holds its own live lines, so the screen's
+  // one-per-ticker best-contract lines are released while it is open (approved 2026-09-24).
   useEffect(() => {
     setStreamState("connecting");
     return openSignalsScreenStream(
       (frame) => {
         setRows(frame.rows);
+        setDayQuotes(frame.dayQuotes);
         setLastFrameAt(frame.at);
         setStreamState("live");
       },
       () => setStreamState("failed"),
+      { bestContractLines: modalSymbol === null },
     );
-  }, [streamKey]);
+  }, [streamKey, modalSymbol]);
 
   const anyLivePrice = rows.some((row) => row.priceSource === "live");
   const liveStatus =
     streamState === "failed" ? { label: "Live prices unavailable — showing snapshot prices", tone: "text-danger" } : anyLivePrice ? { label: "Live prices connected", tone: "text-success" } : streamState === "live" ? { label: "Live stream connected — waiting for prices", tone: "text-secondary" } : { label: "Connecting live prices…", tone: "text-secondary" };
   const snapshotCapturedAt = latestSnapshotCapturedAt(rows);
   const liveStatusTooltipRef = useTooltip<HTMLSpanElement>(lastFrameAt ? `Last update ${formatDateTime(lastFrameAt)}` : undefined);
+  const dayQuotesStatus = describeDayQuotesStatus(dayQuotes);
+  const dayQuotesTooltipRef = useTooltip<HTMLSpanElement>(
+    dayQuotes?.loop
+      ? `Live bid/ask for the day's pooled expiries, refreshed continuously on 10 IBKR lines. ${dayQuotes.status.tickerCount} tickers · ${dayQuotes.status.expiryCount} expiries · ${dayQuotes.status.quoteCount} quotes${dayQuotes.loop.lastError ? ` · last error: ${dayQuotes.loop.lastError}` : ""}`
+      : "The Day Signals refresh loop runs on the API server while the market is open.",
+  );
 
   const columns = useMemo<DataTableColumn<SignalsScreenRow>[]>(
     () => [
@@ -216,6 +255,7 @@ export function SignalsPage() {
             </FlashingNumber>
           ) : null,
       },
+      { key: "quotes", header: "Quotes", headerTitle: signalsColumnExplanation.quotes, render: (row) => <QuoteSourceCell row={row} /> },
       { key: "atmIv", header: "ATM IV", align: "right", headerTitle: signalsColumnExplanation.atmIv, render: (row) => <span className="font-mono">{formatPercentage(row.atmImpliedVolatility, 1)}</span> },
       { key: "forecast", header: "Forecast RV", align: "right", headerTitle: signalsColumnExplanation.forecast, render: (row) => <span className="font-mono">{formatPercentage(row.forecast?.volatility, 1)}</span> },
       {
@@ -272,6 +312,10 @@ export function SignalsPage() {
       <span ref={liveStatusTooltipRef} className={`d-inline-flex align-items-center gap-2 ${liveStatus.tone}`} tabIndex={lastFrameAt ? 0 : undefined}>
         {anyLivePrice && <span className="iorio-pulse-dot" />}
         {liveStatus.label}
+      </span>
+      <span ref={dayQuotesTooltipRef} className={`d-inline-flex align-items-center gap-2 ${dayQuotesStatus.tone}`} tabIndex={0}>
+        <span className={dayQuotesStatus.pulse ? "iorio-pulse-dot iorio-pulse-dot-muted" : "iorio-still-dot"} />
+        {dayQuotesStatus.label}
       </span>
       <span className="text-secondary">{snapshotCapturedAt ? `Surface snapshot ${formatDateTime(snapshotCapturedAt)} · ${formatRelativeTime(snapshotCapturedAt) ?? ""}` : "No surface snapshot yet"}</span>
     </div>
@@ -369,6 +413,7 @@ export function SignalsPage() {
                     onBackfillHistory={() => handleStartBackfill(row)}
                     backfillStarting={backfillStartingTickerId === row.tickerId}
                   />
+                  <QuoteSourceCell row={row} />
                 </div>
               </div>
             </div>

@@ -7,8 +7,8 @@ import { useTickerPositions } from "../hooks/useTickerPositions";
 import type { AdaptivePriority, OrderRequest } from "../api/positions";
 import { OrderReviewPanel } from "./OrderReviewPanel";
 import { SignalOrderSetupForm } from "./SignalOrderSetupForm";
-import { formatCurrency, formatCurrencyTrimmed, formatDate, formatNumber, formatPercentage, formatPercentageValue, formatQuotePrice, formatSignedPercentageValue, formatSignedPnl, formatVolatilityPoints, pnlTextClass } from "../lib/formatters";
-import { gradeBadgeClass, gradeExplanation, gradeLabel, signalFlagExplanation, signalFlagLetter, unscoredReasonLabel } from "../lib/signalsPresentation";
+import { formatCurrency, formatCurrencyTrimmed, formatDate, formatDateTime, formatNumber, formatPercentage, formatPercentageValue, formatQuotePrice, formatShortAge, formatSignedPercentageValue, formatSignedPnl, formatVolatilityPoints, pnlTextClass } from "../lib/formatters";
+import { describeQuoteAgeRange, gradeBadgeClass, gradeExplanation, gradeLabel, quoteSourceLabel, signalFlagExplanation, signalFlagLetter, unscoredReasonLabel } from "../lib/signalsPresentation";
 import { IvHistoryChart } from "./charts/IvHistoryChart";
 import { TickerPriceChart } from "./charts/TickerPriceChart";
 import { DataTable, type DataTableColumn } from "./DataTable/DataTable";
@@ -306,6 +306,14 @@ export function SignalsTickerModal({ symbol, onClose }: SignalsTickerModalProps)
 
   const effectiveExpiry = selectedExpiry ?? signals?.best?.expiry ?? null;
   const spotPrice = signals?.spotPrice ?? overview?.pricing.last ?? null;
+  const ivShift = effectiveExpiry ? (signals?.ivShiftByExpiry[effectiveExpiry] ?? null) : null;
+  const ivShiftValue = !effectiveExpiry
+    ? "—"
+    : !ivShift || ivShift.quoteCount === 0
+      ? "0.0vp (no fresh quotes)"
+      : ivShift.quoteCount < 5
+        ? `0.0vp (fewer than 5 fresh quotes: ${ivShift.quoteCount})`
+        : `${formatVolatilityPoints(ivShift.shiftVolatilityPoints / 100)} from ${ivShift.quoteCount} quotes`;
 
   const rankedCandidates = useMemo(() => (signals ? [...signals.candidates].sort((a, b) => b.edgeDollars - a.edgeDollars || b.netEdge - a.netEdge) : []), [signals]);
   const filteredCandidates = useMemo(() => {
@@ -393,11 +401,32 @@ export function SignalsTickerModal({ symbol, onClose }: SignalsTickerModalProps)
         align: "right",
         headerTitle: "(Ask − Bid) / Mid",
         render: (row) => (
-          <TooltipSpan className={`font-mono ${row.quoteSource === "live" ? "" : "text-secondary"}`} text={row.quoteSource === "live" ? "Live quote" : "10:00 ET snapshot quote"}>
+          <TooltipSpan className={`font-mono ${row.quoteSource === "snapshot" ? "text-secondary" : ""}`} text={quoteSourceLabel[row.quoteSource]}>
             {formatPercentageValue(row.spreadPercent, 1)}
             {row.quoteSource === "snapshot" ? "*" : ""}
           </TooltipSpan>
         ),
+      },
+      {
+        key: "quote",
+        header: "Quote",
+        headerTitle: "Where this row's bid/ask comes from: a live IBKR line (selected expiry), the Day Signals loop (age shown), or the 10:00 ET snapshot",
+        render: (row) =>
+          row.quoteSource === "live" ? (
+            <TooltipSpan className="d-inline-flex align-items-center gap-2" text={quoteSourceLabel.live}>
+              <span className="iorio-pulse-dot" />
+              Live
+            </TooltipSpan>
+          ) : row.quoteSource === "day" ? (
+            <TooltipSpan className="d-inline-flex align-items-center gap-2 font-mono" text={`${quoteSourceLabel.day}${row.quotedAt ? ` · received ${formatDateTime(row.quotedAt)}` : ""}`}>
+              <span className="iorio-still-dot" />
+              {formatShortAge(row.quotedAt) ?? "—"}
+            </TooltipSpan>
+          ) : (
+            <TooltipSpan className="font-mono text-secondary" text={quoteSourceLabel.snapshot}>
+              10:00
+            </TooltipSpan>
+          ),
       },
       { key: "yield", header: "Ann. yield", align: "right", render: (row) => <span className={`font-mono heat-yield-${yieldTierByKey.get(candidateKey(row)) ?? 1}`}>{formatPercentage(row.annualizedYield, 0)}</span> },
       { key: "uncompensated", header: "Drift", align: "right", headerTitle: "Share of P&L variance from delta drift (UncompensatedShare)", render: (row) => <span className="font-mono text-secondary">{row.uncompensatedSharePercent === null ? "…" : `${row.uncompensatedSharePercent.toFixed(0)}%`}</span> },
@@ -407,7 +436,12 @@ export function SignalsTickerModal({ symbol, onClose }: SignalsTickerModalProps)
   );
   const opportunityRows = useMemo(() => shownCandidates.map((candidate, index) => ({ ...candidate, rank: index + 1 })), [shownCandidates]);
 
-  const liveLabel = streamFailed ? "Live stream unavailable — snapshot values" : signals?.priceSource === "live" ? `Live · quotes streaming for ${liveQuoteContractCount ?? 0} contracts` : "Connecting live prices…";
+  const dayQuoteAgeRange = describeQuoteAgeRange(signals?.dayQuotesAsOf);
+  const liveLabel = streamFailed
+    ? "Live stream unavailable — snapshot values"
+    : signals?.priceSource === "live"
+      ? `Live · ${liveQuoteContractCount ?? 0} contracts live${effectiveExpiry ? ` for the ${formatDate(effectiveExpiry)} expiry` : ""} · ${dayQuoteAgeRange ? `other expiries on day quotes ${dayQuoteAgeRange}` : "no day quotes yet"}`
+      : "Connecting live prices…";
 
   const positionsCards = (
     <TickerPositionsCards
@@ -466,6 +500,7 @@ export function SignalsTickerModal({ symbol, onClose }: SignalsTickerModalProps)
                   <SignalMetric label="ATM IV (30d)" value={formatPercentage(signals.atmImpliedVolatility, 1)} />
                   <SignalMetric label={`Forecast RV (${signals.forecast?.windowDays ?? 63}d)`} value={formatPercentage(signals.forecast?.volatility, 1)} />
                   <SignalMetric label="IV − forecast" value={signals.atmImpliedVolatility !== null && signals.forecast ? formatVolatilityPoints(signals.atmImpliedVolatility - signals.forecast.volatility) : "—"} />
+                  <SignalMetric label={`Intraday IV shift${effectiveExpiry ? ` (${formatDate(effectiveExpiry)})` : ""}`} value={ivShiftValue} />
                   <SignalMetric label="Momentum 12-1" value={signals.momentum === null ? "n/a" : formatSignedPercentageValue(signals.momentum * 100, 0)} />
                   <SignalMetric label="Skew (30d)" value={signals.skew ? formatVolatilityPoints(signals.skew.skew) : "—"} />
                   <SignalMetric label="Vol flag" value={signals.elevatedVolatility ? `${signals.elevatedVolatility.elevated ? "Elevated" : "Normal"} (${signals.elevatedVolatility.ratio.toFixed(2)} vs ${signals.elevatedVolatility.threshold.toFixed(2)})` : "n/a"} />
@@ -526,12 +561,15 @@ export function SignalsTickerModal({ symbol, onClose }: SignalsTickerModalProps)
                             <input type="checkbox" className="form-check-input" checked={showAvoid} onChange={(event) => setShowAvoid(event.target.checked)} />
                             <span className="form-check-label">Show Avoid ({hiddenAvoidCount} hidden)</span>
                           </label>
-                          {uncompensatedAsOf && <span className="text-secondary ms-auto">Delta drift as of {formatCurrency(uncompensatedAsOf.spotPrice)}</span>}
+                          <span className="text-secondary ms-auto">
+                            {uncompensatedAsOf && <>Delta drift as of {formatCurrency(uncompensatedAsOf.spotPrice)} · </>}
+                            quotes: <span className="font-mono">{signals.quoteSourceCounts.live} live</span> · <span className="font-mono">{signals.quoteSourceCounts.day} day</span> · <span className="font-mono">{signals.quoteSourceCounts.snapshot} snapshot</span>
+                          </span>
                         </div>
                       }
                       afterTable={
                         <div className="card-footer text-secondary" style={{ fontSize: "0.75rem" }}>
-                          * quote from the 10:00 ET snapshot; live quotes stream only for the selected expiry's contracts and the top-ranked candidates (up to 40).
+                          * quote from the 10:00 ET snapshot. Live quotes stream only for the selected expiry's contracts (up to 40); every other pooled contract shows the Day Signals loop's latest quote with its age.
                         </div>
                       }
                     />

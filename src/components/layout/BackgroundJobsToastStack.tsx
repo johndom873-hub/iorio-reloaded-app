@@ -1,5 +1,6 @@
 import { useEffect } from "react";
-import { IconAlertTriangle, IconCircleCheck } from "@tabler/icons-react";
+import { Link } from "react-router-dom";
+import { IconAlertTriangle, IconCircleCheck, IconTrendingUp } from "@tabler/icons-react";
 import { Spinner } from "../Spinner";
 import { useBackgroundJobs, type BackgroundJob } from "../../contexts/BackgroundJobsContext";
 
@@ -37,12 +38,23 @@ function BackgroundJobToast({ job, onDismiss }: { job: BackgroundJob; onDismiss:
     <div className="toast show mb-2" role="status" aria-live="polite">
       <div className="toast-header">
         {job.status === "running" && <Spinner size="sm" className="me-2" />}
-        {job.status === "done" && <IconCircleCheck size={18} className="text-success me-2" />}
+        {job.status === "done" && job.kind === "signal-upgraded" && <IconTrendingUp size={18} className="text-success me-2" />}
+        {job.status === "done" && job.kind !== "signal-upgraded" && <IconCircleCheck size={18} className="text-success me-2" />}
         {job.status === "error" && <IconAlertTriangle size={18} className="text-danger me-2" />}
         <strong className="me-auto">{job.label}</strong>
         <button type="button" className="btn-close" aria-label="Close" onClick={onDismiss} />
       </div>
-      <div className="toast-body">{job.message}</div>
+      <div className="toast-body">
+        {job.message}
+        {job.link && (
+          <>
+            {" "}
+            <Link to={job.link.to} onClick={onDismiss}>
+              {job.link.label}
+            </Link>
+          </>
+        )}
+      </div>
     </div>
   );
 }

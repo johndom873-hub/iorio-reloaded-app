@@ -1,5 +1,6 @@
-import type { RoadmapStatus, SignalCandidate, SignalFlag, SignalGrade, SignalsPriceSource, SignalsUnscoredReason } from "../api/signals";
-import { formatCurrencyTrimmed, formatDate } from "./formatters";
+import type { AppNotification } from "../api/notifications";
+import type { DayQuotesFrameStatus, RoadmapStatus, SignalCandidate, SignalFlag, SignalGrade, SignalQuoteSource, SignalsPriceSource, SignalsUnscoredReason } from "../api/signals";
+import { formatCurrencyTrimmed, formatDate, formatLocalTime, formatShortAge, formatSignedPnl, formatVolatilityPoints } from "./formatters";
 
 // Labels, badge classes and short explanations for the Signals screen and
 // modal (mockup approved 2026-09-22). Every label a user can see has a plain
@@ -25,6 +26,56 @@ export const priceSourceLabel: Record<SignalsPriceSource, string> = {
   frozen: "Last known price (pre-live)",
   snapshot: "10:00 ET snapshot price",
 };
+
+export const quoteSourceLabel: Record<SignalQuoteSource, string> = {
+  live: "Live IBKR quote",
+  day: "Day Signals quote — refreshed by the intraday loop every few minutes",
+  snapshot: "10:00 ET snapshot quote — this contract is not in today's refresh pool",
+};
+
+/** Age range text for a set of day quotes: "1m–6m old", "now–2m old", or null. */
+export function describeQuoteAgeRange(asOf: { oldest: string; newest: string } | null | undefined, now: Date = new Date()): string | null {
+  if (!asOf) return null;
+  const newest = formatShortAge(asOf.newest, now);
+  const oldest = formatShortAge(asOf.oldest, now);
+  if (!newest || !oldest) return null;
+  return newest === oldest ? `${newest} old` : `${newest}–${oldest} old`;
+}
+
+// Day quotes older than this while the loop claims to be running mean the loop is not actually refreshing.
+const staleDayQuotesAfterMs = 15 * 60_000;
+
+/** The Signals screen's "Day quotes …" status line (mockup rev 2, approved 2026-09-24). */
+export function describeDayQuotesStatus(dayQuotes: DayQuotesFrameStatus | null, now: Date = new Date()): { label: string; tone: string; pulse: boolean } {
+  if (!dayQuotes) return { label: "Day quotes: waiting for the live stream", tone: "text-secondary", pulse: false };
+  const { loop, status } = dayQuotes;
+  const newestAgeMs = status.newestQuotedAt ? now.getTime() - new Date(status.newestQuotedAt).getTime() : null;
+  if (!loop || loop.state === "disabled") {
+    return status.newestQuotedAt
+      ? { label: `Day quotes as of ${formatLocalTime(status.newestQuotedAt)} · refresh loop not running here`, tone: "text-secondary", pulse: false }
+      : { label: "Day quotes off · refresh loop not running in this environment", tone: "text-secondary", pulse: false };
+  }
+  if (loop.state === "running") {
+    if (newestAgeMs !== null && newestAgeMs > staleDayQuotesAfterMs) {
+      return { label: `Day quotes stale · last refresh ${formatLocalTime(status.newestQuotedAt!)} (loop not refreshing)`, tone: "iorio-note-amber", pulse: false };
+    }
+    const range = describeQuoteAgeRange(status.oldestQuotedAt && status.newestQuotedAt ? { oldest: status.oldestQuotedAt, newest: status.newestQuotedAt } : null, now);
+    return { label: range ? `Day quotes refreshing · ${range}` : "Day quotes refreshing · first cycle", tone: "text-secondary", pulse: true };
+  }
+  if (loop.reason.startsWith("market closed")) {
+    return status.newestQuotedAt ? { label: `Day quotes as of ${formatLocalTime(status.newestQuotedAt)} · market closed`, tone: "text-secondary", pulse: false } : { label: "Day quotes idle · market closed", tone: "text-secondary", pulse: false };
+  }
+  if (loop.reason.startsWith("waiting for today's pool")) return { label: "Day quotes idle · waiting for the 10:00 ET capture", tone: "text-secondary", pulse: false };
+  return { label: `Day quotes idle · ${loop.reason}`, tone: "iorio-note-amber", pulse: false };
+}
+
+/** "AAOI Put $95 · Oct 17 upgraded Weak → Good (+6.3vp, +$142)" — Pulse's Latest Events and the in-app toast. */
+export function describeSignalUpgrade(notification: Extract<AppNotification, { type: "signal_upgraded" }>): string {
+  const contract = `${notification.strategyKey === "covered_call" ? "Call" : "Put"} ${formatCurrencyTrimmed(notification.strike)} · ${formatDate(notification.expiry)}`;
+  const previous = gradeLabel[notification.previousGrade as SignalGrade] ?? notification.previousGrade;
+  const next = gradeLabel[notification.grade as SignalGrade] ?? notification.grade;
+  return `${notification.symbol} ${contract} upgraded ${previous} → ${next} (${formatVolatilityPoints(notification.netEdge)}, ${formatSignedPnl(notification.edgeDollars, 0)})`;
+}
 
 export const roadmapStatusLabel: Record<RoadmapStatus, string> = {
   waiting_on_data: "Waiting on data",
@@ -70,4 +121,5 @@ export const signalsColumnExplanation = {
   earnings: "Next earnings date on record.",
   surface: "Fitted expiries / expiries captured in the 10:00 ET snapshot.",
   notAccountedFor: "Measures the ranking does not use yet, what each is waiting on, and when it should be ready.",
+  quotes: "What the best opportunity's numbers are based on: a live IBKR line, a Day Signals quote (age shown), or still the 10:00 ET snapshot quote.",
 } as const;

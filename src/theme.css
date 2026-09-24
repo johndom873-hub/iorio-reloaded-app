@@ -239,13 +239,51 @@
 .iorio-topbar .container-fluid {
   position: relative;
 }
+/* The top bar's centre slot (Day Signals, 2026-09-24): empty in normal operation, carries the
+   "Live data restricted" pill while the chain capture holds its priority market-data lines. The
+   IORIO Pulse link moved to the right-hand group to free it. */
+.iorio-topbar-center {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+}
+.iorio-topbar-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.3rem 0.8rem;
+  border-radius: 4px;
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: #f5b458;
+  border: 1px solid rgba(245, 180, 88, 0.45);
+  background: rgba(245, 180, 88, 0.08);
+  cursor: default;
+  white-space: nowrap;
+}
+.iorio-topbar-status-compact {
+  padding: 0.15rem 0.55rem;
+  font-size: 0.72rem;
+}
+/* A quiet, non-animated counterpart of .iorio-pulse-dot for "data present but not ticking". */
+.iorio-still-dot {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--tblr-secondary);
+  flex: none;
+}
+.iorio-pulse-dot-muted {
+  background: var(--tblr-secondary);
+  box-shadow: 0 0 6px 1px var(--tblr-secondary);
+}
 .iorio-pulse-nav-link {
   display: flex;
   align-items: center;
   gap: 0.5rem;
-  position: absolute;
-  left: 50%;
-  transform: translateX(-50%);
   padding: 0.35rem 0.9rem;
   border-radius: 100px;
   color: #0ea5e9;

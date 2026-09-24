@@ -2,9 +2,10 @@ import { createContext, useCallback, useContext, useEffect, useRef, useState, ty
 import { openTradeAlertRunStream, type TradeAlertRunStreamEvent } from "../api/tradeAlerts";
 import { fetchOrder, type OrderRequest } from "../api/positions";
 import { openNotificationStream } from "../api/notifications";
+import { describeSignalUpgrade } from "../lib/signalsPresentation";
 import { useAuth } from "./AuthContext";
 
-export type BackgroundJobKind = "trade-alert-scan" | "order" | "position-closed";
+export type BackgroundJobKind = "trade-alert-scan" | "order" | "position-closed" | "signal-upgraded";
 export type BackgroundJobStatus = "running" | "done" | "error";
 
 interface BackgroundJobBase {
@@ -14,6 +15,8 @@ interface BackgroundJobBase {
   status: BackgroundJobStatus;
   message: string;
   dismissed: boolean;
+  /** Optional in-app destination rendered as a link in the toast. */
+  link?: { to: string; label: string };
 }
 
 export interface TradeAlertScanJob extends BackgroundJobBase {
@@ -34,7 +37,12 @@ export interface PositionClosedJob extends BackgroundJobBase {
   kind: "position-closed";
 }
 
-export type BackgroundJob = TradeAlertScanJob | OrderJob | PositionClosedJob;
+// Fed by the Day Signals loop's "signal_upgraded" event: a pooled contract's grade went up. One-shot, like PositionClosedJob.
+export interface SignalUpgradedJob extends BackgroundJobBase {
+  kind: "signal-upgraded";
+}
+
+export type BackgroundJob = TradeAlertScanJob | OrderJob | PositionClosedJob | SignalUpgradedJob;
 
 const tradeAlertScanJobId = "trade-alert-scan";
 const terminalOrderStatuses = new Set(["filled", "partially_filled", "cancelled", "rejected", "error"]);
@@ -261,6 +269,16 @@ export function BackgroundJobsProvider({ children }: { children: ReactNode }) {
           status: "done",
           message: notification.message,
           dismissed: false,
+        });
+      } else if (notification.type === "signal_upgraded") {
+        upsertJob({
+          id: `signal-upgraded-${notification.symbol}-${notification.expiry}-${notification.strike}-${Date.now()}`,
+          kind: "signal-upgraded",
+          label: `Signal upgraded — ${notification.symbol}`,
+          status: "done",
+          message: describeSignalUpgrade(notification).replace(`${notification.symbol} `, ""),
+          dismissed: false,
+          link: { to: `/signals?signal=${encodeURIComponent(notification.symbol)}`, label: "Open in Signals" },
         });
       }
     });

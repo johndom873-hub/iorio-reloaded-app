@@ -12,6 +12,8 @@ export interface PublicEnvironment {
 
 export interface EnvironmentDetails extends PublicEnvironment {
   trading: { state: TradingState; reason: string | null };
+  /** Non-null while the 10:00 ET chain capture holds its priority market-data lines (the top bar's "Live data restricted"). */
+  marketDataRestriction: { priorityLines: number; holders: string[] } | null;
   worker: {
     gitSha: string | null;
     accountId: string | null;

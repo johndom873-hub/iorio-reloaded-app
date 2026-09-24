@@ -316,6 +316,20 @@ export function formatRelativeTime(dateInput: string | Date | null | undefined):
   return `${diffHours}h ago`;
 }
 
+/** Compact age for a value shown next to a quote: "now", "3m", "1h 05m"; null when unknown, invalid or in the future. */
+export function formatShortAge(dateInput: string | Date | null | undefined, now: Date = new Date()): string | null {
+  if (!dateInput) return null;
+  const date = typeof dateInput === "string" ? new Date(dateInput) : dateInput;
+  if (Number.isNaN(date.getTime())) return null;
+  const diffMs = now.getTime() - date.getTime();
+  if (diffMs < 0) return null;
+  const diffMinutes = Math.floor(diffMs / 60_000);
+  if (diffMinutes < 1) return "now";
+  if (diffMinutes < 60) return `${diffMinutes}m`;
+  const hours = Math.floor(diffMinutes / 60);
+  return `${hours}h ${String(diffMinutes % 60).padStart(2, "0")}m`;
+}
+
 export function formatDuration(
   startedAt: string | Date | null | undefined,
   finishedAt: string | Date | null | undefined,
