@@ -186,7 +186,7 @@ export function OrderReviewPanel({ order: initialOrder, initialAdaptivePriority,
   // Fails closed: no quote yet, or a lost stream, both count as "not
   // confirmed compliant" rather than silently letting Confirm through.
   const complianceGated = Boolean(isOpeningOrder) && Boolean(optionLeg);
-  const complianceBlockReason = !complianceGated
+  const deltaComplianceBlockReason = !complianceGated
     ? null
     : quoteStreamError
       ? "Live quote feed lost — reopen this order to re-check compliance before confirming."
@@ -195,6 +195,10 @@ export function OrderReviewPanel({ order: initialOrder, initialAdaptivePriority,
         : !quote.compliance || quote.compliance.compliant
           ? null
           : quote.compliance.reason;
+  // Signals-tab position/concentration/cash-reserve limits (approved 2026-09-24) -- signalLimits is
+  // only ever non-null for a Signals-originated order, evaluated independently of the delta band above.
+  const signalLimitsBlockReason = quote?.signalLimits?.blocked ? quote.signalLimits.reasons.join(" ") : null;
+  const complianceBlockReason = [deltaComplianceBlockReason, signalLimitsBlockReason].filter((reason): reason is string => reason !== null).join(" ") || null;
 
   // Recomputed from the live quote (approved 2026-08-27) so this doesn't
   // freeze at the yield shown when the order was first built -- the same

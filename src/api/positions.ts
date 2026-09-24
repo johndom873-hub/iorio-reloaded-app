@@ -246,6 +246,14 @@ export interface OrderLegQuoteCompliance {
   reason: string | null;
 }
 
+// Signals-tab position/concentration/cash-reserve limits (approved
+// 2026-09-24) -- non-null only for an order built from the Signals order
+// setup flow, re-evaluated periodically server-side (not every tick).
+export interface OrderLegQuoteSignalLimits {
+  blocked: boolean;
+  reasons: string[];
+}
+
 export interface OrderLegQuote {
   expiry: string;
   strike: number;
@@ -261,6 +269,7 @@ export interface OrderLegQuote {
   // Non-null only for opening orders (see streamOrderLegQuote.ts on the
   // backend) -- Close/Roll orders get a live quote but no compliance gate.
   compliance: OrderLegQuoteCompliance | null;
+  signalLimits: OrderLegQuoteSignalLimits | null;
 }
 
 export type OrderLegQuoteStreamEvent =

@@ -42,6 +42,34 @@ export interface SignalSettingsInput {
   minCashReservePct: number;
 }
 
+export interface SignalOrderLimitsCheckParams {
+  symbol: string;
+  strategyKey: "covered_call" | "cash_secured_put";
+  quantity: number;
+  strike: number;
+  /** The modal's own live spot, when known — avoids an extra IBKR round trip on the backend. */
+  spotPrice?: number | null;
+}
+
+export interface SignalOrderLimitsResult {
+  blocked: boolean;
+  reasons: string[];
+}
+
+// Single shared evaluation of the three Signals-tab blocking limits (max position %, max
+// concentration per ticker %, min cash reserve %) -- same function the backend also runs at
+// order-confirm time and in the order's live quote stream (approved 2026-09-24).
+export async function checkSignalOrderLimits(params: SignalOrderLimitsCheckParams): Promise<SignalOrderLimitsResult> {
+  const query = new URLSearchParams({
+    symbol: params.symbol,
+    strategyKey: params.strategyKey,
+    quantity: String(params.quantity),
+    strike: String(params.strike),
+  });
+  if (params.spotPrice) query.set("spotPrice", String(params.spotPrice));
+  return apiRequest<SignalOrderLimitsResult>(`/signal-settings/order-limits-check?${query.toString()}`);
+}
+
 export async function updateSignalSettings(input: SignalSettingsInput): Promise<SignalSettings> {
   const row = await apiRequest<Record<string, unknown>>("/signal-settings", {
     method: "PUT",
