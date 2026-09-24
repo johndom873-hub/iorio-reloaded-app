@@ -3,7 +3,6 @@ import { IconAlertTriangle, IconRefresh } from "@tabler/icons-react";
 import { PageHeader } from "../components/layout/PageHeader";
 import { DataTable, type DataTableColumn } from "../components/DataTable/DataTable";
 import { Spinner } from "../components/Spinner";
-import { FlashingNumber } from "../components/FlashingNumber";
 import { TickColoredPrice } from "../components/TickColoredPrice";
 import { TickerDetailModal } from "../components/TickerDetailModal";
 import { ApiError } from "../api/client";
@@ -25,16 +24,16 @@ import { useTickerDetailSymbol } from "../hooks/useTickerDetailSymbol";
 import { useTooltip } from "../hooks/useTooltip";
 import { TooltipSpan } from "../components/TooltipSpan";
 
-// Flashes on every live-streamed update, same mechanism as Positions'
-// P&L/Greeks columns — see FlashingNumber's own comment for why it's a
-// component (not a bare useFlashOnChange call) here in a DataTable render().
+// No flash here: the amber flash-changed overlay washes out the badges'
+// solid green/red backgrounds. Only the Current price cell (TickColoredPrice)
+// flashes on live updates.
 function ChangeBadge({ value }: { value: number | null }) {
   if (value === null) return <span className="text-muted">—</span>;
   return (
-    <FlashingNumber value={value} precision={2} className={`badge ${pnlBadgeClass(value)}`}>
+    <span className={`badge ${pnlBadgeClass(value)}`}>
       {value > 0 ? "+" : ""}
       {value.toFixed(2)}%
-    </FlashingNumber>
+    </span>
   );
 }
 
