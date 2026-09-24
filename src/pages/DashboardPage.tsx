@@ -55,6 +55,7 @@ const closeReasonLabels: Record<string, string> = {
   expired_worthless: "Expired",
   closed_via_app: "closed",
   closed_via_external_trade: "closed outside the app",
+  stock_rolled_into_covered_call: "shares rolled into a covered call",
   unknown: "closed (reason unclear)",
 };
 
