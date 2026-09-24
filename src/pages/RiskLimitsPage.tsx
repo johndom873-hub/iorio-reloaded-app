@@ -177,10 +177,12 @@ interface NumberFieldProps {
   value: string;
   step?: string;
   help: string;
+  /** Shown under the input, for a setting that is stored but not yet enforced. */
+  note?: string;
   onChange: (value: string) => void;
 }
 
-function NumberField({ label, value, step = "1", help, onChange }: NumberFieldProps) {
+function NumberField({ label, value, step = "1", help, note, onChange }: NumberFieldProps) {
   return (
     <div className="col">
       <label className="form-label d-inline-flex align-items-center" style={{ fontSize: "0.8rem" }}>
@@ -195,6 +197,11 @@ function NumberField({ label, value, step = "1", help, onChange }: NumberFieldPr
         value={value}
         onChange={(event) => onChange(event.target.value)}
       />
+      {note && (
+        <div className="mt-1 iorio-note-amber" style={{ fontSize: "0.75rem" }}>
+          {note}
+        </div>
+      )}
     </div>
   );
 }
@@ -548,7 +555,8 @@ export function RiskLimitsPage() {
                     label="Max Delta drift %"
                     value={signalFormState.maxDeltaDriftPct}
                     step="1"
-                    help="Ceiling on Delta drift risk (share of expected P&L variance coming from unhedged delta drift rather than the option's edge). Candidates above this are filtered out."
+                    help="Ceiling on Delta drift risk (share of expected P&L variance coming from unhedged delta drift rather than the option's edge). Stored for later; not applied to any opportunity yet."
+                    note="Not applied yet — no opportunity is filtered by this value."
                     onChange={(value) => updateSignalField("maxDeltaDriftPct", value)}
                   />
                   <NumberField

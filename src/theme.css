@@ -1017,3 +1017,13 @@
    preparation modal's warning note; disabled while another ticker is preparing (one at a time). */
 .badge.ticker-prep-badge.is-history-missing { background: var(--prep-warning-lt); color: var(--prep-warning); }
 .badge.ticker-prep-badge.is-history-missing:disabled { opacity: 0.5; cursor: not-allowed; }
+
+/* Amber "not enforced yet" note under a settings field. Tabler's text-warning
+   (#f59f00) is 2.13:1 on white; the darkened amber used for the warning badges
+   passes at 5.87:1, and dark mode needs a lighter shade for the card surface. */
+.iorio-note-amber {
+  color: #a35f00;
+}
+:root[data-bs-theme="dark"] .iorio-note-amber {
+  color: #f5b458;
+}
