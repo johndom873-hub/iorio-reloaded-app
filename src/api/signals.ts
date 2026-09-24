@@ -114,7 +114,7 @@ export interface ElevatedVolatilityFlag {
   elevated: boolean;
 }
 
-export type RoadmapStatus = "waiting_on_data" | "waiting_on_sign_off" | "waiting_on_decision" | "waiting_on_later_phase" | "waiting_on_build";
+export type RoadmapStatus = "waiting_on_data" | "waiting_on_sign_off" | "waiting_on_decision" | "waiting_on_later_phase" | "waiting_on_build" | "waiting_on_next_run";
 export interface RoadmapProgress {
   have: number;
   need: number;

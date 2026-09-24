@@ -83,6 +83,7 @@ export const roadmapStatusLabel: Record<RoadmapStatus, string> = {
   waiting_on_decision: "Waiting on a decision",
   waiting_on_later_phase: "Waiting on later phases",
   waiting_on_build: "Approved, building",
+  waiting_on_next_run: "Waiting on tonight's run",
 };
 
 export const roadmapStatusBadgeClass: Record<RoadmapStatus, string> = {
@@ -91,6 +92,7 @@ export const roadmapStatusBadgeClass: Record<RoadmapStatus, string> = {
   waiting_on_decision: "bg-danger-lt",
   waiting_on_later_phase: "bg-secondary-lt",
   waiting_on_build: "bg-teal-lt",
+  waiting_on_next_run: "bg-azure-lt",
 };
 
 export const signalFlagLetter: Record<SignalFlag, string> = { earnings_calendar_unresolved: "?", outside_fitted_range: "X", wide_spread: "W", insufficient_cash: "$", macro_event_before_expiry: "M" };
