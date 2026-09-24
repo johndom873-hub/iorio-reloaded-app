@@ -49,7 +49,7 @@ const strategyLabels: Record<string, string> = {
 };
 
 const closeReasonLabels: Record<string, string> = {
-  assigned: "assigned",
+  assigned: "Assigned",
   expired_worthless: "Expired",
   closed_via_app: "closed",
   closed_via_external_trade: "closed outside the app",
@@ -142,7 +142,7 @@ function AllocationDonut({
         // val is the slice's share of THIS donut's own series sum -- the same
         // basis as the wedge angles themselves, so labels always add up to
         // 100% (matches the legend rows below, which use the same basis).
-        dataLabels: { enabled: rows.length <= 4, formatter: (val: number) => formatPercentageValue(val, 0) },
+        dataLabels: { enabled: rows.length <= 6, formatter: (val: number) => formatPercentageValue(val, 0) },
         legend: { show: false }, // the list below doubles as the legend (label + swatch)
         tooltip: { y: { formatter: (val: number) => formatCurrency(val, 0) } },
         plotOptions: {
@@ -324,6 +324,7 @@ const eventStatusBadge: Record<string, string> = {
   unstructured: "bg-warning-lt",
   closed_good: "bg-success-lt",
   closed_flagged: "bg-warning-lt",
+  closed_assigned_unwanted: "bg-danger-lt",
 };
 
 // showExitPrice must come from the EVENT's type, not just "does this leg
@@ -356,10 +357,16 @@ function EventRow({ event, onSymbolClick }: { event: PositionEvent; onSymbolClic
     statusBadgeClass = eventStatusBadge.unstructured;
   } else {
     statusLabel = closeReasonLabels[event.closeReason ?? ""] ?? event.closeReason ?? "Closed";
-    statusBadgeClass =
-      event.closeReason === "unknown" || event.closeReason === "closed_via_external_trade"
-        ? eventStatusBadge.closed_flagged
-        : eventStatusBadge.closed_good;
+    if (event.closeReason === "unknown" || event.closeReason === "closed_via_external_trade") {
+      statusBadgeClass = eventStatusBadge.closed_flagged;
+    } else if (event.closeReason === "assigned" && event.strategyKey === "cash_secured_put") {
+      // CSP assignment means the put strike was breached, forcing a stock
+      // purchase — the undesired CSP outcome, unlike CC assignment (called
+      // away at the target strike, the desired CC outcome).
+      statusBadgeClass = eventStatusBadge.closed_assigned_unwanted;
+    } else {
+      statusBadgeClass = eventStatusBadge.closed_good;
+    }
   }
 
   // Full market value across both legs (same standard as Portfolio/
