@@ -211,21 +211,23 @@ export function PositionsPage() {
     return { price, failed: price === null && (dataArrived || streamsFailed) };
   }
 
-  function renderProbability(row: Position, field: "probabilityByDelta" | "probabilityByD2") {
+  function renderNetDelta(row: Position) {
     const optionLeg = row.legs.find((leg) => leg.legType === "option" && !leg.exitAt);
     if (!optionLeg || row.status === "closed") return <span className="text-muted">—</span>;
     const greeks = greeksByLegId[optionLeg.id];
     if (!greeks) {
       if (greeksFetchFailed) return <TooltipSpan className="text-muted" text="Failed to load">—</TooltipSpan>;
-      return <Spinner size="sm" label="Loading probability" />;
+      return <Spinner size="sm" label="Loading delta" />;
     }
-    const value = greeks[field] ?? null;
-    if (value === null) {
-      const reason = field === "probabilityByD2" ? "Needs live implied volatility, price and a risk-free rate" : "No delta available";
-      return <TooltipSpan className="text-muted" text={reason}>—</TooltipSpan>;
-    }
+    const value = greeks.delta;
+    if (value === null) return <TooltipSpan className="text-muted" text="No delta available">—</TooltipSpan>;
     return (
-      <FlashingNumber value={value} precision={2} title={greeks.asOfDate ? `As of ${formatDate(greeks.asOfDate)} close` : undefined}>
+      <FlashingNumber
+        value={value}
+        precision={2}
+        className={pnlTextClass(value)}
+        title={greeks.asOfDate ? `As of ${formatDate(greeks.asOfDate)} close` : undefined}
+      >
         {formatNumber(value, 2)}
       </FlashingNumber>
     );
@@ -447,18 +449,11 @@ export function PositionsPage() {
       },
     },
     {
-      key: "probabilityByDelta",
-      header: "P(Δ)",
-      headerTitle: "Chance of success from the short option's delta, 0.00–1.00 (1 = success): covered call = assigned, |Δ|; cash-secured put = not assigned, 1 − |Δ|",
+      key: "netDelta",
+      header: "Net Δ",
+      headerTitle: "The short option leg's delta, signed as reported (negative for a short call, positive for a short put)",
       align: "right",
-      render: (row) => renderProbability(row, "probabilityByDelta"),
-    },
-    {
-      key: "probabilityByD2",
-      header: "P(d2)",
-      headerTitle: "Chance of success from N(d2) using implied volatility and the FRED risk-free rate, 0.00–1.00 (1 = success). Covered call = assigned at a profit (above the higher of strike and stock cost); cash-secured put = not assigned",
-      align: "right",
-      render: (row) => renderProbability(row, "probabilityByD2"),
+      render: (row) => renderNetDelta(row),
     },
     {
       key: "actions",
