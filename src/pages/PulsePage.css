@@ -310,6 +310,9 @@
 .iorio-pulse-page .sub-unit {
   color: var(--text-primary);
 }
+.iorio-pulse-page .sub-value-group {
+  white-space: nowrap;
+}
 .iorio-pulse-page .flash-changed {
   animation: pulse-flash 1200ms ease-out;
 }

@@ -1162,14 +1162,31 @@ export function PulsePage() {
                 </div>
                 <div className="sub-row">
                   <span className="sub-name">Uptime</span>
-                  <span className={`sub-value ${gatewayHealth?.uptimeMs == null ? "" : gatewayHealth.uptimeMs >= GATEWAY_HEALTHY_UPTIME_MS ? "ok" : "warn"}`}>
-                    {formatDurationShort(gatewayHealth?.uptimeMs)}
+                  <span className="sub-value-group">
+                    <span className={`sub-value ${gatewayHealth?.uptimeMs == null ? "" : gatewayHealth.uptimeMs >= GATEWAY_HEALTHY_UPTIME_MS ? "ok" : "warn"}`}>
+                      {formatDurationShort(gatewayHealth?.uptimeMs)}
+                    </span>
+                    {gatewayHealth?.totalReconnects != null && (
+                      <span className="sub-unit">
+                        {" ("}
+                        <FlashingNumber value={gatewayHealth.totalReconnects} className={`sub-value ${higherIsWorseStatus(gatewayHealth.totalReconnects, ...GATEWAY_RECONNECT_BANDS)}`}>
+                          {gatewayHealth.totalReconnects}
+                        </FlashingNumber>
+                        {` reconnect${gatewayHealth.totalReconnects === 1 ? "" : "s"})`}
+                      </span>
+                    )}
                   </span>
                 </div>
                 <div className="sub-row">
-                  <span className="sub-name">Reconnects</span>
-                  <FlashingNumber value={gatewayHealth?.totalReconnects ?? null} className={`sub-value ${higherIsWorseStatus(gatewayHealth?.totalReconnects, ...GATEWAY_RECONNECT_BANDS)}`}>
-                    {gatewayHealth?.totalReconnects ?? "—"}
+                  <span className="sub-name">IBKR live connections</span>
+                  <FlashingNumber value={gatewayHealth?.marketDataLineCount ?? null} className="sub-value ok">
+                    {gatewayHealth?.marketDataLineCount ?? "—"}
+                  </FlashingNumber>
+                </div>
+                <div className="sub-row">
+                  <span className="sub-name">Reserved lines</span>
+                  <FlashingNumber value={gatewayHealth?.reservedLineCount ?? null} className="sub-value">
+                    {gatewayHealth?.reservedLineCount ?? "—"}
                   </FlashingNumber>
                 </div>
               </>

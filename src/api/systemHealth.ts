@@ -94,6 +94,8 @@ export interface GatewayHealth {
   clientId?: number | null;
   updatedAt?: string;
   inFlightOrderCount: number;
+  marketDataLineCount?: number;
+  reservedLineCount?: number;
 }
 
 export function fetchGatewayHealth(): Promise<GatewayHealth> {
