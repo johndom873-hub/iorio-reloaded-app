@@ -1,4 +1,4 @@
-import { apiRequest } from "./client";
+import { apiRequest, apiStreamedRequest } from "./client";
 
 export type JobRunStatus = "running" | "success" | "failure";
 
@@ -21,7 +21,7 @@ export function fetchJobStatuses(): Promise<JobRun[]> {
 }
 
 export function triggerIbkrHealthCheck(): Promise<JobRun | null> {
-  return apiRequest<JobRun | null>("/system-health/check-ibkr", { method: "POST" });
+  return apiStreamedRequest<JobRun | null>("/system-health/check-ibkr", { method: "POST" });
 }
 
 // --- Iorio Pulse node stats (2026-09-13) ---

@@ -1,5 +1,6 @@
-import { apiRequest, apiBaseUrl } from "./client";
+import { apiRequest, apiBaseUrl, apiStreamedRequest } from "./client";
 import { openMultiplexedStream } from "./streamMultiplexer";
+import { openDeferredEventSource } from "./tickerDetail";
 import type { StrategyKey } from "./strategy";
 import type { RollStructure } from "./tradeAlerts";
 
@@ -90,7 +91,7 @@ export interface RollCandidate {
 // straight into RollPositionModal the same way a real roll alert's
 // suggestedStructure does.
 export function fetchRollCandidate(positionId: string, legId: string): Promise<RollCandidate> {
-  return apiRequest<RollCandidate>(`/positions/${positionId}/roll-candidate`, {
+  return apiStreamedRequest<RollCandidate>(`/positions/${positionId}/roll-candidate`, {
     method: "POST",
     body: JSON.stringify({ legId }),
   });
@@ -126,7 +127,7 @@ export interface RecoveryPath {
 // position — "Recovery Path Formula" proposal, approved 2026-08-31.
 // Read-only, writes nothing.
 export function fetchRecoveryPath(positionId: string): Promise<RecoveryPath> {
-  return apiRequest<RecoveryPath>(`/positions/${positionId}/recovery-path`, { method: "POST" });
+  return apiStreamedRequest<RecoveryPath>(`/positions/${positionId}/recovery-path`, { method: "POST" });
 }
 
 // Since 2026-08-24, iorio places real orders with IBKR instead of manually
@@ -175,6 +176,8 @@ export interface OrderRequest {
   note?: string | null;
   /** Non-blocking economic-calendar advisory (New Position/Roll only, approved 2026-08-31) — Medium/High-importance events between today and expiry. Never persisted, transient on the preview response only. */
   calendarWarning?: string | null;
+  /** The API's stored FRED risk-free rate (decimal) at build time, for Order Review's probability of profit. Transient on the preview response only. */
+  riskFreeRate?: number | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -237,6 +240,16 @@ export function cancelOrder(orderId: string): Promise<OrderRequest> {
   return apiRequest<OrderRequest>(`/positions/orders/${orderId}/cancel`, { method: "POST" });
 }
 
+/**
+ * A review panel closed without Confirm or Cancel used to leave its built
+ * order in pending_confirmation for good (2026-09-24). Cancels it best-effort
+ * — only while still unconfirmed, and never blocking the close itself.
+ */
+export function cancelUnconfirmedOrder(order: OrderRequest | null | undefined): void {
+  if (!order || order.status !== "pending_confirmation") return;
+  void cancelOrder(order.id).catch(() => {});
+}
+
 export function fetchOrder(orderId: string): Promise<OrderRequest> {
   return apiRequest<OrderRequest>(`/positions/orders/${orderId}`);
 }
@@ -287,25 +300,7 @@ export type OrderLegQuoteStreamEvent =
  * stale data as if it were still live.
  */
 export function openOrderLegQuoteStream(orderId: string, onEvent: (event: OrderLegQuoteStreamEvent) => void): () => void {
-  const source = new EventSource(`${apiBaseUrl}/positions/orders/${orderId}/quote/stream`, { withCredentials: true });
-
-  source.onmessage = (message) => {
-    let event: OrderLegQuoteStreamEvent;
-    try {
-      event = JSON.parse(message.data);
-    } catch {
-      return;
-    }
-    onEvent(event);
-    if (event.type === "done" || event.type === "streamError") source.close();
-  };
-
-  source.onerror = () => {
-    onEvent({ type: "streamError", message: "Connection to the server was lost." });
-    source.close();
-  };
-
-  return () => source.close();
+  return openDeferredEventSource<OrderLegQuoteStreamEvent>(`${apiBaseUrl}/positions/orders/${orderId}/quote/stream`, onEvent);
 }
 
 /**
@@ -323,25 +318,7 @@ export function openContractQuoteStream(
   onEvent: (event: OrderLegQuoteStreamEvent) => void,
 ): () => void {
   const params = new URLSearchParams({ symbol, expiry, strike: String(strike), right });
-  const source = new EventSource(`${apiBaseUrl}/positions/quote/stream?${params.toString()}`, { withCredentials: true });
-
-  source.onmessage = (message) => {
-    let event: OrderLegQuoteStreamEvent;
-    try {
-      event = JSON.parse(message.data);
-    } catch {
-      return;
-    }
-    onEvent(event);
-    if (event.type === "done" || event.type === "streamError") source.close();
-  };
-
-  source.onerror = () => {
-    onEvent({ type: "streamError", message: "Connection to the server was lost." });
-    source.close();
-  };
-
-  return () => source.close();
+  return openDeferredEventSource<OrderLegQuoteStreamEvent>(`${apiBaseUrl}/positions/quote/stream?${params.toString()}`, onEvent);
 }
 
 export interface Greeks {

@@ -1,10 +1,10 @@
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type ReactNode, useCallback } from "react";
 import { fetchNextTickerCalendarEvents, type NextTickerCalendarEvents } from "../api/calendarEvents";
 import { ApiError } from "../api/client";
 import { fetchSignalsRoadmap, fetchTickerSignals, openSignalsTickerStream, type RoadmapItem, type SignalCandidate, type SignalStrategyKey, type TickerSignals } from "../api/signals";
 import { openTickerDetailStream, type PriceBar, type TickerOverview, type TickerTechnicals } from "../api/tickerDetail";
 import { useTickerPositions } from "../hooks/useTickerPositions";
-import type { AdaptivePriority, OrderRequest } from "../api/positions";
+import { cancelUnconfirmedOrder, type AdaptivePriority, type OrderRequest } from "../api/positions";
 import { OrderReviewPanel } from "./OrderReviewPanel";
 import { SignalOrderSetupForm } from "./SignalOrderSetupForm";
 import { formatCurrency, formatCurrencyTrimmed, formatDate, formatDateTime, formatNumber, formatPercentage, formatPercentageValue, formatQuotePrice, formatShortAge, formatSignedPercentageValue, formatSignedPnl, formatVolatilityPoints, pnlTextClass } from "../lib/formatters";
@@ -209,13 +209,19 @@ export function SignalsTickerModal({ symbol, onClose }: SignalsTickerModalProps)
   const tickerPositions = useTickerPositions(symbol);
 
   // Informational modal, no action required — closable via ESC or backdrop click.
+  // Closing with an order still under review cancels it (best effort).
+  const requestClose = useCallback(() => {
+    cancelUnconfirmedOrder(pendingOrder?.order);
+    onClose();
+  }, [onClose, pendingOrder]);
+
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent) {
-      if (event.key === "Escape") onClose();
+      if (event.key === "Escape") requestClose();
     }
     document.addEventListener("keydown", onKeyDown);
     return () => document.removeEventListener("keydown", onKeyDown);
-  }, [onClose]);
+  }, [requestClose]);
 
   // Rendered manually rather than via Bootstrap's JS Modal instance, so nothing else locks background scroll.
   useEffect(() => {
@@ -464,7 +470,7 @@ export function SignalsTickerModal({ symbol, onClose }: SignalsTickerModalProps)
         className="modal show d-block"
         style={{ zIndex: 1050 }}
         onClick={(event) => {
-          if (event.target === event.currentTarget) onClose();
+          if (event.target === event.currentTarget) requestClose();
         }}
       >
         <div className="modal-dialog modal-dialog-scrollable modal-dialog-inset">
@@ -483,7 +489,7 @@ export function SignalsTickerModal({ symbol, onClose }: SignalsTickerModalProps)
                 {signals?.priceSource === "live" && !streamFailed && <span className="iorio-pulse-dot" />}
                 {liveLabel}
               </div>
-              <button type="button" className="btn-close" aria-label="Close" onClick={onClose} />
+              <button type="button" className="btn-close" aria-label="Close" onClick={requestClose} />
             </div>
             <div className="modal-body">
               {overviewError && <div className="alert alert-danger">{overviewError}</div>}

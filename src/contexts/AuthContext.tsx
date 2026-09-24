@@ -27,8 +27,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const logout = useCallback(async () => {
-    await logoutRequest();
-    setCurrentUser(null);
+    // Whatever the server says, this browser is logged out (2026-09-24):
+    // a failed request used to leave the user "logged in" with no message.
+    try {
+      await logoutRequest();
+    } catch (error) {
+      console.warn(`logout request failed: ${error instanceof Error ? error.message : error}`);
+    } finally {
+      setCurrentUser(null);
+    }
   }, []);
 
   return (

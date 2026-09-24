@@ -1,4 +1,4 @@
-import { apiRequest, apiBaseUrl } from "./client";
+import { apiRequest, apiBaseUrl, apiStreamedRequest } from "./client";
 
 export type ChartRange = "1D" | "5D" | "1M" | "3M" | "6M" | "1Y" | "5Y" | "All";
 
@@ -80,10 +80,17 @@ export type TickerDetailStreamEvent =
   | { type: "spot"; data: { last: number } }
   | { type: "chart"; data: PriceBar[] }
   | { type: "optionChain"; data: OptionQuote[] }
+  // The chain's expiry tabs with their strikes (before any quote) and which expiry the stream quotes live.
+  | { type: "optionChainExpiries"; data: { expiries: OptionChainExpiry[]; activeExpiry: string } }
   | { type: "technicals"; data: TickerTechnicals }
   | { type: "error"; section: TickerDetailSection; message: string }
   | { type: "streamError"; message: string }
   | { type: "done" };
+
+export interface OptionChainExpiry {
+  expiry: string; // YYYYMMDD
+  strikes: number[];
+}
 
 /**
  * Opens the Ticker Detail SSE stream and forwards each parsed event. See
@@ -103,35 +110,53 @@ export type TickerDetailStreamSection = "overview" | "spot" | "chart" | "optionC
 export function openTickerDetailStream(
   symbol: string,
   onEvent: (event: TickerDetailStreamEvent) => void,
-  options: { sections?: TickerDetailStreamSection[] } = {},
+  options: { sections?: TickerDetailStreamSection[]; expiry?: string } = {},
 ): () => void {
-  // No `sections` = everything (Ticker Detail). The Signals modal asks for a subset to skip the ~96-line option chain.
-  const query = options.sections ? `?sections=${options.sections.join(",")}` : "";
-  const source = new EventSource(`${apiBaseUrl}/tickers/${encodeURIComponent(symbol)}/detail/stream${query}`, {
-    withCredentials: true,
-  });
+  // No `sections` = everything. The Signals modal asks for a subset to skip the option chain; Ticker Detail opens the
+  // chain as its own stream with `expiry` (only that tab's strikes are quoted — 2026-09-24).
+  const params = new URLSearchParams();
+  if (options.sections) params.set("sections", options.sections.join(","));
+  if (options.expiry) params.set("expiry", options.expiry);
+  const query = params.size > 0 ? `?${params.toString()}` : "";
+  return openDeferredEventSource(`${apiBaseUrl}/tickers/${encodeURIComponent(symbol)}/detail/stream${query}`, onEvent);
+}
 
-  source.onmessage = (message) => {
-    let event: TickerDetailStreamEvent;
-    try {
-      event = JSON.parse(message.data);
-    } catch {
-      return;
-    }
-    onEvent(event);
-    if (event.type === "done" || event.type === "streamError") source.close();
+/**
+ * Opens an EventSource one tick later so an effect torn down and re-run in
+ * the same tick (React StrictMode's mount → unmount → mount in dev) never
+ * opens the stream twice — the same deferral the multiplexer already does.
+ * Closes itself on the terminal "done"/"streamError" events.
+ */
+export function openDeferredEventSource<TEvent extends { type: string }>(url: string, onEvent: (event: TEvent | { type: "streamError"; message: string }) => void): () => void {
+  let source: EventSource | null = null;
+  let cancelled = false;
+  const timer = setTimeout(() => {
+    if (cancelled) return;
+    source = new EventSource(url, { withCredentials: true });
+    source.onmessage = (message) => {
+      let event: TEvent;
+      try {
+        event = JSON.parse(message.data);
+      } catch {
+        return;
+      }
+      onEvent(event);
+      if (event.type === "done" || event.type === "streamError") source?.close();
+    };
+    source.onerror = () => {
+      onEvent({ type: "streamError", message: "Connection to the server was lost." });
+      source?.close();
+    };
+  }, 0);
+  return () => {
+    cancelled = true;
+    clearTimeout(timer);
+    source?.close();
   };
-
-  source.onerror = () => {
-    onEvent({ type: "streamError", message: "Connection to the server was lost." });
-    source.close();
-  };
-
-  return () => source.close();
 }
 
 export function fetchTickerChart(symbol: string, range: ChartRange): Promise<PriceBar[]> {
-  return apiRequest<PriceBar[]>(`/tickers/${encodeURIComponent(symbol)}/chart?range=${range}`);
+  return apiStreamedRequest<PriceBar[]>(`/tickers/${encodeURIComponent(symbol)}/chart?range=${range}`);
 }
 
 // Daily-only, unlike ChartRange — IBKR's OPTION_IMPLIED_VOLATILITY history
@@ -147,39 +172,3 @@ export function fetchTickerIvChart(symbol: string, range: IvChartRange): Promise
   return apiRequest<IvChartPoint[]>(`/tickers/${encodeURIComponent(symbol)}/iv-chart?range=${range}`);
 }
 
-export type PositionQuoteStreamEvent =
-  | { type: "overview"; data: { pricing: TickerPricing } }
-  | { type: "optionChain"; data: OptionQuote[] }
-  | { type: "error"; section: "overview" | "optionChain"; message: string }
-  | { type: "streamError"; message: string }
-  | { type: "done" };
-
-/**
- * New Position form's live-quote lookup — pricing + option chain only, no
- * chart. See the backend's streamPositionQuote.ts for why this is a
- * separate, lighter stream than openTickerDetailStream rather than that one
- * with the chart event ignored.
- */
-export function openPositionQuoteStream(symbol: string, onEvent: (event: PositionQuoteStreamEvent) => void): () => void {
-  const source = new EventSource(`${apiBaseUrl}/tickers/${encodeURIComponent(symbol)}/position-quote/stream`, {
-    withCredentials: true,
-  });
-
-  source.onmessage = (message) => {
-    let event: PositionQuoteStreamEvent;
-    try {
-      event = JSON.parse(message.data);
-    } catch {
-      return;
-    }
-    onEvent(event);
-    if (event.type === "done" || event.type === "streamError") source.close();
-  };
-
-  source.onerror = () => {
-    onEvent({ type: "streamError", message: "Connection to the server was lost." });
-    source.close();
-  };
-
-  return () => source.close();
-}

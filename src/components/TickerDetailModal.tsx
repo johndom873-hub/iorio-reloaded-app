@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState, useCallback } from "react";
 import { IconStar } from "@tabler/icons-react";
 import { Spinner } from "./Spinner";
 import { CollapsibleCard } from "./CollapsibleCard";
@@ -15,12 +15,10 @@ import {
   type PriceBar,
   type TickerOverview,
   type TickerTechnicals,
+  type OptionChainExpiry,
 } from "../api/tickerDetail";
 import { fetchTradeAlerts, isRollAlert, refreshTickerAlerts, type NewTradeCandidate, type RollStructure, type TradeAlert } from "../api/tradeAlerts";
-import {
-  buildOpenOrder,
-  type OrderRequest,
-} from "../api/positions";
+import { buildOpenOrder, cancelUnconfirmedOrder, type OrderRequest } from "../api/positions";
 import { ApiError } from "../api/client";
 import { fetchNextTickerCalendarEvents, type NextTickerCalendarEvents } from "../api/calendarEvents";
 import type { StrategyKey } from "../api/strategy";
@@ -97,8 +95,15 @@ function formatExpiry(expiry: string): string {
   );
 }
 
-function groupOptionChain(quotes: OptionQuote[]): ExpiryGroup[] {
+// Tabs come from the stream's optionChainExpiries event (every expiry in the
+// window with its strikes); quotes only exist for the active tab plus
+// must-include strikes elsewhere (2026-09-24), so a row with no quote yet
+// renders "—" rather than disappearing.
+function groupOptionChain(expiries: OptionChainExpiry[], quotes: OptionQuote[]): ExpiryGroup[] {
   const byExpiry = new Map<string, Map<number, StrikeRow>>();
+  for (const { expiry, strikes } of expiries) {
+    byExpiry.set(expiry, new Map(strikes.map((strike) => [strike, { strike, call: null, put: null }])));
+  }
 
   for (const quote of quotes) {
     if (!byExpiry.has(quote.expiry)) byExpiry.set(quote.expiry, new Map());
@@ -429,6 +434,7 @@ export function TickerDetailModal({ symbol, onClose, initialAlertId, focusPositi
   const [chartError, setChartError] = useState<string | null>(null);
 
   const [optionChain, setOptionChain] = useState<OptionQuote[] | null>(null);
+  const [optionChainExpiries, setOptionChainExpiries] = useState<OptionChainExpiry[] | null>(null);
   const [optionChainError, setOptionChainError] = useState<string | null>(null);
 
   const [technicals, setTechnicals] = useState<TickerTechnicals | null>(null);
@@ -445,6 +451,15 @@ export function TickerDetailModal({ symbol, onClose, initialAlertId, focusPositi
   const [scanError, setScanError] = useState<string | null>(null);
 
   const [activeExpiry, setActiveExpiry] = useState<string | null>(null);
+  // The expiry the user asked for (tab click / alert jump) — what the chain
+  // stream is opened with. Null = let the backend pick the default (first
+  // expiry with a pending alert, else nearest), reported back via
+  // optionChainExpiries.activeExpiry without a second reconnect.
+  const [requestedExpiry, setRequestedExpiry] = useState<string | null>(null);
+  const selectExpiry = useCallback((expiry: string) => {
+    setActiveExpiry(expiry);
+    setRequestedExpiry(expiry);
+  }, []);
   const [selection, setSelection] = useState<ChainSelection | null>(null);
   const [contractQty, setContractQty] = useState("1");
   // Roll review, folded into this same Order Setup slot since 2026-09-15
@@ -460,7 +475,6 @@ export function TickerDetailModal({ symbol, onClose, initialAlertId, focusPositi
 
   const chainRef = useRef<HTMLDivElement | null>(null);
   const appliedInitialAlert = useRef(false);
-  const appliedDefaultExpiry = useRef(false);
   const previousStreamSymbolRef = useRef<string | null>(null);
 
   // Bumped after Scan/Refresh or an order fill changes which alerts are
@@ -558,10 +572,11 @@ export function TickerDetailModal({ symbol, onClose, initialAlertId, focusPositi
       setTechnicals(null);
       setTechnicalsError(null);
       setActiveExpiry(null);
+      setRequestedExpiry(null);
+      setOptionChainExpiries(null);
       setSelection(null);
       setPendingOrder(null);
       appliedInitialAlert.current = false;
-      appliedDefaultExpiry.current = false;
 
       hasScrolledToFocus.current = false;
       void loadPositions();
@@ -571,62 +586,100 @@ export function TickerDetailModal({ symbol, onClose, initialAlertId, focusPositi
         .catch((err) => setAlertsError(err instanceof ApiError ? err.message : "Failed to load trade alerts."));
     }
 
-    // Only the option chain needs to reset on a streamKey-only bump (an
-    // alert-freshness reconnect, not a symbol change) -- prepareOptionChainStrikes
-    // (fetchOptionChain.ts) computes must-include alert strikes once, at
-    // connection open, so the chain must reconnect to pick up new/expired
-    // alerts. The price header, chart, and technicals keep showing their
-    // last-known values across that reconnect instead of blanking out --
-    // found 2026-09-11: the 60s alert-freshness poll below was nulling and
-    // rebuilding the whole modal, including fully unmounting the candlestick
-    // chart, just to refresh option-chain strikes.
-    setOptionChain(null);
-    setOptionChainError(null);
     setStreamError(null);
 
-    const close = openTickerDetailStream(symbol, (event) => {
-      switch (event.type) {
-        case "overview":
-          setOverview(event.data);
-          break;
-        case "spot":
-          setSpotLast(event.data.last);
-          break;
-        case "chart":
-          setChartBars(event.data);
-          break;
-        case "optionChain":
-          setOptionChain(event.data);
-          break;
-        case "technicals":
-          setTechnicals(event.data);
-          break;
-        case "error":
-          if (event.section === "overview") setOverviewError(event.message);
-          else if (event.section === "chart") setChartError(event.message);
-          else if (event.section === "technicals") setTechnicalsError(event.message);
-          else setOptionChainError(event.message);
-          break;
-        case "streamError":
-          setStreamError(event.message);
-          break;
-        case "done":
-          break;
-      }
-    });
+    // Header price, chart and technicals: one stream per symbol. The option
+    // chain is its own stream below (2026-09-24) so switching an expiry tab
+    // or an alert-freshness reconnect (streamKey) never touches these.
+    const close = openTickerDetailStream(
+      symbol,
+      (event) => {
+        switch (event.type) {
+          case "overview":
+            setOverview(event.data);
+            break;
+          case "spot":
+            setSpotLast(event.data.last);
+            break;
+          case "chart":
+            setChartBars(event.data);
+            break;
+          case "technicals":
+            setTechnicals(event.data);
+            break;
+          case "error":
+            if (event.section === "overview") setOverviewError(event.message);
+            else if (event.section === "chart") setChartError(event.message);
+            else if (event.section === "technicals") setTechnicalsError(event.message);
+            break;
+          case "streamError":
+            setStreamError(event.message);
+            break;
+          default:
+            break;
+        }
+      },
+      { sections: ["overview", "spot", "chart", "technicals"] },
+    );
 
     return close;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [symbol, streamKey]);
+  }, [symbol]);
+
+  // Option chain stream: only the requested (or backend-chosen default)
+  // expiry's strikes are quoted live, plus must-include strikes elsewhere
+  // (see TickerDetailStreamOptions on the backend). Reopens on a tab change
+  // and on a streamKey bump -- prepareOptionChainStrikes (fetchOptionChain.ts)
+  // computes must-include alert strikes once, at connection open, so the
+  // chain must reconnect to pick up new/expired alerts. Quotes are kept
+  // across a reconnect so the table doesn't blank; the tab list is refreshed.
+  useEffect(() => {
+    setOptionChainError(null);
+    const close = openTickerDetailStream(
+      symbol,
+      (event) => {
+        switch (event.type) {
+          case "spot":
+            setSpotLast(event.data.last);
+            break;
+          case "optionChainExpiries":
+            setOptionChainExpiries(event.data.expiries);
+            setActiveExpiry((current) => (current && event.data.expiries.some((group) => group.expiry === current) ? current : event.data.activeExpiry || null));
+            break;
+          case "optionChain":
+            setOptionChain(event.data);
+            break;
+          case "error":
+            if (event.section === "optionChain") setOptionChainError(event.message);
+            break;
+          case "streamError":
+            setOptionChainError(event.message);
+            break;
+          default:
+            break;
+        }
+      },
+      { sections: ["spot", "optionChain"], expiry: requestedExpiry ?? undefined },
+    );
+    return close;
+  }, [symbol, streamKey, requestedExpiry]);
+
+  // Closing the whole modal with an order still under review cancels it
+  // (best effort) rather than leaving it confirmable later at stale prices.
+  const requestClose = useCallback(() => {
+    cancelUnconfirmedOrder(pendingOrder);
+    cancelUnconfirmedOrder(rollPendingOrder);
+    onClose();
+  }, [onClose, pendingOrder, rollPendingOrder]);
 
   // Informational modal, no action required — closable via ESC or backdrop click.
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent) {
-      if (event.key === "Escape") onClose();
+      if (event.key === "Escape") requestClose();
     }
     document.addEventListener("keydown", onKeyDown);
     return () => document.removeEventListener("keydown", onKeyDown);
-  }, [onClose]);
+  }, [requestClose]);
 
   // This modal is rendered manually rather than via Bootstrap's JS Modal
   // instance, so nothing else locks background scroll — do it ourselves.
@@ -638,7 +691,7 @@ export function TickerDetailModal({ symbol, onClose, initialAlertId, focusPositi
     };
   }, []);
 
-  const expiryGroups = useMemo(() => groupOptionChain(optionChain ?? []), [optionChain]);
+  const expiryGroups = useMemo(() => groupOptionChain(optionChainExpiries ?? [], optionChain ?? []), [optionChainExpiries, optionChain]);
   const relevantAlerts = useMemo(() => newTradeAlerts(alerts ?? []), [alerts]);
   const rollAlerts = useMemo(() => (alerts ?? []).filter(isRollAlert), [alerts]);
   const rollAlertsByPositionId = useMemo(() => {
@@ -652,15 +705,6 @@ export function TickerDetailModal({ symbol, onClose, initialAlertId, focusPositi
     () => new Set(relevantAlerts.map((alert) => alert.suggestedStructure.expiry.replaceAll("-", ""))),
     [relevantAlerts],
   );
-
-  // Default to the first expiry that has an alert (if any), otherwise the
-  // nearest expiry — runs once per chain load, not on every render.
-  useEffect(() => {
-    if (appliedDefaultExpiry.current || expiryGroups.length === 0) return;
-    appliedDefaultExpiry.current = true;
-    const withAlert = expiryGroups.find((g) => alertExpiries.has(g.expiry));
-    setActiveExpiry((withAlert ?? expiryGroups[0]).expiry);
-  }, [expiryGroups, alertExpiries]);
 
   // Opened via "Review" on a specific alert (Trade Alerts page) — jump
   // straight to it AND open the order panel, matching what clicking that
@@ -683,7 +727,7 @@ export function TickerDetailModal({ symbol, onClose, initialAlertId, focusPositi
     if (!alert) return;
     appliedInitialAlert.current = true;
     const expiryYyyymmdd = alert.suggestedStructure.expiry.replaceAll("-", "");
-    if (expiryGroups.some((g) => g.expiry === expiryYyyymmdd)) setActiveExpiry(expiryYyyymmdd);
+    if (expiryGroups.some((g) => g.expiry === expiryYyyymmdd)) selectExpiry(expiryYyyymmdd);
     setChainForceOpenSignal((n) => n + 1);
     chainRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
     selectAlert(alert);
@@ -727,7 +771,7 @@ export function TickerDetailModal({ symbol, onClose, initialAlertId, focusPositi
 
   function handleAlertRowClick(alert: NewTradeAlert) {
     const expiryYyyymmdd = alert.suggestedStructure.expiry.replaceAll("-", "");
-    if (expiryGroups.some((g) => g.expiry === expiryYyyymmdd)) setActiveExpiry(expiryYyyymmdd);
+    if (expiryGroups.some((g) => g.expiry === expiryYyyymmdd)) selectExpiry(expiryYyyymmdd);
     setChainForceOpenSignal((n) => n + 1);
     chainRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
     selectAlert(alert);
@@ -816,12 +860,14 @@ export function TickerDetailModal({ symbol, onClose, initialAlertId, focusPositi
   }
 
   function closeOrderPanel() {
+    cancelUnconfirmedOrder(pendingOrder);
     setSelection(null);
     setPendingOrder(null);
     setBuildError(null);
   }
 
   function selectRoll(alert: RollAlertLike) {
+    cancelUnconfirmedOrder(pendingOrder);
     setSelection(null);
     setPendingOrder(null);
     setBuildError(null);
@@ -831,9 +877,11 @@ export function TickerDetailModal({ symbol, onClose, initialAlertId, focusPositi
   }
 
   function closeRollPanel() {
+    cancelUnconfirmedOrder(rollPendingOrder);
     setRollSelection(null);
     setRollPendingOrder(null);
   }
+
 
   async function handleReviewOrder() {
     if (!selection) return;
@@ -848,7 +896,10 @@ export function TickerDetailModal({ symbol, onClose, initialAlertId, focusPositi
     try {
       const wantsRight = selection.strategyKey === "covered_call" ? "C" : "P";
       const liveQuote = optionChain?.find((q) => q.right === wantsRight && q.strike === selection.strike && q.expiry === selection.expiryYyyymmdd) ?? null;
-      const premium = liveQuote ? midPrice(liveQuote) : selection.sourceAlert?.suggestedStructure.premium ?? selection.fallbackPremium ?? null;
+      // Build time requires a LIVE price (2026-09-24): the alert's stored
+      // premium and the recovery path's fallback are preview-only, and
+      // building on them outside market hours sent stale limit prices.
+      const premium = liveQuote ? midPrice(liveQuote) : null;
       if (premium === null) throw new Error("No live price available for this contract yet — try again when the market is open.");
 
       const order = await buildOpenOrder({
@@ -1123,7 +1174,7 @@ export function TickerDetailModal({ symbol, onClose, initialAlertId, focusPositi
         className="modal show d-block"
         style={{ zIndex: 1050 }}
         onClick={(event) => {
-          if (event.target === event.currentTarget) onClose();
+          if (event.target === event.currentTarget) requestClose();
         }}
       >
         <div className="modal-dialog modal-dialog-scrollable modal-dialog-inset">
@@ -1133,7 +1184,7 @@ export function TickerDetailModal({ symbol, onClose, initialAlertId, focusPositi
                 {symbol}
                 {overview?.companyName && <span className="text-secondary fw-normal"> — {overview.companyName}</span>}
               </h5>
-              <button type="button" className="btn-close" aria-label="Close" onClick={onClose} />
+              <button type="button" className="btn-close" aria-label="Close" onClick={requestClose} />
             </div>
             <div className="modal-body">
               {streamError && <div className="alert alert-danger">{streamError}</div>}
@@ -1170,7 +1221,7 @@ export function TickerDetailModal({ symbol, onClose, initialAlertId, focusPositi
                       closeRollPanel();
                       if (prefill) {
                         const expiryYyyymmdd = prefill.expiry.replaceAll("-", "");
-                        if (expiryGroups.some((g) => g.expiry === expiryYyyymmdd)) setActiveExpiry(expiryYyyymmdd);
+                        if (expiryGroups.some((g) => g.expiry === expiryYyyymmdd)) selectExpiry(expiryYyyymmdd);
                         setSelection({
                           strategyKey: "covered_call",
                           strike: prefill.strike,
@@ -1356,12 +1407,12 @@ export function TickerDetailModal({ symbol, onClose, initialAlertId, focusPositi
                     </p>
 
                     {optionChainError && <div className="alert alert-danger">{optionChainError}</div>}
-                    {!optionChainError && !optionChain && (
+                    {!optionChainError && !optionChainExpiries && (
                       <div className="d-flex justify-content-center py-3">
                         <Spinner label="Loading option chain" />
                       </div>
                     )}
-                    {optionChain && expiryGroups.length === 0 && <p className="text-muted">No option chain data available.</p>}
+                    {optionChainExpiries && expiryGroups.length === 0 && <p className="text-muted">No option chain data available.</p>}
 
                     {expiryGroups.length > 0 && (
                       <>
@@ -1371,7 +1422,7 @@ export function TickerDetailModal({ symbol, onClose, initialAlertId, focusPositi
                                 <button
                                   type="button"
                                   className={`nav-link position-relative text-nowrap ${activeExpiry === group.expiry ? "active" : ""}`}
-                                  onClick={() => setActiveExpiry(group.expiry)}
+                                  onClick={() => selectExpiry(group.expiry)}
                                 >
                                   {formatExpiry(group.expiry)}
                                   <span className="text-secondary fw-normal ms-1">{group.daysToExpiry}D</span>

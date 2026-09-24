@@ -81,7 +81,8 @@ export function SystemHealthPage() {
     { key: "job", header: "Job", render: (row) => jobLabel(row.jobName) },
     { key: "status", header: "Status", render: (row) => <StatusBadge status={row.status} details={row.details} /> },
     { key: "startedAt", header: "Started", render: (row) => formatDateTime(row.startedAt) },
-    { key: "duration", header: "Duration", render: (row) => formatDuration(row.startedAt, row.finishedAt) },
+    // An abandoned run (superseded after crashing) has no known end — runJob stamps finished_at = started_at and the message says so.
+    { key: "duration", header: "Duration", render: (row) => (row.errorMessage?.startsWith("Abandoned") ? "unknown" : formatDuration(row.startedAt, row.finishedAt)) },
     {
       key: "details",
       header: "Details",

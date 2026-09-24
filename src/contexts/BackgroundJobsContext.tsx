@@ -1,11 +1,10 @@
-import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from "react";
-import { openTradeAlertRunStream, type TradeAlertRunStreamEvent } from "../api/tradeAlerts";
+import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from "react";
 import { fetchOrder, type OrderRequest } from "../api/positions";
 import { openNotificationStream } from "../api/notifications";
 import { describeSignalUpgrade } from "../lib/signalsPresentation";
 import { useAuth } from "./AuthContext";
 
-export type BackgroundJobKind = "trade-alert-scan" | "order" | "position-closed" | "signal-upgraded";
+export type BackgroundJobKind = "order" | "position-closed" | "signal-upgraded";
 export type BackgroundJobStatus = "running" | "done" | "error";
 
 interface BackgroundJobBase {
@@ -17,10 +16,6 @@ interface BackgroundJobBase {
   dismissed: boolean;
   /** Optional in-app destination rendered as a link in the toast. */
   link?: { to: string; label: string };
-}
-
-export interface TradeAlertScanJob extends BackgroundJobBase {
-  kind: "trade-alert-scan";
 }
 
 export interface OrderJob extends BackgroundJobBase {
@@ -42,9 +37,8 @@ export interface SignalUpgradedJob extends BackgroundJobBase {
   kind: "signal-upgraded";
 }
 
-export type BackgroundJob = TradeAlertScanJob | OrderJob | PositionClosedJob | SignalUpgradedJob;
+export type BackgroundJob = OrderJob | PositionClosedJob | SignalUpgradedJob;
 
-const tradeAlertScanJobId = "trade-alert-scan";
 const terminalOrderStatuses = new Set(["filled", "partially_filled", "cancelled", "rejected", "error"]);
 
 function orderJobLabel(order: OrderRequest): string {
@@ -83,9 +77,7 @@ function orderStatusMessage(order: OrderRequest): string {
 interface BackgroundJobsContextValue {
   jobs: BackgroundJob[];
   dismissJob: (id: string) => void;
-  startTradeAlertScan: () => void;
   startOrderJob: (order: OrderRequest) => void;
-  subscribeToJobEvents: (jobId: string, listener: (event: TradeAlertRunStreamEvent) => void) => () => void;
 }
 
 const BackgroundJobsContext = createContext<BackgroundJobsContextValue | undefined>(undefined);
@@ -93,8 +85,6 @@ const BackgroundJobsContext = createContext<BackgroundJobsContextValue | undefin
 export function BackgroundJobsProvider({ children }: { children: ReactNode }) {
   const { currentUser } = useAuth();
   const [jobs, setJobs] = useState<BackgroundJob[]>([]);
-  const tradeAlertScanRunningRef = useRef(false);
-  const jobEventListenersRef = useRef<Map<string, Set<(event: TradeAlertRunStreamEvent) => void>>>(new Map());
 
   // Callers always pass dismissed: false to mean "this is a fresh update" —
   // whether that actually reopens a closed toast depends on whether
@@ -117,101 +107,6 @@ export function BackgroundJobsProvider({ children }: { children: ReactNode }) {
   const dismissJob = useCallback((id: string) => {
     setJobs((prev) => prev.map((job) => (job.id === id ? { ...job, dismissed: true } : job)));
   }, []);
-
-  const emitJobEvent = useCallback((jobId: string, event: TradeAlertRunStreamEvent) => {
-    jobEventListenersRef.current.get(jobId)?.forEach((listener) => listener(event));
-  }, []);
-
-  const subscribeToJobEvents = useCallback((jobId: string, listener: (event: TradeAlertRunStreamEvent) => void) => {
-    let listeners = jobEventListenersRef.current.get(jobId);
-    if (!listeners) {
-      listeners = new Set();
-      jobEventListenersRef.current.set(jobId, listeners);
-    }
-    listeners.add(listener);
-    return () => {
-      listeners?.delete(listener);
-    };
-  }, []);
-
-  const startTradeAlertScan = useCallback(() => {
-    if (tradeAlertScanRunningRef.current) return;
-    tradeAlertScanRunningRef.current = true;
-
-    upsertJob({
-      id: tradeAlertScanJobId,
-      kind: "trade-alert-scan",
-      label: "Trade Alert Scan",
-      status: "running",
-      message: "Starting scan...",
-      dismissed: false,
-    });
-
-    // The backend fires one strategyStart event per configured strategy,
-    // back-to-back, before any per-ticker scanning begins (it evaluates
-    // every configured strategy together for each ticker, not as separate
-    // sequential phases) — so if this only showed the latest event's label,
-    // whichever strategy fires last (cash_secured_put) would silently
-    // clobber the first before the user ever saw it. Accumulate every
-    // label seen this run instead, so the toast reflects everything
-    // actually being scanned.
-    const strategyLabelsSeen: string[] = [];
-
-    openTradeAlertRunStream((event) => {
-      emitJobEvent(tradeAlertScanJobId, event);
-
-      if (event.type === "strategyStart") {
-        const label = event.strategyKey === "covered_call" ? "Covered Calls" : "Cash-Secured Puts";
-        if (!strategyLabelsSeen.includes(label)) strategyLabelsSeen.push(label);
-        upsertJob({
-          id: tradeAlertScanJobId,
-          kind: "trade-alert-scan",
-          label: "Trade Alert Scan",
-          status: "running",
-          message: `Scanning ${event.tickerCount} shortlisted ticker(s) for ${strategyLabelsSeen.join(" and ")}...`,
-          dismissed: false,
-        });
-      } else if (event.type === "ticker") {
-        upsertJob({
-          id: tradeAlertScanJobId,
-          kind: "trade-alert-scan",
-          label: "Trade Alert Scan",
-          status: "running",
-          message: `${event.symbol}: ${event.candidateCount} candidate(s) found.`,
-          dismissed: false,
-        });
-      } else if (event.type === "tickerError") {
-        upsertJob({
-          id: tradeAlertScanJobId,
-          kind: "trade-alert-scan",
-          label: "Trade Alert Scan",
-          status: "running",
-          message: `${event.symbol}: scan failed — ${event.message}`,
-          dismissed: false,
-        });
-      } else if (event.type === "streamError") {
-        tradeAlertScanRunningRef.current = false;
-        upsertJob({
-          id: tradeAlertScanJobId,
-          kind: "trade-alert-scan",
-          label: "Trade Alert Scan",
-          status: "error",
-          message: event.message,
-          dismissed: false,
-        });
-      } else if (event.type === "done") {
-        tradeAlertScanRunningRef.current = false;
-        upsertJob({
-          id: tradeAlertScanJobId,
-          kind: "trade-alert-scan",
-          label: "Trade Alert Scan",
-          status: "done",
-          message: "Scan complete.",
-          dismissed: false,
-        });
-      }
-    });
-  }, [upsertJob, emitJobEvent]);
 
   const upsertOrderJob = useCallback(
     (order: OrderRequest) => {
@@ -285,7 +180,7 @@ export function BackgroundJobsProvider({ children }: { children: ReactNode }) {
   }, [currentUser, upsertJob, upsertOrderJob]);
 
   return (
-    <BackgroundJobsContext.Provider value={{ jobs, dismissJob, startTradeAlertScan, startOrderJob, subscribeToJobEvents }}>
+    <BackgroundJobsContext.Provider value={{ jobs, dismissJob, startOrderJob }}>
       {children}
     </BackgroundJobsContext.Provider>
   );
@@ -303,12 +198,3 @@ export function useBackgroundJobs(): BackgroundJobsContextValue {
 // (which lives in BackgroundJobsContext, not this component) to finish.
 // handlerRef avoids re-subscribing whenever the caller passes a new inline
 // handler function.
-export function useJobEvents(jobId: string, handler: (event: TradeAlertRunStreamEvent) => void): void {
-  const { subscribeToJobEvents } = useBackgroundJobs();
-  const handlerRef = useRef(handler);
-  handlerRef.current = handler;
-
-  useEffect(() => {
-    return subscribeToJobEvents(jobId, (event) => handlerRef.current(event));
-  }, [jobId, subscribeToJobEvents]);
-}

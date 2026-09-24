@@ -116,18 +116,28 @@ export function RollOrderSetupForm({ alert, onCancel, onSubmitted }: RollOrderSe
       setError("This alert isn't linked to a position.");
       return;
     }
+    const closeLimit = Number(closeLimitPriceDraft);
+    const newLegLimit = Number(newLegLimitPriceDraft);
+    if (closeLimitPriceDraft.trim() === "" || !Number.isFinite(closeLimit) || closeLimit < 0) {
+      setError("Enter a limit price for the closing leg.");
+      return;
+    }
+    if (newLegLimitPriceDraft.trim() === "" || !(newLegLimit > 0)) {
+      setError("Enter a positive limit price for the new leg — it is sold, never for $0.");
+      return;
+    }
     setSubmitting(true);
     setError(null);
     try {
       const order = await buildRollOrder(alert.relatedPositionId, {
         sourceAlertId: alert.id ?? undefined,
         closeLegId: closeLeg.legId,
-        closeLimitPrice: Number(closeLimitPriceDraft),
+        closeLimitPrice: closeLimit,
         newLeg: {
           strikePrice: replacement.strike,
           expiryDate: replacement.expiry,
           quantity: closeLeg.quantity,
-          limitPrice: Number(newLegLimitPriceDraft),
+          limitPrice: newLegLimit,
         },
       });
       onSubmitted(order);

@@ -13,7 +13,7 @@ import { TooltipSpan } from "../components/TooltipSpan";
 import { VolatilitySurfaceModal } from "../components/VolatilitySurfaceModal";
 import { TickerPrepModal } from "../components/shortlist/TickerPrepModal";
 import { useTickerDetailSymbol } from "../hooks/useTickerDetailSymbol";
-import { formatCurrency, formatDate, formatDateTime, formatPercentage, formatRelativeTime, formatSignedPercentageValue, formatSignedPnl, formatVolatilityPoints, pnlTextClass, formatShortAge } from "../lib/formatters";
+import { formatCurrency, formatDate, formatDateTime, formatPercentage, formatRelativeTime, formatSignedPercentageValue, formatSignedPnl, formatVolatilityPoints, pnlTextClass, formatShortAge, todayInEasternIso } from "../lib/formatters";
 import { describeCandidate, describeDayQuotesStatus, gradeBadgeClass, gradeExplanation, gradeLabel, priceSourceLabel, quoteSourceLabel, roadmapStatusBadgeClass, roadmapStatusLabel, signalsColumnExplanation, unscoredReasonLabel } from "../lib/signalsPresentation";
 import { useTooltip } from "../hooks/useTooltip";
 
@@ -210,7 +210,24 @@ export function SignalsPage() {
           </button>
         ),
       },
-      { key: "name", header: "Name", render: (row) => <span className="text-secondary">{row.companyName ?? "—"}</span> },
+      {
+        key: "name",
+        header: "Name",
+        render: (row) => (
+          <span className="text-secondary">
+            {row.companyName ?? "—"}
+            {row.snapshotDateIso && row.snapshotDateIso !== todayInEasternIso() && (
+              <TooltipSpan
+                className="badge bg-warning-lt ms-1"
+                style={badgeFontSize}
+                text={`Scored on the volatility surface captured on ${formatDate(row.snapshotDateIso)}, re-timed to today. No capture ran today.`}
+              >
+                surface {formatDate(row.snapshotDateIso)}
+              </TooltipSpan>
+            )}
+          </span>
+        ),
+      },
       {
         key: "price",
         header: "Price",

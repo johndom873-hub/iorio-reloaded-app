@@ -1,16 +1,18 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Spinner } from "./Spinner";
 import { OrderReviewPanel } from "./OrderReviewPanel";
 import { ApiError } from "../api/client";
 import {
   buildCloseOrder,
+  cancelUnconfirmedOrder,
   openContractQuoteStream,
   type OrderLegQuote,
   type OrderRequest,
   type Position,
   type PositionLeg,
 } from "../api/positions";
-import { openPositionQuoteStream, type TickerPricing } from "../api/tickerDetail";
+import type { TickerPricing } from "../api/tickerDetail";
+import { openTradeAlertCurrentPricesStream } from "../api/tradeAlerts";
 import { formatCurrency, formatCurrencyTrimmed, formatExpiryWithDte, todayInEasternIso } from "../lib/formatters";
 import { flashClassName, useFlashOnChange } from "../hooks/useFlashOnChange";
 import { useTooltip } from "../hooks/useTooltip";
@@ -136,10 +138,18 @@ export function ClosePositionModal({ position, onClose, onClosed }: ClosePositio
           if (event.type === "streamError") setLegQuoteErrors((prev) => ({ ...prev, [leg.id]: event.message }));
         });
       }
-      return openPositionQuoteStream(position.symbol, (event) => {
-        if (event.type === "overview") setLegQuotes((prev) => ({ ...prev, [leg.id]: event.data.pricing }));
-        if (event.type === "streamError") setLegQuoteErrors((prev) => ({ ...prev, [leg.id]: event.message }));
-      });
+      // Stock leg: the pooled last price (one shared line), not the old
+      // position-quote stream that opened a 48-line option chain nobody read.
+      return openTradeAlertCurrentPricesStream(
+        [position.symbol],
+        (prices) => {
+          const last = prices[position.symbol] ?? null;
+          if (last === null) return;
+          const pricing: TickerPricing = { last, bid: null, ask: null, open: null, high: null, low: null, previousClose: null, volume: null };
+          setLegQuotes((prev) => ({ ...prev, [leg.id]: pricing }));
+        },
+        () => setLegQuoteErrors((prev) => ({ ...prev, [leg.id]: "Live stock price unavailable." })),
+      );
     });
     return () => unsubscribers.forEach((unsubscribe) => unsubscribe());
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -183,13 +193,19 @@ export function ClosePositionModal({ position, onClose, onClosed }: ClosePositio
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [legQuotes]);
 
+  // Closing with an order still under review cancels it (best effort).
+  const requestClose = useCallback(() => {
+    cancelUnconfirmedOrder(pendingOrder);
+    onClose();
+  }, [onClose, pendingOrder]);
+
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent) {
-      if (event.key === "Escape") onClose();
+      if (event.key === "Escape") requestClose();
     }
     document.addEventListener("keydown", onKeyDown);
     return () => document.removeEventListener("keydown", onKeyDown);
-  }, [onClose]);
+  }, [requestClose]);
 
   useEffect(() => {
     const previousOverflow = document.body.style.overflow;
@@ -272,7 +288,7 @@ export function ClosePositionModal({ position, onClose, onClosed }: ClosePositio
           <div className="modal-content">
             <div className="modal-header">
               <h5 className="modal-title">Close {position.symbol}</h5>
-              <button type="button" className="btn-close" aria-label="Close" onClick={onClose} disabled={submitting} />
+              <button type="button" className="btn-close" aria-label="Close" onClick={requestClose} disabled={submitting} />
             </div>
             <div className="modal-body">
               {error && <div className="alert alert-danger">{error}</div>}
@@ -450,7 +466,7 @@ export function ClosePositionModal({ position, onClose, onClosed }: ClosePositio
             </div>
             {!pendingOrder && openLegs.length > 0 && (isUnstructured || optionLeg) && (
               <div className="modal-footer">
-                <button type="button" className="btn btn-link text-secondary" onClick={onClose} disabled={submitting}>
+                <button type="button" className="btn btn-link text-secondary" onClick={requestClose} disabled={submitting}>
                   Cancel
                 </button>
                 <button

@@ -3,14 +3,15 @@ import { PageHeader } from "../components/layout/PageHeader";
 import { Spinner } from "../components/Spinner";
 import { TickColoredPrice } from "../components/TickColoredPrice";
 import { TickerDetailModal } from "../components/TickerDetailModal";
+import { ConfirmModal } from "../components/ConfirmModal";
 import { ApiError } from "../api/client";
-import { useBackgroundJobs, useJobEvents } from "../contexts/BackgroundJobsContext";
 import {
   fetchTradeAlerts,
   isRollAlert,
   openTradeAlertCurrentPricesStream,
   refreshTickerAlerts,
   refreshTradeAlert,
+  rejectTradeAlert,
   type NewTradeCandidate,
   type RollStructure,
   type TradeAlert,
@@ -147,13 +148,17 @@ export function TradeAlertsPage() {
   const [error, setError] = useState<string | null>(null);
   const [refreshingId, setRefreshingId] = useState<string | null>(null);
   const [refreshError, setRefreshError] = useState<string | null>(null);
-  const [tickerRefreshingSymbol, setTickerRefreshingSymbol] = useState<string | null>(null);
+  // One entry per ticker being refreshed (2026-09-24): a single symbol used
+  // to mean refreshing A then B cleared B's spinner when A finished.
+  const [tickerRefreshingSymbols, setTickerRefreshingSymbols] = useState<Set<string>>(new Set());
+  const [rejectTarget, setRejectTarget] = useState<{ id: string; symbol: string } | null>(null);
+  const [rejecting, setRejecting] = useState(false);
   const [tickerRefreshError, setTickerRefreshError] = useState<string | null>(null);
   // A per-ticker refresh that finds zero remaining new_trade candidates
   // shouldn't make the ticker's whole card vanish (approved 2026-08-27) —
   // that reads as if the click did nothing. Cards for tickers refreshed down
   // to empty stay pinned here (id -> display info) until a real reload
-  // (status/strategy filter change, or the global "Run Alerts Now") clears
+  // (status/strategy filter change) clears
   // the slate, at which point a ticker with genuinely zero alerts correctly
   // stops appearing at all, matching this page's normal behavior.
   const [keptEmptyTickers, setKeptEmptyTickers] = useState<Map<string, { symbol: string; companyName: string | null }>>(new Map());
@@ -161,9 +166,6 @@ export function TradeAlertsPage() {
   const [currentPriceStreamFailed, setCurrentPriceStreamFailed] = useState(false);
   const [detailSymbol, setDetailSymbol] = useTickerDetailSymbol();
   const [detailAlertId, setDetailAlertId] = useState<string | undefined>(undefined);
-  const { jobs, startTradeAlertScan } = useBackgroundJobs();
-  const scanJob = jobs.find((job) => job.id === "trade-alert-scan");
-  const running = scanJob?.status === "running";
 
   const loadAlerts = useCallback(async (): Promise<TradeAlert[] | null> => {
     try {
@@ -189,11 +191,6 @@ export function TradeAlertsPage() {
   // itself and its toast live in BackgroundJobsContext, so this keeps
   // running (and the toast keeps updating) even if the user navigates away
   // and back.
-  useJobEvents("trade-alert-scan", (event) => {
-    if (event.type === "tickerAlertsReady" || event.type === "done" || (event.type === "rollCandidate" && event.triggered)) {
-      loadAlerts();
-    }
-  });
 
   async function handleRefresh(id: string) {
     setRefreshingId(id);
@@ -208,8 +205,24 @@ export function TradeAlertsPage() {
     }
   }
 
+  async function handleReject() {
+    if (!rejectTarget) return;
+    setRejecting(true);
+    try {
+      await rejectTradeAlert(rejectTarget.id);
+      setRejectTarget(null);
+      await loadAlerts();
+    } catch (err) {
+      setRefreshError(err instanceof ApiError ? err.message : "Failed to reject alert.");
+      setRejectTarget(null);
+    } finally {
+      setRejecting(false);
+    }
+  }
+
   async function handleTickerRefresh(tickerId: string, symbol: string, companyName: string | null) {
-    setTickerRefreshingSymbol(symbol);
+    if (tickerRefreshingSymbols.has(symbol)) return;
+    setTickerRefreshingSymbols((prev) => new Set(prev).add(symbol));
     setTickerRefreshError(null);
     try {
       await refreshTickerAlerts(symbol);
@@ -224,7 +237,11 @@ export function TradeAlertsPage() {
     } catch (err) {
       setTickerRefreshError(err instanceof ApiError ? err.message : "Failed to refresh alerts for this ticker.");
     } finally {
-      setTickerRefreshingSymbol(null);
+      setTickerRefreshingSymbols((prev) => {
+        const next = new Set(prev);
+        next.delete(symbol);
+        return next;
+      });
     }
   }
 
@@ -273,17 +290,6 @@ export function TradeAlertsPage() {
       <PageHeader
         title="Trade Alerts"
         subtitle="Suggested trades awaiting your review"
-        actions={
-          <button
-            type="button"
-            className="btn btn-outline-primary d-inline-flex align-items-center gap-1"
-            disabled={running}
-            onClick={startTradeAlertScan}
-          >
-            {running && <Spinner size="sm" />}
-            Run Alerts Now
-          </button>
-        }
       />
 
       {error && <div className="alert alert-danger">{error}</div>}
@@ -327,7 +333,7 @@ export function TradeAlertsPage() {
       {!loading && groupedByTicker.size === 0 && (
         <div className="alert alert-info">
           {status === "pending"
-            ? 'No pending trade alerts. Click "Run Alerts Now" above to scan the shortlist.'
+            ? "No pending trade alerts. The scheduled scan runs at market open; use a ticker's Refresh to re-scan it now."
             : `No ${status} trade alerts.`}
         </div>
       )}
@@ -337,7 +343,7 @@ export function TradeAlertsPage() {
           const { tickerId, symbol, companyName, alerts: tickerAlerts } = group;
           const newTradeAlerts = tickerAlerts.filter((a): a is NewTradeAlert => !isRollAlert(a));
           const rollAlerts = tickerAlerts.filter((a): a is RollAlert => isRollAlert(a));
-          const isTickerRefreshing = tickerRefreshingSymbol === symbol;
+          const isTickerRefreshing = tickerRefreshingSymbols.has(symbol);
           const lastRefreshed = latestRefreshTimestamp(tickerAlerts);
 
           return (
@@ -468,11 +474,16 @@ export function TradeAlertsPage() {
                                   <td className="text-secondary" style={{ fontSize: "0.8rem", maxWidth: 260 }}>
                                     {alert.rationale}
                                   </td>
-                                  <td className="text-end">
+                                  <td className="text-end text-nowrap">
                                     {alert.status === "pending" ? (
-                                      <button type="button" className="btn btn-sm btn-primary" onClick={() => handleReview(alert)}>
-                                        Review
-                                      </button>
+                                      <>
+                                        <button type="button" className="btn btn-sm btn-primary" onClick={() => handleReview(alert)}>
+                                          Review
+                                        </button>
+                                        <button type="button" className="btn btn-sm btn-outline-danger ms-1" onClick={() => setRejectTarget({ id: alert.id, symbol: alert.symbol })}>
+                                          Reject
+                                        </button>
+                                      </>
                                     ) : (
                                       <StatusCell alert={alert} />
                                     )}
@@ -519,11 +530,16 @@ export function TradeAlertsPage() {
                                   {alert.rationale}
                                 </div>
                               )}
-                              <div className="mt-2">
+                              <div className="mt-2 d-flex gap-2">
                                 {alert.status === "pending" ? (
-                                  <button type="button" className="btn btn-primary w-100" onClick={() => handleReview(alert)}>
-                                    Review
-                                  </button>
+                                  <>
+                                    <button type="button" className="btn btn-primary flex-fill" onClick={() => handleReview(alert)}>
+                                      Review
+                                    </button>
+                                    <button type="button" className="btn btn-outline-danger" onClick={() => setRejectTarget({ id: alert.id, symbol: alert.symbol })}>
+                                      Reject
+                                    </button>
+                                  </>
                                 ) : (
                                   <StatusCell alert={alert} />
                                 )}
@@ -769,6 +785,16 @@ export function TradeAlertsPage() {
             setDetailAlertId(undefined);
             loadAlerts();
           }}
+        />
+      )}
+      {rejectTarget && (
+        <ConfirmModal
+          title={`Reject ${rejectTarget.symbol} alert`}
+          message="This alert will be marked rejected and no order will be placed for it. It will not come back until the next scan finds it again."
+          confirmLabel="Reject alert"
+          confirming={rejecting}
+          onConfirm={handleReject}
+          onCancel={() => setRejectTarget(null)}
         />
       )}
     </>

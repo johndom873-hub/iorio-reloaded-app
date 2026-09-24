@@ -65,11 +65,11 @@ function readStoredSidebarMode(): SidebarMode {
   return localStorage.getItem(SIDEBAR_MODE_STORAGE_KEY) === "fixed" ? "fixed" : "retractable";
 }
 
-/** "Live data restricted" while the 10:00 ET chain capture holds its priority market-data lines (mockup rev 2, 2026-09-24). */
+/** "Live data restricted" while a scheduled scan (the 10:00 ET chain capture or the trade-alert scan) holds its priority market-data lines (mockup rev 2, 2026-09-24). */
 function MarketDataRestrictionPill({ restriction, compact = false }: { restriction: { priorityLines: number } | null | undefined; compact?: boolean }) {
   const ref = useTooltip<HTMLSpanElement>(
     restriction
-      ? `The 10:00 ET chain capture holds ${restriction.priorityLines} of IBKR's market-data lines until about 10:30 ET. Live prices and quotes are served with the ${90 - restriction.priorityLines} lines left, most recent requests first; anything that could not get a line shows its last received value and catches up on its own.`
+      ? `A scheduled scan (the 10:00 ET chain capture, or the trade-alert scan) holds ${restriction.priorityLines} of IBKR's market-data lines while it runs. Live prices and quotes are served with the ${90 - restriction.priorityLines} lines left, most recent requests first; anything that could not get a line shows its last received value and catches up on its own.`
       : undefined,
   );
   if (!restriction) return null;

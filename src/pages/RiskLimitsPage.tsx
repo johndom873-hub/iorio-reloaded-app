@@ -8,7 +8,7 @@ import { TickerDetailModal } from "../components/TickerDetailModal";
 import { ApiError } from "../api/client";
 import {
   fetchStrategySettings,
-  updateStrategySettings,
+  updateAllStrategySettings,
   type ConcentrationRow,
   type StrategySettings,
   type StrategySettingsInput,
@@ -62,6 +62,28 @@ function toFormState(settings: StrategySettings): SettingsFormState {
     maxConcentrationPerSectorPct: String(Math.round(Number(settings.maxConcentrationPerSectorPct))),
     minCashReservePct: String(Math.round(Number(settings.minCashReservePct))),
   };
+}
+
+// A blank input used to become 0 silently (Number("") === 0) and save as a real limit.
+function firstBlankField(form: SettingsFormState): string | null {
+  const labels: Record<keyof SettingsFormState, string> = {
+    deltaTargetMin: "Delta min",
+    deltaTargetMax: "Delta max",
+    deltaTargetMinExistingPosition: "Existing-position delta min",
+    deltaTargetMaxExistingPosition: "Existing-position delta max",
+    dteTargetMin: "DTE min",
+    dteTargetMax: "DTE max",
+    maxPositionPctOfPortfolio: "Max position %",
+    maxAggregateCollateralPct: "Max aggregate collateral %",
+    maxConcentrationPerTickerPct: "Max concentration per ticker %",
+    maxConcentrationPerSectorPct: "Max concentration per sector %",
+    minCashReservePct: "Min cash reserve %",
+  };
+  for (const key of Object.keys(labels) as (keyof SettingsFormState)[]) {
+    const value = form[key];
+    if (typeof value === "string" && value.trim() === "" && !key.includes("ExistingPosition")) return labels[key];
+  }
+  return null;
 }
 
 function toUpdateInput(form: SettingsFormState, strategy: StrategyKey): StrategySettingsInput {
@@ -289,10 +311,17 @@ export function RiskLimitsPage() {
 
   async function handleSave() {
     if (!formState) return;
+    const blank = firstBlankField(formState);
+    if (blank) {
+      setSaveError(`${blank} is empty — every field needs a value.`);
+      return;
+    }
     setSaving(true);
     setSaveError(null);
     try {
-      const updated = await Promise.all(strategyKeys.map((key) => updateStrategySettings(key, toUpdateInput(formState, key))));
+      // One transactional request for both strategies (2026-09-24): two
+      // separate saves could leave one applied and the other rejected.
+      const updated = await updateAllStrategySettings(Object.fromEntries(strategyKeys.map((key) => [key, toUpdateInput(formState, key)])));
       setAllSettings((prev) => prev.map((row) => updated.find((updatedRow) => updatedRow.strategyKey === row.strategyKey) ?? row));
     } catch (err) {
       setSaveError(err instanceof ApiError ? err.message : "Failed to save settings.");

@@ -7,7 +7,9 @@
 // instead of adding a second live data source just for one more number.
 // Surfaced on Order Review 2026-09-02 per Juan's ask (item 4/6 in his
 // feedback doc) using the exact same inputs already on screen: live IV from
-// the quote stream, strike/premium/DTE from the order itself.
+// the quote stream, strike/premium/DTE from the order itself, plus (since
+// 2026-09-24) the FRED risk-free rate the order-build response carries, so
+// this matches the backend's alert POP and P(d2) convention.
 
 // Abramowitz & Stegun 7.1.26 approximation of the error function, accurate
 // to ~1.5e-7 -- standard-normal CDF then follows directly from erf.
@@ -36,6 +38,8 @@ export interface ProbabilityOfProfitInput {
   impliedVolatility: number;
   daysToExpiry: number;
   right: "call" | "put";
+  /** Annual risk-free rate as a decimal, from the order-build response (the API's stored FRED rate); null when unavailable. */
+  riskFreeRate: number | null;
 }
 
 /**
@@ -44,14 +48,15 @@ export interface ProbabilityOfProfitInput {
  * input is missing or non-physical.
  */
 export function computeProbabilityOfProfit(input: ProbabilityOfProfitInput): number | null {
-  const { spotPrice, strike, premium, impliedVolatility, daysToExpiry, right } = input;
+  const { spotPrice, strike, premium, impliedVolatility, daysToExpiry, right, riskFreeRate } = input;
+  if (riskFreeRate === null || !Number.isFinite(riskFreeRate)) return null;
   if (spotPrice <= 0 || strike <= 0 || impliedVolatility <= 0 || daysToExpiry <= 0) return null;
 
   const breakeven = right === "call" ? strike + premium : strike - premium;
   if (breakeven <= 0) return null;
 
   const t = daysToExpiry / 365;
-  const d2 = (Math.log(spotPrice / breakeven) - 0.5 * impliedVolatility * impliedVolatility * t) / (impliedVolatility * Math.sqrt(t));
+  const d2 = (Math.log(spotPrice / breakeven) + (riskFreeRate - 0.5 * impliedVolatility * impliedVolatility) * t) / (impliedVolatility * Math.sqrt(t));
 
   return right === "call" ? standardNormalCdf(-d2) : standardNormalCdf(d2);
 }

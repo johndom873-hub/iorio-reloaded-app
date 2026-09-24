@@ -1,4 +1,4 @@
-import { apiRequest, apiBaseUrl } from "./client";
+import { apiRequest, apiBaseUrl, apiStreamedRequest } from "./client";
 import { openMultiplexedStream } from "./streamMultiplexer";
 import type { StrategyKey } from "./strategy";
 
@@ -104,8 +104,13 @@ export function fetchTradeAlerts(filters: TradeAlertFilters = {}): Promise<Trade
   return apiRequest<TradeAlert[]>(`/trade-alerts${query ? `?${query}` : ""}`);
 }
 
+/** Rejects a pending alert (no order is ever placed for it) — backs the Reject button next to Review (2026-09-24). */
+export function rejectTradeAlert(id: string): Promise<void> {
+  return apiRequest<void>(`/trade-alerts/${id}`, { method: "PATCH", body: JSON.stringify({ status: "rejected" }) });
+}
+
 export function refreshTradeAlert(id: string): Promise<TradeAlert> {
-  return apiRequest<TradeAlert>(`/trade-alerts/${id}/refresh`, { method: "POST" });
+  return apiStreamedRequest<TradeAlert>(`/trade-alerts/${id}/refresh`, { method: "POST" });
 }
 
 // Live current price next to each ticker's name on the Trade Alerts page —
@@ -161,48 +166,8 @@ function openLegacyTradeAlertCurrentPricesStream(
 // Roll alerts are untouched by this call. Returns void — callers re-fetch
 // via fetchTradeAlerts afterward rather than relying on this response body.
 export function refreshTickerAlerts(symbol: string): Promise<void> {
-  return apiRequest<void>(`/trade-alerts/refresh-ticker`, { method: "POST", body: JSON.stringify({ symbol }) });
+  return apiStreamedRequest<void>(`/trade-alerts/refresh-ticker`, { method: "POST", body: JSON.stringify({ symbol }) });
 }
 
 // Mirrors the backend's TradeAlertGenerationEvent (runTradeAlertGeneration.ts)
 // plus the two stream-lifecycle events the route itself sends (done/streamError).
-export type TradeAlertRunStreamEvent =
-  | { type: "strategyStart"; strategyKey: StrategyKey; tickerCount: number }
-  | { type: "ticker"; strategyKey: StrategyKey; symbol: string; candidateCount: number }
-  | { type: "tickerError"; strategyKey: StrategyKey; symbol: string; message: string }
-  | { type: "rollBatchReady"; lines: string[] }
-  | { type: "rollScanStart"; positionCount: number }
-  | { type: "rollCandidate"; symbol: string; triggered: boolean }
-  | { type: "rollError"; symbol: string; message: string }
-  | { type: "tickerAlertsReady"; symbol: string; entries: { strategyKey: StrategyKey; line: string; annualizedYield: number }[] }
-  | { type: "streamError"; message: string }
-  | { type: "done" };
-
-/**
- * Opens the manual trade-alert scan's SSE stream — same shape as
- * openTickerDetailStream: the scan can take well past Heroku's request
- * timeout across a full shortlist, so progress arrives per-ticker instead
- * of the caller blocking on one response. Closes itself on the terminal
- * done/streamError events rather than EventSource's default auto-reconnect.
- */
-export function openTradeAlertRunStream(onEvent: (event: TradeAlertRunStreamEvent) => void): () => void {
-  const source = new EventSource(`${apiBaseUrl}/trade-alerts/run-stream`, { withCredentials: true });
-
-  source.onmessage = (message) => {
-    let event: TradeAlertRunStreamEvent;
-    try {
-      event = JSON.parse(message.data);
-    } catch {
-      return;
-    }
-    onEvent(event);
-    if (event.type === "done" || event.type === "streamError") source.close();
-  };
-
-  source.onerror = () => {
-    onEvent({ type: "streamError", message: "Connection to the server was lost." });
-    source.close();
-  };
-
-  return () => source.close();
-}

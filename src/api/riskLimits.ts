@@ -66,6 +66,33 @@ export interface StrategySettingsInput {
   minCashReservePct: number;
 }
 
+/** Saves both strategies in one transaction (PUT /risk-limits/settings) — the Risk & Limits form's save (2026-09-24). */
+export async function updateAllStrategySettings(inputs: Partial<Record<StrategyKey, StrategySettingsInput>>): Promise<StrategySettings[]> {
+  const body: Record<string, unknown> = {};
+  for (const [strategyKey, input] of Object.entries(inputs)) {
+    if (!input) continue;
+    body[strategyKey] = toSettingsBody(input);
+  }
+  const rows = await apiRequest<Record<string, unknown>[]>("/risk-limits/settings", { method: "PUT", body: JSON.stringify(body) });
+  return rows.map(mapSettingsRow);
+}
+
+function toSettingsBody(input: StrategySettingsInput): Record<string, number> {
+  return {
+    delta_target_min: input.deltaTargetMin,
+    delta_target_max: input.deltaTargetMax,
+    ...(input.deltaTargetMinExistingPosition !== undefined && { delta_target_min_existing_position: input.deltaTargetMinExistingPosition }),
+    ...(input.deltaTargetMaxExistingPosition !== undefined && { delta_target_max_existing_position: input.deltaTargetMaxExistingPosition }),
+    dte_target_min: input.dteTargetMin,
+    dte_target_max: input.dteTargetMax,
+    max_position_pct_of_portfolio: input.maxPositionPctOfPortfolio,
+    max_aggregate_collateral_pct: input.maxAggregateCollateralPct,
+    max_concentration_per_ticker_pct: input.maxConcentrationPerTickerPct,
+    max_concentration_per_sector_pct: input.maxConcentrationPerSectorPct,
+    min_cash_reserve_pct: input.minCashReservePct,
+  };
+}
+
 export async function updateStrategySettings(
   strategyKey: StrategyKey,
   input: StrategySettingsInput,

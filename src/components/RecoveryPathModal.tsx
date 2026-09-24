@@ -122,7 +122,7 @@ export function RecoveryPathModal({ positionId, symbol, onClose, onSellCandidate
                         {result.monthsToRecover}
                       </div>
                       <div className="text-secondary" style={{ fontSize: "0.8rem" }}>
-                        at {formatCurrency(result.monthlyPremium ?? 0)}/month selling calls at the pace below
+                        at {formatCurrency(result.monthlyPremium ?? 0)}/month (the candidate's premium scaled to 30 days) selling calls at the pace below
                       </div>
                     </div>
                   ) : (

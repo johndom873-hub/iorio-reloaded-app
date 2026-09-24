@@ -1,4 +1,4 @@
-import { apiRequest, apiBaseUrl } from "./client";
+import { apiRequest, apiBaseUrl, apiStreamedRequest } from "./client";
 
 export interface ShortlistRow {
   id: string;
@@ -122,7 +122,7 @@ export interface BackfillPriceHistoryResult {
 
 /** Actions menu's "Backfill Price History" — scoped to just the 5Y history step, not the full new-ticker pipeline (which also re-fetches the calendar and warms option-chain strikes; see routes/shortlist.ts). */
 export function backfillTickerPriceHistory(tickerId: string): Promise<BackfillPriceHistoryResult> {
-  return apiRequest<BackfillPriceHistoryResult>(`/shortlist/${tickerId}/backfill-price-history`, { method: "POST" });
+  return apiStreamedRequest<BackfillPriceHistoryResult>(`/shortlist/${tickerId}/backfill-price-history`, { method: "POST" });
 }
 
 export interface RefreshOptionChainResult {
@@ -131,7 +131,7 @@ export interface RefreshOptionChainResult {
 
 /** Actions menu's "Refresh Option Chain" — re-runs refreshStoredOptionChain for just this ticker (expiries + per-expiry strikes), same fetch the nightly capture does. */
 export function refreshTickerOptionChain(tickerId: string): Promise<RefreshOptionChainResult> {
-  return apiRequest<RefreshOptionChainResult>(`/shortlist/${tickerId}/refresh-option-chain`, { method: "POST" });
+  return apiStreamedRequest<RefreshOptionChainResult>(`/shortlist/${tickerId}/refresh-option-chain`, { method: "POST" });
 }
 
 const backfillStreamReconnectDelayMs = 2_000;

@@ -239,6 +239,7 @@ export function OrderReviewPanel({ order: initialOrder, initialAdaptivePriority,
           impliedVolatility: quote.impliedVolatility,
           daysToExpiry: dte,
           right: optionLeg.right === "C" ? "call" : "put",
+          riskFreeRate: order.riskFreeRate ?? null,
         })
       : null;
 
@@ -511,7 +512,7 @@ export function OrderReviewPanel({ order: initialOrder, initialAdaptivePriority,
                 Confirm &amp; Submit to IBKR
               </button>
             </span>
-            <button type="button" className="btn btn-outline-secondary" disabled={cancelling} onClick={handleCancel}>
+            <button type="button" className="btn btn-outline-secondary" disabled={cancelling || confirming} onClick={handleCancel}>
               {cancelling && <Spinner size="sm" />}
               Cancel
             </button>

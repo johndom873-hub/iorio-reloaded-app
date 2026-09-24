@@ -117,6 +117,11 @@ export function ScreenerTab({ onOpenTickerDetail }: ScreenerTabProps) {
       await addScreenerResultToShortlist(symbol);
       setRows((prev) => prev.map((row) => (row.symbol === symbol ? { ...row, isShortlisted: true } : row)));
     } catch (err) {
+      // Already monitored (409) is the same end state as success for this row.
+      if (err instanceof ApiError && err.status === 409) {
+        setRows((prev) => prev.map((row) => (row.symbol === symbol ? { ...row, isShortlisted: true } : row)));
+        return;
+      }
       setError(err instanceof ApiError ? err.message : "Failed to add ticker to shortlist.");
     } finally {
       setAddingSymbol(null);

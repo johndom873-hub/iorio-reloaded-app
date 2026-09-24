@@ -171,7 +171,10 @@ export function PricePerformancePage() {
   // The nightly capture or a manual refresh finished: reload the stored data.
   useEffect(() => {
     return openNotificationStream((notification) => {
-      if (notification.type === "job_completed" && REFRESH_JOB_NAMES.has(notification.jobName)) void load();
+      if (notification.type === "job_completed" && REFRESH_JOB_NAMES.has(notification.jobName)) {
+        if (notification.status === "failure") setRefreshMessage("The refresh finished with errors — some symbols could not be updated (see System Health for the job's details).");
+        void load();
+      }
     });
   }, [load]);
 
