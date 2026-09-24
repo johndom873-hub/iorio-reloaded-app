@@ -26,7 +26,7 @@ import {
 import { openTradeAlertCurrentPricesStream } from "../api/tradeAlerts";
 import { fetchPositions, fetchUnrealizedPnl, type Position, type UnrealizedPnlResult } from "../api/positions";
 import { AVAILABLE_CASH_PERCENT_BANDS, lowerIsWorseStatus, statusTextClass } from "../lib/statusThresholds";
-import { type ConcentrationRow, type StrategyAllocationRow, type TopPositionRow } from "../api/riskLimits";
+import { fetchExposure, type ConcentrationRow, type ExposureData, type StrategyAllocationRow, type TopPositionRow } from "../api/riskLimits";
 import {
   formatCurrency,
   formatDateTime,
@@ -38,7 +38,6 @@ import {
   formatSignedPnl,
   pnlTextClass,
 } from "../lib/formatters";
-import { useExposureStream } from "../hooks/useExposureStream";
 import { portfolioFromExposure } from "../lib/portfolioFromExposure";
 import { useTickerDetailSymbol } from "../hooks/useTickerDetailSymbol";
 import { TooltipSpan } from "../components/TooltipSpan";
@@ -469,9 +468,12 @@ export function DashboardPage() {
   const [historyLoading, setHistoryLoading] = useState(true);
   const [historyError, setHistoryError] = useState<string | null>(null);
 
-  // One stream feeds both the allocation cards and the Portfolio tiles —
-  // see portfolioFromExposure.
-  const { exposure, loading: exposureLoading, error: exposureError } = useExposureStream("Failed to load account allocation.");
+  // One fetch feeds both the allocation cards and the Portfolio tiles — see
+  // portfolioFromExposure. Snapshot, not live (approved 2026-09-24) — Pulse
+  // and Risk & Limits keep the SSE version via useExposureStream.
+  const [exposure, setExposure] = useState<ExposureData | null>(null);
+  const [exposureLoading, setExposureLoading] = useState(true);
+  const [exposureError, setExposureError] = useState<string | null>(null);
   const portfolio = useMemo(() => (exposure ? portfolioFromExposure(exposure) : null), [exposure]);
   const portfolioLoading = exposureLoading;
   const portfolioError = exposureError;
@@ -515,6 +517,13 @@ export function DashboardPage() {
       .then(setSummary)
       .catch((err) => setSummaryError(err instanceof ApiError ? err.message : "Failed to load dashboard summary."))
       .finally(() => setSummaryLoading(false));
+  }, []);
+
+  useEffect(() => {
+    fetchExposure()
+      .then(setExposure)
+      .catch((err) => setExposureError(err instanceof ApiError ? err.message : "Failed to load account allocation."))
+      .finally(() => setExposureLoading(false));
   }, []);
 
   // Live IBKR round trip (approved 2026-08-27, see fetchAvailableCash) --

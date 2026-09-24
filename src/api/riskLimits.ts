@@ -167,6 +167,15 @@ export interface ExposureData {
   topPositions: TopPositionRow[];
 }
 
+// One-shot snapshot — used by Dashboard, which should not live-update
+// (approved 2026-09-24). Can show entry-price fallback values for legs IBKR
+// hasn't quoted yet, since there's no "frozen phase complete" signal for a
+// plain fetch; that's the tradeoff Dashboard accepts for a load-once view.
+// Pulse and Risk & Limits stay on openExposureStream below.
+export function fetchExposure(): Promise<ExposureData> {
+  return apiRequest<ExposureData>("/risk-limits/exposure");
+}
+
 // Live-upgrading replacement for the old one-shot GET /risk-limits/exposure
 // (2026-09-19): the backend's /exposure/stream sends a first reading from
 // FROZEN prices, then the whole ExposureData again each time a price
