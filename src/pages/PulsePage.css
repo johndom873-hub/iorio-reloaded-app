@@ -546,7 +546,7 @@
 }
 .iorio-pulse-page .pos-pct {
   font-family: var(--font-mono);
-  color: var(--text-muted);
+  color: var(--text-secondary);
   text-align: right;
   font-size: 0.62rem;
 }
