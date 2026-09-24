@@ -301,7 +301,7 @@ export function SignalsPage() {
 
   const gradesNote = (
     <div className="card-footer text-secondary" style={{ fontSize: "0.8rem" }}>
-      <strong>Grades</strong> are cut from each ticker's own live net-Edge distribution across its candidates: <strong>Strong</strong> top 10%, <strong>Good</strong> next 20%, <strong>Marginal</strong> next 30%, the rest <strong>Avoid</strong>. Any contract with net Edge at or below zero is <strong>Avoid</strong> whatever its rank, so a ticker where everything is negative shows no false "Strong". Raw numbers are always beside the grade. Click a ticker for its full opportunity list.
+      <strong>Grades</strong> are fixed net-Edge cut points: <strong>Strong</strong> 10vp or more, <strong>Good</strong> 5-10vp, <strong>Weak</strong> 0-5vp, the rest <strong>Avoid</strong>. Any contract with net Edge at or below zero is <strong>Avoid</strong>. Raw numbers are always beside the grade. Click a ticker for its full opportunity list.
     </div>
   );
 
