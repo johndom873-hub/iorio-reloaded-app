@@ -2,8 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { IconAlertTriangle } from "@tabler/icons-react";
 import type { RoadmapEta, RoadmapItem } from "../../api/signals";
 import { formatDate } from "../../lib/formatters";
-import { roadmapStatusBadgeClass, roadmapStatusLabel, signalsColumnExplanation } from "../../lib/signalsPresentation";
-import { useTooltip } from "../../hooks/useTooltip";
+import { roadmapStatusBadgeClass, roadmapStatusLabel } from "../../lib/signalsPresentation";
 
 const badgeFontSize = { fontSize: "0.72rem" } as const;
 
@@ -51,7 +50,6 @@ export function ModelCaveatBadge({ symbol, caveats }: ModelCaveatBadgeProps) {
   const [placement, setPlacement] = useState<PopoverPlacement | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const buttonRef = useRef<HTMLButtonElement>(null);
-  const tooltipRef = useTooltip<HTMLButtonElement>(signalsColumnExplanation.model);
   const isOpen = placement !== null;
   useEffect(() => {
     if (!isOpen) return;
@@ -78,10 +76,7 @@ export function ModelCaveatBadge({ symbol, caveats }: ModelCaveatBadgeProps) {
   return (
     <div ref={containerRef} style={{ display: "inline-block" }}>
       <button
-        ref={(el) => {
-          buttonRef.current = el;
-          tooltipRef.current = el;
-        }}
+        ref={buttonRef}
         type="button"
         className="badge border-0 d-inline-flex align-items-center gap-1 px-2 py-1 bg-warning-lt"
         style={{ ...badgeFontSize, cursor: "pointer" }}

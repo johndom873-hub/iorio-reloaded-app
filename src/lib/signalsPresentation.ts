@@ -174,7 +174,6 @@ export const signalsColumnExplanation = {
   earnings: "Next earnings date on record.",
   surface: "Fitted expiries / expiries captured in the 10:00 ET snapshot.",
   notAccountedFor: "Measures the ranking does not use yet, what each is waiting on, and when it should be ready.",
-  model: "This ticker has a caveat of its own in the model (missing history, an unresolved calendar, a suspected split). Click for what it is waiting on.",
   roll: "Open short legs on this ticker with a credit roll graded above Avoid; the colour is the best roll's grade. Click to review it.",
   quotes: "What the best opportunity's numbers are based on: a live IBKR line, a Day Signals quote (age shown), or still the 10:00 ET snapshot quote.",
 } as const;
