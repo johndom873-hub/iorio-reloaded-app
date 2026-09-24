@@ -5,7 +5,7 @@ import { fetchTickerSignals, openSignalsTickerStream, type HeldLegScore, type Ma
 import { openTickerDetailStream, type PriceBar, type TickerOverview, type TickerTechnicals } from "../api/tickerDetail";
 import { useTickerPositions } from "../hooks/useTickerPositions";
 import { cancelUnconfirmedOrder, type AdaptivePriority, type OrderRequest } from "../api/positions";
-import { OrderReviewPanel } from "./OrderReviewPanel";
+import { OrderReviewPanel, type OrderReviewQuoteSeed } from "./OrderReviewPanel";
 import { RollSignalOrderSetupForm } from "./RollSignalOrderSetupForm";
 import { SignalOrderSetupForm } from "./SignalOrderSetupForm";
 import { formatCurrency, formatCurrencyTrimmed, formatDate, formatDateTime, formatNumber, formatPercentage, formatPercentageValue, formatQuotePrice, formatShortAge, formatSignedPercentageValue, formatSignedPnl, formatVolatilityPoints, pnlTextClass } from "../lib/formatters";
@@ -313,6 +313,21 @@ function formatSignedDelta(delta: number): string {
   return `${delta > 0 ? "+" : ""}${delta.toFixed(2)}`;
 }
 
+// SignalCandidate has no gamma/theta/last of its own (see OrderReviewQuoteSeed's
+// own comment) -- mid IV is preferred over the surface fit since it's closer to
+// what the live stream's own impliedVolatility will read once it arrives.
+function signalCandidateToQuoteSeed(candidate: SignalCandidate | null): OrderReviewQuoteSeed | null {
+  if (!candidate) return null;
+  return {
+    bid: candidate.bid,
+    ask: candidate.ask,
+    impliedVolatility: candidate.midImpliedVolatility ?? candidate.surfaceImpliedVolatility,
+    delta: candidate.delta,
+    theta: null,
+    vega: candidate.vega,
+  };
+}
+
 export function SignalsTickerModal({ symbol, initialRollLegId = null, onClose }: SignalsTickerModalProps) {
   const [signals, setSignals] = useState<TickerSignals | null>(null);
   const [signalsError, setSignalsError] = useState<string | null>(null);
@@ -472,6 +487,14 @@ export function SignalsTickerModal({ symbol, initialRollLegId = null, onClose }:
   const selectedCandidate = useMemo(() => (selectedKey ? (signals?.candidates.find((candidate) => candidateKey(candidate) === selectedKey) ?? null) : null), [signals, selectedKey]);
   const selectedRoll = useMemo(() => (selectedRollKey ? (signals?.rolls.find((roll) => rollKey(roll) === selectedRollKey) ?? null) : null), [signals, selectedRollKey]);
   const selectedRollHeldLeg = useMemo(() => (selectedRoll ? (signals?.heldLegs.find((leg) => leg.legId === selectedRoll.legId) ?? null) : null), [signals, selectedRoll]);
+  // The contract behind pendingOrder is whichever of these produced it --
+  // selectedKey/selectedRollKey (and so selectedCandidate/selectedRoll) stay
+  // set for the order's whole pending_confirmation lifetime (see
+  // selectCandidate/selectRoll above), so this is still the right quote at
+  // the instant OrderReviewPanel mounts. Seeds its Live Quote card instantly
+  // instead of a multi-second spinner for a fresh subscribe (2026-09-24,
+  // same fix as TickerDetailModal's liveQuoteForSelected).
+  const pendingOrderQuoteSeed = signalCandidateToQuoteSeed(selectedCandidate ?? selectedRoll?.replacement ?? null);
   const rollsByLegId = useMemo(() => {
     const byLeg = new Map<string, RollSignalCandidate[]>();
     for (const roll of signals?.rolls ?? []) byLeg.set(roll.legId, [...(byLeg.get(roll.legId) ?? []), roll]);
@@ -790,6 +813,7 @@ export function SignalsTickerModal({ symbol, initialRollLegId = null, onClose }:
                             order={pendingOrder.order}
                             initialAdaptivePriority={pendingOrder.adaptivePriority}
                             liveSpotPrice={spotPrice}
+                            initialQuote={pendingOrderQuoteSeed}
                             onCancelled={clearSelection}
                             onFilled={() => {
                               clearSelection();

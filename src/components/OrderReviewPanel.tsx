@@ -3,6 +3,20 @@ import { Spinner } from "./Spinner";
 import { ApiError } from "../api/client";
 import { useBackgroundJobs, type OrderJob } from "../contexts/BackgroundJobsContext";
 import { cancelOrder, confirmOrder, openOrderLegQuoteStream, type AdaptivePriority, type OrderLegQuote, type OrderRequest } from "../api/positions";
+
+// Just the fields the Live Quote card below actually renders -- deliberately
+// not OptionQuote itself, since a Day Signals caller's already-known quote
+// (SignalCandidate) has no gamma/last of its own to offer, only
+// bid/ask/delta/vega/IV. TickerDetailModal's OptionQuote satisfies this
+// structurally (it has every field here, plus more), so it needs no mapping.
+export interface OrderReviewQuoteSeed {
+  bid: number | null;
+  ask: number | null;
+  impliedVolatility: number | null;
+  delta: number | null;
+  theta: number | null;
+  vega: number | null;
+}
 import { fetchAccountValue, fetchAvailableCash } from "../api/dashboard";
 import type { StrategyKey } from "../api/strategy";
 import {
@@ -44,6 +58,17 @@ interface OrderReviewPanelProps {
    * stream just for this one number.
    */
   liveSpotPrice?: number | null;
+  /**
+   * The option-chain quote the caller already had for this leg a moment
+   * ago (TickerDetailModal's own optionChain stream, still warm on the
+   * same IBKR line the Live Quote card is about to subscribe to) -- lets
+   * the card paint bid/ask/spread/IV/Greeks instantly instead of sitting
+   * on a spinner for a fresh subscribe-and-first-tick round trip (found
+   * 2026-09-24). Display only: it never feeds the compliance/signalLimits
+   * gate below, which deliberately keeps waiting on the real stream's
+   * first tick (this seed has no compliance verdict of its own).
+   */
+  initialQuote?: OrderReviewQuoteSeed | null;
 }
 
 const terminalStatuses = new Set(["filled", "partially_filled", "cancelled", "rejected", "error"]);
@@ -85,7 +110,7 @@ function statusLabel(status: OrderRequest["status"]): string {
  * form only ever builds an OrderRequest (this component's `order` prop) —
  * nothing is sent to IBKR until the user clicks Confirm here.
  */
-export function OrderReviewPanel({ order: initialOrder, initialAdaptivePriority, onCancelled, onFilled, liveSpotPrice }: OrderReviewPanelProps) {
+export function OrderReviewPanel({ order: initialOrder, initialAdaptivePriority, onCancelled, onFilled, liveSpotPrice, initialQuote }: OrderReviewPanelProps) {
   const { jobs, startOrderJob } = useBackgroundJobs();
   // Once confirmed or cancel-requested, status polling is owned by
   // BackgroundJobsContext (startOrderJob below) rather than a local
@@ -107,6 +132,10 @@ export function OrderReviewPanel({ order: initialOrder, initialAdaptivePriority,
   const [cancelling, setCancelling] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [quote, setQuote] = useState<OrderLegQuote | null>(null);
+  // Frozen at mount -- purely a first-paint stand-in for the Live Quote
+  // card below, never updated and never consulted for the compliance gate.
+  const [seedQuote] = useState<OrderReviewQuoteSeed | null>(initialQuote ?? null);
+  const displayQuote = quote ?? seedQuote;
   const [quoteStreamError, setQuoteStreamError] = useState<string | null>(null);
   const [totalAccountValue, setTotalAccountValue] = useState<number | null>(null);
   const [availableCashToTrade, setAvailableCashToTrade] = useState<number | null>(null);
@@ -400,39 +429,39 @@ export function OrderReviewPanel({ order: initialOrder, initialAdaptivePriority,
           <div className="text-secondary text-uppercase mb-2" style={{ fontSize: "0.68rem", fontWeight: 700, letterSpacing: "0.04em" }}>
             Live Quote
           </div>
-          {!quote && !quoteStreamError && <Spinner size="sm" label="Loading live quote" />}
-          {quoteStreamError && (
+          {!displayQuote && !quoteStreamError && <Spinner size="sm" label="Loading live quote" />}
+          {quoteStreamError && !displayQuote && (
             <span ref={quoteStreamErrorTooltipRef} className="text-muted" tabIndex={0}>
               Live quote unavailable
             </span>
           )}
-          {quote && (
+          {displayQuote && (
             <div className="row g-3 font-mono" style={{ fontSize: "0.85rem" }}>
               <div className="col-4">
                 <div className="text-secondary text-uppercase" style={{ fontSize: "0.68rem" }}>Bid / Ask</div>
                 <div className={`fw-semibold ${flashClassName(bidFlash || askFlash)}`}>
-                  {quote.bid !== null ? formatCurrency(quote.bid) : "—"} / {quote.ask !== null ? formatCurrency(quote.ask) : "—"}
+                  {displayQuote.bid !== null ? formatCurrency(displayQuote.bid) : "—"} / {displayQuote.ask !== null ? formatCurrency(displayQuote.ask) : "—"}
                 </div>
               </div>
               <div className="col-4">
                 <div className="text-secondary text-uppercase" style={{ fontSize: "0.68rem" }}>Spread</div>
-                <div className={`fw-semibold ${flashClassName(spreadFlash)}`}>{quote.bid !== null && quote.ask !== null ? formatCurrency(quote.ask - quote.bid) : "—"}</div>
+                <div className={`fw-semibold ${flashClassName(spreadFlash)}`}>{displayQuote.bid !== null && displayQuote.ask !== null ? formatCurrency(displayQuote.ask - displayQuote.bid) : "—"}</div>
               </div>
               <div className="col-4">
                 <div className="text-secondary text-uppercase" style={{ fontSize: "0.68rem" }}>IV</div>
-                <div className={`fw-semibold ${flashClassName(ivFlash)}`}>{formatPercentage(quote.impliedVolatility)}</div>
+                <div className={`fw-semibold ${flashClassName(ivFlash)}`}>{formatPercentage(displayQuote.impliedVolatility)}</div>
               </div>
               <div className="col-4">
                 <div className="text-secondary text-uppercase" style={{ fontSize: "0.68rem" }}>Delta</div>
-                <div className={`fw-semibold ${flashClassName(deltaFlash)}`}>{formatNumber(quote.delta, 2)}</div>
+                <div className={`fw-semibold ${flashClassName(deltaFlash)}`}>{formatNumber(displayQuote.delta, 2)}</div>
               </div>
               <div className="col-4">
                 <div className="text-secondary text-uppercase" style={{ fontSize: "0.68rem" }}>Theta</div>
-                <div className={`fw-semibold ${flashClassName(thetaFlash)}`}>{formatNumber(quote.theta, 2)}</div>
+                <div className={`fw-semibold ${flashClassName(thetaFlash)}`}>{formatNumber(displayQuote.theta, 2)}</div>
               </div>
               <div className="col-4">
                 <div className="text-secondary text-uppercase" style={{ fontSize: "0.68rem" }}>Vega</div>
-                <div className={`fw-semibold ${flashClassName(vegaFlash)}`}>{formatNumber(quote.vega, 2)}</div>
+                <div className={`fw-semibold ${flashClassName(vegaFlash)}`}>{formatNumber(displayQuote.vega, 2)}</div>
               </div>
             </div>
           )}

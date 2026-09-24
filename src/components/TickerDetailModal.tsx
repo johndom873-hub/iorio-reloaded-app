@@ -1007,6 +1007,7 @@ export function TickerDetailModal({ symbol, onClose, initialAlertId, focusPositi
     <OrderReviewPanel
       order={pendingOrder}
       liveSpotPrice={spotPrice}
+      initialQuote={liveQuoteForSelected}
       onCancelled={closeOrderPanel}
       onFilled={() => {
         closeOrderPanel();

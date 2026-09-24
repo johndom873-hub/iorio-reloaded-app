@@ -174,9 +174,9 @@ export interface OrderRequest {
   errorMessage: string | null;
   /** Non-blocking advisory from POST /orders — e.g. leftover uncovered shares beyond what this order uses. Never persisted, transient on the preview response only. */
   note?: string | null;
-  /** Non-blocking economic-calendar advisory (New Position/Roll only, approved 2026-08-31) — Medium/High-importance events between today and expiry. Never persisted, transient on the preview response only. */
+  /** Non-blocking economic-calendar advisory (New Position/Roll only, approved 2026-08-31) — Medium/High-importance events between today and expiry. Persisted at order-creation time (2026-09-24) so it survives a GET /orders/:id, not just the creation response. */
   calendarWarning?: string | null;
-  /** The API's stored FRED risk-free rate (decimal) at build time, for Order Review's probability of profit. Transient on the preview response only. */
+  /** The API's stored FRED risk-free rate (decimal) at build time, for Order Review's probability of profit. Persisted at order-creation time (2026-09-24), same as calendarWarning. */
   riskFreeRate?: number | null;
   createdAt: string;
   updatedAt: string;
