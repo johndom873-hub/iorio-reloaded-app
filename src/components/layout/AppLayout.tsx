@@ -30,9 +30,9 @@ import { useTooltip } from "../../hooks/useTooltip";
 const navigationItems = [
   { to: "/", label: "Dashboard", icon: IconLayoutDashboard, end: true },
   { to: "/positions", label: "Positions", icon: IconChartCandle },
-  { to: "/trade-alerts", label: "Trade Alerts", icon: IconClipboardList },
-  { to: "/signals", label: "Signals", icon: IconActivity },
   { to: "/screener", label: "Screener", icon: IconSearch },
+  { to: "/signals", label: "Signals", icon: IconActivity },
+  { to: "/trade-alerts", label: "Trade Alerts", icon: IconClipboardList },
   { to: "/price-performance", label: "Price Performance", icon: IconTrendingUp },
   { to: "/trade-blotter", label: "Trade Blotter", icon: IconReceipt2 },
   { to: "/calendar", label: "Calendar", icon: IconCalendarEvent },

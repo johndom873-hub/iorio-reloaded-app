@@ -3,7 +3,7 @@ import { ApiError } from "../api/client";
 import { buildOpenOrder, type AdaptivePriority, type OrderRequest } from "../api/positions";
 import type { SignalCandidate, TickerSignals } from "../api/signals";
 import { flashClassName, useFlashOnChange } from "../hooks/useFlashOnChange";
-import { formatCurrency, formatCurrencyTrimmed, formatDate, formatPercentage, formatSignedPercentageValue, formatSignedPnl, formatVolatilityPoints } from "../lib/formatters";
+import { formatCurrency, formatDate, formatPercentage, formatSignedPercentageValue, formatSignedPnl, formatVolatilityPoints } from "../lib/formatters";
 import { describeCandidate, gradeBadgeClass, gradeLabel, signalFlagExplanation, signalFlagLetter } from "../lib/signalsPresentation";
 import { Spinner } from "./Spinner";
 import { useTooltip } from "../hooks/useTooltip";
@@ -70,7 +70,6 @@ export function SignalOrderSetupForm({ symbol, signals, candidate, spotPrice, ne
   const defaultQuantity = isCall && signals.freeShares >= 100 ? Math.floor(signals.freeShares / 100) : 1;
   const [contractQty, setContractQty] = useState(String(defaultQuantity));
   const [adaptivePriority, setAdaptivePriority] = useState<AdaptivePriority>("Normal");
-  const [saveSnapshot, setSaveSnapshot] = useState(true);
   const [building, setBuilding] = useState(false);
   const [buildError, setBuildError] = useState<string | null>(null);
 
@@ -95,7 +94,7 @@ export function SignalOrderSetupForm({ symbol, signals, candidate, spotPrice, ne
   // no free shares yet is the normal case, not a blocker -- only a cash-secured put needs the cash upfront.
   const blockingFlag = candidate.flags.find((flag) => flag === "insufficient_cash");
   const capitalAtRisk = isCall ? (spotPrice ?? 0) * 100 * quantity : candidate.strike * 100 * quantity;
-  const maxGainAtMid = mid * 100 * quantity;
+  const maxGainAtBid = candidate.bid * 100 * quantity;
 
   async function handleReviewOrder() {
     setBuilding(true);
@@ -106,26 +105,24 @@ export function SignalOrderSetupForm({ symbol, signals, candidate, spotPrice, ne
         symbol,
         strategyKey: candidate.strategyKey,
         option: { quantity, limitPrice: Number(mid.toFixed(2)), strikePrice: candidate.strike, expiryDate: candidate.expiry },
-        signalSnapshot: saveSnapshot
-          ? {
-              version: 1,
-              candidate,
-              ticker: {
-                spotPrice,
-                priceSource: signals.priceSource,
-                snapshotDateIso: signals.snapshotDateIso,
-                atmImpliedVolatility: signals.atmImpliedVolatility,
-                forecast: signals.forecast,
-                momentum: signals.momentum,
-                skew: signals.skew,
-                elevatedVolatility: signals.elevatedVolatility,
-                nextEarningsDateIso: signals.nextEarningsDateIso,
-                gradeCounts: signals.gradeCounts,
-              },
-              order: { quantity, adaptivePriority, referencePremium: Number(mid.toFixed(2)), netEdgeExpected, edgeDollarsExpected, riskAdjustedRatioExpected },
-              timing: { selectedAtIso, builtAtIso, netEdgeAtSelection, netEdgeAtBuild: candidate.netEdge },
-            }
-          : undefined,
+        signalSnapshot: {
+          version: 1,
+          candidate,
+          ticker: {
+            spotPrice,
+            priceSource: signals.priceSource,
+            snapshotDateIso: signals.snapshotDateIso,
+            atmImpliedVolatility: signals.atmImpliedVolatility,
+            forecast: signals.forecast,
+            momentum: signals.momentum,
+            skew: signals.skew,
+            elevatedVolatility: signals.elevatedVolatility,
+            nextEarningsDateIso: signals.nextEarningsDateIso,
+            gradeCounts: signals.gradeCounts,
+          },
+          order: { quantity, adaptivePriority, referencePremium: Number(mid.toFixed(2)), netEdgeExpected, edgeDollarsExpected, riskAdjustedRatioExpected },
+          timing: { selectedAtIso, builtAtIso, netEdgeAtSelection, netEdgeAtBuild: candidate.netEdge },
+        },
       });
       onSubmitted(order, adaptivePriority);
     } catch (err) {
@@ -146,7 +143,7 @@ export function SignalOrderSetupForm({ symbol, signals, candidate, spotPrice, ne
         <h4 className="mb-0" style={{ fontSize: "1.05rem" }}>
           {isCall ? "Covered Call" : "Cash-Secured Put"} · {symbol}{" "}
           <span className="text-secondary fw-normal">
-            {describeCandidate(candidate)} · {candidate.dte}d
+            {describeCandidate(candidate)} · {candidate.dte}DTE
           </span>
         </h4>
       </div>
@@ -169,9 +166,9 @@ export function SignalOrderSetupForm({ symbol, signals, candidate, spotPrice, ne
             <div className="text-secondary text-uppercase" style={{ fontSize: "0.68rem", fontWeight: 700, letterSpacing: "0.06em" }}>
               Signal
             </div>
-            <span className={`h3 mb-0 font-mono ${netEdgeExpected > 0 ? "text-success" : "text-danger"} ${flashClassName(netEdgeFlash)}`}>{formatVolatilityPoints(netEdgeExpected)}</span>{" "}
+            <span className={`h3 mb-0 font-mono ${candidate.netEdge > 0 ? "text-success" : "text-danger"} ${flashClassName(netEdgeFlash)}`}>{formatVolatilityPoints(candidate.netEdge)}</span>{" "}
             <span className="text-secondary" style={{ fontSize: "0.8rem" }}>
-              net Edge, expected at {adaptivePriority} priority
+              net Edge ({formatSignedPnl(edgeDollarsExpected, 0)})
             </span>
           </div>
           <span className={`badge ${gradeBadgeClass[gradeForExpected]}`} style={{ fontSize: "0.8rem" }}>
@@ -180,12 +177,8 @@ export function SignalOrderSetupForm({ symbol, signals, candidate, spotPrice, ne
         </div>
         <div className="mt-2">
           <Row label="Surface IV at this strike (10:00 snapshot, live spot)" value={formatPercentage(candidate.surfaceImpliedVolatility, 1)} />
-          <Row label={`− Forecast volatility (${signals.forecast?.windowDays ?? 63}-day Yang-Zhang)`} value={formatPercentage(candidate.forecastVolatility, 1)} />
-          <Row label="= Edge" value={formatVolatilityPoints(candidate.edge)} tone={candidate.edge > 0 ? "text-success" : "text-danger"} />
-          <Row label="− Friction (Adaptive fills between mid and bid)" value={`${formatVolatilityPoints(frictionAtMid).replace("+", "")} – ${formatVolatilityPoints(frictionAtBid).replace("+", "")}`} />
-          <Row label="Net Edge, best case (at the mid)" value={formatVolatilityPoints(candidate.netEdgeAtMid)} tone={candidate.netEdgeAtMid > 0 ? "text-success" : "text-danger"} strong />
-          <Row label="Net Edge, worst case (at the bid — how the list scores it)" value={formatVolatilityPoints(candidate.netEdge)} />
-          <Row label="Edge $ per contract, expected (net Edge × vega × 100)" value={formatSignedPnl(edgeDollarsExpected, 0)} tone={edgeDollarsExpected > 0 ? "text-success" : "text-danger"} />
+          <Row label={`Forecast volatility (${signals.forecast?.windowDays ?? 63}-day Yang-Zhang)`} value={formatPercentage(candidate.forecastVolatility, 1)} />
+          <Row label="Friction (mid-bid range)" value={`${formatVolatilityPoints(frictionAtMid).replace("+", "")} – ${formatVolatilityPoints(frictionAtBid).replace("+", "")}`} />
         </div>
         <div className={`d-flex align-items-center gap-2 mt-2 rounded px-2 py-1 ${decayed ? "bg-warning-lt" : "bg-secondary-lt"}`} style={{ fontSize: "0.78rem" }}>
           {decayed ? `Net Edge has moved ${formatVolatilityPoints(decay)} since you selected this contract at ${formatDate(selectedAtIso)}.` : `Net Edge is steady since you selected this contract (${formatVolatilityPoints(netEdgeAtSelection)}).`}
@@ -198,7 +191,7 @@ export function SignalOrderSetupForm({ symbol, signals, candidate, spotPrice, ne
 
       <div className="border rounded p-3">
         <Row label="Contract IV: live mid vs surface" value={candidate.midImpliedVolatility === null ? "—" : `${formatPercentage(candidate.midImpliedVolatility, 1)} vs ${formatPercentage(candidate.surfaceImpliedVolatility, 1)} (${formatVolatilityPoints(candidate.midImpliedVolatility - candidate.surfaceImpliedVolatility)})`} />
-        <Row label="Delta drift risk (UncompensatedShare)" value={candidate.uncompensatedSharePercent === null ? "…" : `${candidate.uncompensatedSharePercent.toFixed(0)}% of P&L variance`} />
+        <Row label="Delta drift risk" value={candidate.uncompensatedSharePercent === null ? "…" : `${candidate.uncompensatedSharePercent.toFixed(0)}% of P&L variance`} />
         <Row label="Tilt" value={`momentum ${signals.momentum === null ? "n/a" : formatSignedPercentageValue(signals.momentum * 100, 0)} · skew ${signals.skew ? formatVolatilityPoints(signals.skew.skew) : "—"} · vol ${signals.elevatedVolatility ? (signals.elevatedVolatility.elevated ? "elevated" : "normal") : "n/a"}`} />
         {candidate.flags.length === 0 ? (
           <Row label="Flags" value={<span className="text-secondary">none</span>} />
@@ -214,30 +207,27 @@ export function SignalOrderSetupForm({ symbol, signals, candidate, spotPrice, ne
         )}
       </div>
 
-      <div className="border rounded p-3 d-flex flex-column gap-2">
-        <div className="d-flex justify-content-between align-items-center gap-3">
+      <div className="border rounded p-3">
+        <div className="d-flex justify-content-between align-items-center gap-3 mb-2">
           <label className="form-label mb-0 text-secondary text-uppercase" style={{ fontSize: "0.7rem", fontWeight: 600, letterSpacing: "0.04em" }} htmlFor="signal-order-qty">
             Contracts
           </label>
           <input id="signal-order-qty" type="number" min={1} step={1} className="form-control form-control-sm font-mono" style={{ width: "6rem" }} value={contractQty} onChange={(event) => setContractQty(event.target.value)} />
         </div>
-        <div className="d-flex justify-content-between align-items-center gap-3 flex-wrap">
+        <div className="d-flex justify-content-between align-items-center gap-3 mb-2">
           <span className="text-secondary text-uppercase" style={{ fontSize: "0.7rem", fontWeight: 600, letterSpacing: "0.04em" }}>
             Fill priority (IBKR Adaptive)
           </span>
           <div className="btn-group" role="group">
             {adaptivePriorities.map((priority) => (
-              <button key={priority} type="button" className={`btn ${priority === adaptivePriority ? "btn-primary" : "btn-outline-secondary"}`} onClick={() => setAdaptivePriority(priority)}>
+              <button key={priority} type="button" className={`btn btn-sm ${priority === adaptivePriority ? "btn-primary" : "btn-outline-secondary"}`} onClick={() => setAdaptivePriority(priority)}>
                 {priority}
               </button>
             ))}
           </div>
         </div>
-        <div className="text-secondary" style={{ fontSize: "0.75rem" }}>
-          Adaptive priority, same as the rest of the app — IBKR works the order toward the mid, not a fixed limit price. You can still change it at review.
-        </div>
-        <Row label="Reference premium (mid)" value={formatCurrency(mid)} />
-        <Row label="Max gain (at mid)" value={formatSignedPnl(maxGainAtMid, 0)} tone="text-success" />
+        <Row label="Reference premium (bid)" value={formatCurrency(candidate.bid)} />
+        <Row label="Max gain (at bid)" value={formatSignedPnl(maxGainAtBid, 0)} tone="text-success" />
         <Row label="Capital at risk" value={formatCurrency(capitalAtRisk, 0)} />
         <Row label="Annualised yield" value={formatPercentage(candidate.annualizedYield, 0)} />
         {isCall && (
@@ -245,14 +235,6 @@ export function SignalOrderSetupForm({ symbol, signals, candidate, spotPrice, ne
             = {quantity * 100} shares required · you hold {signals.freeShares} free share{signals.freeShares === 1 ? "" : "s"} of {symbol}
           </div>
         )}
-      </div>
-
-      <div className="border rounded p-3 d-flex flex-column gap-2">
-        <Row label="Position size suggestion" value={<span className="badge bg-secondary-lt" style={{ fontSize: "0.72rem" }}>not available · after Phase 2</span>} />
-        <label className="form-check mb-0" style={{ fontSize: "0.8rem" }}>
-          <input type="checkbox" className="form-check-input" checked={saveSnapshot} onChange={(event) => setSaveSnapshot(event.target.checked)} />
-          <span className="form-check-label">Save these signal scores with the order, so Phase 2 can test what predicted the result.</span>
-        </label>
       </div>
 
       {buildError && <div className="alert alert-danger mb-0">{buildError}</div>}
@@ -267,9 +249,6 @@ export function SignalOrderSetupForm({ symbol, signals, candidate, spotPrice, ne
         <button type="button" className="btn btn-outline-secondary" onClick={onCancel}>
           Cancel
         </button>
-      </div>
-      <div className="text-secondary" style={{ fontSize: "0.72rem" }}>
-        Strike {formatCurrencyTrimmed(candidate.strike)} · expiry {formatDate(candidate.expiry)} · quote {candidate.quoteSource === "live" ? "live" : "10:00 ET snapshot"}
       </div>
     </div>
   );

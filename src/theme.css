@@ -739,6 +739,23 @@
   color: #fff;
 }
 
+/* Signals opportunities table -- Ann. Yield heatmap: font color only, 5 discrete
+   tiers by percentile rank among the shown candidates (lowest yield = muted,
+   highest = vivid). Same hue in light/dark, but light/dark need separate lightness
+   bands to both clear 4.5:1 on their own body-bg (#f9fafb / #1f2937) -- verified,
+   see contrast comment above the badge overrides. */
+.heat-yield-1 { color: #395643; }
+.heat-yield-2 { color: #2e603f; }
+.heat-yield-3 { color: #246b3c; }
+.heat-yield-4 { color: #197638; }
+.heat-yield-5 { color: #0b8433; }
+
+:root[data-bs-theme="dark"] .heat-yield-1 { color: #6c9d7c; }
+:root[data-bs-theme="dark"] .heat-yield-2 { color: #5aaf76; }
+:root[data-bs-theme="dark"] .heat-yield-3 { color: #47c270; }
+:root[data-bs-theme="dark"] .heat-yield-4 { color: #35d46a; }
+:root[data-bs-theme="dark"] .heat-yield-5 { color: #1ded62; }
+
 /* Flash effect for live-ticking quote values (Order Review / Roll Position
    live quotes) — same green/red as the badge-change-* colors above, applied
    as a transient background instead of a permanent one so a value visibly

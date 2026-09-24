@@ -72,7 +72,7 @@ function SegmentedButtons<TKey extends string>({ value, options, onChange }: { v
   return (
     <div className="btn-group" role="group">
       {options.map((option) => (
-        <button key={option.key} type="button" className={`btn ${option.key === value ? "btn-primary" : "btn-outline-secondary"}`} onClick={() => onChange(option.key)}>
+        <button key={option.key} type="button" className={`btn btn-sm ${option.key === value ? "btn-primary" : "btn-outline-secondary"}`} onClick={() => onChange(option.key)}>
           {option.label}
         </button>
       ))}
@@ -314,6 +314,13 @@ export function SignalsTickerModal({ symbol, onClose }: SignalsTickerModalProps)
   }, [rankedCandidates, strategyFilter, dteFilter]);
   const shownCandidates = useMemo(() => (showAvoid ? filteredCandidates : filteredCandidates.filter((candidate) => candidate.grade !== "avoid")), [filteredCandidates, showAvoid]);
   const hiddenAvoidCount = filteredCandidates.length - shownCandidates.length;
+  // Ann. Yield heatmap: quintile rank among the shown candidates, lowest yield = tier 1 (muted) to highest = tier 5 (vivid).
+  const yieldTierByKey = useMemo(() => {
+    const ranked = [...shownCandidates].sort((a, b) => a.annualizedYield - b.annualizedYield);
+    const tiers = new Map<string, number>();
+    ranked.forEach((candidate, index) => tiers.set(candidateKey(candidate), Math.min(5, Math.floor((index / ranked.length) * 5) + 1)));
+    return tiers;
+  }, [shownCandidates]);
   const selectedCandidate = useMemo(() => (selectedKey ? (signals?.candidates.find((candidate) => candidateKey(candidate) === selectedKey) ?? null) : null), [signals, selectedKey]);
 
   function selectCandidate(candidate: SignalCandidate) {
@@ -392,11 +399,11 @@ export function SignalsTickerModal({ symbol, onClose }: SignalsTickerModalProps)
           </TooltipSpan>
         ),
       },
-      { key: "yield", header: "Ann. yield", align: "right", render: (row) => <span className="font-mono text-secondary">{formatPercentage(row.annualizedYield, 0)}</span> },
-      { key: "uncompensated", header: "Uncomp.", align: "right", headerTitle: "Share of P&L variance from delta drift (UncompensatedShare)", render: (row) => <span className="font-mono text-secondary">{row.uncompensatedSharePercent === null ? "…" : `${row.uncompensatedSharePercent.toFixed(0)}%`}</span> },
+      { key: "yield", header: "Ann. yield", align: "right", render: (row) => <span className={`font-mono heat-yield-${yieldTierByKey.get(candidateKey(row)) ?? 1}`}>{formatPercentage(row.annualizedYield, 0)}</span> },
+      { key: "uncompensated", header: "Drift", align: "right", headerTitle: "Share of P&L variance from delta drift (UncompensatedShare)", render: (row) => <span className="font-mono text-secondary">{row.uncompensatedSharePercent === null ? "…" : `${row.uncompensatedSharePercent.toFixed(0)}%`}</span> },
       { key: "flags", header: "Flags", render: (row) => <FlagBadges candidate={row} /> },
     ],
-    [],
+    [yieldTierByKey],
   );
   const opportunityRows = useMemo(() => shownCandidates.map((candidate, index) => ({ ...candidate, rank: index + 1 })), [shownCandidates]);
 
@@ -501,7 +508,7 @@ export function SignalsTickerModal({ symbol, onClose }: SignalsTickerModalProps)
                       onRowClick={selectCandidate}
                       rowClassName={(row) => [candidateKey(row) === selectedKey ? "table-active" : "", row.grade === "avoid" ? "text-secondary" : ""].filter(Boolean).join(" ") || undefined}
                       toolbar={
-                        <div className="d-flex flex-wrap align-items-center gap-2" style={{ fontSize: "0.8rem" }}>
+                        <div className="d-flex flex-wrap align-items-center gap-2 w-100" style={{ fontSize: "0.8rem" }}>
                           <span className="text-secondary text-uppercase fw-bold" style={{ fontSize: "0.72rem", letterSpacing: "0.06em" }}>
                             Opportunities
                           </span>
@@ -519,7 +526,7 @@ export function SignalsTickerModal({ symbol, onClose }: SignalsTickerModalProps)
                             <input type="checkbox" className="form-check-input" checked={showAvoid} onChange={(event) => setShowAvoid(event.target.checked)} />
                             <span className="form-check-label">Show Avoid ({hiddenAvoidCount} hidden)</span>
                           </label>
-                          {uncompensatedAsOf && <span className="text-secondary">Uncomp. as of {formatCurrency(uncompensatedAsOf.spotPrice)}</span>}
+                          {uncompensatedAsOf && <span className="text-secondary ms-auto">Delta drift as of {formatCurrency(uncompensatedAsOf.spotPrice)}</span>}
                         </div>
                       }
                       afterTable={
