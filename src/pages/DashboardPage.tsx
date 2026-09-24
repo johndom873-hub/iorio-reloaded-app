@@ -334,18 +334,35 @@ const eventStatusBadge: Record<string, string> = {
 // "opened" event must always describe the entry, never the eventual exit
 // (found 2026-08-28: closed positions' "opened" row was showing exit
 // prices instead of what was actually paid/collected at open).
-function formatLegDescription(leg: PositionEvent["legs"][number], showExitPrice: boolean, dteAsOf: string): string {
+function formatLegDescription(
+  leg: PositionEvent["legs"][number],
+  showExitPrice: boolean,
+  closeReason: string | null,
+  dteAsOf: string,
+): string {
   const sideLabel = leg.side === "long" ? "Long" : "Short";
-  const priceLabel = showExitPrice && leg.exitPrice !== null ? `exit $${leg.exitPrice.toFixed(2)}` : `@ $${leg.entryPrice.toFixed(2)}`;
-  if (leg.legType === "stock") return `${sideLabel} ${leg.quantity} sh ${priceLabel}`;
+  // An expired option's exit price is always $0.00 (definitionally worthless,
+  // no closing trade) -- showing it adds nothing the "Expired" badge doesn't
+  // already say. Assignment isn't the same: exit price there is usually but
+  // not always zero, so it still gets shown.
+  const priceLabel =
+    showExitPrice && closeReason === "expired_worthless"
+      ? null
+      : showExitPrice && leg.exitPrice !== null
+        ? `exit $${leg.exitPrice.toFixed(2)}`
+        : `@ $${leg.entryPrice.toFixed(2)}`;
+  const priceSuffix = priceLabel ? ` ${priceLabel}` : "";
+  if (leg.legType === "stock") return `${sideLabel} ${leg.quantity} sh${priceSuffix}`;
   const strikeLabel = leg.strikePrice !== null ? `$${leg.strikePrice}` : "—";
   const rightLabel = leg.optionType === "call" ? "C" : "P";
   const expiryLabel = leg.expiryDate ? `, exp ${formatExpiryWithDte(leg.expiryDate, dteAsOf)}` : "";
-  return `${sideLabel} ${leg.quantity}x ${strikeLabel}${rightLabel}${expiryLabel} ${priceLabel}`;
+  return `${sideLabel} ${leg.quantity}x ${strikeLabel}${rightLabel}${expiryLabel}${priceSuffix}`;
 }
 
 function EventRow({ event, onSymbolClick }: { event: PositionEvent; onSymbolClick: (ticker: { symbol: string; focusPositionId?: string }) => void }) {
-  const description = event.legs.map((leg) => formatLegDescription(leg, event.eventType === "closed", event.openedAt)).join(" / ");
+  const description = event.legs
+    .map((leg) => formatLegDescription(leg, event.eventType === "closed", event.closeReason, event.openedAt))
+    .join(" / ");
 
   let statusLabel: string;
   let statusBadgeClass: string;
