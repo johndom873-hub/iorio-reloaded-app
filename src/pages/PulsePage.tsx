@@ -318,10 +318,17 @@ function useMarketStatus() {
         .catch(() => {});
     }
     poll();
-    const interval = window.setInterval(poll, MARKET_STATUS_POLL_INTERVAL_MS);
+    const interval = window.setInterval(() => {
+      if (document.visibilityState === "visible") poll();
+    }, MARKET_STATUS_POLL_INTERVAL_MS);
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") poll();
+    };
+    document.addEventListener("visibilitychange", handleVisibilityChange);
     return () => {
       cancelled = true;
       window.clearInterval(interval);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
     };
   }, []);
   return status;
@@ -520,10 +527,17 @@ export function PulsePage() {
         .catch(() => {});
     }
     poll();
-    const interval = window.setInterval(poll, HEALTH_POLL_INTERVAL_MS);
+    const interval = window.setInterval(() => {
+      if (document.visibilityState === "visible") poll();
+    }, HEALTH_POLL_INTERVAL_MS);
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") poll();
+    };
+    document.addEventListener("visibilitychange", handleVisibilityChange);
     return () => {
       cancelled = true;
       window.clearInterval(interval);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
     };
   }, []);
 
