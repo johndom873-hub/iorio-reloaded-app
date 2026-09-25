@@ -4,7 +4,7 @@ import { IconAlertTriangle, IconCircleCheck, IconTrendingUp } from "@tabler/icon
 import { Spinner } from "../Spinner";
 import { useBackgroundJobs, type BackgroundJob } from "../../contexts/BackgroundJobsContext";
 
-const autoDismissAfterMs = 15_000;
+const autoDismissAfterMs = 10_000;
 
 // Mounted once in AppLayout, which stays mounted across every route change
 // (React Router only swaps the <Outlet/> content) — so a scan or order kicked
