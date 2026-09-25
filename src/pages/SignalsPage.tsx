@@ -10,10 +10,9 @@ import { ModelCaveatBadge, RoadmapEtaText } from "../components/signals/ModelCav
 import { SignalsTickerModal } from "../components/SignalsTickerModal";
 import { TickColoredPrice } from "../components/TickColoredPrice";
 import { TooltipSpan } from "../components/TooltipSpan";
-import { VolatilitySurfaceModal } from "../components/VolatilitySurfaceModal";
 import { useTickerDetailSymbol } from "../hooks/useTickerDetailSymbol";
-import { formatCurrency, formatDate, formatDateTime, formatPercentage, formatRelativeTime, formatSignedPercentageValue, formatSignedPnl, formatVolatilityPoints, pnlTextClass, formatShortAge } from "../lib/formatters";
-import { describeCandidate, describeDayQuotesStatus, describeRoll, gradeBadgeClass, gradeExplanation, gradeLabel, priceSourceLabel, quoteSourceLabel, roadmapStatusBadgeClass, roadmapStatusLabel, signalsColumnExplanation, unscoredReasonLabel } from "../lib/signalsPresentation";
+import { daysToExpiry, formatCurrency, formatDateTime, formatDaysToExpiry, formatPercentage, formatRelativeTime, formatSignedPercentageValue, formatSignedPnl, formatVolatilityPoints, pnlTextClass, formatShortAge } from "../lib/formatters";
+import { describeCandidateCompact, describeDayQuotesStatus, describeRoll, gradeBadgeClass, gradeExplanation, gradeLabel, priceSourceLabel, quoteSourceLabel, roadmapStatusBadgeClass, roadmapStatusLabel, signalsColumnExplanation, unscoredReasonLabel } from "../lib/signalsPresentation";
 import { useTooltip } from "../hooks/useTooltip";
 
 // Signals screen (stage 3 of the build; mockup approved 2026-09-22, v3):
@@ -99,8 +98,8 @@ function QuoteSourceCell({ row }: { row: SignalsScreenRow }) {
     );
   }
   return (
-    <TooltipSpan className="font-mono text-secondary" text={quoteSourceLabel.snapshot}>
-      10:00
+    <TooltipSpan className="font-mono text-secondary" text={row.snapshotCapturedAt ? `${formatDateTime(row.snapshotCapturedAt)} snapshot quote — this contract is not in today's refresh pool` : quoteSourceLabel.snapshot}>
+      Snapshot
     </TooltipSpan>
   );
 }
@@ -175,7 +174,6 @@ export function SignalsPage() {
       ),
     [setSearchParams],
   );
-  const [surfaceModalSymbol, setSurfaceModalSymbol] = useState<string | null>(null);
   const [roadmapOpen, setRoadmapOpen] = useState(false);
 
   useEffect(() => {
@@ -260,7 +258,8 @@ export function SignalsPage() {
         headerTitle: signalsColumnExplanation.day,
         render: (row) => <span className={`font-mono ${pnlTextClass(row.dayChangePercent)}`}>{formatSignedPercentageValue(row.dayChangePercent, 1)}</span>,
       },
-      { key: "best", header: "Best opportunity", headerTitle: signalsColumnExplanation.best, render: (row) => (row.best ? <span className="text-nowrap">{describeCandidate(row.best)}</span> : <UnscoredBadge row={row} />) },
+      { key: "best", header: "Top Signal", headerTitle: signalsColumnExplanation.best, render: (row) => (row.best ? <span className="text-nowrap">{describeCandidateCompact(row.best)}</span> : <UnscoredBadge row={row} />) },
+      { key: "yield", header: "Yield", align: "right", headerTitle: signalsColumnExplanation.yield, render: (row) => <span className="font-mono">{row.best ? formatPercentage(row.best.annualizedYield, 1) : "—"}</span> },
       { key: "grade", header: "Grade", headerTitle: signalsColumnExplanation.grade, render: (row) => (row.best ? <GradeBadge grade={row.best.grade} /> : null) },
       {
         key: "netEdge",
@@ -288,7 +287,7 @@ export function SignalsPage() {
       },
       { key: "quotes", header: "Quotes", headerTitle: signalsColumnExplanation.quotes, render: (row) => <QuoteSourceCell row={row} /> },
       { key: "atmIv", header: "ATM IV", align: "right", headerTitle: signalsColumnExplanation.atmIv, render: (row) => <span className="font-mono">{formatPercentage(row.atmImpliedVolatility, 1)}</span> },
-      { key: "forecast", header: "Forecast RV", align: "right", headerTitle: signalsColumnExplanation.forecast, render: (row) => <span className="font-mono">{formatPercentage(row.forecast?.volatility, 1)}</span> },
+      { key: "forecast", header: "FV", align: "right", headerTitle: signalsColumnExplanation.forecast, render: (row) => <span className="font-mono">{formatPercentage(row.forecast?.volatility, 1)}</span> },
       {
         key: "momentum",
         header: "Mom.",
@@ -297,20 +296,7 @@ export function SignalsPage() {
         render: (row) => (row.momentum === null ? <span className="text-secondary">n/a</span> : <span className={`font-mono ${pnlTextClass(row.momentum)}`}>{formatSignedPercentageValue(row.momentum * 100, 0)}</span>),
       },
       { key: "volFlag", header: "Vol flag", headerTitle: signalsColumnExplanation.volFlag, render: (row) => <VolatilityFlagBadge row={row} /> },
-      { key: "earnings", header: "Earnings", headerTitle: signalsColumnExplanation.earnings, render: (row) => <span className="font-mono text-nowrap">{row.nextEarningsDateIso ? formatDate(row.nextEarningsDateIso) : "—"}</span> },
-      {
-        key: "surface",
-        header: "Surface",
-        headerTitle: signalsColumnExplanation.surface,
-        render: (row) =>
-          row.totalSliceCount > 0 ? (
-            <button type="button" className="btn btn-link p-0 text-decoration-none text-secondary font-mono" onClick={() => setSurfaceModalSymbol(row.symbol)}>
-              {row.fittedSliceCount}/{row.totalSliceCount} ok
-            </button>
-          ) : (
-            <span className="text-secondary">—</span>
-          ),
-      },
+      { key: "earnings", header: "Earnings", headerTitle: signalsColumnExplanation.earnings, render: (row) => <span className="font-mono text-nowrap">{row.nextEarningsDateIso ? formatDaysToExpiry(daysToExpiry(row.nextEarningsDateIso)) : "—"}</span> },
       {
         // Badges column (2026-09-24): blank header; a "model" badge only when the ticker has a caveat of its own,
         // a roll badge only when an open short leg has a credit roll above Avoid. Empty otherwise.
@@ -422,7 +408,8 @@ export function SignalsPage() {
                 <div className="d-flex justify-content-between gap-2 text-secondary" style={{ fontSize: "0.8rem" }}>
                   {row.best ? (
                     <>
-                      <span>{describeCandidate(row.best)}</span>
+                      <span>{describeCandidateCompact(row.best)}</span>
+                      <span className="font-mono">{formatPercentage(row.best.annualizedYield, 1)}</span>
                       <span className={`font-mono ${pnlTextClass(row.best.netEdge)}`}>{formatVolatilityPoints(row.best.netEdge)}</span>
                       <span className="font-mono">{formatSignedPnl(row.best.edgeDollars, 0)}</span>
                     </>
@@ -448,7 +435,6 @@ export function SignalsPage() {
       </div>
 
       {modalSymbol && <SignalsTickerModal key={`${modalSymbol}|${modalRollLegId ?? ""}`} symbol={modalSymbol} initialRollLegId={modalRollLegId} onClose={closeModal} />}
-      {surfaceModalSymbol && <VolatilitySurfaceModal symbol={surfaceModalSymbol} onClose={() => setSurfaceModalSymbol(null)} />}
 
     </>
   );

@@ -113,9 +113,31 @@ export function describeSignalFlag(flag: SignalFlag, candidate: SignalCandidate,
   return `${base}: ${spanned.map((event) => `${event.title} (${formatDate(event.dateIso)})`).join("; ")}`;
 }
 
+/**
+ * Colour check (approved 2026-09-25): how far a candidate's own live mid IV sits from the fitted,
+ * shift-corrected surface IV used to grade it. Green when they agree (within 2vp) -- the grade shown
+ * is trustworthy. Amber/red as mid runs increasingly below surface -- the live fill is running behind
+ * what was graded, more so past 5vp. Mid running above surface is left uncoloured: not a concern for a
+ * premium seller, just an upside worth a sanity check.
+ */
+export function surfaceIvTrustClass(surfaceIv: number, midIv: number | null): string {
+  if (midIv === null) return "";
+  const diffVolPoints = (midIv - surfaceIv) * 100;
+  if (Math.abs(diffVolPoints) <= 2) return "text-success";
+  if (diffVolPoints > 2) return "";
+  if (diffVolPoints > -5) return "iorio-note-amber";
+  return "text-danger";
+}
+
 /** "Put $106 · Oct 23, 2026" */
 export function describeCandidate(candidate: SignalCandidate): string {
   return `${candidate.strategyKey === "covered_call" ? "Call" : "Put"} ${formatCurrencyTrimmed(candidate.strike)} · ${formatDate(candidate.expiry)}`;
+}
+
+/** "C110 · 12 DTE" — compact form for the Signals screen's Top Signal column. */
+export function describeCandidateCompact(candidate: SignalCandidate): string {
+  const right = candidate.strategyKey === "covered_call" ? "C" : "P";
+  return `${right}${formatCurrencyTrimmed(candidate.strike).replace("$", "")} · ${candidate.dte} DTE`;
 }
 
 // --- Roll Signals (Formula 3j, approved 2026-09-24) ---------------------------------------------
@@ -164,6 +186,7 @@ export const signalsColumnExplanation = {
   price: "Live stock price (same source as the Positions table).",
   day: "Change versus the previous session's close.",
   best: "The candidate contract with the highest Edge $ across every expiry and strike on the out-of-the-money side.",
+  yield: "Annualised yield of the Top Signal contract: mid premium / capital at risk, annualised to a 365-day year.",
   grade: gradeExplanation,
   netEdge: "Net Edge = implied volatility at the strike (fitted surface) minus the forecast volatility minus friction (half-spread and commission), in volatility points.",
   edgeDollars: "Net Edge x vega x 100: the excess premium in dollars per contract.",
@@ -172,7 +195,6 @@ export const signalsColumnExplanation = {
   momentum: "Trailing 12-month return skipping the most recent month (12-1 momentum).",
   volFlag: "Elevated when the 21-day / 126-day volatility ratio is above this ticker's own 90th percentile (or a fixed 1.3 until a year of history exists).",
   earnings: "Next earnings date on record.",
-  surface: "Fitted expiries / expiries captured in the 10:00 ET snapshot.",
   notAccountedFor: "Measures the ranking does not use yet, what each is waiting on, and when it should be ready.",
   roll: "Open short legs on this ticker with a credit roll graded above Avoid; the colour is the best roll's grade. Click to review it.",
   quotes: "What the best opportunity's numbers are based on: a live IBKR line, a Day Signals quote (age shown), or still the 10:00 ET snapshot quote.",

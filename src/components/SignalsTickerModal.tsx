@@ -9,7 +9,7 @@ import { OrderReviewPanel, type OrderReviewQuoteSeed } from "./OrderReviewPanel"
 import { RollSignalOrderSetupForm } from "./RollSignalOrderSetupForm";
 import { SignalOrderSetupForm } from "./SignalOrderSetupForm";
 import { formatCurrency, formatCurrencyTrimmed, formatDate, formatDateTime, formatNumber, formatPercentage, formatPercentageValue, formatQuotePrice, formatShortAge, formatSignedPercentageValue, formatSignedPnl, formatVolatilityPoints, pnlTextClass } from "../lib/formatters";
-import { describeHeldLeg, describeQuoteAgeRange, describeRollSignalFlag, describeSignalFlag, gradeBadgeClass, gradeExplanation, gradeLabel, heldLegUnscoredReasonLabel, netRollEdgeExplanation, quoteSourceLabel, rollFlagLetter, signalFlagLetter, unscoredReasonLabel } from "../lib/signalsPresentation";
+import { describeHeldLeg, describeQuoteAgeRange, describeRollSignalFlag, describeSignalFlag, gradeBadgeClass, gradeExplanation, gradeLabel, heldLegUnscoredReasonLabel, netRollEdgeExplanation, quoteSourceLabel, rollFlagLetter, signalFlagLetter, surfaceIvTrustClass, unscoredReasonLabel } from "../lib/signalsPresentation";
 import { IvHistoryChart } from "./charts/IvHistoryChart";
 import { TickerPriceChart } from "./charts/TickerPriceChart";
 import { DataTable, type DataTableColumn } from "./DataTable/DataTable";
@@ -579,10 +579,10 @@ export function SignalsTickerModal({ symbol, initialRollLegId = null, onClose }:
         key: "iv",
         header: "Surf. / mid IV",
         align: "right",
-        headerTitle: "Surface IV at this strike vs this contract's own mid IV",
+        headerTitle: "Surface IV at this strike vs this contract's own mid IV. Surface IV is coloured by how far it sits from mid: green within 2vp (grade is trustworthy), amber 2-5vp above mid, red beyond 5vp above mid (the live market has moved well below what was graded).",
         render: (row) => (
           <span className="font-mono text-nowrap">
-            {formatPercentage(row.surfaceImpliedVolatility, 1)} / {formatPercentage(row.midImpliedVolatility, 1)}
+            <span className={surfaceIvTrustClass(row.surfaceImpliedVolatility, row.midImpliedVolatility)}>{formatPercentage(row.surfaceImpliedVolatility, 1)}</span> / {formatPercentage(row.midImpliedVolatility, 1)}
           </span>
         ),
       },
