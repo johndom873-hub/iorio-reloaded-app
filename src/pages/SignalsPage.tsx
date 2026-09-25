@@ -286,7 +286,15 @@ export function SignalsPage() {
           ) : null,
       },
       { key: "quotes", header: "Quotes", headerTitle: signalsColumnExplanation.quotes, render: (row) => <QuoteSourceCell row={row} /> },
-      { key: "atmIv", header: "ATM IV", align: "right", headerTitle: signalsColumnExplanation.atmIv, render: (row) => <span className="font-mono">{formatPercentage(row.atmImpliedVolatility, 1)}</span> },
+      {
+        key: "atmIv",
+        header: "ATM IV",
+        align: "right",
+        headerTitle: signalsColumnExplanation.atmIv,
+        render: (row) => (
+          <span className={`font-mono ${row.atmImpliedVolatility !== null && row.forecast ? pnlTextClass(row.atmImpliedVolatility - row.forecast.volatility) : ""}`}>{formatPercentage(row.atmImpliedVolatility, 1)}</span>
+        ),
+      },
       { key: "forecast", header: "FV", align: "right", headerTitle: signalsColumnExplanation.forecast, render: (row) => <span className="font-mono">{formatPercentage(row.forecast?.volatility, 1)}</span> },
       {
         key: "momentum",

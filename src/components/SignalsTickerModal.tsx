@@ -615,8 +615,8 @@ export function SignalsTickerModal({ symbol, initialRollLegId = null, onClose }:
               {formatShortAge(row.quotedAt) ?? "—"}
             </TooltipSpan>
           ) : (
-            <TooltipSpan className="font-mono text-secondary" text={quoteSourceLabel.snapshot}>
-              10:00
+            <TooltipSpan className="font-mono text-secondary" text={signals?.snapshotCapturedAt ? `${formatDateTime(signals.snapshotCapturedAt)} snapshot quote — this contract is not in today's refresh pool` : quoteSourceLabel.snapshot}>
+              Snapshot
             </TooltipSpan>
           ),
       },
@@ -696,7 +696,11 @@ export function SignalsTickerModal({ symbol, initialRollLegId = null, onClose }:
                 <div className="d-flex flex-wrap align-items-center gap-3 mb-3" style={{ fontSize: "0.8rem" }}>
                   <SignalMetric label="ATM IV (30d)" value={formatPercentage(signals.atmImpliedVolatility, 1)} />
                   <SignalMetric label={`Forecast RV (${signals.forecast?.windowDays ?? 63}d)`} value={formatPercentage(signals.forecast?.volatility, 1)} />
-                  <SignalMetric label="IV − forecast" value={signals.atmImpliedVolatility !== null && signals.forecast ? formatVolatilityPoints(signals.atmImpliedVolatility - signals.forecast.volatility) : "—"} />
+                  <SignalMetric
+                    label="IV − forecast"
+                    value={signals.atmImpliedVolatility !== null && signals.forecast ? formatVolatilityPoints(signals.atmImpliedVolatility - signals.forecast.volatility) : "—"}
+                    valueClassName={signals.atmImpliedVolatility !== null && signals.forecast ? pnlTextClass(signals.atmImpliedVolatility - signals.forecast.volatility) : ""}
+                  />
                   <SignalMetric label={`Intraday IV shift${effectiveExpiry ? ` (${formatDate(effectiveExpiry)})` : ""}`} value={ivShiftValue} />
                   <SignalMetric label="Momentum 12-1" value={signals.momentum === null ? "n/a" : formatSignedPercentageValue(signals.momentum * 100, 0)} />
                   <SignalMetric label="Skew (30d)" value={signals.skew ? formatVolatilityPoints(signals.skew.skew) : "—"} />
@@ -880,13 +884,13 @@ export function SignalsTickerModal({ symbol, initialRollLegId = null, onClose }:
   );
 }
 
-function SignalMetric({ label, value }: { label: string; value: string }) {
+function SignalMetric({ label, value, valueClassName }: { label: string; value: string; valueClassName?: string }) {
   return (
     <span className="d-inline-flex flex-column">
       <span className="text-secondary" style={{ fontSize: "0.68rem", textTransform: "uppercase", letterSpacing: "0.05em" }}>
         {label}
       </span>
-      <span className="font-mono fw-semibold">{value}</span>
+      <span className={`font-mono fw-semibold ${valueClassName ?? ""}`}>{value}</span>
     </span>
   );
 }

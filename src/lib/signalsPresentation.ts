@@ -190,7 +190,7 @@ export const signalsColumnExplanation = {
   grade: gradeExplanation,
   netEdge: "Net Edge = implied volatility at the strike (fitted surface) minus the forecast volatility minus friction (half-spread and commission), in volatility points.",
   edgeDollars: "Net Edge x vega x 100: the excess premium in dollars per contract.",
-  atmIv: "At-the-money implied volatility from the fitted surface, expiry nearest 30 days.",
+  atmIv: "At-the-money implied volatility from the fitted surface, expiry nearest 30 days. Coloured green when it's above FV (forecast), red when below.",
   forecast: "Forecast realized volatility: trailing 63-day Yang-Zhang (21-day when 63 is unavailable).",
   momentum: "Trailing 12-month return skipping the most recent month (12-1 momentum).",
   volFlag: "Elevated when the 21-day / 126-day volatility ratio is above this ticker's own 90th percentile (or a fixed 1.3 until a year of history exists).",
