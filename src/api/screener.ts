@@ -23,15 +23,22 @@ export type ScreenerBestRankBucket = "1-10" | "11-20" | "21-30" | "31-40" | "41-
 
 export interface ScreenerFilters {
   search?: string;
-  sector?: string;
+  sector?: string[];
   minIv?: number;
+  minOpenInterest?: number;
   bestRankBucket?: ScreenerBestRankBucket;
+  matchedScanCodes?: string[];
 }
 
 export function fetchScreenerResults(filters: ScreenerFilters): Promise<ScreenerScanRow[]> {
   const params = new URLSearchParams();
   for (const [key, value] of Object.entries(filters)) {
-    if (value !== undefined && value !== "") params.set(key, String(value));
+    if (value === undefined || value === "") continue;
+    if (Array.isArray(value)) {
+      if (value.length > 0) params.set(key, value.join(","));
+      continue;
+    }
+    params.set(key, String(value));
   }
   const query = params.toString();
   return apiRequest<ScreenerScanRow[]>(`/screener${query ? `?${query}` : ""}`);

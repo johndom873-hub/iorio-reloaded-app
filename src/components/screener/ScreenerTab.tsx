@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { DataTable, type DataTableColumn } from "../DataTable/DataTable";
+import { MultiSelectDropdown } from "../MultiSelectDropdown";
 import { Spinner } from "../Spinner";
 import { ApiError } from "../../api/client";
 import {
@@ -10,16 +11,18 @@ import {
   type ScreenerFilters,
   type ScreenerScanRow,
 } from "../../api/screener";
-import { formatDate, formatNumber, formatPercentage, formatRelativeDate } from "../../lib/formatters";
+import { formatCompactNumber, formatNumber, formatPercentage, formatRelativeDate } from "../../lib/formatters";
 
 interface FilterFormState {
   search: string;
-  sector: string;
+  sector: string[];
   minIv: string;
+  minOpenInterest: string;
   bestRankBucket: ScreenerBestRankBucket | "";
+  matchedScanCodes: string[];
 }
 
-const emptyFilterForm: FilterFormState = { search: "", sector: "", minIv: "", bestRankBucket: "" };
+const emptyFilterForm: FilterFormState = { search: "", sector: [], minIv: "", minOpenInterest: "", bestRankBucket: "", matchedScanCodes: [] };
 
 const bestRankBucketOptions: { value: ScreenerBestRankBucket; label: string }[] = [
   { value: "1-10", label: "1 – 10" },
@@ -29,6 +32,32 @@ const bestRankBucketOptions: { value: ScreenerBestRankBucket; label: string }[] 
   { value: "41-50", label: "41 – 50" },
   { value: "unmatched", label: "Unmatched (didn't clear this refresh)" },
 ];
+
+// The 6 scan codes run-daily-screener-scan-job.ts queries — kept here as the
+// filter's option list rather than fetched, since this set only ever changes
+// alongside a job code change. Labels agreed 2026-09-27: IV badges name what
+// each ranks by (absolute level / relative-to-own-history / rate of change);
+// the option-liquidity badges likewise (today's unusual activity / today's
+// raw volume / standing open interest — the last has no time window, unlike
+// the other two, since open interest is a snapshot, not something
+// accumulated over a period).
+const scanCodeLabels: Record<string, string> = {
+  HIGH_OPT_IMP_VOLAT: "IV: Highest",
+  HIGH_OPT_IMP_VOLAT_OVER_HIST: "IV: Higher vs Hist",
+  TOP_OPT_IMP_VOLAT_GAIN: "IV: Trending",
+  HOT_BY_OPT_VOLUME: "Opt Volume: Trending",
+  OPT_VOLUME_MOST_ACTIVE: "Opt Volume: Highest 1D",
+  OPT_OPEN_INTEREST_MOST_ACTIVE: "Open Interest: Highest",
+};
+
+// Richness (IV-based) badges stay blue; liquidity (option-volume/OI-based)
+// badges are purple, both with white text for contrast (agreed 2026-09-27).
+const richnessScanCodes = new Set(["HIGH_OPT_IMP_VOLAT", "HIGH_OPT_IMP_VOLAT_OVER_HIST", "TOP_OPT_IMP_VOLAT_GAIN"]);
+function scanCodeBadgeClass(code: string): string {
+  return richnessScanCodes.has(code) ? "badge bg-blue text-white me-1 mb-1" : "badge bg-purple text-white me-1 mb-1";
+}
+
+const matchTypeOptions = Object.entries(scanCodeLabels).map(([value, label]) => ({ value, label }));
 
 const filterStorageKey = "iorio-screener-last-filters";
 
@@ -44,11 +73,14 @@ function loadStoredFilters(): FilterFormState {
 
 function toFilters(form: FilterFormState): ScreenerFilters {
   const minIv = form.minIv.trim() === "" ? undefined : Number(form.minIv) / 100;
+  const minOpenInterest = form.minOpenInterest.trim() === "" ? undefined : Number(form.minOpenInterest);
   return {
     search: form.search.trim() || undefined,
-    sector: form.sector.trim() || undefined,
+    sector: form.sector.length > 0 ? form.sector : undefined,
     minIv,
+    minOpenInterest,
     bestRankBucket: form.bestRankBucket || undefined,
+    matchedScanCodes: form.matchedScanCodes.length > 0 ? form.matchedScanCodes : undefined,
   };
 }
 
@@ -138,8 +170,17 @@ export function ScreenerTab({ onOpenTickerDetail }: ScreenerTabProps) {
     },
     {
       key: "matchedScanCodes",
-      header: "Matched",
-      render: (row) => (row.matchedScanCodes.length === 0 ? <span className="text-muted">—</span> : row.matchedScanCodes.map((code) => <span key={code} className="badge bg-blue-lt me-1">{code}</span>)),
+      header: "Match Type",
+      render: (row) =>
+        row.matchedScanCodes.length === 0 ? (
+          <span className="text-muted">—</span>
+        ) : (
+          row.matchedScanCodes.map((code) => (
+            <span key={code} className={scanCodeBadgeClass(code)}>
+              {scanCodeLabels[code] ?? code}
+            </span>
+          ))
+        ),
     },
     {
       key: "impliedVolatility",
@@ -150,9 +191,10 @@ export function ScreenerTab({ onOpenTickerDetail }: ScreenerTabProps) {
     },
     {
       key: "avgShareVolume",
-      header: "Avg Share Vol",
+      header: "SH VOL",
+      headerTitle: "Average daily share volume (90-day, per IBKR)",
       align: "right",
-      render: (row) => formatNumber(row.avgShareVolume),
+      render: (row) => formatCompactNumber(row.avgShareVolume === null ? null : Number(row.avgShareVolume)),
     },
     {
       key: "avgOptionVolume",
@@ -165,13 +207,13 @@ export function ScreenerTab({ onOpenTickerDetail }: ScreenerTabProps) {
       key: "callOpenInterest",
       header: "Call OI",
       align: "right",
-      render: (row) => formatNumber(row.callOpenInterest),
+      render: (row) => formatCompactNumber(row.callOpenInterest === null ? null : Number(row.callOpenInterest)),
     },
     {
       key: "putOpenInterest",
       header: "Put OI",
       align: "right",
-      render: (row) => formatNumber(row.putOpenInterest),
+      render: (row) => formatCompactNumber(row.putOpenInterest === null ? null : Number(row.putOpenInterest)),
     },
     {
       key: "bidAskSpreadPct",
@@ -180,9 +222,9 @@ export function ScreenerTab({ onOpenTickerDetail }: ScreenerTabProps) {
       align: "right",
       render: (row) => formatPercentage(row.bidAskSpreadPct === null ? null : Number(row.bidAskSpreadPct)),
     },
-    { key: "firstSeenAt", header: "First Seen", render: (row) => formatDate(row.firstSeenAt) },
-    { key: "lastMatchedAt", header: "Last Matched", render: (row) => formatRelativeDate(row.lastMatchedAt) },
-    { key: "lastRefreshedAt", header: "Last Refreshed", render: (row) => formatRelativeDate(row.lastRefreshedAt) },
+    { key: "firstSeenAt", header: "First Seen", render: (row) => formatRelativeDate(row.firstSeenAt) },
+    { key: "lastMatchedAt", header: "Matched", render: (row) => formatRelativeDate(row.lastMatchedAt) },
+    { key: "lastRefreshedAt", header: "Refreshed", render: (row) => formatRelativeDate(row.lastRefreshedAt) },
     {
       key: "actions",
       header: "",
@@ -198,7 +240,7 @@ export function ScreenerTab({ onOpenTickerDetail }: ScreenerTabProps) {
             onClick={() => handleAddToShortlist(row.symbol)}
           >
             {addingSymbol === row.symbol && <Spinner size="sm" />}
-            Add to Shortlist
+            + Shortlist
           </button>
         ),
     },
@@ -229,18 +271,12 @@ export function ScreenerTab({ onOpenTickerDetail }: ScreenerTabProps) {
             </div>
             <div>
               <label className="form-label">Sector</label>
-              <select
-                className="form-select"
-                value={form.sector}
-                onChange={(event) => setForm((prev) => ({ ...prev, sector: event.target.value }))}
-              >
-                <option value="">All Sectors</option>
-                {sectorOptions.map((sector) => (
-                  <option key={sector} value={sector}>
-                    {sector}
-                  </option>
-                ))}
-              </select>
+              <MultiSelectDropdown
+                label="All Sectors"
+                options={sectorOptions.map((sector) => ({ value: sector, label: sector }))}
+                selected={form.sector}
+                onChange={(sector) => setForm((prev) => ({ ...prev, sector }))}
+              />
             </div>
             <div>
               <label className="form-label">Min IV %</label>
@@ -250,6 +286,17 @@ export function ScreenerTab({ onOpenTickerDetail }: ScreenerTabProps) {
                 placeholder="e.g. 30"
                 value={form.minIv}
                 onChange={(event) => setForm((prev) => ({ ...prev, minIv: event.target.value }))}
+              />
+            </div>
+            <div>
+              <label className="form-label">Min Open Interest</label>
+              <input
+                type="number"
+                className="form-control"
+                placeholder="e.g. 100"
+                title="Filters on the lower of call and put open interest"
+                value={form.minOpenInterest}
+                onChange={(event) => setForm((prev) => ({ ...prev, minOpenInterest: event.target.value }))}
               />
             </div>
             <div>
@@ -266,6 +313,15 @@ export function ScreenerTab({ onOpenTickerDetail }: ScreenerTabProps) {
                   </option>
                 ))}
               </select>
+            </div>
+            <div>
+              <label className="form-label">Match Type</label>
+              <MultiSelectDropdown
+                label="Any"
+                options={matchTypeOptions}
+                selected={form.matchedScanCodes}
+                onChange={(matchedScanCodes) => setForm((prev) => ({ ...prev, matchedScanCodes }))}
+              />
             </div>
           </div>
           <div className="d-flex justify-content-end gap-2 mt-3">
