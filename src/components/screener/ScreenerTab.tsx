@@ -6,41 +6,29 @@ import {
   addScreenerResultToShortlist,
   fetchScreenerResults,
   fetchScreenerSectors,
+  type ScreenerBestRankBucket,
   type ScreenerFilters,
   type ScreenerScanRow,
 } from "../../api/screener";
-import { formatDate, formatNumber, formatPercentage } from "../../lib/formatters";
+import { formatDate, formatNumber, formatPercentage, formatRelativeDate } from "../../lib/formatters";
 
 interface FilterFormState {
-  maxPrice: string;
-  minIvRatio: string;
-  maxIvRatio: string;
-  minAvgOptionVolume: string;
-  minAvgShareVolume: string;
-  maxBidAskSpreadPct: string;
+  search: string;
   sector: string;
+  minIv: string;
+  bestRankBucket: ScreenerBestRankBucket | "";
 }
 
-const emptyFilterForm: FilterFormState = {
-  maxPrice: "",
-  minIvRatio: "",
-  maxIvRatio: "",
-  minAvgOptionVolume: "",
-  minAvgShareVolume: "",
-  maxBidAskSpreadPct: "",
-  sector: "",
-};
+const emptyFilterForm: FilterFormState = { search: "", sector: "", minIv: "", bestRankBucket: "" };
 
-// Hint text only — never applied unless the user actually types a value.
-const filterPlaceholders: Record<keyof FilterFormState, string> = {
-  maxPrice: "e.g. 200",
-  minIvRatio: "e.g. 1.0",
-  maxIvRatio: "e.g. 3.0",
-  minAvgOptionVolume: "e.g. 500",
-  minAvgShareVolume: "e.g. 1,000,000",
-  maxBidAskSpreadPct: "e.g. 5",
-  sector: "",
-};
+const bestRankBucketOptions: { value: ScreenerBestRankBucket; label: string }[] = [
+  { value: "1-10", label: "1 – 10" },
+  { value: "11-20", label: "11 – 20" },
+  { value: "21-30", label: "21 – 30" },
+  { value: "31-40", label: "31 – 40" },
+  { value: "41-50", label: "41 – 50" },
+  { value: "unmatched", label: "Unmatched (didn't clear this refresh)" },
+];
 
 const filterStorageKey = "iorio-screener-last-filters";
 
@@ -55,15 +43,12 @@ function loadStoredFilters(): FilterFormState {
 }
 
 function toFilters(form: FilterFormState): ScreenerFilters {
-  const num = (value: string) => (value.trim() === "" ? undefined : Number(value));
+  const minIv = form.minIv.trim() === "" ? undefined : Number(form.minIv) / 100;
   return {
-    maxPrice: num(form.maxPrice),
-    minIvRatio: num(form.minIvRatio),
-    maxIvRatio: num(form.maxIvRatio),
-    minAvgOptionVolume: num(form.minAvgOptionVolume),
-    minAvgShareVolume: num(form.minAvgShareVolume),
-    maxBidAskSpreadPct: num(form.maxBidAskSpreadPct) === undefined ? undefined : Number(form.maxBidAskSpreadPct) / 100,
+    search: form.search.trim() || undefined,
     sector: form.sector.trim() || undefined,
+    minIv,
+    bestRankBucket: form.bestRankBucket || undefined,
   };
 }
 
@@ -145,17 +130,16 @@ export function ScreenerTab({ onOpenTickerDetail }: ScreenerTabProps) {
     { key: "companyName", header: "Company", render: (row) => row.companyName ?? "—" },
     { key: "sector", header: "Sector", render: (row) => row.sector ?? "—" },
     {
-      key: "lastPrice",
-      header: "Price",
+      key: "bestRank",
+      header: "Best Rank",
+      headerTitle: "Rank among tonight's scan matches (lowest = best). Unmatched means this ticker didn't clear any of the discovery queries on the last refresh.",
       align: "right",
-      render: (row) => (row.lastPrice === null ? "—" : `$${Number(row.lastPrice).toFixed(2)}`),
+      render: (row) => (row.bestRank >= 999 ? <span className="text-muted">Unmatched</span> : <span className="fw-bold">#{row.bestRank + 1}</span>),
     },
     {
-      key: "ivVsHistRatio",
-      header: "IV vs Hist",
-      headerTitle: "IBKR's own IV-vs-historical-IV ratio (High Option IV vs. Historical scan) — a stand-in for our 252-day IV Rank until this ticker is shortlisted and accumulates its own price history.",
-      align: "right",
-      render: (row) => (row.ivVsHistRatio === null ? "—" : Number(row.ivVsHistRatio).toFixed(2)),
+      key: "matchedScanCodes",
+      header: "Matched",
+      render: (row) => (row.matchedScanCodes.length === 0 ? <span className="text-muted">—</span> : row.matchedScanCodes.map((code) => <span key={code} className="badge bg-blue-lt me-1">{code}</span>)),
     },
     {
       key: "impliedVolatility",
@@ -165,16 +149,17 @@ export function ScreenerTab({ onOpenTickerDetail }: ScreenerTabProps) {
       render: (row) => formatPercentage(row.impliedVolatility === null ? null : Number(row.impliedVolatility)),
     },
     {
-      key: "avgOptionVolume",
-      header: "Avg Opt Vol",
-      align: "right",
-      render: (row) => formatNumber(row.avgOptionVolume),
-    },
-    {
       key: "avgShareVolume",
       header: "Avg Share Vol",
       align: "right",
       render: (row) => formatNumber(row.avgShareVolume),
+    },
+    {
+      key: "avgOptionVolume",
+      header: "Avg Opt Vol",
+      headerTitle: "Frequently unavailable under current IBKR data entitlements",
+      align: "right",
+      render: (row) => formatNumber(row.avgOptionVolume),
     },
     {
       key: "callOpenInterest",
@@ -195,8 +180,9 @@ export function ScreenerTab({ onOpenTickerDetail }: ScreenerTabProps) {
       align: "right",
       render: (row) => formatPercentage(row.bidAskSpreadPct === null ? null : Number(row.bidAskSpreadPct)),
     },
-    { key: "scanCodes", header: "Matched", render: (row) => row.scanCodes.map((code) => <span key={code} className="badge bg-blue-lt me-1">{code}</span>) },
-    { key: "firstSeenDate", header: "First Seen", render: (row) => formatDate(row.firstSeenDate) },
+    { key: "firstSeenAt", header: "First Seen", render: (row) => formatDate(row.firstSeenAt) },
+    { key: "lastMatchedAt", header: "Last Matched", render: (row) => formatRelativeDate(row.lastMatchedAt) },
+    { key: "lastRefreshedAt", header: "Last Refreshed", render: (row) => formatRelativeDate(row.lastRefreshedAt) },
     {
       key: "actions",
       header: "",
@@ -227,68 +213,18 @@ export function ScreenerTab({ onOpenTickerDetail }: ScreenerTabProps) {
           <div
             style={{
               display: "grid",
-              gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))",
+              gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
               gap: "1rem",
             }}
           >
             <div>
-              <label className="form-label">Max Price</label>
+              <label className="form-label">Ticker / Company</label>
               <input
-                type="number"
+                type="text"
                 className="form-control"
-                placeholder={filterPlaceholders.maxPrice}
-                value={form.maxPrice}
-                onChange={(event) => setForm((prev) => ({ ...prev, maxPrice: event.target.value }))}
-              />
-            </div>
-            <div>
-              <label className="form-label">Min IV vs Hist</label>
-              <input
-                type="number"
-                className="form-control"
-                placeholder={filterPlaceholders.minIvRatio}
-                value={form.minIvRatio}
-                onChange={(event) => setForm((prev) => ({ ...prev, minIvRatio: event.target.value }))}
-              />
-            </div>
-            <div>
-              <label className="form-label">Max IV vs Hist</label>
-              <input
-                type="number"
-                className="form-control"
-                placeholder={filterPlaceholders.maxIvRatio}
-                value={form.maxIvRatio}
-                onChange={(event) => setForm((prev) => ({ ...prev, maxIvRatio: event.target.value }))}
-              />
-            </div>
-            <div>
-              <label className="form-label">Min Avg Opt Vol</label>
-              <input
-                type="number"
-                className="form-control"
-                placeholder={filterPlaceholders.minAvgOptionVolume}
-                value={form.minAvgOptionVolume}
-                onChange={(event) => setForm((prev) => ({ ...prev, minAvgOptionVolume: event.target.value }))}
-              />
-            </div>
-            <div>
-              <label className="form-label">Min Avg Share Vol</label>
-              <input
-                type="number"
-                className="form-control"
-                placeholder={filterPlaceholders.minAvgShareVolume}
-                value={form.minAvgShareVolume}
-                onChange={(event) => setForm((prev) => ({ ...prev, minAvgShareVolume: event.target.value }))}
-              />
-            </div>
-            <div>
-              <label className="form-label">Max Spread %</label>
-              <input
-                type="number"
-                className="form-control"
-                placeholder={filterPlaceholders.maxBidAskSpreadPct}
-                value={form.maxBidAskSpreadPct}
-                onChange={(event) => setForm((prev) => ({ ...prev, maxBidAskSpreadPct: event.target.value }))}
+                placeholder="e.g. AAPL or Apple"
+                value={form.search}
+                onChange={(event) => setForm((prev) => ({ ...prev, search: event.target.value }))}
               />
             </div>
             <div>
@@ -302,6 +238,31 @@ export function ScreenerTab({ onOpenTickerDetail }: ScreenerTabProps) {
                 {sectorOptions.map((sector) => (
                   <option key={sector} value={sector}>
                     {sector}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="form-label">Min IV %</label>
+              <input
+                type="number"
+                className="form-control"
+                placeholder="e.g. 30"
+                value={form.minIv}
+                onChange={(event) => setForm((prev) => ({ ...prev, minIv: event.target.value }))}
+              />
+            </div>
+            <div>
+              <label className="form-label">Best Rank</label>
+              <select
+                className="form-select"
+                value={form.bestRankBucket}
+                onChange={(event) => setForm((prev) => ({ ...prev, bestRankBucket: event.target.value as ScreenerBestRankBucket | "" }))}
+              >
+                <option value="">Any</option>
+                {bestRankBucketOptions.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
                   </option>
                 ))}
               </select>
@@ -330,7 +291,7 @@ export function ScreenerTab({ onOpenTickerDetail }: ScreenerTabProps) {
         rows={rows}
         rowKey={(row) => row.id}
         loading={loading}
-        emptyMessage={hasSearched ? "No candidates match these filters." : "Apply filters to search today's screener candidates."}
+        emptyMessage={hasSearched ? "No candidates match these filters." : "Apply filters to search the screener universe."}
       />
     </>
   );

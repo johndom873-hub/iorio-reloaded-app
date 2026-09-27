@@ -5,29 +5,27 @@ export interface ScreenerScanRow {
   symbol: string;
   companyName: string | null;
   sector: string | null;
-  scanCodes: string[];
   bestRank: number;
-  lastPrice: string | null;
+  matchedScanCodes: string[];
   avgShareVolume: string | null;
   avgOptionVolume: string | null;
   callOpenInterest: string | null;
   putOpenInterest: string | null;
   bidAskSpreadPct: string | null;
-  ivVsHistRatio: string | null;
   impliedVolatility: string | null;
-  scanDate: string;
-  firstSeenDate: string;
+  firstSeenAt: string;
+  lastMatchedAt: string | null;
+  lastRefreshedAt: string;
   isShortlisted: boolean;
 }
 
+export type ScreenerBestRankBucket = "1-10" | "11-20" | "21-30" | "31-40" | "41-50" | "unmatched";
+
 export interface ScreenerFilters {
-  maxPrice?: number;
-  minIvRatio?: number;
-  maxIvRatio?: number;
-  minAvgOptionVolume?: number;
-  minAvgShareVolume?: number;
-  maxBidAskSpreadPct?: number;
+  search?: string;
   sector?: string;
+  minIv?: number;
+  bestRankBucket?: ScreenerBestRankBucket;
 }
 
 export function fetchScreenerResults(filters: ScreenerFilters): Promise<ScreenerScanRow[]> {
