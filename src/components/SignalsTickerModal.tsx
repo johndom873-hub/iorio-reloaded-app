@@ -21,6 +21,7 @@ import { TickerHeaderStrip } from "./TickerHeaderStrip";
 import { TickerPositionsCards } from "./TickerPositionsCards";
 import { TooltipSpan } from "./TooltipSpan";
 import { useTooltip } from "../hooks/useTooltip";
+import { flashClassName, useFlashOnChange } from "../hooks/useFlashOnChange";
 
 // Signals modal (stage 4; mockup approved 2026-09-22, v3). Same header,
 // Positions and Wheel-cycle cards as Ticker Detail, then the live graded
@@ -225,25 +226,6 @@ function ExpiryChainGrid({ candidates, expiry, spotPrice, selectedKey, onSelect 
   }, [candidates, expiry]);
   const spotMarkerIndex = spotPrice === null ? -1 : rows.findIndex(([strike]) => strike >= spotPrice);
 
-  const sideCells = (candidate: SignalCandidate | undefined) =>
-    candidate ? (
-      <>
-        <td className="text-end font-mono">{formatQuotePrice(candidate.bid)}</td>
-        <td className="text-end font-mono">{formatQuotePrice(candidate.ask)}</td>
-        <td className="text-end font-mono">{formatSignedDelta(candidate.delta)}</td>
-        <td className="text-end">
-          <GradeBadge candidate={candidate} />
-        </td>
-      </>
-    ) : (
-      <>
-        <td />
-        <td />
-        <td />
-        <td />
-      </>
-    );
-
   return (
     <div className="table-responsive">
       <table className="table table-sm table-hover table-vcenter card-table" style={{ fontSize: "0.8rem" }}>
@@ -276,9 +258,9 @@ function ExpiryChainGrid({ candidates, expiry, spotPrice, selectedKey, onSelect 
             return (
               <FragmentRow key={key} showSpotMarkerBefore={index === spotMarkerIndex} spotPrice={spotPrice}>
                 <tr className={selectedKey === key ? "table-active" : undefined} style={{ cursor: candidate ? "pointer" : undefined }} onClick={candidate ? () => onSelect(candidate) : undefined}>
-                  {sideCells(entry.call)}
+                  <ChainSideCells candidate={entry.call} />
                   <td className="text-center fw-bold font-mono">{formatCurrencyTrimmed(strike)}</td>
-                  {sideCells(entry.put)}
+                  <ChainSideCells candidate={entry.put} />
                 </tr>
               </FragmentRow>
             );
@@ -287,6 +269,40 @@ function ExpiryChainGrid({ candidates, expiry, spotPrice, selectedKey, onSelect 
         </tbody>
       </table>
     </div>
+  );
+}
+
+// Flashes whichever of bid, ask and delta moved on the latest re-score, same as Ticker Detail's chain.
+// Compared at the displayed 2 decimals so sub-cent / sub-display jitter doesn't flash.
+function ChainSideCells({ candidate }: { candidate: SignalCandidate | undefined }) {
+  const bidFlash = useFlashOnChange(candidate?.bid ?? null, 1200, 2);
+  const askFlash = useFlashOnChange(candidate?.ask ?? null, 1200, 2);
+  const deltaFlash = useFlashOnChange(candidate?.delta ?? null, 1200, 2);
+  if (!candidate) {
+    return (
+      <>
+        <td />
+        <td />
+        <td />
+        <td />
+      </>
+    );
+  }
+  return (
+    <>
+      <td className="text-end font-mono">
+        <span className={flashClassName(bidFlash)}>{formatQuotePrice(candidate.bid)}</span>
+      </td>
+      <td className="text-end font-mono">
+        <span className={flashClassName(askFlash)}>{formatQuotePrice(candidate.ask)}</span>
+      </td>
+      <td className="text-end font-mono">
+        <span className={flashClassName(deltaFlash)}>{formatSignedDelta(candidate.delta)}</span>
+      </td>
+      <td className="text-end">
+        <GradeBadge candidate={candidate} />
+      </td>
+    </>
   );
 }
 
