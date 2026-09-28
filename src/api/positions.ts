@@ -561,6 +561,27 @@ export function fetchCycles(symbol: string): Promise<{ symbol: string; cycles: C
   return apiRequest(`/positions/cycles?symbol=${encodeURIComponent(symbol)}`);
 }
 
+/**
+ * Stored-mark cycle figures for one open ticker (see cycleLiveMarks.ts in the API repo): the total marks shares at the
+ * last daily close and open options at the last nightly snapshot. The Positions table swaps in its live marks with
+ * liveCyclePnl (lib/cycleLivePnl.ts).
+ */
+export interface OpenCycleMarks {
+  symbol: string;
+  total: number;
+  sharesHeld: number;
+  markPrice: number | null;
+  markDate: string | null;
+  /** Per open option position id: the unrealized premium P&L the total was computed with. */
+  optionMarks: Record<string, number>;
+  /** Non-empty when the cycle's numbers can't be trusted. */
+  dataFlags: string[];
+}
+
+export function fetchCycleMarks(): Promise<Record<string, OpenCycleMarks>> {
+  return apiRequest("/positions/cycles/marks");
+}
+
 export interface CycleScoreboard {
   buckets: Record<CycleBucketKey, CycleBucketResult & { returnOnCapital: number | null }>;
   total: number;

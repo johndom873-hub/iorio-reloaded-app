@@ -8,18 +8,18 @@ import { TickerDetailModal } from "../components/TickerDetailModal";
 import { CycleScoreboard } from "../components/CycleScoreboard";
 import { ApiError } from "../api/client";
 import {
+  fetchCycleMarks,
   fetchPositions,
   openGreeksStream,
   openUnrealizedPnlStream,
   type Greeks,
+  type OpenCycleMarks,
   type Position,
-  type PositionStatus,
   type UnrealizedPnlResult,
 } from "../api/positions";
 import { fetchTradeAlerts, isRollAlert, type RollStructure, type TradeAlert } from "../api/tradeAlerts";
 import { fetchAccountValue } from "../api/dashboard";
 import { openNotificationStream } from "../api/notifications";
-import type { StrategyKey } from "../api/strategy";
 import {
   daysToExpiry,
   todayInEasternIso,
@@ -32,6 +32,7 @@ import {
   formatSignedPnl,
   pnlTextClass,
 } from "../lib/formatters";
+import { liveCyclePnl } from "../lib/cycleLivePnl";
 import { useTickerDetailSymbol } from "../hooks/useTickerDetailSymbol";
 import {
   positionExpiryDate,
@@ -50,18 +51,11 @@ import { useTooltip } from "../hooks/useTooltip";
 
 type RollAlert = TradeAlert & { suggestedStructure: RollStructure };
 
-const strategyTabs: { key: StrategyKey | "all"; label: string }[] = [
-  { key: "all", label: "All" },
-  { key: "covered_call", label: "Covered Calls" },
-  { key: "cash_secured_put", label: "Cash-Secured Puts" },
-];
-
 function structureSummary(position: Position): string {
   // An open position can carry closed legs from a past roll (they stay
   // attached to the same position_id for history) — only summarize what's
-  // actually still held. A closed position's legs are all closed by
-  // definition, so show the full set there.
-  const legs = position.status === "open" ? position.legs.filter((leg) => !leg.exitAt) : position.legs;
+  // actually still held.
+  const legs = position.legs.filter((leg) => !leg.exitAt);
   return legs
     .map((leg) => {
       const sideLabel = leg.side === "long" ? "Long" : "Short";
@@ -87,8 +81,6 @@ function RollButton({ rationale, onClick }: { rationale: string | null | undefin
 }
 
 export function PositionsPage() {
-  const [strategy, setStrategy] = useState<StrategyKey | "all">("all");
-  const [status, setStatus] = useState<PositionStatus>("open");
   const [positions, setPositions] = useState<Position[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -99,6 +91,9 @@ export function PositionsPage() {
   const [greeksFetchFailed, setGreeksFetchFailed] = useState(false);
   const [unrealizedPnlByPositionId, setUnrealizedPnlByPositionId] = useState<Record<string, UnrealizedPnlResult>>({});
   const [unrealizedPnlFetchFailed, setUnrealizedPnlFetchFailed] = useState(false);
+  // Stored-mark cycle figures per open ticker (null until loaded); the row's live marks are applied on top in resolveCyclePnl.
+  const [cycleMarksBySymbol, setCycleMarksBySymbol] = useState<Record<string, OpenCycleMarks> | null>(null);
+  const [cycleMarksFetchFailed, setCycleMarksFetchFailed] = useState(false);
   const [detailSymbol, setDetailSymbol] = useTickerDetailSymbol();
   // Not persisted across a refresh (unlike detailSymbol) -- it's a one-shot
   // "scroll to this position"/"pre-select this alert" aid, not state worth
@@ -115,20 +110,18 @@ export function PositionsPage() {
   );
   const [closePosition, setClosePosition] = useState<Position | null>(null);
   // Pending roll alerts, keyed by the position they'd roll — drives the
-  // Roll button in the actions column. Not tied to the status/strategy
-  // filters above: a roll alert only ever exists for an open position, so
-  // fetching the full pending set unfiltered is simplest.
+  // Roll button in the actions column.
   const [rollAlertsByPositionId, setRollAlertsByPositionId] = useState<Record<string, RollAlert>>({});
 
   const loadPositions = useCallback(async () => {
     try {
       setError(null);
-      const result = await fetchPositions({ status, strategyKey: strategy === "all" ? undefined : strategy });
+      const result = await fetchPositions({ status: "open" });
       setPositions(result);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Failed to load positions.");
     }
-  }, [status, strategy]);
+  }, []);
 
   const loadRollAlerts = useCallback(async () => {
     try {
@@ -164,6 +157,15 @@ export function PositionsPage() {
       .then((result) => setTotalAccountValue(result.netLiquidationValue))
       .catch(() => setTotalAccountValue(null));
   }, []);
+
+  // Refetched whenever the position set changes (a fill or a roll changes the cycle), not on every price tick.
+  useEffect(() => {
+    if (positions.length === 0) return;
+    setCycleMarksFetchFailed(false);
+    fetchCycleMarks()
+      .then(setCycleMarksBySymbol)
+      .catch(() => setCycleMarksFetchFailed(true));
+  }, [positions]);
 
   useEffect(() => {
     const optionLegIds = positions
@@ -211,9 +213,28 @@ export function PositionsPage() {
     return { price, failed: price === null && (dataArrived || streamsFailed) };
   }
 
+  // Cycle P&L for a row: the ticker's cycle with THIS row's price and each open option position's live unrealized premium
+  // P&L swapped in (see liveCyclePnl). Any mark that isn't available stays at the stored value (last daily close / nightly
+  // snapshot), shown with an "As of" date only when the row has no price at all -- the same fallback the other P&L columns use.
+  function resolveCyclePnl(row: Position): { state: "loading" } | { state: "unavailable"; reason: string } | { state: "ready"; value: number; storedAsOf: string | null } {
+    if (cycleMarksFetchFailed) return { state: "unavailable", reason: "Failed to load cycle data" };
+    if (cycleMarksBySymbol === null) return { state: "loading" };
+    const marks = cycleMarksBySymbol[row.symbol];
+    if (!marks) return { state: "unavailable", reason: "No open cycle for this symbol" };
+    if (marks.dataFlags.length > 0) return { state: "unavailable", reason: `Cycle data is inconsistent: ${marks.dataFlags.join("; ")}` };
+    const { price } = resolvePrice(row);
+    const liveUnrealizedPremiumByPositionId: Record<string, number> = {};
+    for (const position of positions) {
+      if (position.symbol !== row.symbol || !(position.id in marks.optionMarks)) continue;
+      const unrealizedPremiumPnl = unrealizedPnlByPositionId[position.id]?.unrealizedPremiumPnl;
+      if (unrealizedPremiumPnl !== null && unrealizedPremiumPnl !== undefined) liveUnrealizedPremiumByPositionId[position.id] = unrealizedPremiumPnl;
+    }
+    return { state: "ready", value: liveCyclePnl(marks, price, liveUnrealizedPremiumByPositionId), storedAsOf: price === null ? marks.markDate : null };
+  }
+
   function renderNetDelta(row: Position) {
     const optionLeg = row.legs.find((leg) => leg.legType === "option" && !leg.exitAt);
-    if (!optionLeg || row.status === "closed") return <span className="text-muted">—</span>;
+    if (!optionLeg) return <span className="text-muted">—</span>;
     const greeks = greeksByLegId[optionLeg.id];
     if (!greeks) {
       if (greeksFetchFailed) return <TooltipSpan className="text-muted" text="Failed to load">—</TooltipSpan>;
@@ -240,23 +261,36 @@ export function PositionsPage() {
       {formatSignedPnl(value)}
     </TooltipSpan>
   );
-  // Closed positions' capital was committed at different times and reused, so
-  // summing Exp $ / Exp % (and a P&L % on that base) across them is meaningless —
-  // only the P&L $ totals are shown there.
-  const isOpenView = status === "open";
+  // Cycle P&L is per symbol and repeats on every row of that symbol, so the total counts each symbol once.
+  const cycleTotalsBySymbol = new Map<string, ReturnType<typeof resolveCyclePnl>>();
+  for (const position of positions) if (!cycleTotalsBySymbol.has(position.symbol)) cycleTotalsBySymbol.set(position.symbol, resolveCyclePnl(position));
+  const cycleResults = [...cycleTotalsBySymbol.values()];
+  const cycleTotal = cycleResults.reduce((sum, result) => sum + (result.state === "ready" ? result.value : 0), 0);
+  const cycleSymbolsWithoutFigure = cycleResults.filter((result) => result.state === "unavailable").length;
+  const cycleTotalTitle =
+    cycleSymbolsWithoutFigure > 0
+      ? `Each symbol counted once. Excludes ${cycleSymbolsWithoutFigure} symbol(s) with no cycle figure`
+      : "Each symbol counted once";
   const footerCells: Record<string, ReactNode> = {
     symbol: `Total (${positions.length})`,
-    pnlPercent: !isOpenView ? null : totals.isLoading ? <Spinner size="sm" label="Loading" /> : totals.pnlPercent === null ? "—" : (
+    pnlPercent: totals.isLoading ? <Spinner size="sm" label="Loading" /> : totals.pnlPercent === null ? "—" : (
       <TooltipSpan className={`font-mono ${pnlTextClass(totals.pnlPercent)}`} text={totalPnlTitle}>
         {totals.pnlPercent > 0 ? "+" : ""}
         {formatPercentageValue(totals.pnlPercent, 2)}
       </TooltipSpan>
     ),
+    cyclePnl: cycleResults.some((result) => result.state === "loading") ? (
+      <Spinner size="sm" label="Loading" />
+    ) : (
+      <TooltipSpan className={`font-mono ${pnlTextClass(cycleTotal)}`} text={cycleTotalTitle}>
+        {formatSignedPnl(cycleTotal)}
+      </TooltipSpan>
+    ),
     pnl: totals.isLoading ? <Spinner size="sm" label="Loading" /> : signedTotal(totals.totalPnl),
     premiumPnl: totals.isLoading ? <Spinner size="sm" label="Loading" /> : signedTotal(totals.premiumPnl),
     stockPnl: totals.isLoading ? <Spinner size="sm" label="Loading" /> : signedTotal(totals.stockPnl),
-    exposureDollars: !isOpenView ? null : <span className="font-mono">{formatCurrency(totals.exposureDollars, 0)}</span>,
-    exposurePercent: !isOpenView ? null : totals.exposurePercent === null ? "—" : <span className="font-mono">{formatPercentageValue(totals.exposurePercent, 1)}</span>,
+    exposureDollars: <span className="font-mono">{formatCurrency(totals.exposureDollars, 0)}</span>,
+    exposurePercent: totals.exposurePercent === null ? "—" : <span className="font-mono">{formatPercentageValue(totals.exposurePercent, 1)}</span>,
   };
 
   const columns: DataTableColumn<Position>[] = [
@@ -285,7 +319,6 @@ export function PositionsPage() {
       headerTitle: "Current stock price",
       align: "right",
       render: (row) => {
-        if (row.status === "closed") return "—";
         const { price, failed } = resolvePrice(row);
         if (price === null) {
           if (failed) return <span className="text-muted">—</span>;
@@ -300,7 +333,6 @@ export function PositionsPage() {
       headerTitle: "Stock price at which this symbol's whole wheel cycle (all puts, calls and stock since it began) nets to zero on the shares still held. Green = price above it, red = below. Free = premium collected already exceeds the cost.",
       align: "right",
       render: (row) => {
-        if (row.status === "closed") return "—";
         if (row.breakEven === null || row.breakEven === undefined) {
           return <TooltipSpan className="text-muted" text={row.breakEvenUnavailableReason ?? "No break-even for this position"}>—</TooltipSpan>;
         }
@@ -308,6 +340,29 @@ export function PositionsPage() {
         const { price } = resolvePrice(row);
         const colorClass = price === null ? "" : price >= row.breakEven ? "text-success" : "text-danger";
         return <span className={`font-mono ${colorClass}`}>{formatCurrency(row.breakEven, 2)}</span>;
+      },
+    },
+    {
+      key: "cyclePnl",
+      header: "Cycle P&L",
+      headerTitle:
+        "Profit and loss of this symbol's whole wheel cycle (every put, call and share since it began), using this row's Price and live option marks. Repeats on every row of the same symbol. Falls back to the last daily close and nightly snapshot when a mark isn't live.",
+      align: "right",
+      render: (row) => {
+        const result = resolveCyclePnl(row);
+        if (result.state === "loading") return <Spinner size="sm" label="Loading cycle P&L" />;
+        if (result.state === "unavailable") {
+          return (
+            <TooltipSpan className="text-muted" text={result.reason}>
+              —
+            </TooltipSpan>
+          );
+        }
+        return (
+          <FlashingNumber value={result.value} className={pnlTextClass(result.value)} title={result.storedAsOf ? `As of ${formatDate(result.storedAsOf)} close` : undefined}>
+            {formatSignedPnl(result.value)}
+          </FlashingNumber>
+        );
       },
     },
     {
@@ -460,7 +515,6 @@ export function PositionsPage() {
       header: "",
       align: "right",
       render: (row) => {
-        if (row.status !== "open") return null;
         const openLegs = row.legs.filter((leg) => !leg.exitAt);
         const openOptionLeg = openLegs.find((leg) => leg.legType === "option");
         const openStockLeg = openLegs.find((leg) => leg.legType === "stock");
@@ -516,42 +570,9 @@ export function PositionsPage() {
 
   return (
     <>
-      <PageHeader title="Positions" subtitle="Open and closed positions across all strategies" />
+      <PageHeader title="Positions" subtitle="Open positions across all strategies" />
 
       {error && <div className="alert alert-danger">{error}</div>}
-
-      <div className="d-flex flex-column flex-md-row justify-content-between gap-2 mb-3">
-        <ul className="nav nav-tabs">
-          {strategyTabs.map((tabOption) => (
-            <li className="nav-item" key={tabOption.key}>
-              <button
-                type="button"
-                className={`nav-link ${strategy === tabOption.key ? "active" : ""}`}
-                onClick={() => setStrategy(tabOption.key)}
-              >
-                {tabOption.label}
-              </button>
-            </li>
-          ))}
-        </ul>
-
-        <div className="btn-group" role="group">
-          <button
-            type="button"
-            className={`btn ${status === "open" ? "btn-primary" : "btn-outline-secondary"}`}
-            onClick={() => setStatus("open")}
-          >
-            Open
-          </button>
-          <button
-            type="button"
-            className={`btn ${status === "closed" ? "btn-primary" : "btn-outline-secondary"}`}
-            onClick={() => setStatus("closed")}
-          >
-            Closed
-          </button>
-        </div>
-      </div>
 
       <DataTable
         tableId="positions"
@@ -560,7 +581,7 @@ export function PositionsPage() {
         rowKey={(row) => row.id}
         loading={loading}
         footerCells={footerCells}
-        emptyMessage={`No ${status} positions yet.`}
+        emptyMessage="No open positions yet."
       />
 
       <CycleScoreboard />
