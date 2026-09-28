@@ -19,6 +19,7 @@ export const unscoredReasonLabel: Record<SignalsUnscoredReason, string> = {
   no_surface_fit: "No fitted surface",
   no_forecast: "No volatility forecast (price history too short)",
   suspected_split: "No volatility forecast (suspected stock split in the price history)",
+  stale_surface: "Surface too old to score (more than one session old)",
 };
 
 export const priceSourceLabel: Record<SignalsPriceSource, string> = {
