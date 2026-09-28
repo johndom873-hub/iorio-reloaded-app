@@ -4,7 +4,13 @@
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/icon-mark.svg" />
     <link rel="apple-touch-icon" href="/brand/iorio-icon-app-tile-dark.png" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <!-- Home-screen web app: chromeless when launched from the iOS icon; pages pad with env(safe-area-inset-*). -->
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="Iorio" />
+    <meta name="theme-color" content="#0f141d" />
     <title>Iorio Reloaded</title>
     <script>
       // Applied before React mounts, so there's no flash of the wrong theme

@@ -297,6 +297,11 @@
   border: 1px solid rgba(14, 165, 233, 0.35);
   transition: background-color 0.15s ease, border-color 0.15s ease;
 }
+/* Phone header strip: sits to the right of the environment badges, same row. */
+.iorio-pulse-nav-link-mobile {
+  font-size: 0.8rem;
+  padding: 0.25rem 0.75rem;
+}
 .iorio-pulse-nav-link:hover {
   color: #38bdf8;
   background-color: rgba(14, 165, 233, 0.08);
@@ -450,8 +455,12 @@
    icons and shouldn't be touched. */
 @media (max-width: 991.98px) {
   .iorio-sidebar {
-    padding-top: 0;
+    /* Home-screen web app (black-translucent status bar): the navy header extends under the status bar. */
+    padding-top: env(safe-area-inset-top, 0px);
     padding-bottom: 0;
+  }
+  .page-wrapper {
+    padding-bottom: env(safe-area-inset-bottom, 0px);
   }
 }
 

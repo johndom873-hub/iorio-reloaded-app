@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { NavLink, Outlet } from "react-router-dom";
+import { Link, NavLink, Outlet } from "react-router-dom";
 import { EnvironmentBadges } from "./EnvironmentBadges";
 import { useEnvironmentStatus } from "../../hooks/useEnvironmentStatus";
 import { Collapse } from "@tabler/core/dist/js/tabler.esm.min.js";
@@ -191,6 +191,13 @@ export function AppLayout() {
           </div>
           <div className="env-mobile-strip d-lg-none d-flex align-items-center gap-2 flex-wrap">
             <EnvironmentBadges status={environmentStatus} />
+            {/* Same tab (unlike the desktop link): on a phone, and especially as a home-screen
+                web app, a new tab is a dead end. Pulse's own brand mark links back here. Placed
+                before the (wrapping) restriction pill so it shares the badges' own line. */}
+            <Link to="/pulse" className="iorio-pulse-nav-link iorio-pulse-nav-link-mobile ms-auto">
+              <span className="iorio-pulse-dot" aria-hidden="true" />
+              IORIO Pulse
+            </Link>
             <MarketDataRestrictionPill
               restriction={environmentStatus.details?.marketDataRestriction}
               linesEnabled={environmentStatus.details?.marketDataLinesEnabled ?? true}

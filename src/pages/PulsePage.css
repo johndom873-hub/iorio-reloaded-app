@@ -1187,3 +1187,427 @@
     animation: none !important;
   }
 }
+
+/* ---------- phone layout (≤700px; approved mockup 2026-09-28) ----------
+   The page scrolls; the two header rows stay pinned; every desktop panel
+   becomes a collapsible (PulseCollapsiblePanel) in the order Charts,
+   Positions, Top Signals, Trades, Latest Events, Systems. Structural sizes
+   are px to match the mockup exactly; the base tokens above still apply. */
+.iorio-pulse-page.pulse-phone {
+  position: relative;
+  inset: auto;
+  min-height: 100dvh;
+  overflow: visible;
+  padding: 0 16px calc(8px + env(safe-area-inset-bottom, 0px));
+  gap: 8px;
+  z-index: auto;
+}
+.iorio-pulse-page.pulse-phone .phone-header {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  margin: 0 -16px;
+  padding: calc(8px + env(safe-area-inset-top, 0px)) 16px 0;
+  background: var(--bg-canvas);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.iorio-pulse-page.pulse-phone .phone-header-row1 {
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.iorio-pulse-page.pulse-phone .phone-brand {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: inherit;
+  text-decoration: none;
+  min-width: 0;
+}
+.iorio-pulse-page.pulse-phone .phone-brand .brand-logo {
+  height: 22px;
+}
+.iorio-pulse-page.pulse-phone .phone-brand .brand-title {
+  font-size: 1rem;
+  letter-spacing: -0.01em;
+  white-space: nowrap;
+}
+.iorio-pulse-page.pulse-phone .phone-header-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.iorio-pulse-page.pulse-phone .status-pill {
+  padding: 4px 10px;
+  font-size: 0.59rem;
+  letter-spacing: 0.04em;
+  gap: 6px;
+  white-space: nowrap;
+}
+.iorio-pulse-page.pulse-phone .clock {
+  font-size: 0.75rem;
+  min-width: 0;
+}
+.iorio-pulse-page.pulse-phone .attention-tip {
+  top: calc(100% + 6px);
+  left: 0;
+  right: 0;
+  width: auto;
+}
+.iorio-pulse-page.pulse-phone .phone-header-row2 {
+  height: 22px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.iorio-pulse-page.pulse-phone .phone-header-row2 .env-badge {
+  font-size: 0.625rem;
+  padding: 2px 7px;
+}
+.iorio-pulse-page.pulse-phone .phone-market {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--font-mono);
+  font-size: 0.625rem;
+  color: var(--text-muted);
+  white-space: nowrap;
+  min-width: 0;
+  overflow: hidden;
+}
+.iorio-pulse-page.pulse-phone .phone-market .mk-status {
+  font-size: 0.625rem;
+}
+.iorio-pulse-page.pulse-phone .phone-kpis {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  flex-shrink: 0;
+}
+.iorio-pulse-page.pulse-phone .kpi-tile {
+  height: 56px;
+  padding: 8px 11px;
+  gap: 2px;
+  justify-content: center;
+}
+.iorio-pulse-page.pulse-phone .kpi-label {
+  font-size: 0.625rem;
+}
+.iorio-pulse-page.pulse-phone .kpi-value {
+  font-size: 1.1875rem;
+}
+.iorio-pulse-page.pulse-phone .kpi-delta {
+  font-size: 0.6875rem;
+}
+.iorio-pulse-page.pulse-phone .phone-alloc {
+  height: 40px;
+  gap: 5px;
+}
+.iorio-pulse-page.pulse-phone .phone-alloc-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.iorio-pulse-page.pulse-phone .phone-alloc-legend {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  font-family: var(--font-mono);
+  font-size: 0.59rem;
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+.iorio-pulse-page.pulse-phone .phone-alloc-legend > span {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+}
+.iorio-pulse-page.pulse-phone .phone-alloc-swatch {
+  width: 6px;
+  height: 6px;
+  border-radius: 2px;
+  display: inline-block;
+}
+.iorio-pulse-page.pulse-phone .alloc-bar {
+  height: 8px;
+  border-radius: 4px;
+  overflow: hidden;
+  margin-top: 0;
+}
+.iorio-pulse-page.pulse-phone .alloc-seg::before,
+.iorio-pulse-page.pulse-phone .alloc-seg::after {
+  display: none;
+}
+
+/* Collapsible panels */
+.iorio-pulse-page.pulse-phone .phone-panel {
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 0 10px;
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+}
+.iorio-pulse-page.pulse-phone .phone-panel-toggle {
+  height: 44px;
+  width: 100%;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.iorio-pulse-page.pulse-phone .phone-panel-toggle > svg {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+  fill: none;
+  stroke: var(--text-muted);
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  transition: transform 0.15s ease;
+}
+.iorio-pulse-page.pulse-phone .phone-panel-toggle[aria-expanded="true"] > svg {
+  transform: rotate(90deg);
+}
+.iorio-pulse-page.pulse-phone .phone-panel-title {
+  font-size: 0.656rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+.iorio-pulse-page.pulse-phone .phone-panel-count {
+  font-family: var(--font-mono);
+  font-size: 0.656rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+.iorio-pulse-page.pulse-phone .phone-panel-summary {
+  margin-left: auto;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-family: var(--font-mono);
+  font-size: 0.656rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.iorio-pulse-page.pulse-phone .phone-panel-summary .up {
+  color: var(--success);
+}
+.iorio-pulse-page.pulse-phone .phone-panel-summary .down {
+  color: var(--danger);
+}
+.iorio-pulse-page.pulse-phone .phone-panel-summary .muted {
+  color: var(--text-muted);
+}
+.iorio-pulse-page.pulse-phone .phone-sparkline {
+  width: 64px;
+  height: 16px;
+  flex-shrink: 0;
+  display: block;
+}
+.iorio-pulse-page.pulse-phone .phone-panel-body {
+  padding-bottom: 8px;
+  display: flex;
+  flex-direction: column;
+}
+.iorio-pulse-page.pulse-phone .phone-show-more {
+  height: 36px;
+  width: 100%;
+  margin-top: 6px;
+  border-radius: 8px;
+  border: 1px solid var(--border-strong);
+  background: transparent;
+  color: var(--text-secondary);
+  font-family: var(--font-display);
+  font-size: 0.6875rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+/* Table rows: 26px positions/signals, 24px trades/events, 12px text */
+.iorio-pulse-page.pulse-phone .pos-head,
+.iorio-pulse-page.pulse-phone .pos-row {
+  grid-template-columns: 46px 34px 28px 54px 42px 34px 1fr;
+}
+.iorio-pulse-page.pulse-phone .yield-head,
+.iorio-pulse-page.pulse-phone .yield-row {
+  grid-template-columns: 46px 34px 1fr 50px 52px;
+}
+.iorio-pulse-page.pulse-phone .pos-head,
+.iorio-pulse-page.pulse-phone .yield-head {
+  height: 18px;
+  font-size: 0.59rem;
+  padding-bottom: 4px;
+  margin-bottom: 2px;
+}
+.iorio-pulse-page.pulse-phone .pos-row,
+.iorio-pulse-page.pulse-phone .yield-row {
+  height: 26px;
+  padding: 0;
+  font-size: 0.75rem;
+}
+.iorio-pulse-page.pulse-phone .pos-pct,
+.iorio-pulse-page.pulse-phone .yield-strike {
+  font-size: 0.75rem;
+}
+.iorio-pulse-page.pulse-phone .strat-badge {
+  font-size: 0.59rem;
+  padding: 1px 5px;
+}
+.iorio-pulse-page.pulse-phone .fill-row,
+.iorio-pulse-page.pulse-phone .event-row {
+  height: 24px;
+  padding: 0;
+  gap: 6px;
+  align-items: center;
+  font-size: 0.75rem;
+}
+.iorio-pulse-page.pulse-phone .fill-time,
+.iorio-pulse-page.pulse-phone .event-time {
+  width: 52px;
+  font-size: 0.625rem;
+}
+.iorio-pulse-page.pulse-phone .event-dot {
+  margin-top: 0;
+}
+.iorio-pulse-page.pulse-phone .panel-empty {
+  font-size: 0.75rem;
+}
+
+/* Charts: 140px P&L, 120px Net Delta, each with its own axis row */
+.iorio-pulse-page.pulse-phone .phone-charts {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.iorio-pulse-page.pulse-phone .phone-chart {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.iorio-pulse-page.pulse-phone .phone-chart .chart-panel {
+  flex: none;
+}
+.iorio-pulse-page.pulse-phone .phone-chart-pnl .chart-svg-wrap {
+  height: 152px;
+  flex: none;
+}
+.iorio-pulse-page.pulse-phone .phone-chart-delta .chart-body {
+  height: 146px;
+  flex: none;
+}
+.iorio-pulse-page.pulse-phone .chart-panel-title {
+  font-size: 0.59rem;
+  height: 16px;
+  align-items: center;
+}
+.iorio-pulse-page.pulse-phone .chart-time-axis-label,
+.iorio-pulse-page.pulse-phone .legend-tkr {
+  font-size: 0.5625rem;
+}
+
+/* Systems: seven inline LEDs in the header; node cards in a 2-column grid when open */
+.iorio-pulse-page.pulse-phone .phone-led-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.59rem;
+  min-width: 0;
+}
+.iorio-pulse-page.pulse-phone .phone-led-item {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  text-transform: uppercase;
+}
+.iorio-pulse-page.pulse-phone .phone-led-item + .phone-led-item {
+  margin-left: 3px;
+}
+.iorio-pulse-page.pulse-phone .led.led-flash {
+  background: var(--accent-glow);
+  box-shadow: 0 0 8px 2px var(--accent-glow);
+  animation: none;
+}
+.iorio-pulse-page.pulse-phone .phone-systems {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+.iorio-pulse-page.pulse-phone .phone-systems .node,
+.iorio-pulse-page.pulse-phone .phone-systems .market-chip {
+  grid-column: auto;
+  grid-row: auto;
+  width: auto;
+  justify-self: stretch;
+  align-self: stretch;
+}
+.iorio-pulse-page.pulse-phone .phone-systems .market-chip {
+  background: var(--bg-surface-raised);
+  border-color: var(--border-strong);
+  border-radius: 11px;
+  padding: 8px 10px;
+  justify-content: center;
+  gap: 4px;
+  font-size: 0.59rem;
+}
+.iorio-pulse-page.pulse-phone .phone-systems .mk-name {
+  white-space: normal;
+}
+.iorio-pulse-page.pulse-phone .phone-systems .mk-status {
+  font-size: 0.6875rem;
+}
+.iorio-pulse-page.pulse-phone .phone-systems .node {
+  padding: 8px 10px;
+  box-shadow: none;
+  min-width: 0;
+}
+.iorio-pulse-page.pulse-phone .phone-systems .node-header {
+  gap: 7px;
+  padding-bottom: 6px;
+  margin-bottom: 4px;
+}
+.iorio-pulse-page.pulse-phone .phone-systems .node-header > div:last-child {
+  min-width: 0;
+}
+.iorio-pulse-page.pulse-phone .phone-systems .node-title {
+  font-size: 0.78rem;
+}
+.iorio-pulse-page.pulse-phone .phone-systems .node-sub {
+  font-size: 0.59rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.iorio-pulse-page.pulse-phone .phone-systems .sub-row {
+  height: 20px;
+  padding: 0;
+  font-size: 0.72rem;
+}
+.iorio-pulse-page.pulse-phone .phone-systems .tg-tag {
+  margin-top: 2px;
+  padding-top: 4px;
+}
+.iorio-pulse-page.pulse-phone .phone-systems .avatar-row {
+  gap: 2px;
+}

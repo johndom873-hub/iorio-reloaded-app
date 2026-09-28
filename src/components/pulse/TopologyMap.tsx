@@ -1,4 +1,5 @@
 import { useEffect, useRef, type ReactNode } from "react";
+import { PULSE_EDGES } from "./pulseEdges";
 
 export interface PulseEvent {
   key: string;
@@ -7,26 +8,6 @@ export interface PulseEvent {
   reverse?: boolean;
   durationMs?: number;
 }
-
-interface EdgeDef {
-  id: string;
-  fromNodeId: string;
-  toNodeId: string;
-  weight: "spine" | "secondary";
-}
-
-// Matches the approved mockup's topology exactly (mission-control.html) —
-// see PulsePage.tsx for how each node's real data is sourced.
-const PULSE_EDGES: EdgeDef[] = [
-  { id: "ibkr-gateway", fromNodeId: "ibkr", toNodeId: "gateway", weight: "spine" },
-  { id: "heroku-gateway", fromNodeId: "heroku", toNodeId: "gateway", weight: "spine" },
-  { id: "heroku-browser", fromNodeId: "heroku", toNodeId: "frontend", weight: "spine" },
-  { id: "gateway-db", fromNodeId: "gateway", toNodeId: "db", weight: "secondary" },
-  { id: "heroku-genosuke", fromNodeId: "heroku", toNodeId: "genosuke", weight: "secondary" },
-  { id: "genosuke-db", fromNodeId: "genosuke", toNodeId: "db", weight: "secondary" },
-  { id: "heroku-db", fromNodeId: "heroku", toNodeId: "db", weight: "secondary" },
-  { id: "genosuke-llm", fromNodeId: "genosuke", toNodeId: "llm", weight: "secondary" },
-];
 
 interface TopologyMapProps {
   /** Node card markup — each top-level node element must carry data-node-id matching PULSE_EDGES' from/toNodeId. */

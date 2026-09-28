@@ -44,8 +44,11 @@ import { daysToExpiry, todayInEasternIso, formatSignedPnl, formatSignedPercentag
 import { positionExpiryDate, strategyAbbrev as positionStrategyAbbrev, strategyTooltip } from "../lib/positionPnl";
 import { FlashingNumber } from "../components/FlashingNumber";
 import { TooltipSpan } from "../components/TooltipSpan";
-import { AVAILABLE_CASH_PERCENT_BANDS, higherIsWorseStatus, lowerIsWorseStatus } from "../lib/statusThresholds";
+import { AVAILABLE_CASH_PERCENT_BANDS, higherIsWorseStatus, lowerIsWorseStatus, type StatusClass } from "../lib/statusThresholds";
 import { TopologyMap, type PulseEvent } from "../components/pulse/TopologyMap";
+import { nodeIdsForActiveEdges } from "../components/pulse/pulseEdges";
+import { PulsePhoneLayout, type PhoneSystemLed } from "../components/pulse/PulsePhoneLayout";
+import { useMediaQuery } from "../hooks/useMediaQuery";
 import { ResizableRail } from "../components/pulse/ResizableRail";
 import { ResizableColumns } from "../components/pulse/ResizableColumns";
 import { TotalPnlChart } from "../components/pulse/TotalPnlChart";
@@ -164,6 +167,68 @@ function formatDurationShort(ms: number | null | undefined): string {
   const hours = Math.floor(totalMinutes / 60);
   const minutes = totalMinutes % 60;
   return hours > 0 ? `${hours}h ${minutes}m` : `${minutes}m`;
+}
+
+function tradeSideAndQuantity(trade: Trade): string {
+  return `${trade.side.toUpperCase()} ${trade.quantity}`;
+}
+
+function tradeDetailText(trade: Trade): string {
+  const contract = trade.strikePrice ? ` ${formatNumber(trade.strikePrice, 2)}${trade.optionType === "call" ? "C" : "P"}` : "";
+  const dte = trade.expiryDate ? ` ${daysToExpiry(trade.expiryDate, trade.executedAt)}DTE` : "";
+  return `${trade.symbol}${contract}${dte} @ ${formatNumber(trade.price, 2)}`;
+}
+
+// Phone layout's Systems header carries one LED per node (rules approved
+// 2026-09-28): Database is the worst of its existing colour bands; Gateway
+// is red without a live IBKR connection and amber when reconnects or
+// in-flight orders reach their warn band; IBKR is red while account data is
+// failing; every other node is green once its health call has answered and
+// grey until then. Presence (Front End) arrives in the same poll as the web
+// dyno health, so it shares that flag.
+function phoneSystemLeds(input: {
+  dbHealth: DbHealth | null;
+  databaseSizeUsedPercent: number;
+  gatewayHealth: GatewayHealth | null;
+  availableCash: AvailableCash | null;
+  accountDataError: string | null | undefined;
+  genosukeHealth: GenosukeHealth | null;
+  webDynoHealth: WebDynoHealth | null;
+}): PhoneSystemLed[] {
+  const ledForStatus = (status: StatusClass): string => (status === "err" ? "led-warn" : status === "warn" ? "led-amber" : "");
+  const worstOf = (...statuses: StatusClass[]): StatusClass => (statuses.includes("err") ? "err" : statuses.includes("warn") ? "warn" : "ok");
+  const answered = (hasAnswered: boolean): string => (hasAnswered ? "" : "led-off");
+  const { dbHealth, gatewayHealth } = input;
+  const dbLed = dbHealth
+    ? ledForStatus(
+        worstOf(
+          higherIsWorseStatus((Number(dbHealth.totalConnections) / dbHealth.maxConnections) * 100, ...CONNECTIONS_USED_PERCENT_BANDS),
+          higherIsWorseStatus(input.databaseSizeUsedPercent, ...DB_SIZE_USED_PERCENT_BANDS),
+          higherIsWorseStatus(dbHealth.responseTime.slowestMs, ...DB_SLOWEST_RESPONSE_MS_BANDS),
+          higherIsWorseStatus(dbHealth.responseTime.averageMs, ...DB_AVERAGE_RESPONSE_MS_BANDS),
+        ),
+      )
+    : "led-off";
+  const gatewayLed = !gatewayHealth
+    ? "led-off"
+    : gatewayHealth.staleOrMissing || !gatewayHealth.connected
+      ? "led-warn"
+      : worstOf(
+            higherIsWorseStatus(gatewayHealth.totalReconnects, ...GATEWAY_RECONNECT_BANDS),
+            higherIsWorseStatus(gatewayHealth.inFlightOrderCount, ...GATEWAY_IN_FLIGHT_BANDS),
+          ) === "ok"
+        ? ""
+        : "led-amber";
+  const ibkrLed = input.accountDataError ? "led-warn" : answered(input.availableCash !== null);
+  return [
+    { nodeId: "db", label: "DB", ledClass: dbLed },
+    { nodeId: "genosuke", label: "Geno", ledClass: answered(input.genosukeHealth !== null) },
+    { nodeId: "llm", label: "LLM", ledClass: answered(input.genosukeHealth !== null) },
+    { nodeId: "ibkr", label: "IBKR", ledClass: ibkrLed },
+    { nodeId: "gateway", label: "GW", ledClass: gatewayLed },
+    { nodeId: "heroku", label: "HRK", ledClass: answered(input.webDynoHealth !== null) },
+    { nodeId: "frontend", label: "FE", ledClass: answered(input.webDynoHealth !== null) },
+  ];
 }
 
 interface AttentionReason {
@@ -350,6 +415,8 @@ export function PulsePage() {
   }, []);
 
   const environmentStatus = useEnvironmentStatus();
+  // Phone layout at and below the width where the desktop header already wraps (see PulsePage.css).
+  const isPhoneLayout = useMediaQuery("(max-width: 700px)");
 
   const [clock, setClock] = useState(() => new Date().toLocaleTimeString("en-US", { hour12: false }));
   useEffect(() => {
@@ -795,6 +862,574 @@ export function PulsePage() {
   const databaseSizeUsedPercent = dbHealth ? (Number(dbHealth.databaseSizeBytes) / Number(dbHealth.maxDatabaseSizeBytes)) * 100 : 0;
   const attentionReasons = describeAttentionReasons(gatewayHealth, exposure?.accountDataError);
 
+  // --- Shared render fragments. The phone layout (PulsePhoneLayout) and the
+  // desktop tree below arrange the same tiles, rows and node cards, so each
+  // is rendered once here and placed by whichever layout is active. ---
+  const kpiValueTiles = (
+    <>
+      <div className="kpi-tile">
+        <span className="kpi-label">Account Value</span>
+        <div className="kpi-value-row">
+          <FlashingNumber value={netLiquidationValue} className="kpi-value">
+            {formatSignedPnl(netLiquidationValue, 0).replace("+", "")}
+          </FlashingNumber>
+        </div>
+      </div>
+      <div className="kpi-tile">
+        <span className="kpi-label">Available Cash</span>
+        <div className="kpi-value-row">
+          <FlashingNumber value={availableCash?.availableCashToTrade ?? null} className="kpi-value">
+            {formatSignedPnl(availableCash?.availableCashToTrade ?? null, 0).replace("+", "")}
+          </FlashingNumber>
+          {availableCashPercent !== null && (
+            <span className={`kpi-delta ${lowerIsWorseStatus(availableCashPercent, ...AVAILABLE_CASH_PERCENT_BANDS)}`}>
+              ({availableCashPercent.toFixed(1)}%)
+            </span>
+          )}
+        </div>
+      </div>
+      <div className="kpi-tile">
+        <span className="kpi-label">Yesterday&apos;s P&amp;L</span>
+        <div className="kpi-value-row">
+          <FlashingNumber
+            value={yesterdaysPnl}
+            className="kpi-value"
+            style={{ color: yesterdaysPnl === null ? undefined : yesterdaysPnl >= 0 ? "var(--success)" : "var(--danger)" }}
+          >
+            {formatSignedPnl(yesterdaysPnl, 0)}
+          </FlashingNumber>
+          <span className={`kpi-delta ${summary?.dayPnlPercent && summary.dayPnlPercent >= 0 ? "up" : "down"}`}>
+            {formatSignedPercentageValue(summary?.dayPnlPercent ?? null, 2)}
+          </span>
+        </div>
+      </div>
+      <div className="kpi-tile">
+        <span className="kpi-label">Unrealised P&amp;L</span>
+        <div className="kpi-value-row">
+          <FlashingNumber
+            value={totalUnrealizedPnl}
+            className="kpi-value"
+            style={{ color: totalUnrealizedPnl === null ? undefined : totalUnrealizedPnl >= 0 ? "var(--success)" : "var(--danger)" }}
+          >
+            {formatSignedPnl(totalUnrealizedPnl, 0)}
+          </FlashingNumber>
+          <span className={`kpi-delta ${totalUnrealizedPnlPercent !== null && totalUnrealizedPnlPercent >= 0 ? "up" : "down"}`}>
+            {formatSignedPercentageValue(totalUnrealizedPnlPercent, 2)}
+          </span>
+        </div>
+      </div>
+    </>
+  );
+
+  const positionsHead = (
+    <div className="pos-head">
+      <span>Tkr</span>
+      <span>Strat</span>
+      <span style={{ textAlign: "right" }}>DTE</span>
+      <span style={{ textAlign: "right" }}>Exp $</span>
+      <span style={{ textAlign: "right" }}>Exp %</span>
+      <span style={{ textAlign: "right" }}>|Δ|</span>
+      <span style={{ textAlign: "right" }}>P&amp;L</span>
+    </div>
+  );
+  const positionsEmpty = <div className="panel-empty">No open positions.</div>;
+  const positionRows = positions.map((position) => {
+    const expiryDate = positionExpiryDate(position);
+    const dte = expiryDate ? daysToExpiry(expiryDate, todayInEasternIso()) : null;
+    const capitalAtRisk = position.capitalAtRisk !== null ? Number(position.capitalAtRisk) : null;
+    const expPct = capitalAtRisk !== null && netLiquidationValue ? (capitalAtRisk / netLiquidationValue) * 100 : null;
+    const pnl = unrealizedPnlByPositionId[position.id]?.unrealizedPnl ?? null;
+    const optionLeg = position.legs.find((leg) => leg.legType === "option");
+    const legDelta = optionLeg ? greeksByLegId[optionLeg.id]?.delta ?? null : null;
+    const absDelta = legDelta !== null ? Math.abs(legDelta) : null;
+    return (
+      <div className="pos-row" key={position.id}>
+        <span className="pos-sym">{position.symbol}</span>
+        <TooltipSpan className={`strat-badge ${strategyBadgeModifier[position.strategyKey] ?? "ns"}`} text={strategyTooltip(position.strategyKey)}>
+          {positionStrategyAbbrev(position.strategyKey)}
+        </TooltipSpan>
+        <span className="pos-num">{dte ?? "—"}</span>
+        <FlashingNumber value={capitalAtRisk} className="pos-exp">
+          {formatCompactDollars(capitalAtRisk)}
+        </FlashingNumber>
+        <FlashingNumber value={expPct} precision={1} className="pos-pct">
+          {expPct !== null ? `${expPct.toFixed(1)}%` : "—"}
+        </FlashingNumber>
+        <FlashingNumber value={absDelta} precision={2} className="pos-pct">
+          {absDelta !== null ? absDelta.toFixed(2) : "—"}
+        </FlashingNumber>
+        <FlashingNumber value={pnl} className={`pos-pnl ${pnl !== null && pnl < 0 ? "neg" : "pos"}`}>
+          {formatSignedPnl(pnl, 0)}
+        </FlashingNumber>
+      </div>
+    );
+  });
+
+  const signalsHead = (
+    <div className="yield-head">
+      <span>Tkr</span>
+      <span>Type</span>
+      <span>Strike / Expiry</span>
+      <span style={{ textAlign: "right" }}>Edge $</span>
+      <span style={{ textAlign: "right" }}>Yield</span>
+    </div>
+  );
+  const signalsEmpty = <div className="panel-empty">No signals with positive Edge $.</div>;
+  const signalRowsRendered = topSignals.map(({ symbol, candidate }) => (
+    <div className="yield-row" key={symbol}>
+      <span className="yield-sym">{symbol}</span>
+      <span className={`strat-badge ${candidate.strategyKey === "covered_call" ? "cc" : "csp"}`}>{strategyAbbrev(candidate.strategyKey)}</span>
+      <span className="yield-strike">{signalStrikeLabel(candidate)}</span>
+      <span className="yield-edge">{formatCompactDollars(candidate.edgeDollars)}</span>
+      <span className="yield-pct">{(candidate.annualizedYield * 100).toFixed(1)}%</span>
+    </div>
+  ));
+
+  const marketChip = (
+    <div className="market-chip grid-market">
+      <span className="mk-name">{marketStatus ? marketStatus.exchanges.join(" · ") : "—"}</span>
+      <span className={`mk-status ${marketStatusStyle(marketStatus?.state).textClass}`}>
+        <span className={`led ${marketStatusStyle(marketStatus?.state).ledClass}`} />
+        {marketStatusStyle(marketStatus?.state).badgeLabel}
+      </span>
+      <span className="mk-close">{marketStatus?.label ?? "—"}</span>
+    </div>
+  );
+
+  // `compact` shortens the two labels that don't fit a phone's half-width
+  // node card ("IBKR live connections", "Response time (ms)").
+  const renderNodeCards = (compact: boolean) => ({
+    db: (
+      <div className="node grid-db" data-node-id="db">
+        <div className="node-header">
+          <div className="node-icon">
+            <svg viewBox="0 0 24 24" fill="none" strokeWidth={1.7}>
+              <ellipse cx="12" cy="5.5" rx="8" ry="3" />
+              <path d="M4 5.5v13c0 1.7 3.6 3 8 3s8-1.3 8-3v-13" />
+              <path d="M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3" />
+            </svg>
+          </div>
+          <div>
+            <div className="node-title">Database</div>
+            <div className="node-sub">Postgres · Essential-1</div>
+          </div>
+        </div>
+        <div className="sub-row">
+          <span className="sub-name">Connections</span>
+          <FlashingNumber value={dbHealth ? Number(dbHealth.totalConnections) : null} className="sub-value">
+            {dbHealth ? (
+              <>
+                <span className={`sub-value ${higherIsWorseStatus((Number(dbHealth.totalConnections) / dbHealth.maxConnections) * 100, ...CONNECTIONS_USED_PERCENT_BANDS)}`}>
+                  {dbHealth.totalConnections}
+                </span>{" "}
+                / {dbHealth.maxConnections}
+              </>
+            ) : (
+              "—"
+            )}
+          </FlashingNumber>
+        </div>
+        <div className="sub-row">
+          <span className="sub-name">DB size</span>
+          <FlashingNumber value={dbHealth ? Number(dbHealth.databaseSizeBytes) : null} className="sub-value">
+            {dbHealth ? (
+              <>
+                {formatBytes(dbHealth.databaseSizeBytes)} (
+                <span className={`sub-value ${higherIsWorseStatus(databaseSizeUsedPercent, ...DB_SIZE_USED_PERCENT_BANDS)}`}>{formatPercentageValue(databaseSizeUsedPercent, 2)}</span>
+                {compact ? ")" : " used)"}
+              </>
+            ) : (
+              "—"
+            )}
+          </FlashingNumber>
+        </div>
+        <div className="sub-row">
+          <span className="sub-name">{compact ? "Resp. ms" : "Response time (ms)"}</span>
+          <span className="sub-value">
+            {dbHealth ? (
+              <>
+                max{" "}
+                <span className={`sub-value ${higherIsWorseStatus(dbHealth.responseTime.slowestMs, ...DB_SLOWEST_RESPONSE_MS_BANDS)}`}>
+                  {formatNumber(dbHealth.responseTime.slowestMs, (dbHealth.responseTime.slowestMs ?? 0) < 10 ? 1 : 0)}
+                </span>{" "}
+                | avg{" "}
+                <span className={`sub-value ${higherIsWorseStatus(dbHealth.responseTime.averageMs, ...DB_AVERAGE_RESPONSE_MS_BANDS)}`}>
+                  {formatNumber(dbHealth.responseTime.averageMs, (dbHealth.responseTime.averageMs ?? 0) < 10 ? 1 : 0)}
+                </span>
+              </>
+            ) : (
+              "—"
+            )}
+          </span>
+        </div>
+      </div>
+    ),
+    genosuke: (
+      <div className="node grid-genosuke" data-node-id="genosuke">
+        <div className="node-header">
+          <div className="node-icon">
+            <svg viewBox="0 0 24 24" fill="none" strokeWidth={1.7}>
+              <path d="M4 5h14v9H9l-4 3.5z" />
+              <path d="M17.5 3.5l0.55 1.3 1.3 0.55-1.3 0.55-0.55 1.3-0.55-1.3-1.3-0.55 1.3-0.55z" fill="currentColor" stroke="none" />
+            </svg>
+          </div>
+          <div>
+            <div className="node-title">Genosuke</div>
+            <div className="node-sub">Chat orchestrator</div>
+          </div>
+        </div>
+        <div className="sub-row">
+          <span className="sub-name">Messages today</span>
+          <FlashingNumber value={genosukeHealth ? Number(genosukeHealth.messagesToday) : null} className="sub-value">
+            {genosukeHealth?.messagesToday ?? "—"}
+          </FlashingNumber>
+        </div>
+        <div className="sub-row">
+          <span className="sub-name">Chat sessions</span>
+          <FlashingNumber value={genosukeHealth ? Number(genosukeHealth.activeSessions) : null} className="sub-value ok">
+            {genosukeHealth ? `${genosukeHealth.activeSessions} active` : "—"}
+          </FlashingNumber>
+        </div>
+        <div className={`tg-tag${telegramFlash ? " flash" : ""}`}>
+          <svg viewBox="0 0 24 24" fill="none" strokeWidth={1.6}>
+            <path d="M21 4L3 11.5l6 2.2M21 4l-3.2 16-7.8-6.3M21 4L9.8 13.7" />
+          </svg>
+          outbound → Telegram
+        </div>
+      </div>
+    ),
+    llm: (
+      <div className="node grid-llm" data-node-id="llm">
+        <div className="node-header">
+          <div className="node-icon">
+            <svg viewBox="0 0 24 24" fill="none" strokeWidth={1.6}>
+              <path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z" />
+            </svg>
+          </div>
+          <div>
+            <div className="node-title">LLM</div>
+            <div className="node-sub">OpenRouter</div>
+          </div>
+        </div>
+        <div className="sub-row">
+          <span className="sub-name">Model</span>
+          <span className="sub-value" style={{ fontSize: "0.58rem" }}>
+            {genosukeHealth?.llm.model ?? "—"}
+          </span>
+        </div>
+        <div className="sub-row">
+          <span className="sub-name">Calls</span>
+          <FlashingNumber value={genosukeHealth?.llm.callsPerMinute ?? null} className="sub-value">
+            {genosukeHealth ? `${genosukeHealth.llm.callsPerMinute} / min` : "—"}
+          </FlashingNumber>
+        </div>
+        <div className="sub-row">
+          <span className="sub-name">Avg latency</span>
+          <FlashingNumber value={genosukeHealth?.llm.avgLatencyMs ?? null} className="sub-value">
+            {genosukeHealth?.llm.avgLatencyMs ? `${(genosukeHealth.llm.avgLatencyMs / 1000).toFixed(1)}s` : "—"}
+          </FlashingNumber>
+        </div>
+      </div>
+    ),
+    ibkr: (
+      <div className="node grid-ibkr" data-node-id="ibkr">
+        <div className="node-header">
+          <div className="node-icon ibkr-mark">
+            <span>IB</span>
+          </div>
+          <div>
+            <div className="node-title">IBKR</div>
+            <div className="node-sub">Interactive Brokers</div>
+          </div>
+        </div>
+        <div className="sub-row">
+          <span className="sub-name">Total equity</span>
+          <FlashingNumber value={positions.length > 0 ? totalStockValue : null} className="sub-value">
+            {positions.length > 0 ? formatCompactDollars(totalStockValue) : "—"}
+          </FlashingNumber>
+        </div>
+        <div className="sub-row">
+          <span className="sub-name">Total cash</span>
+          <FlashingNumber value={availableCash?.totalCashValue ?? null} className="sub-value">
+            {availableCash?.totalCashValue ? formatCompactDollars(availableCash.totalCashValue) : "—"}
+          </FlashingNumber>
+        </div>
+        <div className="sub-row">
+          <span className="sub-name">Reserved cash</span>
+          <FlashingNumber value={availableCash?.cashLockedInCsps ?? null} className="sub-value">
+            {availableCash?.cashLockedInCsps ? formatCompactDollars(availableCash.cashLockedInCsps) : "—"}
+          </FlashingNumber>
+        </div>
+      </div>
+    ),
+    gateway: (
+      <div className="node grid-gateway" data-node-id="gateway">
+        <div className="node-header">
+          <div className="node-icon">
+            <svg viewBox="0 0 24 24" fill="none" strokeWidth={1.7}>
+              <circle cx="12" cy="17" r="1.3" fill="currentColor" stroke="none" />
+              <path d="M8.2 13.6a5.3 5.3 0 0 1 7.6 0" />
+              <path d="M5.3 10.5a9.5 9.5 0 0 1 13.4 0" />
+            </svg>
+          </div>
+          <div>
+            <div className="node-title">Gateway</div>
+            <div className="node-sub">ibkrGatewayWorker · VPS</div>
+          </div>
+        </div>
+        {gatewayHealth?.staleOrMissing ? (
+          <div className="sub-row">
+            <span className="sub-name">Status</span>
+            <span className="sub-value err">not connected</span>
+          </div>
+        ) : (
+          <>
+            <div className="sub-row">
+              <span className="sub-name">In flight</span>
+              <span>
+                <FlashingNumber value={gatewayHealth?.inFlightOrderCount ?? null} className={`sub-value ${higherIsWorseStatus(gatewayHealth?.inFlightOrderCount, ...GATEWAY_IN_FLIGHT_BANDS)}`}>
+                  {gatewayHealth ? gatewayHealth.inFlightOrderCount : "—"}
+                </FlashingNumber>
+                {gatewayHealth && <span className="sub-unit"> orders</span>}
+              </span>
+            </div>
+            <div className="sub-row">
+              <span className="sub-name">Uptime</span>
+              <span className="sub-value-group">
+                <span className={`sub-value ${gatewayHealth?.uptimeMs == null ? "" : gatewayHealth.uptimeMs >= GATEWAY_HEALTHY_UPTIME_MS ? "ok" : "warn"}`}>
+                  {formatDurationShort(gatewayHealth?.uptimeMs)}
+                </span>
+                {gatewayHealth?.totalReconnects != null && (
+                  <span className="sub-unit">
+                    {" ("}
+                    <FlashingNumber value={gatewayHealth.totalReconnects} className={`sub-value ${higherIsWorseStatus(gatewayHealth.totalReconnects, ...GATEWAY_RECONNECT_BANDS)}`}>
+                      {gatewayHealth.totalReconnects}
+                    </FlashingNumber>
+                    {compact ? ")" : ` reconnect${gatewayHealth.totalReconnects === 1 ? "" : "s"})`}
+                  </span>
+                )}
+              </span>
+            </div>
+            <div className="sub-row">
+              <span className="sub-name">{compact ? "Live connections" : "IBKR live connections"}</span>
+              <span className="sub-value-group">
+                <FlashingNumber value={gatewayHealth?.marketDataLineCount ?? null} className={`sub-value ${higherIsWorseStatus(gatewayHealth?.marketDataLineCount, ...GATEWAY_LIVE_CONNECTIONS_BANDS)}`}>
+                  {gatewayHealth?.marketDataLineCount ?? "—"}
+                </FlashingNumber>
+                {gatewayHealth?.priorityReservedLineCount != null && (
+                  <span className="sub-unit">
+                    {" ("}
+                    <FlashingNumber value={gatewayHealth.priorityReservedLineCount} className="sub-value">
+                      {gatewayHealth.priorityReservedLineCount}
+                    </FlashingNumber>
+                    {compact ? " rsv)" : " reserved)"}
+                  </span>
+                )}
+              </span>
+            </div>
+          </>
+        )}
+      </div>
+    ),
+    heroku: (
+      <div className="node grid-heroku" data-node-id="heroku">
+        <div className="node-header">
+          <div className="node-icon">
+            <svg viewBox="0 0 24 24" fill="none" strokeWidth={1.7}>
+              <rect x="5" y="5" width="14" height="4.6" rx="1.3" />
+              <rect x="5" y="14.4" width="14" height="4.6" rx="1.3" />
+            </svg>
+          </div>
+          <div>
+            <div className="node-title">Heroku</div>
+            <div className="node-sub">Web dyno · Eco</div>
+          </div>
+        </div>
+        <div className="sub-row">
+          <span className="sub-name">Requests</span>
+          <FlashingNumber value={webDynoHealth?.requestsPerMinute ?? null} className="sub-value">
+            {webDynoHealth ? `${webDynoHealth.requestsPerMinute} / min` : "—"}
+          </FlashingNumber>
+        </div>
+        <div className="sub-row">
+          <span className="sub-name">Connections</span>
+          <FlashingNumber value={webDynoHealth?.notificationStreamConnections ?? null} className="sub-value ok">
+            {webDynoHealth?.notificationStreamConnections ?? "—"}
+          </FlashingNumber>
+        </div>
+        <div className="sub-row">
+          <span className="sub-name">Uptime</span>
+          <span className="sub-value">{webDynoHealth ? formatDurationShort(webDynoHealth.uptimeSeconds * 1000) : "—"}</span>
+        </div>
+      </div>
+    ),
+    frontend: (
+      <div className="node grid-frontend" data-node-id="frontend">
+        <div className="node-header">
+          <div className="node-icon">
+            <svg viewBox="0 0 24 24" fill="none" strokeWidth={1.7}>
+              <rect x="3" y="4" width="18" height="14" rx="2" />
+              <path d="M3 8h18" />
+              <circle cx="6" cy="6" r="0.55" fill="currentColor" stroke="none" />
+              <circle cx="8.4" cy="6" r="0.55" fill="currentColor" stroke="none" />
+            </svg>
+          </div>
+          <div>
+            <div className="node-title">Front End</div>
+            <div className="node-sub">Active sessions</div>
+          </div>
+        </div>
+        <div className="avatar-row">
+          {presenceUsers.length === 0 && <span className="avatar-name">No users</span>}
+          {presenceUsers.map((user) => (
+            <div className={`avatar-item${user.online ? "" : " avatar-item-offline"}`} key={user.id}>
+              <div className="avatar-circle" style={{ background: "#7DD3FC" }}>
+                {user.displayName.charAt(0).toUpperCase()}
+              </div>
+              <span className="avatar-name">{user.displayName}</span>
+              {user.online ? (
+                <span className="avatar-status">
+                  <span className="led" />
+                  online
+                </span>
+              ) : (
+                <TooltipSpan className="avatar-status offline" text={user.lastSeenAt ? formatDateTime(user.lastSeenAt) : undefined}>
+                  {formatRelativeDate(user.lastSeenAt)}
+                </TooltipSpan>
+              )}
+            </div>
+          ))}
+        </div>
+      </div>
+    ),
+  });
+
+  const pnlChartPanel = (
+    <div className="chart-panel">
+      <div className="chart-panel-title">
+        <span>Unrealised P&amp;L</span>
+        <span
+          className="cur-val"
+          style={{
+            color: pnlSeries.length === 0 ? undefined : (pnlSeries.at(-1) ?? 0) >= 0 ? "var(--success)" : "var(--danger)",
+          }}
+        >
+          {formatSignedPnl(pnlSeries.at(-1) ?? null, 0)}
+        </span>
+      </div>
+      <div className="chart-svg-wrap">
+        <TotalPnlChart series={pnlSeries} timestamps={pnlTimestamps} formatValue={(value) => formatSignedPnl(value, 0)} />
+      </div>
+    </div>
+  );
+  const deltaChartPanel = (
+    <div className="chart-panel">
+      <div className="chart-panel-title">
+        <span>Net Delta · live</span>
+        <span className="cur-val">threshold {NET_DELTA_REFERENCE_LINE.toFixed(2)}</span>
+      </div>
+      <NetDeltaChart seriesByPosition={deltaSeriesForChart} referenceLine={NET_DELTA_REFERENCE_LINE} timestamps={pnlTimestamps} />
+    </div>
+  );
+
+  const tradesEmpty = <div className="panel-empty">No recent trades.</div>;
+  const tradeRows = trades.map((trade) => (
+    <div className="fill-row" key={trade.id}>
+      <span className="fill-time">{formatFeedTime(trade.executedAt)}</span>
+      <span className="fill-desc">
+        <b>{tradeSideAndQuantity(trade)}</b> {tradeDetailText(trade)}
+      </span>
+    </div>
+  ));
+  const eventsEmpty = <div className="panel-empty">No events yet.</div>;
+  const eventRows = events.map((event) => <EventRow key={event.id} time={event.time} text={event.text} color={event.color} />);
+
+  if (isPhoneLayout) {
+    const nodes = renderNodeCards(true);
+    const totalCapitalAtRisk = positions.reduce((sum, position) => sum + (position.capitalAtRisk !== null ? Number(position.capitalAtRisk) : 0), 0);
+    const exposurePercent = netLiquidationValue ? (totalCapitalAtRisk / netLiquidationValue) * 100 : null;
+    const bestSignal = topSignals[0] ?? null;
+    const latestTrade = trades[0] ?? null;
+    const marketStyle = marketStatusStyle(marketStatus?.state);
+    return (
+      <div className="iorio-pulse-page pulse-phone">
+        <PulsePhoneLayout
+          clock={clock}
+          environmentStatus={environmentStatus}
+          attentionPill={<AttentionPill reasons={attentionReasons} />}
+          marketLine={
+            <span className="phone-market">
+              <span className={`led ${marketStyle.ledClass}`} />
+              <span className={`mk-status ${marketStyle.textClass}`}>{marketStyle.badgeLabel}</span>
+              {marketStatus?.label && <span>· {marketStatus.label}</span>}
+            </span>
+          }
+          kpiTiles={kpiValueTiles}
+          allocation={{ ccPct, cspPct, unstructuredPct, cashPct }}
+          charts={{ pnlSeries, pnlChart: pnlChartPanel, deltaChart: deltaChartPanel }}
+          positions={{
+            count: positions.length,
+            totalPnl: totalUnrealizedPnl,
+            exposurePercent,
+            head: positionsHead,
+            rows: positionRows,
+            empty: positionsEmpty,
+          }}
+          signals={{
+            shownCount: topSignals.length,
+            scoredCount: scoredTickerCount,
+            bestRow: bestSignal ? (
+              <>
+                <span className="yield-sym">{bestSignal.symbol}</span>
+                <span className={`strat-badge ${bestSignal.candidate.strategyKey === "covered_call" ? "cc" : "csp"}`}>{strategyAbbrev(bestSignal.candidate.strategyKey)}</span>
+                <span>{signalStrikeLabel(bestSignal.candidate)}</span>
+                <span className="up" style={{ fontWeight: 700 }}>
+                  {(bestSignal.candidate.annualizedYield * 100).toFixed(1)}%
+                </span>
+              </>
+            ) : (
+              "—"
+            ),
+            head: signalsHead,
+            rows: signalRowsRendered,
+            empty: signalsEmpty,
+          }}
+          trades={{
+            latestSummary: latestTrade ? (
+              <>
+                <span className="muted">{formatFeedTime(latestTrade.executedAt)}</span>
+                <span style={{ color: "var(--text-primary)", fontWeight: 600 }}>{tradeSideAndQuantity(latestTrade)}</span>
+                <span>{tradeDetailText(latestTrade)}</span>
+              </>
+            ) : (
+              "—"
+            ),
+            rows: tradeRows,
+            empty: tradesEmpty,
+          }}
+          events={{ latestTime: events[0]?.time ?? null, rows: eventRows, empty: eventsEmpty }}
+          systems={{
+            leds: phoneSystemLeds({ dbHealth, databaseSizeUsedPercent, gatewayHealth, availableCash, accountDataError: exposure?.accountDataError, genosukeHealth, webDynoHealth }),
+            activeNodeIds: nodeIdsForActiveEdges(activeEdgeIds),
+            cards: (
+              <>
+                {marketChip}
+                {nodes.ibkr}
+                {nodes.gateway}
+                {nodes.db}
+                {nodes.heroku}
+                {nodes.genosuke}
+                {nodes.llm}
+                {nodes.frontend}
+              </>
+            ),
+          }}
+        />
+      </div>
+    );
+  }
+
+  const nodes = renderNodeCards(false);
   return (
     <div className="iorio-pulse-page">
       <div className="pulse-header">
@@ -815,57 +1450,7 @@ export function PulsePage() {
       </div>
 
       <div className="kpi-strip">
-        <div className="kpi-tile">
-          <span className="kpi-label">Account Value</span>
-          <div className="kpi-value-row">
-            <FlashingNumber value={netLiquidationValue} className="kpi-value">
-              {formatSignedPnl(netLiquidationValue, 0).replace("+", "")}
-            </FlashingNumber>
-          </div>
-        </div>
-        <div className="kpi-tile">
-          <span className="kpi-label">Available Cash</span>
-          <div className="kpi-value-row">
-            <FlashingNumber value={availableCash?.availableCashToTrade ?? null} className="kpi-value">
-              {formatSignedPnl(availableCash?.availableCashToTrade ?? null, 0).replace("+", "")}
-            </FlashingNumber>
-            {availableCashPercent !== null && (
-              <span className={`kpi-delta ${lowerIsWorseStatus(availableCashPercent, ...AVAILABLE_CASH_PERCENT_BANDS)}`}>
-                ({availableCashPercent.toFixed(1)}%)
-              </span>
-            )}
-          </div>
-        </div>
-        <div className="kpi-tile">
-          <span className="kpi-label">Yesterday&apos;s P&amp;L</span>
-          <div className="kpi-value-row">
-            <FlashingNumber
-              value={yesterdaysPnl}
-              className="kpi-value"
-              style={{ color: yesterdaysPnl === null ? undefined : yesterdaysPnl >= 0 ? "var(--success)" : "var(--danger)" }}
-            >
-              {formatSignedPnl(yesterdaysPnl, 0)}
-            </FlashingNumber>
-            <span className={`kpi-delta ${summary?.dayPnlPercent && summary.dayPnlPercent >= 0 ? "up" : "down"}`}>
-              {formatSignedPercentageValue(summary?.dayPnlPercent ?? null, 2)}
-            </span>
-          </div>
-        </div>
-        <div className="kpi-tile">
-          <span className="kpi-label">Unrealised P&amp;L</span>
-          <div className="kpi-value-row">
-            <FlashingNumber
-              value={totalUnrealizedPnl}
-              className="kpi-value"
-              style={{ color: totalUnrealizedPnl === null ? undefined : totalUnrealizedPnl >= 0 ? "var(--success)" : "var(--danger)" }}
-            >
-              {formatSignedPnl(totalUnrealizedPnl, 0)}
-            </FlashingNumber>
-            <span className={`kpi-delta ${totalUnrealizedPnlPercent !== null && totalUnrealizedPnlPercent >= 0 ? "up" : "down"}`}>
-              {formatSignedPercentageValue(totalUnrealizedPnlPercent, 2)}
-            </span>
-          </div>
-        </div>
+        {kpiValueTiles}
         <div className="kpi-tile">
           <span className="kpi-label">Allocation</span>
           <div className="alloc-bar">
@@ -887,47 +1472,9 @@ export function PulsePage() {
             <div className="panel-title">
               Positions <span className="count">{positions.length}</span>
             </div>
-            <div className="pos-head">
-              <span>Tkr</span>
-              <span>Strat</span>
-              <span style={{ textAlign: "right" }}>DTE</span>
-              <span style={{ textAlign: "right" }}>Exp $</span>
-              <span style={{ textAlign: "right" }}>Exp %</span>
-              <span style={{ textAlign: "right" }}>|Δ|</span>
-              <span style={{ textAlign: "right" }}>P&amp;L</span>
-            </div>
-            {positions.length === 0 && <div className="panel-empty">No open positions.</div>}
-            {positions.map((position) => {
-              const expiryDate = positionExpiryDate(position);
-              const dte = expiryDate ? daysToExpiry(expiryDate, todayInEasternIso()) : null;
-              const capitalAtRisk = position.capitalAtRisk !== null ? Number(position.capitalAtRisk) : null;
-              const expPct = capitalAtRisk !== null && netLiquidationValue ? (capitalAtRisk / netLiquidationValue) * 100 : null;
-              const pnl = unrealizedPnlByPositionId[position.id]?.unrealizedPnl ?? null;
-              const optionLeg = position.legs.find((leg) => leg.legType === "option");
-              const legDelta = optionLeg ? greeksByLegId[optionLeg.id]?.delta ?? null : null;
-              const absDelta = legDelta !== null ? Math.abs(legDelta) : null;
-              return (
-                <div className="pos-row" key={position.id}>
-                  <span className="pos-sym">{position.symbol}</span>
-                  <TooltipSpan className={`strat-badge ${strategyBadgeModifier[position.strategyKey] ?? "ns"}`} text={strategyTooltip(position.strategyKey)}>
-                    {positionStrategyAbbrev(position.strategyKey)}
-                  </TooltipSpan>
-                  <span className="pos-num">{dte ?? "—"}</span>
-                  <FlashingNumber value={capitalAtRisk} className="pos-exp">
-                    {formatCompactDollars(capitalAtRisk)}
-                  </FlashingNumber>
-                  <FlashingNumber value={expPct} precision={1} className="pos-pct">
-                    {expPct !== null ? `${expPct.toFixed(1)}%` : "—"}
-                  </FlashingNumber>
-                  <FlashingNumber value={absDelta} precision={2} className="pos-pct">
-                    {absDelta !== null ? absDelta.toFixed(2) : "—"}
-                  </FlashingNumber>
-                  <FlashingNumber value={pnl} className={`pos-pnl ${pnl !== null && pnl < 0 ? "neg" : "pos"}`}>
-                    {formatSignedPnl(pnl, 0)}
-                  </FlashingNumber>
-                </div>
-              );
-            })}
+            {positionsHead}
+            {positions.length === 0 && positionsEmpty}
+            {positionRows}
           </div>
           <div className="panel">
             <div className="panel-title">
@@ -936,383 +1483,38 @@ export function PulsePage() {
                 {topSignals.length} of {scoredTickerCount}
               </span>
             </div>
-            <div className="yield-head">
-              <span>Tkr</span>
-              <span>Type</span>
-              <span>Strike / Expiry</span>
-              <span style={{ textAlign: "right" }}>Edge $</span>
-              <span style={{ textAlign: "right" }}>Yield</span>
-            </div>
-            {topSignals.length === 0 && <div className="panel-empty">No signals with positive Edge $.</div>}
-            {topSignals.map(({ symbol, candidate }) => (
-              <div className="yield-row" key={symbol}>
-                <span className="yield-sym">{symbol}</span>
-                <span className={`strat-badge ${candidate.strategyKey === "covered_call" ? "cc" : "csp"}`}>{strategyAbbrev(candidate.strategyKey)}</span>
-                <span className="yield-strike">{signalStrikeLabel(candidate)}</span>
-                <span className="yield-edge">{formatCompactDollars(candidate.edgeDollars)}</span>
-                <span className="yield-pct">{(candidate.annualizedYield * 100).toFixed(1)}%</span>
-              </div>
-            ))}
+            {signalsHead}
+            {topSignals.length === 0 && signalsEmpty}
+            {signalRowsRendered}
           </div>
         </ResizableRail>
 
         <TopologyMap pulses={pulses} activeEdgeIds={activeEdgeIds}>
-          <div className="market-chip grid-market">
-            <span className="mk-name">{marketStatus ? marketStatus.exchanges.join(" · ") : "—"}</span>
-            <span className={`mk-status ${marketStatusStyle(marketStatus?.state).textClass}`}>
-              <span className={`led ${marketStatusStyle(marketStatus?.state).ledClass}`} />
-              {marketStatusStyle(marketStatus?.state).badgeLabel}
-            </span>
-            <span className="mk-close">{marketStatus?.label ?? "—"}</span>
-          </div>
-
-          <div className="node grid-db" data-node-id="db">
-            <div className="node-header">
-              <div className="node-icon">
-                <svg viewBox="0 0 24 24" fill="none" strokeWidth={1.7}>
-                  <ellipse cx="12" cy="5.5" rx="8" ry="3" />
-                  <path d="M4 5.5v13c0 1.7 3.6 3 8 3s8-1.3 8-3v-13" />
-                  <path d="M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3" />
-                </svg>
-              </div>
-              <div>
-                <div className="node-title">Database</div>
-                <div className="node-sub">Postgres · Essential-1</div>
-              </div>
-            </div>
-            <div className="sub-row">
-              <span className="sub-name">Connections</span>
-              <FlashingNumber value={dbHealth ? Number(dbHealth.totalConnections) : null} className="sub-value">
-                {dbHealth ? (
-                  <>
-                    <span className={`sub-value ${higherIsWorseStatus((Number(dbHealth.totalConnections) / dbHealth.maxConnections) * 100, ...CONNECTIONS_USED_PERCENT_BANDS)}`}>
-                      {dbHealth.totalConnections}
-                    </span>{" "}
-                    / {dbHealth.maxConnections}
-                  </>
-                ) : (
-                  "—"
-                )}
-              </FlashingNumber>
-            </div>
-            <div className="sub-row">
-              <span className="sub-name">DB size</span>
-              <FlashingNumber value={dbHealth ? Number(dbHealth.databaseSizeBytes) : null} className="sub-value">
-                {dbHealth ? (
-                  <>
-                    {formatBytes(dbHealth.databaseSizeBytes)} (
-                    <span className={`sub-value ${higherIsWorseStatus(databaseSizeUsedPercent, ...DB_SIZE_USED_PERCENT_BANDS)}`}>{formatPercentageValue(databaseSizeUsedPercent, 2)}</span> used)
-                  </>
-                ) : (
-                  "—"
-                )}
-              </FlashingNumber>
-            </div>
-            <div className="sub-row">
-              <span className="sub-name">Response time (ms)</span>
-              <span className="sub-value">
-                {dbHealth ? (
-                  <>
-                    max{" "}
-                    <span className={`sub-value ${higherIsWorseStatus(dbHealth.responseTime.slowestMs, ...DB_SLOWEST_RESPONSE_MS_BANDS)}`}>
-                      {formatNumber(dbHealth.responseTime.slowestMs, (dbHealth.responseTime.slowestMs ?? 0) < 10 ? 1 : 0)}
-                    </span>{" "}
-                    | avg{" "}
-                    <span className={`sub-value ${higherIsWorseStatus(dbHealth.responseTime.averageMs, ...DB_AVERAGE_RESPONSE_MS_BANDS)}`}>
-                      {formatNumber(dbHealth.responseTime.averageMs, (dbHealth.responseTime.averageMs ?? 0) < 10 ? 1 : 0)}
-                    </span>
-                  </>
-                ) : (
-                  "—"
-                )}
-              </span>
-            </div>
-          </div>
-
-          <div className="node grid-genosuke" data-node-id="genosuke">
-            <div className="node-header">
-              <div className="node-icon">
-                <svg viewBox="0 0 24 24" fill="none" strokeWidth={1.7}>
-                  <path d="M4 5h14v9H9l-4 3.5z" />
-                  <path d="M17.5 3.5l0.55 1.3 1.3 0.55-1.3 0.55-0.55 1.3-0.55-1.3-1.3-0.55 1.3-0.55z" fill="currentColor" stroke="none" />
-                </svg>
-              </div>
-              <div>
-                <div className="node-title">Genosuke</div>
-                <div className="node-sub">Chat orchestrator</div>
-              </div>
-            </div>
-            <div className="sub-row">
-              <span className="sub-name">Messages today</span>
-              <FlashingNumber value={genosukeHealth ? Number(genosukeHealth.messagesToday) : null} className="sub-value">
-                {genosukeHealth?.messagesToday ?? "—"}
-              </FlashingNumber>
-            </div>
-            <div className="sub-row">
-              <span className="sub-name">Chat sessions</span>
-              <FlashingNumber value={genosukeHealth ? Number(genosukeHealth.activeSessions) : null} className="sub-value ok">
-                {genosukeHealth ? `${genosukeHealth.activeSessions} active` : "—"}
-              </FlashingNumber>
-            </div>
-            <div className={`tg-tag${telegramFlash ? " flash" : ""}`}>
-              <svg viewBox="0 0 24 24" fill="none" strokeWidth={1.6}>
-                <path d="M21 4L3 11.5l6 2.2M21 4l-3.2 16-7.8-6.3M21 4L9.8 13.7" />
-              </svg>
-              outbound → Telegram
-            </div>
-          </div>
-
-          <div className="node grid-llm" data-node-id="llm">
-            <div className="node-header">
-              <div className="node-icon">
-                <svg viewBox="0 0 24 24" fill="none" strokeWidth={1.6}>
-                  <path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z" />
-                </svg>
-              </div>
-              <div>
-                <div className="node-title">LLM</div>
-                <div className="node-sub">OpenRouter</div>
-              </div>
-            </div>
-            <div className="sub-row">
-              <span className="sub-name">Model</span>
-              <span className="sub-value" style={{ fontSize: "0.58rem" }}>
-                {genosukeHealth?.llm.model ?? "—"}
-              </span>
-            </div>
-            <div className="sub-row">
-              <span className="sub-name">Calls</span>
-              <FlashingNumber value={genosukeHealth?.llm.callsPerMinute ?? null} className="sub-value">
-                {genosukeHealth ? `${genosukeHealth.llm.callsPerMinute} / min` : "—"}
-              </FlashingNumber>
-            </div>
-            <div className="sub-row">
-              <span className="sub-name">Avg latency</span>
-              <FlashingNumber value={genosukeHealth?.llm.avgLatencyMs ?? null} className="sub-value">
-                {genosukeHealth?.llm.avgLatencyMs ? `${(genosukeHealth.llm.avgLatencyMs / 1000).toFixed(1)}s` : "—"}
-              </FlashingNumber>
-            </div>
-          </div>
-
+          {marketChip}
+          {nodes.db}
+          {nodes.genosuke}
+          {nodes.llm}
           <div className="charts-row">
-            <div className="chart-panel">
-              <div className="chart-panel-title">
-                <span>Unrealised P&amp;L</span>
-                <span
-                  className="cur-val"
-                  style={{
-                    color: pnlSeries.length === 0 ? undefined : (pnlSeries.at(-1) ?? 0) >= 0 ? "var(--success)" : "var(--danger)",
-                  }}
-                >
-                  {formatSignedPnl(pnlSeries.at(-1) ?? null, 0)}
-                </span>
-              </div>
-              <div className="chart-svg-wrap">
-                <TotalPnlChart series={pnlSeries} timestamps={pnlTimestamps} formatValue={(value) => formatSignedPnl(value, 0)} />
-              </div>
-            </div>
-            <div className="chart-panel">
-              <div className="chart-panel-title">
-                <span>Net Delta · live</span>
-                <span className="cur-val">threshold {NET_DELTA_REFERENCE_LINE.toFixed(2)}</span>
-              </div>
-              <NetDeltaChart seriesByPosition={deltaSeriesForChart} referenceLine={NET_DELTA_REFERENCE_LINE} timestamps={pnlTimestamps} />
-            </div>
+            {pnlChartPanel}
+            {deltaChartPanel}
           </div>
-
-          <div className="node grid-ibkr" data-node-id="ibkr">
-            <div className="node-header">
-              <div className="node-icon ibkr-mark">
-                <span>IB</span>
-              </div>
-              <div>
-                <div className="node-title">IBKR</div>
-                <div className="node-sub">Interactive Brokers</div>
-              </div>
-            </div>
-            <div className="sub-row">
-              <span className="sub-name">Total equity</span>
-              <FlashingNumber value={positions.length > 0 ? totalStockValue : null} className="sub-value">
-                {positions.length > 0 ? formatCompactDollars(totalStockValue) : "—"}
-              </FlashingNumber>
-            </div>
-            <div className="sub-row">
-              <span className="sub-name">Total cash</span>
-              <FlashingNumber value={availableCash?.totalCashValue ?? null} className="sub-value">
-                {availableCash?.totalCashValue ? formatCompactDollars(availableCash.totalCashValue) : "—"}
-              </FlashingNumber>
-            </div>
-            <div className="sub-row">
-              <span className="sub-name">Reserved cash</span>
-              <FlashingNumber value={availableCash?.cashLockedInCsps ?? null} className="sub-value">
-                {availableCash?.cashLockedInCsps ? formatCompactDollars(availableCash.cashLockedInCsps) : "—"}
-              </FlashingNumber>
-            </div>
-          </div>
-
-          <div className="node grid-gateway" data-node-id="gateway">
-            <div className="node-header">
-              <div className="node-icon">
-                <svg viewBox="0 0 24 24" fill="none" strokeWidth={1.7}>
-                  <circle cx="12" cy="17" r="1.3" fill="currentColor" stroke="none" />
-                  <path d="M8.2 13.6a5.3 5.3 0 0 1 7.6 0" />
-                  <path d="M5.3 10.5a9.5 9.5 0 0 1 13.4 0" />
-                </svg>
-              </div>
-              <div>
-                <div className="node-title">Gateway</div>
-                <div className="node-sub">ibkrGatewayWorker · VPS</div>
-              </div>
-            </div>
-            {gatewayHealth?.staleOrMissing ? (
-              <div className="sub-row">
-                <span className="sub-name">Status</span>
-                <span className="sub-value err">not connected</span>
-              </div>
-            ) : (
-              <>
-                <div className="sub-row">
-                  <span className="sub-name">In flight</span>
-                  <span>
-                    <FlashingNumber value={gatewayHealth?.inFlightOrderCount ?? null} className={`sub-value ${higherIsWorseStatus(gatewayHealth?.inFlightOrderCount, ...GATEWAY_IN_FLIGHT_BANDS)}`}>
-                      {gatewayHealth ? gatewayHealth.inFlightOrderCount : "—"}
-                    </FlashingNumber>
-                    {gatewayHealth && <span className="sub-unit"> orders</span>}
-                  </span>
-                </div>
-                <div className="sub-row">
-                  <span className="sub-name">Uptime</span>
-                  <span className="sub-value-group">
-                    <span className={`sub-value ${gatewayHealth?.uptimeMs == null ? "" : gatewayHealth.uptimeMs >= GATEWAY_HEALTHY_UPTIME_MS ? "ok" : "warn"}`}>
-                      {formatDurationShort(gatewayHealth?.uptimeMs)}
-                    </span>
-                    {gatewayHealth?.totalReconnects != null && (
-                      <span className="sub-unit">
-                        {" ("}
-                        <FlashingNumber value={gatewayHealth.totalReconnects} className={`sub-value ${higherIsWorseStatus(gatewayHealth.totalReconnects, ...GATEWAY_RECONNECT_BANDS)}`}>
-                          {gatewayHealth.totalReconnects}
-                        </FlashingNumber>
-                        {` reconnect${gatewayHealth.totalReconnects === 1 ? "" : "s"})`}
-                      </span>
-                    )}
-                  </span>
-                </div>
-                <div className="sub-row">
-                  <span className="sub-name">IBKR live connections</span>
-                  <span className="sub-value-group">
-                    <FlashingNumber value={gatewayHealth?.marketDataLineCount ?? null} className={`sub-value ${higherIsWorseStatus(gatewayHealth?.marketDataLineCount, ...GATEWAY_LIVE_CONNECTIONS_BANDS)}`}>
-                      {gatewayHealth?.marketDataLineCount ?? "—"}
-                    </FlashingNumber>
-                    {gatewayHealth?.priorityReservedLineCount != null && (
-                      <span className="sub-unit">
-                        {" ("}
-                        <FlashingNumber value={gatewayHealth.priorityReservedLineCount} className="sub-value">
-                          {gatewayHealth.priorityReservedLineCount}
-                        </FlashingNumber>
-                        {" reserved)"}
-                      </span>
-                    )}
-                  </span>
-                </div>
-              </>
-            )}
-          </div>
-
-          <div className="node grid-heroku" data-node-id="heroku">
-            <div className="node-header">
-              <div className="node-icon">
-                <svg viewBox="0 0 24 24" fill="none" strokeWidth={1.7}>
-                  <rect x="5" y="5" width="14" height="4.6" rx="1.3" />
-                  <rect x="5" y="14.4" width="14" height="4.6" rx="1.3" />
-                </svg>
-              </div>
-              <div>
-                <div className="node-title">Heroku</div>
-                <div className="node-sub">Web dyno · Eco</div>
-              </div>
-            </div>
-            <div className="sub-row">
-              <span className="sub-name">Requests</span>
-              <FlashingNumber value={webDynoHealth?.requestsPerMinute ?? null} className="sub-value">
-                {webDynoHealth ? `${webDynoHealth.requestsPerMinute} / min` : "—"}
-              </FlashingNumber>
-            </div>
-            <div className="sub-row">
-              <span className="sub-name">Connections</span>
-              <FlashingNumber value={webDynoHealth?.notificationStreamConnections ?? null} className="sub-value ok">
-                {webDynoHealth?.notificationStreamConnections ?? "—"}
-              </FlashingNumber>
-            </div>
-            <div className="sub-row">
-              <span className="sub-name">Uptime</span>
-              <span className="sub-value">{webDynoHealth ? formatDurationShort(webDynoHealth.uptimeSeconds * 1000) : "—"}</span>
-            </div>
-          </div>
-
-          <div className="node grid-frontend" data-node-id="frontend">
-            <div className="node-header">
-              <div className="node-icon">
-                <svg viewBox="0 0 24 24" fill="none" strokeWidth={1.7}>
-                  <rect x="3" y="4" width="18" height="14" rx="2" />
-                  <path d="M3 8h18" />
-                  <circle cx="6" cy="6" r="0.55" fill="currentColor" stroke="none" />
-                  <circle cx="8.4" cy="6" r="0.55" fill="currentColor" stroke="none" />
-                </svg>
-              </div>
-              <div>
-                <div className="node-title">Front End</div>
-                <div className="node-sub">Active sessions</div>
-              </div>
-            </div>
-            <div className="avatar-row">
-              {presenceUsers.length === 0 && <span className="avatar-name">No users</span>}
-              {presenceUsers.map((user) => (
-                <div className={`avatar-item${user.online ? "" : " avatar-item-offline"}`} key={user.id}>
-                  <div className="avatar-circle" style={{ background: "#7DD3FC" }}>
-                    {user.displayName.charAt(0).toUpperCase()}
-                  </div>
-                  <span className="avatar-name">{user.displayName}</span>
-                  {user.online ? (
-                    <span className="avatar-status">
-                      <span className="led" />
-                      online
-                    </span>
-                  ) : (
-                    <TooltipSpan className="avatar-status offline" text={user.lastSeenAt ? formatDateTime(user.lastSeenAt) : undefined}>
-                      {formatRelativeDate(user.lastSeenAt)}
-                    </TooltipSpan>
-                  )}
-                </div>
-              ))}
-            </div>
-          </div>
+          {nodes.ibkr}
+          {nodes.gateway}
+          {nodes.heroku}
+          {nodes.frontend}
         </TopologyMap>
 
         <ResizableRail storageKey="pulse.rightRailTopPercent">
           <div className="panel">
             <div className="panel-title">Trades</div>
-            {trades.length === 0 && <div className="panel-empty">No recent trades.</div>}
-            {trades.map((trade) => (
-              <div className="fill-row" key={trade.id}>
-                <span className="fill-time">{formatFeedTime(trade.executedAt)}</span>
-                <span className="fill-desc">
-                  <b>
-                    {trade.side.toUpperCase()} {trade.quantity}
-                  </b>{" "}
-                  {trade.symbol}
-                  {trade.strikePrice ? ` ${formatNumber(trade.strikePrice, 2)}${trade.optionType === "call" ? "C" : "P"}` : ""}
-                  {trade.expiryDate ? ` ${daysToExpiry(trade.expiryDate, trade.executedAt)}DTE` : ""} @ {formatNumber(trade.price, 2)}
-                </span>
-              </div>
-            ))}
+            {trades.length === 0 && tradesEmpty}
+            {tradeRows}
           </div>
           <div className="panel">
             <div className="panel-title">Latest Events</div>
             <div className="events-list">
-              {events.length === 0 && <div className="panel-empty">No events yet.</div>}
-              {events.map((event) => (
-                <EventRow key={event.id} time={event.time} text={event.text} color={event.color} />
-              ))}
+              {events.length === 0 && eventsEmpty}
+              {eventRows}
             </div>
           </div>
         </ResizableRail>
