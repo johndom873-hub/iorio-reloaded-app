@@ -28,6 +28,11 @@ export interface SignalCandidate {
   bid: number;
   ask: number;
   spreadPercent: number;
+  /** Liquidity from the 10:00 snapshot (gap fix 9, 2026-09-28); null when the capture had no tick for it. */
+  openInterest: number | null;
+  volume: number | null;
+  bidSize: number | null;
+  askSize: number | null;
   surfaceImpliedVolatility: number;
   midImpliedVolatility: number | null;
   forecastVolatility: number;
