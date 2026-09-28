@@ -31,6 +31,8 @@ import {
   ibkrExpiryToIsoDate,
   orderRequestStatusBadgeClass,
   todayInEasternIso,
+  isOrderRequestFinal,
+  orderRequestFillLabel,
 } from "../lib/formatters";
 import { computeAnnualizedYield, computeCapitalAtRiskFromOrderLegs, computePayoff, orderLegsToPayoffInput } from "../lib/payoff";
 import { computeProbabilityOfProfit } from "../lib/probabilityOfProfit";
@@ -94,7 +96,7 @@ function statusLabel(status: OrderRequest["status"]): string {
     case "filled":
       return "Filled";
     case "partially_filled":
-      return "Partially filled";
+      return orderRequestFillLabel(order);
     case "cancelled":
       return "Cancelled";
     case "rejected":
@@ -334,7 +336,8 @@ export function OrderReviewPanel({ order: initialOrder, initialAdaptivePriority,
   const isPending = order.status === "pending_confirmation";
   const isTerminal = terminalStatuses.has(order.status);
   const isWaiting = order.status === "confirmed" || order.status === "submitted";
-  const canRequestCancel = order.status === "submitted" || order.status === "partially_filled";
+  // A partial fill IBKR has stopped working (gap fix 7, 2026-09-28) has nothing left to cancel.
+  const canRequestCancel = order.status === "submitted" || (order.status === "partially_filled" && !isOrderRequestFinal(order));
   const cancelRequested = order.status === "cancel_requested";
 
   return (

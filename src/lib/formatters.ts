@@ -29,6 +29,23 @@ export function orderRequestStatusLabel(status: OrderRequestStatus): string {
   }
 }
 
+// IBKR statuses after which nothing more will fill — mirrors lib/orderRequestStatus.ts in the API.
+const finalIbkrStatuses = new Set(["Filled", "Cancelled", "ApiCancelled", "Inactive"]);
+
+/** A partial fill that IBKR has stopped working (the DAY remainder expired, or it was cancelled) is final; a working one is not. */
+export function isOrderRequestFinal(order: { status: OrderRequestStatus; ibkrStatus?: string | null }): boolean {
+  if (order.status === "filled" || order.status === "cancelled" || order.status === "rejected" || order.status === "error") return true;
+  return order.status === "partially_filled" && order.ibkrStatus != null && finalIbkrStatuses.has(order.ibkrStatus);
+}
+
+/** "Partially filled — 2 of 5, remainder cancelled" / "Partially filled — 2 of 5, still working"; falls back to the plain label. */
+export function orderRequestFillLabel(order: { status: OrderRequestStatus; filledQuantity?: number | null; remainingQuantity?: number | null; ibkrStatus?: string | null }): string {
+  if (order.status !== "partially_filled" || order.filledQuantity == null || order.remainingQuantity == null) return orderRequestStatusLabel(order.status);
+  const total = order.filledQuantity + order.remainingQuantity;
+  const tail = isOrderRequestFinal(order) ? "remainder not filled" : "still working";
+  return `Partially filled — ${order.filledQuantity} of ${total}, ${tail}`;
+}
+
 export function orderRequestStatusBadgeClass(status: OrderRequestStatus): string {
   if (status === "filled") return "bg-success-lt";
   if (status === "rejected" || status === "error" || status === "cancelled") return "bg-danger-lt";

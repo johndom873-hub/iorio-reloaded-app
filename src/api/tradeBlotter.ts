@@ -33,6 +33,10 @@ export interface Trade {
 export interface PendingOrder {
   id: string;
   status: OrderRequestStatus;
+  /** IBKR's running fill counts and last raw status (gap fix 7, 2026-09-28). */
+  filledQuantity: number | null;
+  remainingQuantity: number | null;
+  ibkrStatus: string | null;
   ibkrOrderId: number | null;
   ibkrPermId: number | null;
   errorMessage: string | null;

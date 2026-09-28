@@ -19,6 +19,8 @@ import {
   formatRelativeDate,
   orderRequestStatusBadgeClass,
   orderRequestStatusLabel,
+  isOrderRequestFinal,
+  orderRequestFillLabel,
 } from "../lib/formatters";
 
 // Kept in sync with positions.ts's /orders/:id/cancel eligibility.
@@ -212,7 +214,7 @@ export function TradeBlotterPage() {
         if (row.kind === "trade") return <span className="badge bg-success-lt">Filled</span>;
         return (
           <div>
-            <span className={`badge ${orderRequestStatusBadgeClass(row.status)}`}>{orderRequestStatusLabel(row.status)}</span>
+            <span className={`badge ${orderRequestStatusBadgeClass(row.status)}`}>{row.kind === "order" ? orderRequestFillLabel(row) : orderRequestStatusLabel(row.status)}</span>
             {row.errorMessage && (
               <TooltipSpan as="div" className="text-danger text-truncate" style={{ fontSize: "0.72rem", maxWidth: "12rem" }} text={row.errorMessage}>
                 {row.errorMessage}
@@ -259,7 +261,8 @@ export function TradeBlotterPage() {
         // Every other status is terminal — cancel_requested is excluded on
         // purpose so the button disappears the instant a cancel is in
         // flight, instead of allowing a second request.
-        if (row.kind !== "order" || !cancellableStatuses.has(row.status)) return null;
+        // A partial fill IBKR has stopped working (gap fix 7, 2026-09-28) is final: nothing left to cancel.
+        if (row.kind !== "order" || !cancellableStatuses.has(row.status) || isOrderRequestFinal(row)) return null;
         // row.id is "<order_requests.id>:<legOrdinality>" here — a multi-leg
         // order expands to one blotter row per leg, all sharing one real
         // order id (see tradeBlotter.ts's WITH ORDINALITY comment). Cancel

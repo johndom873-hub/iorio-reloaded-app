@@ -172,6 +172,10 @@ export interface OrderRequest {
   status: OrderRequestStatus;
   ibkrOrderId: number | null;
   errorMessage: string | null;
+  /** IBKR's running fill counts and last raw status (gap fix 7, 2026-09-28); null before the first IBKR status event. */
+  filledQuantity?: number | null;
+  remainingQuantity?: number | null;
+  ibkrStatus?: string | null;
   /** Non-blocking advisory from POST /orders — e.g. leftover uncovered shares beyond what this order uses. Never persisted, transient on the preview response only. */
   note?: string | null;
   /** Non-blocking economic-calendar advisory (New Position/Roll only, approved 2026-08-31) — Medium/High-importance events between today and expiry. Persisted at order-creation time (2026-09-24) so it survives a GET /orders/:id, not just the creation response. */

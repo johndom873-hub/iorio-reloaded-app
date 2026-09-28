@@ -1,4 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from "react";
+import { orderRequestFillLabel } from "../lib/formatters";
 import { fetchOrder, type OrderRequest } from "../api/positions";
 import { openNotificationStream } from "../api/notifications";
 import { describeRollSignalUpgrade, describeSignalUpgrade } from "../lib/signalsPresentation";
@@ -64,7 +65,7 @@ function orderStatusMessage(order: OrderRequest): string {
     case "filled":
       return "Filled";
     case "partially_filled":
-      return "Partially filled";
+      return orderRequestFillLabel(order);
     case "cancelled":
       return "Cancelled";
     case "rejected":
