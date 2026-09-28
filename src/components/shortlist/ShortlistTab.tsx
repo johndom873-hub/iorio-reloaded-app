@@ -6,6 +6,7 @@ import { TickerPrepModal } from "./TickerPrepModal";
 import { WarningTriangle } from "./WarningTriangle";
 import { VolatilitySurfaceModal } from "../VolatilitySurfaceModal";
 import { ActionsMenu, type ActionsMenuItem } from "./ActionsMenu";
+import { PlutoBotToggle } from "../pluto/PlutoBotToggle";
 import { useTooltip } from "../../hooks/useTooltip";
 import { DottedLabelTooltip } from "../HelpTooltip";
 import { ApiError } from "../../api/client";
@@ -347,6 +348,21 @@ export function ShortlistTab({ onOpenTickerDetail }: ShortlistTabProps) {
     },
     { key: "companyName", header: "Name", render: (row) => row.companyName ?? "—" },
     { key: "sector", header: "Sector", render: (row) => (row.isEtf ? <span className="text-muted fst-italic">ETF</span> : row.sector ?? "—") },
+    {
+      key: "pluto",
+      header: "Pluto",
+      headerTitle: "Pluto may trade this ticker on its own (default off). The same toggle is on the Pluto screen.",
+      align: "center",
+      render: (row) => (
+        <PlutoBotToggle
+          entryId={row.id}
+          symbol={row.symbol}
+          enabled={row.botEnabled}
+          onChanged={(enabled) => setRows((prev) => prev.map((entry) => (entry.id === row.id ? { ...entry, botEnabled: enabled } : entry)))}
+          onError={setError}
+        />
+      ),
+    },
     {
       key: "dailyBars",
       header: "Daily Bars",

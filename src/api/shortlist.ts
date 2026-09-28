@@ -8,6 +8,10 @@ export interface ShortlistRow {
   symbol: string;
   companyName: string | null;
   sector: string | null;
+  /** Pluto may trade this ticker (Shortlist and Pluto screens share the toggle). */
+  botEnabled: boolean;
+  botEnabledChangedAt: string | null;
+  botEnabledChangedBy: string | null;
   /** 'preparing' while the new-ticker backfill is running, else null. */
   backfillStatus?: "preparing" | null;
   backfillProgressPercent?: number | null;

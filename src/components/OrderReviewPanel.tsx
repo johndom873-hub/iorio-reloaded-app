@@ -83,8 +83,8 @@ function legDescription(leg: OrderRequest["payload"]["legs"][number]): string {
   return `${leg.action} ${leg.quantity}x ${leg.strike ? formatCurrencyTrimmed(leg.strike) : "—"} ${right} exp ${expiryLabel} @ ${formatCurrency(leg.unitPrice)}`;
 }
 
-function statusLabel(status: OrderRequest["status"]): string {
-  switch (status) {
+function statusLabel(order: Pick<OrderRequest, "status" | "filledQuantity" | "remainingQuantity" | "ibkrStatus">): string {
+  switch (order.status) {
     case "pending_confirmation":
       return "Awaiting your confirmation";
     case "confirmed":
@@ -505,7 +505,7 @@ export function OrderReviewPanel({ order: initialOrder, initialAdaptivePriority,
           submitted → filled/cancelled/etc). */}
       {!isPending && (
         <div className="d-flex align-items-center gap-2">
-          <span className={`badge ${orderRequestStatusBadgeClass(order.status)}`}>{statusLabel(order.status)}</span>
+          <span className={`badge ${orderRequestStatusBadgeClass(order.status)}`}>{statusLabel(order)}</span>
           {isWaiting && <Spinner size="sm" label="Waiting for IBKR" />}
         </div>
       )}

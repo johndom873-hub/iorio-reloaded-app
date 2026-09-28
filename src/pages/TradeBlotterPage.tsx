@@ -18,7 +18,6 @@ import {
   formatNumber,
   formatRelativeDate,
   orderRequestStatusBadgeClass,
-  orderRequestStatusLabel,
   isOrderRequestFinal,
   orderRequestFillLabel,
 } from "../lib/formatters";
@@ -214,7 +213,7 @@ export function TradeBlotterPage() {
         if (row.kind === "trade") return <span className="badge bg-success-lt">Filled</span>;
         return (
           <div>
-            <span className={`badge ${orderRequestStatusBadgeClass(row.status)}`}>{row.kind === "order" ? orderRequestFillLabel(row) : orderRequestStatusLabel(row.status)}</span>
+            <span className={`badge ${orderRequestStatusBadgeClass(row.status)}`}>{row.kind === "order" ? orderRequestFillLabel(row) : "Filled"}</span>
             {row.errorMessage && (
               <TooltipSpan as="div" className="text-danger text-truncate" style={{ fontSize: "0.72rem", maxWidth: "12rem" }} text={row.errorMessage}>
                 {row.errorMessage}
