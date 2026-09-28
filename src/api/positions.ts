@@ -323,6 +323,39 @@ export function openContractQuoteStream(
   return openDeferredEventSource<OrderLegQuoteStreamEvent>(`${apiBaseUrl}/positions/quote/stream?${params.toString()}`, onEvent);
 }
 
+/** One leg's live quote in the Close form's stream; `mid` is null unless both bid and ask are present. */
+export interface CloseLiveLegQuote {
+  bid: number | null;
+  ask: number | null;
+  last: number | null;
+  mid: number | null;
+}
+
+/**
+ * Everything the Close form gates on (see closeLiveState.ts in the API repo): live quotes per open leg, the
+ * live wheel-cycle P&L, and `blockReason` -- non-null whenever closing must not be allowed (market closed,
+ * quotes not live, or the ticker's cycle flagged as inconsistent). `pending` marks a block that is only
+ * "still waiting for the first live quotes".
+ */
+export interface CloseLiveState {
+  live: boolean;
+  pending: boolean;
+  blockReason: string | null;
+  marketOpen: boolean;
+  legQuotes: Record<string, CloseLiveLegQuote>;
+  cycleTotal: number | null;
+}
+
+export type CloseLiveStreamEvent =
+  | { type: "state"; data: CloseLiveState }
+  | { type: "streamError"; message: string }
+  | { type: "done" };
+
+/** Live data for ClosePositionModal only. No auto-reconnect: a dropped stream surfaces as a streamError so the form fails closed. */
+export function openCloseLiveStream(positionId: string, onEvent: (event: CloseLiveStreamEvent) => void): () => void {
+  return openDeferredEventSource<CloseLiveStreamEvent>(`${apiBaseUrl}/positions/${positionId}/close-live/stream`, onEvent);
+}
+
 export interface Greeks {
   delta: number | null;
   gamma: number | null;

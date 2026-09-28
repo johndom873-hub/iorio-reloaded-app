@@ -1,19 +1,21 @@
 import { useCallback, useEffect, useState } from "react";
 import { Spinner } from "./Spinner";
 import { OrderReviewPanel } from "./OrderReviewPanel";
+import { FillPriorityPicker } from "./FillPriorityPicker";
+import { DottedLabelTooltip } from "./HelpTooltip";
 import { ApiError } from "../api/client";
 import {
   buildCloseOrder,
   cancelUnconfirmedOrder,
-  openContractQuoteStream,
-  type OrderLegQuote,
+  openCloseLiveStream,
+  type AdaptivePriority,
+  type CloseLiveLegQuote,
+  type CloseLiveState,
   type OrderRequest,
   type Position,
   type PositionLeg,
 } from "../api/positions";
-import type { TickerPricing } from "../api/tickerDetail";
-import { openTradeAlertCurrentPricesStream } from "../api/tradeAlerts";
-import { formatCurrency, formatCurrencyTrimmed, formatExpiryWithDte, todayInEasternIso } from "../lib/formatters";
+import { formatCurrency, formatCurrencyTrimmed, formatExpiryWithDte, formatSignedPnl, pnlTextClass, todayInEasternIso } from "../lib/formatters";
 import { flashClassName, useFlashOnChange } from "../hooks/useFlashOnChange";
 import { useTooltip } from "../hooks/useTooltip";
 
@@ -32,23 +34,12 @@ function legLabel(leg: PositionLeg): string {
   return `${leg.side} ${leg.quantity} sh`;
 }
 
-type LegQuote = OrderLegQuote | TickerPricing;
-
-function midPrice(quote: LegQuote): number | null {
-  if (quote.bid !== null && quote.ask !== null) return (quote.bid + quote.ask) / 2;
-  return quote.last;
-}
-
 // Compact live-quote readout, same spirit as RollPositionModal's
 // LiveLegQuote — shown under each leg's limit-price input so the prefilled
-// mid isn't a mystery number.
-function LiveMidQuote({ quote, error }: { quote: LegQuote | null; error: string | null }) {
-  // Option legs tick continuously for as long as this modal stays open (see
-  // openContractQuoteStream/streamOrderLegQuote) -- stock legs are a one-shot
-  // snapshot, so this just never flashes for those (no false flash on the
-  // initial null-to-loaded transition either, same as everywhere else this
-  // hook's used).
-  const midFlash = useFlashOnChange(quote ? midPrice(quote) : null);
+// mid isn't a mystery number. Every leg (stock and option) ticks live from
+// the Close form's own stream for as long as the modal is open.
+function LiveMidQuote({ quote, error }: { quote: CloseLiveLegQuote | null; error: string | null }) {
+  const midFlash = useFlashOnChange(quote ? quote.mid : null);
   const tooltipRef = useTooltip<HTMLSpanElement>(error);
   if (error) {
     return (
@@ -64,6 +55,8 @@ function LiveMidQuote({ quote, error }: { quote: LegQuote | null; error: string 
     </div>
   );
 }
+
+const noLegQuotes: Record<string, CloseLiveLegQuote> = {};
 
 interface UnstructuredLegDraft {
   included: boolean;
@@ -119,58 +112,49 @@ export function ClosePositionModal({ position, onClose, onClosed }: ClosePositio
   const [error, setError] = useState<string | null>(null);
   const [pendingOrder, setPendingOrder] = useState<OrderRequest | null>(null);
 
-  const [legQuotes, setLegQuotes] = useState<Record<string, LegQuote | null>>({});
-  const [legQuoteErrors, setLegQuoteErrors] = useState<Record<string, string | null>>({});
+  // Everything live comes from one stream for this position: bid/ask per open
+  // leg, the live wheel-cycle P&L, and the reason closing is blocked (market
+  // closed, quotes not live, or an inconsistent cycle). The stream never
+  // reconnects on its own, so a drop leaves the form blocked (fails closed).
+  const [liveState, setLiveState] = useState<CloseLiveState | null>(null);
+  const [liveStreamError, setLiveStreamError] = useState<string | null>(null);
+  const [adaptivePriority, setAdaptivePriority] = useState<AdaptivePriority>("Normal");
 
-  // Live quote per open leg, fetched once for the life of this modal (same
-  // convention as RollPositionModal) — option legs via openContractQuoteStream,
-  // stock legs via the ticker pricing stream. Feeds the mid-price prefill
-  // below; not re-run on every render since openLegs is a fresh array each
-  // time but the underlying legs/position don't change while this is open.
   useEffect(() => {
-    const unsubscribers = openLegs.map((leg) => {
-      if (leg.legType === "option") {
-        const expiry = (leg.expiryDate ?? "").replaceAll("-", "");
-        const strike = Number(leg.strikePrice);
-        const right = leg.optionType === "call" ? "C" : "P";
-        return openContractQuoteStream(position.symbol, expiry, strike, right, (event) => {
-          if (event.type === "quote") setLegQuotes((prev) => ({ ...prev, [leg.id]: event.data }));
-          if (event.type === "streamError") setLegQuoteErrors((prev) => ({ ...prev, [leg.id]: event.message }));
-        });
+    return openCloseLiveStream(position.id, (event) => {
+      if (event.type === "state") {
+        setLiveStreamError(null);
+        setLiveState(event.data);
+      } else if (event.type === "streamError") {
+        setLiveState(null);
+        setLiveStreamError(event.message);
       }
-      // Stock leg: the pooled last price (one shared line), not the old
-      // position-quote stream that opened a 48-line option chain nobody read.
-      return openTradeAlertCurrentPricesStream(
-        [position.symbol],
-        (prices) => {
-          const last = prices[position.symbol] ?? null;
-          if (last === null) return;
-          const pricing: TickerPricing = { last, bid: null, ask: null, open: null, high: null, low: null, previousClose: null, volume: null };
-          setLegQuotes((prev) => ({ ...prev, [leg.id]: pricing }));
-        },
-        () => setLegQuoteErrors((prev) => ({ ...prev, [leg.id]: "Live stock price unavailable." })),
-      );
     });
-    return () => unsubscribers.forEach((unsubscribe) => unsubscribe());
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [position.id]);
+
+  const legQuotes = liveState?.legQuotes ?? noLegQuotes;
+  const isAwaitingLive = !liveStreamError && (liveState === null || liveState.pending);
+  const closeBlockedReason: string | null = liveStreamError
+    ? `Live data connection lost: ${liveStreamError} Closing is blocked — close this window and reopen it to reconnect.`
+    : liveState === null
+      ? "Connecting to live data…"
+      : liveState.blockReason;
+  // Per-leg readout error: only once the stream has settled and that leg still has no two-sided market.
+  const quoteErrorFor = (legId: string): string | null =>
+    liveStreamError ? "Live data connection lost." : liveState && !liveState.pending && liveState.legQuotes[legId]?.mid == null ? "No live bid/ask." : null;
 
   // Seed each limit-price input from its live quote's mid once it first
   // arrives, but only if the user hasn't already typed their own value —
   // "prefill unless touched", same convention as RollPositionModal.
   useEffect(() => {
     if (!optionLeg || optionLimitTouched) return;
-    const quote = legQuotes[optionLeg.id];
-    if (!quote) return;
-    const mid = midPrice(quote);
+    const mid = legQuotes[optionLeg.id]?.mid ?? null;
     if (mid !== null) setOptionLimitPriceDraft(mid.toFixed(2));
   }, [legQuotes, optionLeg, optionLimitTouched]);
 
   useEffect(() => {
     if (!stockLeg || stockLimitTouched) return;
-    const quote = legQuotes[stockLeg.id];
-    if (!quote) return;
-    const mid = midPrice(quote);
+    const mid = legQuotes[stockLeg.id]?.mid ?? null;
     if (mid !== null) setStockLimitPriceDraft(mid.toFixed(2));
   }, [legQuotes, stockLeg, stockLimitTouched]);
 
@@ -180,9 +164,8 @@ export function ClosePositionModal({ position, onClose, onClosed }: ClosePositio
       const next = { ...prev };
       for (const leg of openLegs) {
         const draft = next[leg.id];
-        const quote = legQuotes[leg.id];
-        if (!draft || draft.limitPriceTouched || !quote) continue;
-        const mid = midPrice(quote);
+        if (!draft || draft.limitPriceTouched) continue;
+        const mid = legQuotes[leg.id]?.mid ?? null;
         if (mid !== null) {
           next[leg.id] = { ...draft, limitPriceDraft: mid.toFixed(2) };
           changed = true;
@@ -191,7 +174,7 @@ export function ClosePositionModal({ position, onClose, onClosed }: ClosePositio
       return changed ? next : prev;
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [legQuotes]);
+  }, [liveState]);
 
   // Closing with an order still under review cancels it (best effort).
   const requestClose = useCallback(() => {
@@ -239,7 +222,7 @@ export function ClosePositionModal({ position, onClose, onClosed }: ClosePositio
   const remainingContracts = optionLeg ? optionLeg.quantity - contractsToClose : 0;
 
   async function handleSubmitStructured() {
-    if (!optionLeg || !validContracts) return;
+    if (!optionLeg || !validContracts || closeBlockedReason !== null) return;
     if (!optionLimitPriceDraft || (stockLeg && !stockLimitPriceDraft)) {
       setError("A limit price is required for every leg.");
       return;
@@ -261,7 +244,7 @@ export function ClosePositionModal({ position, onClose, onClosed }: ClosePositio
   }
 
   async function handleSubmitUnstructured() {
-    if (!unstructuredFormValid) return;
+    if (!unstructuredFormValid || closeBlockedReason !== null) return;
     setSubmitting(true);
     setError(null);
     try {
@@ -279,6 +262,7 @@ export function ClosePositionModal({ position, onClose, onClosed }: ClosePositio
   }
 
   const rightLabel = optionLeg?.optionType === "call" ? "C" : "P";
+  const showForm = !pendingOrder && openLegs.length > 0 && (isUnstructured || optionLeg !== undefined);
 
   return (
     <>
@@ -293,8 +277,37 @@ export function ClosePositionModal({ position, onClose, onClosed }: ClosePositio
             <div className="modal-body">
               {error && <div className="alert alert-danger">{error}</div>}
 
+              {showForm && (
+                <>
+                  <div className="d-flex justify-content-between align-items-center border rounded p-2 mb-3">
+                    <DottedLabelTooltip
+                      label="Wheel cycle P&L"
+                      tooltipHtml={`Live profit and loss of ${position.symbol}'s whole wheel cycle (every put, call and share since it began), with shares and open options marked at live prices. Covers the entire ticker, not only this position.`}
+                    />
+                    {liveState?.cycleTotal != null ? (
+                      <span className={`fw-bold font-mono ${pnlTextClass(liveState.cycleTotal)}`}>{formatSignedPnl(liveState.cycleTotal)}</span>
+                    ) : isAwaitingLive ? (
+                      <Spinner size="sm" label="Loading live cycle P&L" />
+                    ) : (
+                      <span className="text-secondary">—</span>
+                    )}
+                  </div>
+                  {closeBlockedReason !== null &&
+                    (isAwaitingLive ? (
+                      <div className="text-secondary d-flex align-items-center gap-2 mb-3" style={{ fontSize: "0.8rem" }}>
+                        <Spinner size="sm" />
+                        {closeBlockedReason}
+                      </div>
+                    ) : (
+                      <div className="alert alert-warning mb-3" role="alert">
+                        {closeBlockedReason}
+                      </div>
+                    ))}
+                </>
+              )}
+
               {pendingOrder ? (
-                <OrderReviewPanel order={pendingOrder} onCancelled={onClose} onFilled={onClosed} />
+                <OrderReviewPanel order={pendingOrder} initialAdaptivePriority={adaptivePriority} onCancelled={onClose} onFilled={onClosed} />
               ) : openLegs.length === 0 ? (
                 <div className="alert alert-warning">This position has no open legs to close.</div>
               ) : isUnstructured ? (
@@ -353,10 +366,10 @@ export function ClosePositionModal({ position, onClose, onClosed }: ClosePositio
                         )}
                         {draft.included && (
                           <div className="mt-2">
-                            <LiveMidQuote quote={legQuotes[leg.id] ?? null} error={legQuoteErrors[leg.id] ?? null} />
+                            <LiveMidQuote quote={legQuotes[leg.id] ?? null} error={quoteErrorFor(leg.id)} />
                           </div>
                         )}
-                        {draft.included && legError && <div className="alert alert-danger mt-2 mb-0">{legError}</div>}
+                        {draft.included && legError && closeBlockedReason === null && <div className="alert alert-danger mt-2 mb-0">{legError}</div>}
                       </div>
                     );
                   })}
@@ -438,7 +451,7 @@ export function ClosePositionModal({ position, onClose, onClosed }: ClosePositio
                         disabled={submitting}
                       />
                       <div className="mt-1">
-                        <LiveMidQuote quote={legQuotes[optionLeg.id] ?? null} error={legQuoteErrors[optionLeg.id] ?? null} />
+                        <LiveMidQuote quote={legQuotes[optionLeg.id] ?? null} error={quoteErrorFor(optionLeg.id)} />
                       </div>
                     </div>
                     {stockLeg && (
@@ -456,15 +469,21 @@ export function ClosePositionModal({ position, onClose, onClosed }: ClosePositio
                           disabled={submitting}
                         />
                         <div className="mt-1">
-                          <LiveMidQuote quote={legQuotes[stockLeg.id] ?? null} error={legQuoteErrors[stockLeg.id] ?? null} />
+                          <LiveMidQuote quote={legQuotes[stockLeg.id] ?? null} error={quoteErrorFor(stockLeg.id)} />
                         </div>
                       </div>
                     )}
                   </div>
                 </>
               )}
+
+              {showForm && (
+                <div className="mt-3">
+                  <FillPriorityPicker value={adaptivePriority} onChange={setAdaptivePriority} disabled={submitting} />
+                </div>
+              )}
             </div>
-            {!pendingOrder && openLegs.length > 0 && (isUnstructured || optionLeg) && (
+            {showForm && (
               <div className="modal-footer">
                 <button type="button" className="btn btn-link text-secondary" onClick={requestClose} disabled={submitting}>
                   Cancel
@@ -473,7 +492,7 @@ export function ClosePositionModal({ position, onClose, onClosed }: ClosePositio
                   type="button"
                   className="btn btn-primary d-inline-flex align-items-center gap-1"
                   onClick={isUnstructured ? handleSubmitUnstructured : handleSubmitStructured}
-                  disabled={submitting || (isUnstructured ? !unstructuredFormValid : !validContracts)}
+                  disabled={submitting || closeBlockedReason !== null || (isUnstructured ? !unstructuredFormValid : !validContracts)}
                 >
                   {submitting && <Spinner size="sm" />}
                   Review Close Order

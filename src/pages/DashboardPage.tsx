@@ -7,6 +7,7 @@ import { ApexChart, textColorByTheme } from "../components/charts/ApexChart";
 import { CollapsibleCard } from "../components/CollapsibleCard";
 import { DottedLabelTooltip, HelpTooltip } from "../components/HelpTooltip";
 import { TickerDetailModal } from "../components/TickerDetailModal";
+import { ClosePositionModal } from "../components/ClosePositionModal";
 import { TickColoredPrice } from "../components/TickColoredPrice";
 import { useTheme } from "../contexts/ThemeContext";
 import { ApiError } from "../api/client";
@@ -504,6 +505,7 @@ export function DashboardPage() {
   // Not persisted across a refresh (unlike detailSymbol) -- it's a one-shot
   // "scroll to this position" aid, not state worth surviving a reload.
   const [focusPositionId, setFocusPositionId] = useState<string | undefined>(undefined);
+  const [closePosition, setClosePosition] = useState<Position | null>(null);
   const openTickerDetail = useCallback(
     (ticker: { symbol: string; focusPositionId?: string }) => {
       setDetailSymbol(ticker.symbol);
@@ -519,12 +521,17 @@ export function DashboardPage() {
       .finally(() => setSummaryLoading(false));
   }, []);
 
-  useEffect(() => {
+  const loadExposure = useCallback(() => {
+    setExposureError(null);
     fetchExposure()
       .then(setExposure)
       .catch((err) => setExposureError(err instanceof ApiError ? err.message : "Failed to load account allocation."))
       .finally(() => setExposureLoading(false));
   }, []);
+
+  useEffect(() => {
+    loadExposure();
+  }, [loadExposure]);
 
   // Live IBKR round trip (approved 2026-08-27, see fetchAvailableCash) --
   // same figure shown on Order Review, here as a plain breakdown rather than
@@ -756,13 +763,18 @@ export function DashboardPage() {
                           {(position.unstructuredReason && unstructuredReasonLabels[position.unstructuredReason]) ?? "cause unclear — flagged for review"}
                         </td>
                         <td className="text-end">
-                          <button
-                            type="button"
-                            className="btn btn-sm btn-outline-warning"
-                            onClick={() => openTickerDetail({ symbol: position.symbol, focusPositionId: position.id })}
-                          >
-                            Sell Call
-                          </button>
+                          <div className="d-flex gap-1 justify-content-end">
+                            <button
+                              type="button"
+                              className="btn btn-sm btn-outline-warning"
+                              onClick={() => openTickerDetail({ symbol: position.symbol, focusPositionId: position.id })}
+                            >
+                              Sell Call
+                            </button>
+                            <button type="button" className="btn btn-sm btn-outline-secondary" onClick={() => setClosePosition(position)}>
+                              Close
+                            </button>
+                          </div>
                         </td>
                       </tr>
                     );
@@ -1029,6 +1041,18 @@ export function DashboardPage() {
           />
         )}
       </CollapsibleCard>
+
+      {closePosition && (
+        <ClosePositionModal
+          position={closePosition}
+          onClose={() => setClosePosition(null)}
+          onClosed={() => {
+            setClosePosition(null);
+            loadNeedsAttention();
+            loadExposure();
+          }}
+        />
+      )}
 
       {detailSymbol && (
         <TickerDetailModal
