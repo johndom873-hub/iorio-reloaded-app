@@ -176,6 +176,8 @@ export interface OrderRequest {
   note?: string | null;
   /** Non-blocking economic-calendar advisory (New Position/Roll only, approved 2026-08-31) — Medium/High-importance events between today and expiry. Persisted at order-creation time (2026-09-24) so it survives a GET /orders/:id, not just the creation response. */
   calendarWarning?: string | null;
+  /** The same warning as data, one entry per event (orders created before 2026-09-28 only have calendarWarning). */
+  calendarWarningEvents?: { title: string; eventDate: string }[] | null;
   /** The API's stored FRED risk-free rate (decimal) at build time, for Order Review's probability of profit. Persisted at order-creation time (2026-09-24), same as calendarWarning. */
   riskFreeRate?: number | null;
   createdAt: string;
@@ -242,14 +244,32 @@ export function cancelOrder(orderId: string): Promise<OrderRequest> {
   return apiRequest<OrderRequest>(`/positions/orders/${orderId}/cancel`, { method: "POST" });
 }
 
+// Orders whose Confirm has been sent from this tab. A close-cleanup must never cancel them, even when the
+// caller's copy still says pending_confirmation (the Confirm response hasn't landed, or the copy is stale).
+const ordersConfirmedInThisTab = new Set<string>();
+
+/** Called by OrderReviewPanel just before it sends Confirm. */
+export function markOrderConfirmationSent(orderId: string): void {
+  ordersConfirmedInThisTab.add(orderId);
+}
+
+/** Called when a Confirm request failed, so the order counts as unconfirmed again. */
+export function clearOrderConfirmationSent(orderId: string): void {
+  ordersConfirmedInThisTab.delete(orderId);
+}
+
 /**
  * A review panel closed without Confirm or Cancel used to leave its built
- * order in pending_confirmation for good (2026-09-24). Cancels it best-effort
- * — only while still unconfirmed, and never blocking the close itself.
+ * order in pending_confirmation for good (2026-09-24). Cancels it best-effort,
+ * never blocking the close itself, and only when it is still unconfirmed on the
+ * server: the caller's copy can be stale (closing a modal after confirming used
+ * to cancel the live order at IBKR).
  */
 export function cancelUnconfirmedOrder(order: OrderRequest | null | undefined): void {
-  if (!order || order.status !== "pending_confirmation") return;
-  void cancelOrder(order.id).catch(() => {});
+  if (!order || order.status !== "pending_confirmation" || ordersConfirmedInThisTab.has(order.id)) return;
+  void fetchOrder(order.id)
+    .then((current) => (current.status === "pending_confirmation" && !ordersConfirmedInThisTab.has(order.id) ? cancelOrder(order.id) : undefined))
+    .catch(() => {});
 }
 
 export function fetchOrder(orderId: string): Promise<OrderRequest> {

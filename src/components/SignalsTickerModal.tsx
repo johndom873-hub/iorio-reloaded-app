@@ -815,6 +815,7 @@ export function SignalsTickerModal({ symbol, initialRollLegId = null, onClose }:
                         {pendingOrder ? (
                           <OrderReviewPanel
                             order={pendingOrder.order}
+                            onOrderChange={(order) => setPendingOrder((current) => (current ? { ...current, order } : current))}
                             initialAdaptivePriority={pendingOrder.adaptivePriority}
                             liveSpotPrice={spotPrice}
                             initialQuote={pendingOrderQuoteSeed}

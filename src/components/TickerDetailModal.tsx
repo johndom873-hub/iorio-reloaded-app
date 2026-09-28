@@ -1006,6 +1006,7 @@ export function TickerDetailModal({ symbol, onClose, initialAlertId, focusPositi
   const orderSetupPanel = selection && pendingOrder && (
     <OrderReviewPanel
       order={pendingOrder}
+      onOrderChange={setPendingOrder}
       liveSpotPrice={spotPrice}
       initialQuote={liveQuoteForSelected}
       onCancelled={closeOrderPanel}
@@ -1030,6 +1031,7 @@ export function TickerDetailModal({ symbol, onClose, initialAlertId, focusPositi
   const rollOrderSetupPanel = rollSelection && rollPendingOrder && (
     <OrderReviewPanel
       order={rollPendingOrder}
+      onOrderChange={setRollPendingOrder}
       liveSpotPrice={spotPrice}
       onCancelled={closeRollPanel}
       onFilled={() => {

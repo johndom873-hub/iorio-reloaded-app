@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { Spinner } from "./Spinner";
 import { ApiError } from "../api/client";
 import { useBackgroundJobs, type OrderJob } from "../contexts/BackgroundJobsContext";
-import { cancelOrder, confirmOrder, openOrderLegQuoteStream, type AdaptivePriority, type OrderLegQuote, type OrderRequest } from "../api/positions";
+import { cancelOrder, clearOrderConfirmationSent, confirmOrder, markOrderConfirmationSent, openOrderLegQuoteStream, type AdaptivePriority, type OrderLegQuote, type OrderRequest } from "../api/positions";
 
 // Just the fields the Live Quote card below actually renders -- deliberately
 // not OptionQuote itself, since a Day Signals caller's already-known quote
@@ -23,6 +23,7 @@ import {
   daysToExpiry,
   formatCurrency,
   formatCurrencyTrimmed,
+  formatDate,
   formatExpiryWithDte,
   formatNumber,
   formatPercentage,
@@ -42,6 +43,8 @@ interface OrderReviewPanelProps {
   /** Starting value of the fill-priority select (the Signals setup form lets the user pick it before review). */
   initialAdaptivePriority?: AdaptivePriority;
   onCancelled: () => void;
+  /** Every change to the order (confirmed, submitted, filled...), so the caller's copy never goes stale. */
+  onOrderChange?: (order: OrderRequest) => void;
   /** Fires once the order reaches a terminal, successful state (filled/partially_filled). */
   onFilled: () => void;
   /**
@@ -110,7 +113,7 @@ function statusLabel(status: OrderRequest["status"]): string {
  * form only ever builds an OrderRequest (this component's `order` prop) —
  * nothing is sent to IBKR until the user clicks Confirm here.
  */
-export function OrderReviewPanel({ order: initialOrder, initialAdaptivePriority, onCancelled, onFilled, liveSpotPrice, initialQuote }: OrderReviewPanelProps) {
+export function OrderReviewPanel({ order: initialOrder, initialAdaptivePriority, onCancelled, onOrderChange, onFilled, liveSpotPrice, initialQuote }: OrderReviewPanelProps) {
   const { jobs, startOrderJob } = useBackgroundJobs();
   // Once confirmed or cancel-requested, status polling is owned by
   // BackgroundJobsContext (startOrderJob below) rather than a local
@@ -121,6 +124,11 @@ export function OrderReviewPanel({ order: initialOrder, initialAdaptivePriority,
   const [localOrder, setLocalOrder] = useState(initialOrder);
   const job = jobs.find((candidate): candidate is OrderJob => candidate.kind === "order" && candidate.id === localOrder.id);
   const order = job?.order ?? localOrder;
+  useEffect(() => {
+    if (order !== initialOrder) onOrderChange?.(order);
+    // Only on an actual change of the order; the callback's identity doesn't matter.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [order]);
   const [confirming, setConfirming] = useState(false);
   // Juan's 2026-09-02 ask: a per-order Urgent/Normal/Patient picker for the
   // Adaptive algo, instead of the always-"Normal" default set 2026-08-31.
@@ -300,11 +308,13 @@ export function OrderReviewPanel({ order: initialOrder, initialAdaptivePriority,
   async function handleConfirm() {
     setConfirming(true);
     setError(null);
+    markOrderConfirmationSent(localOrder.id);
     try {
       const confirmed = await confirmOrder(localOrder.id, adaptivePriority);
       setLocalOrder(confirmed);
       startOrderJob(confirmed);
     } catch (err) {
+      clearOrderConfirmationSent(localOrder.id);
       setError(err instanceof ApiError ? err.message : "Failed to confirm order.");
     } finally {
       setConfirming(false);
@@ -508,7 +518,22 @@ export function OrderReviewPanel({ order: initialOrder, initialAdaptivePriority,
       )}
       {order.errorMessage && <div className="alert alert-danger mb-0">{order.errorMessage}</div>}
       {order.note && <div className="alert alert-info mb-0">{order.note}</div>}
-      {order.calendarWarning && <div className="alert alert-warning mb-0">⚠ {order.calendarWarning}</div>}
+      {order.calendarWarningEvents && order.calendarWarningEvents.length > 0 ? (
+        <div className="alert alert-warning mb-0">
+          <div className="fw-semibold text-dark">
+            ⚠ {order.calendarWarningEvents.length} economic event{order.calendarWarningEvents.length === 1 ? "" : "s"} before expiry
+          </div>
+          <ul className="mb-0 mt-1 ps-3">
+            {order.calendarWarningEvents.map((event) => (
+              <li key={`${event.eventDate}-${event.title}`}>
+                <span className="text-nowrap">{formatDate(event.eventDate)}</span> · {event.title}
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : (
+        order.calendarWarning && <div className="alert alert-warning mb-0">⚠ {order.calendarWarning}</div>
+      )}
 
       {isPending && (
         <>

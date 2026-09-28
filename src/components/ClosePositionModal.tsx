@@ -307,7 +307,7 @@ export function ClosePositionModal({ position, onClose, onClosed }: ClosePositio
               )}
 
               {pendingOrder ? (
-                <OrderReviewPanel order={pendingOrder} initialAdaptivePriority={adaptivePriority} onCancelled={onClose} onFilled={onClosed} />
+                <OrderReviewPanel order={pendingOrder} onOrderChange={setPendingOrder} initialAdaptivePriority={adaptivePriority} onCancelled={onClose} onFilled={onClosed} />
               ) : openLegs.length === 0 ? (
                 <div className="alert alert-warning">This position has no open legs to close.</div>
               ) : isUnstructured ? (
