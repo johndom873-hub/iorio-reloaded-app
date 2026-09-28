@@ -22,7 +22,7 @@ import {
   type OrderLeg,
   type OrderRequestStatus,
 } from "../api/positions";
-import { fetchTradeAlerts, isRollAlert, type NewTradeCandidate, type TradeAlert } from "../api/tradeAlerts";
+import { fetchSignalsScreen, type SignalCandidate, type SignalsScreenRow } from "../api/signals";
 import { fetchTradeBlotter, type Trade } from "../api/tradeBlotter";
 import { openNotificationStream, fetchRecentNotifications, type AppNotification } from "../api/notifications";
 import {
@@ -93,6 +93,7 @@ const GATEWAY_RECONNECT_BANDS = [1, 5] as const;
 const GATEWAY_IN_FLIGHT_BANDS = [1, 5] as const;
 const GATEWAY_LIVE_CONNECTIONS_BANDS = [50, 80] as const;
 const GATEWAY_HEALTHY_UPTIME_MS = 30 * 60_000;
+const topSignalsRefreshIntervalMs = 60_000;
 
 // Alert notifications only ever carry the two structured strategies.
 function strategyAbbrev(strategyKey: string): "CC" | "CSP" {
@@ -142,28 +143,11 @@ function colorForIndex(index: number, total: number): string {
   return `hsl(${hue}, 62%, 64%)`;
 }
 
-// A roll alert's yield/strike/expiry live one level deeper, at
-// suggestedStructure.replacement (itself shaped like a NewTradeCandidate) —
-// see runTradeAlertGeneration.ts. TS can't narrow the false branch of
-// isRollAlert's intersection-typed predicate (a known limitation, not a
-// discriminated union it can compute Exclude<> over), so this asserts the
-// non-roll case explicitly — same pattern TradeAlertsPage.tsx uses via its
-// own `.filter((a): a is NewTradeAlert => ...)` predicates.
-function alertStructure(alert: TradeAlert): NewTradeCandidate {
-  if (isRollAlert(alert)) return alert.suggestedStructure.replacement;
-  return alert.suggestedStructure as NewTradeCandidate;
-}
-
-function alertYield(alert: TradeAlert): number {
-  return alertStructure(alert).annualizedYield;
-}
-
-function alertStrikeLabel(alert: TradeAlert): string {
-  const structure = alertStructure(alert);
-  const right = structure.right === "call" ? "C" : "P";
-  const expiry = new Date(structure.expiry);
+function signalStrikeLabel(candidate: SignalCandidate): string {
+  const right = candidate.strategyKey === "covered_call" ? "C" : "P";
+  const expiry = new Date(candidate.expiry);
   const expiryLabel = `${String(expiry.getUTCMonth() + 1).padStart(2, "0")}/${String(expiry.getUTCDate()).padStart(2, "0")}`;
-  return `${structure.strike}${right} ${expiryLabel}`;
+  return `${candidate.strike}${right} ${expiryLabel}`;
 }
 
 function formatBytes(bytesText: string | null | undefined): string {
@@ -482,16 +466,22 @@ export function PulsePage() {
   const totalUnrealizedPnlPercent =
     totalUnrealizedPnl !== null && accountValueBeforeUnrealizedPnl ? (totalUnrealizedPnl / accountValueBeforeUnrealizedPnl) * 100 : null;
 
-  // --- Top Alerts by yield ---
-  const [pendingAlerts, setPendingAlerts] = useState<TradeAlert[]>([]);
+  // --- Top Signals by Edge $ ---
+  // REST snapshot pricing, re-fetched every minute: holds no IBKR market-data lines (the live
+  // signalsScreen stream would add a stock line per shortlist ticker plus a best-contract option line).
+  const [signalRows, setSignalRows] = useState<SignalsScreenRow[]>([]);
   useEffect(() => {
-    fetchTradeAlerts({ status: "pending", sort: "yield" }).then(setPendingAlerts).catch(() => {});
+    const refreshSignals = () => fetchSignalsScreen().then(setSignalRows).catch(() => {});
+    refreshSignals();
+    const intervalId = window.setInterval(refreshSignals, topSignalsRefreshIntervalMs);
+    return () => window.clearInterval(intervalId);
   }, []);
-  // One alert per ticker (the highest-yield one, since pendingAlerts is
-  // already server-sorted by yield) rather than the top 5 overall, which
-  // could all be the same handful of tickers. No length cap — mirrors the
-  // Trades panel's "fetch generously, let overflow:hidden clip" design.
-  const topAlerts = Array.from(new Map(pendingAlerts.map((alert) => [alert.tickerId, alert])).values());
+  // One signal per ticker (its best candidate), positive Edge $ only, highest first. No length cap —
+  // mirrors the Trades panel's "fetch generously, let overflow:hidden clip" design.
+  const topSignals = signalRows
+    .flatMap((row) => (row.best && row.best.edgeDollars > 0 ? [{ symbol: row.symbol, candidate: row.best }] : []))
+    .sort((a, b) => b.candidate.edgeDollars - a.candidate.edgeDollars);
+  const scoredTickerCount = signalRows.filter((row) => row.unscoredReason === null).length;
 
   // --- Trades: fetch generously and let the panel's own overflow:hidden
   // clip whatever doesn't fit — no scroll, per the panel design. ---
@@ -674,7 +664,6 @@ export function PulsePage() {
         case "alert_generated": {
           firePulse("gateway-db", "var(--warning)");
           appendEvent(`Alert — ${notification.symbol} ${strategyAbbrev(notification.strategyKey)}, ${(notification.annualizedYield * 100).toFixed(1)}% yield`, "var(--warning)");
-          fetchTradeAlerts({ status: "pending", sort: "yield" }).then(setPendingAlerts).catch(() => {});
           break;
         }
         case "signal_upgraded": {
@@ -942,24 +931,26 @@ export function PulsePage() {
           </div>
           <div className="panel">
             <div className="panel-title">
-              Top Alerts <span className="panel-subtitle">by ann. yield</span>
+              Top Signals <span className="panel-subtitle">by Edge $</span>
               <span className="count">
-                {topAlerts.length} of {pendingAlerts.length}
+                {topSignals.length} of {scoredTickerCount}
               </span>
             </div>
             <div className="yield-head">
-              <span>Sym</span>
+              <span>Tkr</span>
               <span>Type</span>
-              <span>Strike / Exp</span>
+              <span>Strike / Expiry</span>
+              <span style={{ textAlign: "right" }}>Edge $</span>
               <span style={{ textAlign: "right" }}>Yield</span>
             </div>
-            {topAlerts.length === 0 && <div className="panel-empty">No pending alerts.</div>}
-            {topAlerts.map((alert) => (
-              <div className="yield-row" key={alert.id}>
-                <span className="yield-sym">{alert.symbol}</span>
-                <span className={`strat-badge ${alert.strategyKey === "covered_call" ? "cc" : "csp"}`}>{strategyAbbrev(alert.strategyKey)}</span>
-                <span className="yield-strike">{alertStrikeLabel(alert)}</span>
-                <span className="yield-pct">{(alertYield(alert) * 100).toFixed(1)}%</span>
+            {topSignals.length === 0 && <div className="panel-empty">No signals with positive Edge $.</div>}
+            {topSignals.map(({ symbol, candidate }) => (
+              <div className="yield-row" key={symbol}>
+                <span className="yield-sym">{symbol}</span>
+                <span className={`strat-badge ${candidate.strategyKey === "covered_call" ? "cc" : "csp"}`}>{strategyAbbrev(candidate.strategyKey)}</span>
+                <span className="yield-strike">{signalStrikeLabel(candidate)}</span>
+                <span className="yield-edge">{formatCompactDollars(candidate.edgeDollars)}</span>
+                <span className="yield-pct">{(candidate.annualizedYield * 100).toFixed(1)}%</span>
               </div>
             ))}
           </div>
