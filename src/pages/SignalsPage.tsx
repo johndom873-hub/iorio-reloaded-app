@@ -11,8 +11,8 @@ import { SignalsTickerModal } from "../components/SignalsTickerModal";
 import { TickColoredPrice } from "../components/TickColoredPrice";
 import { TooltipSpan } from "../components/TooltipSpan";
 import { useTickerDetailSymbol } from "../hooks/useTickerDetailSymbol";
-import { daysToExpiry, formatCurrency, formatDateTime, formatDaysToExpiry, formatPercentage, formatRelativeTime, formatSignedPercentageValue, formatSignedPnl, formatVolatilityPoints, pnlTextClass, formatShortAge } from "../lib/formatters";
-import { describeCandidateCompact, describeDayQuotesStatus, describeRoll, gradeBadgeClass, gradeExplanation, gradeLabel, priceSourceLabel, quoteSourceLabel, roadmapStatusBadgeClass, roadmapStatusLabel, signalsColumnExplanation, unscoredReasonLabel } from "../lib/signalsPresentation";
+import { daysToExpiry, formatCurrency, formatDateTime, formatDaysToExpiry, formatPercentage, formatRelativeTime, formatSignedPercentageValue, formatSignedPnl, formatVolatilityPoints, pnlTextClass } from "../lib/formatters";
+import { describeCandidateCompact, describeDayQuotesStatus, describeNoCandidatesReason, noSignalBadgeLabel, describeRoll, gradeBadgeClass, gradeExplanation, gradeLabel, priceSourceLabel, quoteAgeCellLabel, quoteSourceLabel, roadmapStatusBadgeClass, roadmapStatusLabel, signalsColumnExplanation, unscoredReasonLabel } from "../lib/signalsPresentation";
 import { useTooltip } from "../hooks/useTooltip";
 
 // Signals screen (stage 3 of the build; mockup approved 2026-09-22, v3):
@@ -52,11 +52,13 @@ function RollBadge({ row, onClick }: { row: SignalsScreenRow; onClick: (legId: s
   );
 }
 
+/** No top signal: "Unscored" with its reason, or a scored ticker with no candidates ("Filtered" / "Unscored") explained in a tooltip. */
 function UnscoredBadge({ row }: { row: SignalsScreenRow }) {
+  const tooltipRef = useTooltip<HTMLSpanElement>(row.noCandidatesReason ? describeNoCandidatesReason(row.noCandidatesReason) : null);
   return (
     <span className="text-secondary">
-      <span className="badge bg-secondary-lt me-1" style={badgeFontSize}>
-        Unscored
+      <span ref={tooltipRef} className="badge bg-secondary-lt me-1" style={badgeFontSize} tabIndex={row.noCandidatesReason ? 0 : undefined}>
+        {noSignalBadgeLabel(row.noCandidatesReason)}
       </span>
       {row.unscoredReason ? unscoredReasonLabel[row.unscoredReason] : ""}
     </span>
@@ -93,7 +95,7 @@ function QuoteSourceCell({ row }: { row: SignalsScreenRow }) {
     return (
       <TooltipSpan className="d-inline-flex align-items-center gap-2 font-mono" text={`${quoteSourceLabel.day}${best.quotedAt ? ` · received ${formatDateTime(best.quotedAt)}` : ""}`}>
         <span className="iorio-still-dot" />
-        {formatShortAge(best.quotedAt) ?? "—"}
+        {quoteAgeCellLabel(best.quotedAt)}
       </TooltipSpan>
     );
   }
@@ -411,7 +413,7 @@ export function SignalsPage() {
                       {formatSignedPercentageValue(row.dayChangePercent, 1)}
                     </span>
                   </span>
-                  {row.best ? <GradeBadge grade={row.best.grade} /> : <span className="badge bg-secondary-lt" style={badgeFontSize}>Unscored</span>}
+                  {row.best ? <GradeBadge grade={row.best.grade} /> : <span className="badge bg-secondary-lt" style={badgeFontSize}>{noSignalBadgeLabel(row.noCandidatesReason)}</span>}
                 </div>
                 <div className="d-flex justify-content-between gap-2 text-secondary" style={{ fontSize: "0.8rem" }}>
                   {row.best ? (
@@ -422,7 +424,7 @@ export function SignalsPage() {
                       <span className="font-mono">{formatSignedPnl(row.best.edgeDollars, 0)}</span>
                     </>
                   ) : (
-                    <span>{row.unscoredReason ? unscoredReasonLabel[row.unscoredReason] : ""}</span>
+                    <span>{row.unscoredReason ? unscoredReasonLabel[row.unscoredReason] : row.noCandidatesReason ? describeNoCandidatesReason(row.noCandidatesReason) : ""}</span>
                   )}
                 </div>
                 <div className="d-flex justify-content-between align-items-center gap-2 text-secondary" style={{ fontSize: "0.8rem" }}>

@@ -169,6 +169,25 @@ export interface TickerSignals {
   ivShiftByExpiry: Record<string, { shiftVolatilityPoints: number; quoteCount: number }>;
   quoteSourceCounts: Record<SignalQuoteSource, number>;
   unscoredReason: SignalsUnscoredReason | null;
+  /** Set when the ticker was scored but no candidate survived. */
+  noCandidatesReason: SignalsNoCandidatesReason | null;
+}
+
+/**
+ * Why a scored ticker has no candidates. "filtered": contracts were scorable but every one failed the
+ * Signals tab filters (min yield / max delta). "nothing_scorable": no contract got that far.
+ */
+export interface SignalsNoCandidatesReason {
+  kind: "filtered" | "nothing_scorable";
+  surfaceFitRejectedExpiries: string[];
+  spansEarningsExpiries: string[];
+  earningsDateIso: string | null;
+  aboveMaxDeltaCount: number;
+  belowMinYieldCount: number;
+  /** Highest annualised yield (%) among contracts that reached the yield check; null if none did. */
+  bestAnnualizedYieldPct: number | null;
+  minAnnualizedYieldPct: number;
+  maxNetDelta: number;
 }
 
 export type SignalsScreenRow = Omit<TickerSignals, "candidates" | "rolls">;

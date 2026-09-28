@@ -177,6 +177,13 @@ export function formatEasternTime(isoTimestamp: string): string {
 // ("in 7d") already stands in for the date itself (e.g. Positions'
 // Expiry column) — the DTE would just repeat what "in 7d" already says.
 // asOf defaults to now; pass it for a historical DTE (see daysToExpiry).
+/** A plain "YYYY-MM-DD" as a short month and day, no year: "Oct 2". Same local-date parsing as formatDate. */
+export function formatMonthDay(dateIso: string): string {
+  if (!plainIsoDatePattern.test(dateIso)) return "—";
+  const [year, month, day] = dateIso.split("-").map(Number);
+  return new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric" }).format(new Date(year, month - 1, day));
+}
+
 export function formatExpiryWithDte(expiryIsoDate: string | null | undefined, asOf?: string | Date): string {
   if (!expiryIsoDate) return "—";
   return `${formatDate(expiryIsoDate)} (${daysToExpiry(expiryIsoDate, asOf)} DTE)`;

@@ -8,8 +8,8 @@ import { cancelUnconfirmedOrder, type AdaptivePriority, type OrderRequest } from
 import { OrderReviewPanel, type OrderReviewQuoteSeed } from "./OrderReviewPanel";
 import { RollSignalOrderSetupForm } from "./RollSignalOrderSetupForm";
 import { SignalOrderSetupForm } from "./SignalOrderSetupForm";
-import { formatCurrency, formatCurrencyTrimmed, formatDate, formatDateTime, formatNumber, formatPercentage, formatPercentageValue, formatQuotePrice, formatShortAge, formatSignedPercentageValue, formatSignedPnl, formatVolatilityPoints, pnlTextClass } from "../lib/formatters";
-import { describeHeldLeg, describeQuoteAgeRange, describeRollSignalFlag, describeSignalFlag, gradeBadgeClass, gradeExplanation, gradeLabel, heldLegUnscoredReasonLabel, netRollEdgeExplanation, quoteSourceLabel, rollFlagLetter, signalFlagLetter, surfaceIvTrustClass, unscoredReasonLabel } from "../lib/signalsPresentation";
+import { formatCurrency, formatCurrencyTrimmed, formatDate, formatDateTime, formatNumber, formatPercentage, formatPercentageValue, formatQuotePrice, formatSignedPercentageValue, formatSignedPnl, formatVolatilityPoints, pnlTextClass } from "../lib/formatters";
+import { describeHeldLeg, describeNoCandidatesMessage, describeQuoteAgeRange, describeRollSignalFlag, describeSignalFlag, gradeBadgeClass, gradeExplanation, gradeLabel, heldLegUnscoredReasonLabel, netRollEdgeExplanation, quoteAgeCellLabel, quoteSourceLabel, rollFlagLetter, signalFlagLetter, surfaceIvTrustClass, unscoredReasonLabel } from "../lib/signalsPresentation";
 import { IvHistoryChart } from "./charts/IvHistoryChart";
 import { TickerPriceChart } from "./charts/TickerPriceChart";
 import { DataTable, type DataTableColumn } from "./DataTable/DataTable";
@@ -294,7 +294,7 @@ function SpotMarkerRow({ spotPrice }: { spotPrice: number }) {
   return (
     <tr>
       <td colSpan={9} className="text-center fw-semibold bg-info-lt" style={{ fontSize: "0.72rem" }}>
-        ▼ Spot {formatCurrency(spotPrice)} ▼
+        {formatCurrency(spotPrice)}
       </td>
     </tr>
   );
@@ -612,7 +612,7 @@ export function SignalsTickerModal({ symbol, initialRollLegId = null, onClose }:
           ) : row.quoteSource === "day" ? (
             <TooltipSpan className="d-inline-flex align-items-center gap-2 font-mono" text={`${quoteSourceLabel.day}${row.quotedAt ? ` · received ${formatDateTime(row.quotedAt)}` : ""}`}>
               <span className="iorio-still-dot" />
-              {formatShortAge(row.quotedAt) ?? "—"}
+              {quoteAgeCellLabel(row.quotedAt)}
             </TooltipSpan>
           ) : (
             <TooltipSpan className="font-mono text-secondary" text={signals?.snapshotCapturedAt ? `${formatDateTime(signals.snapshotCapturedAt)} snapshot quote — this contract is not in today's refresh pool` : quoteSourceLabel.snapshot}>
@@ -757,7 +757,7 @@ export function SignalsTickerModal({ symbol, initialRollLegId = null, onClose }:
                       columns={opportunityColumns}
                       rows={opportunityRows}
                       rowKey={(row) => candidateKey(row)}
-                      emptyMessage={hiddenAvoidCount > 0 ? `No candidate has positive net Edge right now. Tick "Show Avoid" to see the ${hiddenAvoidCount} hidden.` : "No candidates match the filters."}
+                      emptyMessage={hiddenAvoidCount > 0 ? `No candidate has positive net Edge right now. Tick "Show Avoid" to see the ${hiddenAvoidCount} hidden.` : signals.noCandidatesReason ? describeNoCandidatesMessage(signals.noCandidatesReason) : "No candidates match the filters."}
                       onRowClick={selectCandidate}
                       rowClassName={(row) => [candidateKey(row) === selectedKey ? "table-active" : "", row.grade === "avoid" ? "text-secondary" : ""].filter(Boolean).join(" ") || undefined}
                       toolbar={

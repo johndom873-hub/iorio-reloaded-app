@@ -1,6 +1,6 @@
 import type { AppNotification } from "../api/notifications";
-import type { DayQuotesFrameStatus, HeldLegScore, HeldLegUnscoredReason, RoadmapStatus, RollSignalCandidate, RollSignalFlag, SignalCandidate, SignalFlag, SignalGrade, SignalQuoteSource, SignalsPriceSource, SignalsUnscoredReason, MacroEvent } from "../api/signals";
-import { formatCurrencyTrimmed, formatDate, formatLocalTime, formatShortAge, formatSignedPnl, formatVolatilityPoints } from "./formatters";
+import type { DayQuotesFrameStatus, HeldLegScore, HeldLegUnscoredReason, RoadmapStatus, RollSignalCandidate, RollSignalFlag, SignalCandidate, SignalFlag, SignalGrade, SignalQuoteSource, SignalsNoCandidatesReason, SignalsPriceSource, SignalsUnscoredReason, MacroEvent } from "../api/signals";
+import { formatCurrencyTrimmed, formatDate, formatLocalTime, formatMonthDay, formatPercentageValue, formatShortAge, formatSignedPnl, formatVolatilityPoints } from "./formatters";
 
 // Labels, badge classes and short explanations for the Signals screen and
 // modal (mockup approved 2026-09-22). Every label a user can see has a plain
@@ -21,6 +21,51 @@ export const unscoredReasonLabel: Record<SignalsUnscoredReason, string> = {
   suspected_split: "No volatility forecast (suspected stock split in the price history)",
 };
 
+/** Badge text for a ticker with no top signal: "Filtered" when the Signals tab filters removed every contract. */
+export function noSignalBadgeLabel(noCandidatesReason: SignalsNoCandidatesReason | null): string {
+  return noCandidatesReason?.kind === "filtered" ? "Filtered" : "Unscored";
+}
+
+function pluralize(count: number, singular: string, plural: string): string {
+  return `${count} ${count === 1 ? singular : plural}`;
+}
+
+function describeExpiryGroup(expiriesIso: string[]): string {
+  const first = formatMonthDay(expiriesIso[0]!);
+  const range = expiriesIso.length === 1 ? first : `${first} – ${formatMonthDay(expiriesIso[expiriesIso.length - 1]!)}`;
+  return `${pluralize(expiriesIso.length, "expiry", "expiries")} (${range})`;
+}
+
+/**
+ * Why a scored ticker shows no candidates, as one line for the tooltip and modal. Filtered (approved 2026-09-28):
+ * best yield vs the minimum, plus the max-delta count if any. Nothing scorable: which expiries dropped and why.
+ */
+export function describeNoCandidatesReason(reason: SignalsNoCandidatesReason): string {
+  if (reason.kind === "filtered") {
+    const parts: string[] = [];
+    if (reason.belowMinYieldCount > 0 && reason.bestAnnualizedYieldPct !== null) {
+      parts.push(`Best annualised yield ${formatPercentageValue(reason.bestAnnualizedYieldPct, 1)} vs the ${formatPercentageValue(reason.minAnnualizedYieldPct, 0)} minimum`);
+    }
+    if (reason.aboveMaxDeltaCount > 0) {
+      parts.push(`${pluralize(reason.aboveMaxDeltaCount, "contract", "contracts")} above the ${reason.maxNetDelta.toFixed(2)} max delta`);
+    }
+    return parts.join(" · ");
+  }
+  const parts: string[] = [];
+  if (reason.surfaceFitRejectedExpiries.length > 0) parts.push(`${describeExpiryGroup(reason.surfaceFitRejectedExpiries)}: surface fit rejected`);
+  if (reason.spansEarningsExpiries.length > 0) {
+    const earnings = reason.earningsDateIso ? ` on ${formatMonthDay(reason.earningsDateIso)}` : "";
+    parts.push(`${describeExpiryGroup(reason.spansEarningsExpiries)}: span earnings${earnings}`);
+  }
+  return parts.length > 0 ? parts.join(" · ") : "No contract had a usable quote to score";
+}
+
+/** The modal's empty-table message for a scored ticker with no candidates. */
+export function describeNoCandidatesMessage(reason: SignalsNoCandidatesReason): string {
+  const headline = reason.kind === "filtered" ? "Every contract is filtered out by the Signals settings." : "No contract could be scored.";
+  return `${headline} ${describeNoCandidatesReason(reason)}.`;
+}
+
 export const priceSourceLabel: Record<SignalsPriceSource, string> = {
   live: "Live price",
   frozen: "Last known price (pre-live)",
@@ -32,6 +77,13 @@ export const quoteSourceLabel: Record<SignalQuoteSource, string> = {
   day: "Day Signals quote — refreshed by the intraday loop every few minutes",
   snapshot: "10:00 ET snapshot quote — this contract is not in today's refresh pool",
 };
+
+/** A day quote's age as the Quote column shows it, standalone and capitalised: "Now", "3m", "1h 05m", or "—". */
+export function quoteAgeCellLabel(quotedAt: string | null | undefined, now: Date = new Date()): string {
+  const age = formatShortAge(quotedAt, now);
+  if (age === null) return "—";
+  return age === "now" ? "Now" : age;
+}
 
 /** Age range text for a set of day quotes: "1m–6m old", "now–2m old", or null. */
 export function describeQuoteAgeRange(asOf: { oldest: string; newest: string } | null | undefined, now: Date = new Date()): string | null {
