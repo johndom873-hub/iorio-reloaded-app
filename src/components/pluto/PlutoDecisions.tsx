@@ -1,4 +1,6 @@
+import { useState } from "react";
 import type { PlutoPass } from "../../api/pluto";
+import { PlutoChecksBoard } from "./PlutoChecksBoard";
 import { formatHourMinute } from "../../lib/formatters";
 import { describeCandidateId, describePlutoTrigger, passVerdict } from "../../lib/plutoPresentation";
 import { Spinner } from "../Spinner";
@@ -12,6 +14,7 @@ interface PlutoDecisionsProps {
 /** What the model saw and said: one block per pass that called the model, newest first. */
 export function PlutoDecisions({ passes, loading, error }: PlutoDecisionsProps) {
   const decided = passes.filter((pass) => pass.modelCalled);
+  const [checksOpenFor, setChecksOpenFor] = useState<string | null>(null);
   return (
     <div className="card h-100">
       <div className="card-header d-flex justify-content-between align-items-center">
@@ -63,7 +66,11 @@ export function PlutoDecisions({ passes, loading, error }: PlutoDecisionsProps) 
                     </span>
                   )}
                   {pass.servedModelIds.length > 0 && <span>{[...new Set(pass.servedModelIds)].join(", ")}</span>}
+                  <button type="button" className="btn btn-link p-0 text-decoration-none" style={{ fontSize: "0.78rem" }} onClick={() => setChecksOpenFor(checksOpenFor === pass.id ? null : pass.id)}>
+                    {checksOpenFor === pass.id ? "hide checks" : "checks"}
+                  </button>
                 </div>
+                {checksOpenFor === pass.id && <div className="mt-1"><PlutoChecksBoard checks={pass.systemChecks} /></div>}
               </div>
             );
           })

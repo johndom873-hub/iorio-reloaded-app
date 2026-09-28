@@ -5,6 +5,7 @@ import {
   fetchPlutoActions,
   fetchPlutoEvents,
   fetchPlutoPasses,
+  fetchPlutoScoreboard,
   fetchPlutoSettings,
   fetchPlutoSettingsAudit,
   fetchPlutoState,
@@ -12,6 +13,7 @@ import {
   type PlutoAction,
   type PlutoEvent,
   type PlutoPass,
+  type PlutoScoreboard,
   type PlutoSettings,
   type PlutoSettingsAuditRow,
   type PlutoState,
@@ -19,6 +21,11 @@ import {
 } from "../api/pluto";
 import { PageHeader } from "../components/layout/PageHeader";
 import { PlutoActionsTable } from "../components/pluto/PlutoActionsTable";
+import { PlutoChecksBoard } from "../components/pluto/PlutoChecksBoard";
+import { PlutoScoreboardCard } from "../components/pluto/PlutoScoreboardCard";
+import { CollapsibleCard } from "../components/CollapsibleCard";
+import { describePlutoTrigger } from "../lib/plutoPresentation";
+import { formatFeedTime } from "../lib/formatters";
 import { PlutoControlCard } from "../components/pluto/PlutoControlCard";
 import { PlutoDecisions } from "../components/pluto/PlutoDecisions";
 import { PlutoParametersCard } from "../components/pluto/PlutoParametersCard";
@@ -69,6 +76,8 @@ export function PlutoPage() {
   const [settingsLoading, setSettingsLoading] = useState(true);
   const [settingsError, setSettingsError] = useState<string | null>(null);
   const [lastChange, setLastChange] = useState<PlutoSettingsAuditRow | null>(null);
+  const [scoreboard, setScoreboard] = useState<PlutoScoreboard | null>(null);
+  const [scoreboardError, setScoreboardError] = useState<string | null>(null);
   const [tickerDetailSymbol, setTickerDetailSymbol] = useTickerDetailSymbol();
 
   const loadState = useCallback(async () => {
@@ -109,6 +118,14 @@ export function PlutoPage() {
       setActionsLoading(false);
     }
   }, []);
+  const loadScoreboard = useCallback(async () => {
+    try {
+      setScoreboard(await fetchPlutoScoreboard());
+      setScoreboardError(null);
+    } catch (err) {
+      setScoreboardError(errorMessage(err, "Could not load the scoreboard."));
+    }
+  }, []);
   const loadTickers = useCallback(async () => {
     try {
       const result = await fetchPlutoTickers();
@@ -135,10 +152,10 @@ export function PlutoPage() {
   }, []);
 
   useEffect(() => {
-    void Promise.all([loadState(), loadEvents(), loadPasses(), loadActions(), loadTickers(), loadSettings()]);
+    void Promise.all([loadState(), loadEvents(), loadPasses(), loadActions(), loadTickers(), loadSettings(), loadScoreboard()]);
     const timer = setInterval(() => void loadState(), stateRefreshIntervalMs);
     return () => clearInterval(timer);
-  }, [loadState, loadEvents, loadPasses, loadActions, loadTickers, loadSettings]);
+  }, [loadState, loadEvents, loadPasses, loadActions, loadTickers, loadSettings, loadScoreboard]);
 
   // Every pluto_events row is pushed as a notification: refresh what it can have changed, coalesced.
   const refreshTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -157,12 +174,13 @@ export function PlutoPage() {
         if ([...kinds].some((kind) => kind.startsWith("pass_") || kind.startsWith("model_") || kind === "no_trade" || kind.startsWith("action_") || kind.startsWith("order_"))) {
           void loadPasses();
           void loadActions();
+          void loadScoreboard();
         }
         if (kinds.has("ticker_enabled") || kinds.has("ticker_disabled")) void loadTickers();
         if (kinds.has("settings_changed")) void loadSettings();
       }, notificationRefreshDebounceMs);
     });
-  }, [loadState, loadEvents, loadPasses, loadActions, loadTickers, loadSettings]);
+  }, [loadState, loadEvents, loadPasses, loadActions, loadTickers, loadSettings, loadScoreboard]);
 
   const workingActions = useMemo(() => actions.filter((action) => action.outcome === "confirmed" || action.outcome === "order_built"), [actions]);
   const spyDayChangePct = useMemo(() => spyDayChangeFromPasses(passes), [passes]);
@@ -179,9 +197,27 @@ export function PlutoPage() {
         ) : (
           <>
             <PlutoControlCard state={state} onStateChanged={(core) => { setState((previous) => (previous ? { ...previous, ...core } : previous)); void loadState(); void loadEvents(); }} />
-            <PlutoTiles state={state} workingActions={workingActions} spyDayChangePct={spyDayChangePct} spyStressPct={settings?.spyStressBreakerPct ?? 3} />
+            <PlutoTiles state={state} workingActions={workingActions} spyDayChangePct={spyDayChangePct} spyStressPct={settings?.spyStressBreakerPct ?? 3} onStateChanged={(core) => { setState((previous) => (previous ? { ...previous, ...core } : previous)); void loadState(); void loadEvents(); }} />
           </>
         )}
+
+        {passes[0] && (
+          <CollapsibleCard
+            title="Last pass checks"
+            subtitle={
+              <span className="text-muted fw-normal" style={{ fontSize: "0.78rem" }}>
+                {describePlutoTrigger(passes[0])} · {formatFeedTime(passes[0].startedAt)} · {passes[0].modelCalled ? "model called" : `skipped, ${Object.values(passes[0].systemChecks ?? {}).filter((check) => !check.ok).length} check(s) failed`}
+              </span>
+            }
+            storageKey="pluto-last-pass-checks"
+            defaultOpen={false}
+            className="mb-3"
+          >
+            <PlutoChecksBoard checks={passes[0].systemChecks} />
+          </CollapsibleCard>
+        )}
+
+        <PlutoScoreboardCard scoreboard={scoreboard} error={scoreboardError} />
 
         <div className="row g-3 mb-3">
           <div className="col-12 col-xl-7"><PlutoTimeline events={events} loading={eventsLoading} error={eventsError} /></div>

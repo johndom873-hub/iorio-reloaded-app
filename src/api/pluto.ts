@@ -33,6 +33,9 @@ export interface PlutoStateCore {
   lastSeenRelease: string | null;
   breakers: Record<string, PlutoBreakerTrip>;
   lastPassAt: string | null;
+  /** Eastern date on which the SPY stress check is overridden ("allow opens under stress today"), else null. */
+  stressOverrideDate: string | null;
+  stressOverrideByDisplayName: string | null;
   updatedAt: string;
 }
 
@@ -247,6 +250,28 @@ export function resumePluto(): Promise<PlutoStateCore> {
 
 export function resetPlutoBreaker(name: string): Promise<PlutoStateCore> {
   return apiRequest<PlutoStateCore>(`/pluto/breakers/${encodeURIComponent(name)}/reset`, { method: "POST", body: JSON.stringify({}) });
+}
+
+export function updatePlutoStressOverride(enabled: boolean): Promise<PlutoStateCore> {
+  return apiRequest<PlutoStateCore>("/pluto/stress-override", { method: "PUT", body: JSON.stringify({ enabled }) });
+}
+
+export interface PlutoScoreboard {
+  since: string | null;
+  passes: number;
+  modelCalls: number;
+  costUsd: number;
+  outcomes: Record<string, number>;
+  realizedPnl: number;
+  pessimisticPnl: number;
+  closedActions: number;
+  winningActions: number;
+  openActions: number;
+  modelVsTopPick: { agree: number; disagree: number; noTrade: number };
+}
+
+export function fetchPlutoScoreboard(): Promise<PlutoScoreboard> {
+  return apiRequest<PlutoScoreboard>("/pluto/scoreboard");
 }
 
 export function fetchPlutoSettings(): Promise<PlutoSettings> {

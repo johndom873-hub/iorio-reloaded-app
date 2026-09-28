@@ -5,6 +5,8 @@ export interface Trade {
   id: string;
   ibkrOrderId: string | null;
   ibkrPermId: number | null;
+  /** The order request this fill came from (null for fills recorded outside the platform). */
+  sourceOrderRequestId: string | null;
   side: "buy" | "sell";
   quantity: number;
   price: string;

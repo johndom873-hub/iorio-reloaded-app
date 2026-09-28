@@ -102,6 +102,8 @@ export function describePlutoEvent(event: PlutoEvent): PlutoTimelineEntry {
       return { badgeClass: "bg-secondary-lt", badgeLabel: "ticker off", line: `${symbol} disabled by ${text(payload.by)}`, reason: null };
     case "lines_changed":
       return { badgeClass: "bg-secondary-lt", badgeLabel: "lines", line: `${text(payload.held)} IBKR line(s) held${payload.detail ? ` · ${text(payload.detail)}` : ""}${payload.reason ? ` · ${text(payload.reason)}` : ""}`, reason: null };
+    case "stress_override_changed":
+      return { badgeClass: payload.enabled ? "bg-warning text-white" : "bg-secondary-lt", badgeLabel: payload.enabled ? "stress override" : "override off", line: payload.enabled ? `${text(payload.by)} allowed new opens under SPY stress for ${text(payload.dateIso)}` : `${text(payload.by)} removed today's stress override`, reason: null };
     case "session_schedule":
       return { badgeClass: "bg-secondary-lt", badgeLabel: "session", line: `closes ${text(payload.closeTimeEt) || "?"} ET today (IBKR liquid hours)`, reason: null };
     case "warning":
@@ -184,5 +186,6 @@ export function describePlutoTrigger(pass: PlutoPass): string {
   const detail = pass.triggerDetail ?? {};
   if (pass.trigger === "spot_move" && detail.symbol) return `${String(detail.symbol)} spot ${Number(detail.movePct ?? 0) >= 0 ? "+" : ""}${Number(detail.movePct ?? 0).toFixed(1)}%`;
   if (pass.trigger === "settings_changed") return "settings changed";
+  if ((pass.trigger === "grade_crossing" || pass.trigger === "held_leg") && Array.isArray(detail.symbols) && detail.symbols.length > 0) return `${humanizeKey(pass.trigger).toLowerCase()} on ${(detail.symbols as string[]).join(", ")}`;
   return humanizeKey(pass.trigger).toLowerCase();
 }

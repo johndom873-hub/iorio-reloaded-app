@@ -1,3 +1,4 @@
+import { Link } from "react-router-dom";
 import type { PlutoAction } from "../../api/pluto";
 import { formatFeedTime, formatSignedPnl, pnlTextClass } from "../../lib/formatters";
 import { describePlutoActionContract, gatesPassedLabel, plutoActionKindLabel, plutoOutcomeBadgeClass, plutoOutcomeLabel } from "../../lib/plutoPresentation";
@@ -34,7 +35,13 @@ const columns = (onOpenTickerDetail: (symbol: string) => void): DataTableColumn<
     header: "Outcome",
     render: (row) => (
       <>
-        <span className={`badge ${plutoOutcomeBadgeClass(row.outcome)}`} style={{ fontSize: "0.72rem" }}>{plutoOutcomeLabel(row.outcome)}</span>
+        {row.orderRequestId ? (
+          <Link to={`/trade-blotter?order=${row.orderRequestId}`} className="text-decoration-none" title="Open in the Trade Blotter">
+            <span className={`badge ${plutoOutcomeBadgeClass(row.outcome)}`} style={{ fontSize: "0.72rem" }}>{plutoOutcomeLabel(row.outcome)} ↗</span>
+          </Link>
+        ) : (
+          <span className={`badge ${plutoOutcomeBadgeClass(row.outcome)}`} style={{ fontSize: "0.72rem" }}>{plutoOutcomeLabel(row.outcome)}</span>
+        )}
         {row.blockReason && row.kind !== "no_trade" && (
           <TooltipSpan text={row.blockReason} className="ms-1 text-muted">
             {row.blockReason.length > 40 ? `${row.blockReason.slice(0, 40)}…` : row.blockReason}
