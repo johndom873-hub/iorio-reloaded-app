@@ -85,13 +85,14 @@ export function quoteAgeCellLabel(quotedAt: string | null | undefined, now: Date
   return age === "now" ? "Now" : age;
 }
 
-/** Age range text for a set of day quotes: "1m–6m old", "now–2m old", or null. */
+/** Age range text for a set of day quotes, read mid-sentence: "1m–6m old", "under a minute to 2m old", "under a minute old", or null. */
 export function describeQuoteAgeRange(asOf: { oldest: string; newest: string } | null | undefined, now: Date = new Date()): string | null {
   if (!asOf) return null;
   const newest = formatShortAge(asOf.newest, now);
   const oldest = formatShortAge(asOf.oldest, now);
   if (!newest || !oldest) return null;
-  return newest === oldest ? `${newest} old` : `${newest}–${oldest} old`;
+  if (newest === oldest) return newest === "now" ? "under a minute old" : `${newest} old`;
+  return newest === "now" ? `under a minute to ${oldest} old` : `${newest}–${oldest} old`;
 }
 
 // Day quotes older than this while the loop claims to be running mean the loop is not actually refreshing.
