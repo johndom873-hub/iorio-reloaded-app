@@ -17,6 +17,8 @@ export interface ShortlistRow {
   historyStartDate?: string | null;
   /** True when the latest full-pipeline run ended 'partial' (some step failed) -- offers a full retry, not just Backfill Price History. */
   backfillNeedsRetry?: boolean;
+  /** Open positions on this ticker. Remove is disabled (and the API refuses with 409) while above zero. */
+  openPositionCount: number;
 
   // Data-readiness columns (redesigned 2026-09-23) -- exactly what the Signals pipeline reads before it
   // can score a candidate; see loadShortlistDataReadiness.ts in the API repo.

@@ -255,6 +255,11 @@ export function formatHourMinute(dateInput: string | Date | number): string {
 // per trading day). Used to turn a raw bar count into a human "how much history" figure (Shortlist).
 const tradingDaysPerYear = 252;
 
+/** "1 position" / "3 positions"; pass `plural` for irregular nouns. */
+export function pluralize(count: number, singular: string, plural = `${singular}s`): string {
+  return `${count} ${count === 1 ? singular : plural}`;
+}
+
 export function formatBarsAsYears(dailyBarCount: number): string {
   return `${(dailyBarCount / tradingDaysPerYear).toFixed(1)}y`;
 }

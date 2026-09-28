@@ -23,7 +23,7 @@ import {
   type TickerBackfillRun,
   type TickerSearchResult,
 } from "../../api/shortlist";
-import { daysToExpiry, formatBarsAsYears, formatDaysToExpiry, ibkrExpiryToIsoDate, formatDate } from "../../lib/formatters";
+import { daysToExpiry, formatBarsAsYears, formatDaysToExpiry, ibkrExpiryToIsoDate, formatDate, pluralize } from "../../lib/formatters";
 
 const searchDebounceMs = 400;
 
@@ -533,6 +533,8 @@ export function ShortlistTab({ onOpenTickerDetail }: ShortlistTabProps) {
             onClick: () => setRemoveConfirmRow(row),
             loading: removingId === row.id,
             danger: true,
+            disabled: row.openPositionCount > 0,
+            disabledReason: `${pluralize(row.openPositionCount, "open position")} on this ticker. Close ${row.openPositionCount === 1 ? "it" : "them"} before removing.`,
           },
         ];
         return (
