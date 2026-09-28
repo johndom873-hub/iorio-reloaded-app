@@ -8,11 +8,16 @@ import { TickerDetailModal } from "../components/TickerDetailModal";
 import { ApiError } from "../api/client";
 import {
   fetchStrategySettings,
+  fetchTradingHalt,
   updateAllStrategySettings,
+  updateTradingHalt,
   type ConcentrationRow,
   type StrategySettings,
   type StrategySettingsInput,
+  type TradingHalt,
 } from "../api/riskLimits";
+import { ConfirmModal } from "../components/ConfirmModal";
+import { openNotificationStream } from "../api/notifications";
 import { fetchSignalSettings, updateSignalSettings, type SignalSettings, type SignalSettingsInput } from "../api/signalSettings";
 import type { StrategyKey } from "../api/strategy";
 import { formatCurrency, formatDateTime, formatPercentage, formatPercentageValue, formatRelativeTime } from "../lib/formatters";
@@ -133,6 +138,135 @@ function toSignalUpdateInput(form: SignalSettingsFormState): SignalSettingsInput
     maxConcentrationPerTickerPct: Number(form.maxConcentrationPerTickerPct),
     minCashReservePct: Number(form.minCashReservePct),
   };
+}
+
+// The kill switch (gap fix 1 for Pluto, 2026-09-28). One button: red "Halt all trading" while trading
+// is allowed, green "Resume trading" while halted. Both go through a confirm modal (an action modal:
+// no backdrop/ESC dismiss); halting requires a reason, which the server also enforces. The card
+// refreshes itself when another user flips the switch, via the trading_halt_changed notification.
+function TradingHaltCard() {
+  const [halt, setHalt] = useState<TradingHalt | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [pending, setPending] = useState<"halt" | "resume" | null>(null);
+  const [reason, setReason] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    try {
+      setHalt(await fetchTradingHalt());
+      setLoadError(null);
+    } catch (err) {
+      setLoadError(err instanceof ApiError ? err.message : "Failed to load the trading halt state.");
+    }
+  }, []);
+
+  useEffect(() => {
+    void load();
+    return openNotificationStream((notification) => {
+      if (notification.type === "trading_halt_changed") void load();
+    });
+  }, [load]);
+
+  function openModal(kind: "halt" | "resume") {
+    setReason("");
+    setSubmitError(null);
+    setPending(kind);
+  }
+
+  async function submit() {
+    if (!pending) return;
+    const enabled = pending === "halt";
+    if (enabled && reason.trim() === "") {
+      setSubmitError("A reason is required to halt trading.");
+      return;
+    }
+    setSubmitting(true);
+    setSubmitError(null);
+    try {
+      setHalt(await updateTradingHalt({ enabled, reason: reason.trim() === "" ? null : reason.trim() }));
+      setPending(null);
+    } catch (err) {
+      setSubmitError(err instanceof ApiError ? err.message : "Failed to update the trading halt.");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  const halted = halt?.enabled === true;
+  return (
+    // A red border, not bg-danger-lt: the tinted background made the card's text unreadable in dark mode
+    // (text-dark on a dark red), and the state is already carried by the badge and the button.
+    <div className={`card mb-3${halted ? " border-danger" : ""}`}>
+      <div className="card-body">
+        <div className="d-flex flex-column flex-md-row align-items-md-center justify-content-between gap-3">
+          <div>
+            <h3 className="card-title mb-1">
+              Trading halt
+              {halt && (
+                <span className={`badge ms-2 ${halted ? "bg-danger text-white" : "bg-success text-white"}`} style={{ fontSize: "0.72rem" }}>
+                  {halted ? "HALTED" : "Trading allowed"}
+                </span>
+              )}
+            </h3>
+            {loadError ? (
+              <div className="text-danger" style={{ fontSize: "0.8rem" }}>{loadError}</div>
+            ) : halt === null ? (
+              <Spinner size="sm" label="Loading trading halt state" />
+            ) : halted ? (
+              <div className="text-danger" style={{ fontSize: "0.8rem" }}>
+                Halted by <strong>{halt.setByDisplayName ?? "an operator"}</strong>
+                {halt.setAt ? ` ${formatRelativeTime(halt.setAt) ?? formatDateTime(halt.setAt)}` : ""}
+                {halt.reason ? ` — ${halt.reason}` : ""}. No order from any origin (screens, Genosuke, bots) reaches IBKR until it is lifted; cancels still work.
+              </div>
+            ) : (
+              <div className="text-muted" style={{ fontSize: "0.8rem" }}>
+                The kill switch. Halting stops every order from every origin at confirm and again inside the trading worker, immediately.
+                {halt.setAt && ` Last lifted by ${halt.setByDisplayName ?? "an operator"} ${formatRelativeTime(halt.setAt) ?? formatDateTime(halt.setAt)}.`}
+              </div>
+            )}
+          </div>
+          {halt && (
+            <button type="button" className={`btn ${halted ? "btn-success" : "btn-danger"} flex-shrink-0`} onClick={() => openModal(halted ? "resume" : "halt")}>
+              {halted ? "Resume trading" : "Halt all trading"}
+            </button>
+          )}
+        </div>
+      </div>
+      {pending && (
+        <ConfirmModal
+          title={pending === "halt" ? "Halt all trading?" : "Resume trading?"}
+          confirmLabel={pending === "halt" ? "Halt trading" : "Resume trading"}
+          danger={pending === "halt"}
+          confirming={submitting}
+          onCancel={() => setPending(null)}
+          onConfirm={() => void submit()}
+          message={
+            <div>
+              <p className="mb-2">
+                {pending === "halt"
+                  ? "Every order from every origin will be refused at confirm and stopped inside the trading worker until someone resumes trading. Orders already working at IBKR are not cancelled."
+                  : "Orders will reach IBKR again from every origin."}
+              </p>
+              <label className="form-label" htmlFor="trading-halt-reason">
+                Reason{pending === "halt" ? "" : " (optional)"}
+              </label>
+              <textarea
+                id="trading-halt-reason"
+                className="form-control"
+                rows={2}
+                maxLength={300}
+                value={reason}
+                onChange={(event) => setReason(event.target.value)}
+                disabled={submitting}
+              />
+              {submitError && <div className="text-danger mt-2" style={{ fontSize: "0.8rem" }}>{submitError}</div>}
+            </div>
+          }
+        />
+      )}
+    </div>
+  );
 }
 
 interface ConcentrationListProps {
@@ -333,6 +467,8 @@ export function RiskLimitsPage() {
   return (
     <>
       <PageHeader title="Risk & Limits" subtitle="Current exposure and per-strategy trade thresholds" />
+
+      <TradingHaltCard />
 
       <CollapsibleCard title="Account Exposure" storageKey="risk-limits-account-exposure" className="mb-3">
         {exposureLoading ? (

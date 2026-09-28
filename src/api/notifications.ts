@@ -15,6 +15,8 @@ export type AppNotification =
   // Roll Signals: a (held leg, replacement) roll's grade went up between two refresh cycles.
   | { type: "roll_signal_upgraded"; symbol: string; strategyKey: string; legId: string; heldStrike: number; heldExpiry: string; strike: number; expiry: string; dte: number; previousGrade: string; grade: string; netRollEdge: number; netRollEdgeDollars: number; netCreditPerShare: number }
   | { type: "genosuke_reply"; preview: string }
+  // The operator kill switch was flipped (Risk & Limits → Trading halt).
+  | { type: "trading_halt_changed"; enabled: boolean; reason: string | null; byDisplayName: string | null }
   | { type: "presence"; onlineUserIds: string[] }
   // Animation-only signal for Pulse's topology lines; only sent to the /pulse tab.
   | { type: "pulse"; edgeId: "ibkr-gateway" | "heroku-browser" | "heroku-db" | "genosuke-db" | "genosuke-llm" };

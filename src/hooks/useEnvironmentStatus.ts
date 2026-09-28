@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { fetchEnvironmentDetails, fetchPublicEnvironment, type EnvironmentDetails, type PublicEnvironment } from "../api/environment";
+import { openNotificationStream } from "../api/notifications";
 
 const pollIntervalMs = 30_000;
 /** One failed poll is noise; two in a row means the badge can no longer be trusted. */
@@ -38,10 +39,15 @@ export function useEnvironmentStatus(): EnvironmentStatus {
       if (document.visibilityState === "visible") void load();
     };
     document.addEventListener("visibilitychange", onVisible);
+    // The kill switch must show in the top bar the moment anyone flips it, not up to 30 s later.
+    const unsubscribe = openNotificationStream((notification) => {
+      if (notification.type === "trading_halt_changed") void load();
+    });
     return () => {
       isMounted.current = false;
       window.clearInterval(timer);
       document.removeEventListener("visibilitychange", onVisible);
+      unsubscribe();
     };
   }, [load]);
 

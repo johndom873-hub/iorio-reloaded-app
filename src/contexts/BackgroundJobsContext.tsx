@@ -175,6 +175,16 @@ export function BackgroundJobsProvider({ children }: { children: ReactNode }) {
           dismissed: false,
           link: { to: `/signals?signal=${encodeURIComponent(notification.symbol)}&roll=${encodeURIComponent(notification.legId)}`, label: "Open in Signals" },
         });
+      } else if (notification.type === "trading_halt_changed") {
+        upsertJob({
+          id: `trading-halt-${Date.now()}`,
+          kind: "position-closed",
+          label: notification.enabled ? "Trading halted" : "Trading halt lifted",
+          status: "done",
+          message: `${notification.byDisplayName ?? "An operator"}${notification.enabled ? " halted all trading" : " lifted the trading halt"}${notification.reason ? `: ${notification.reason}` : "."}`,
+          dismissed: false,
+          link: { to: "/risk-limits", label: "Open Risk & Limits" },
+        });
       } else if (notification.type === "signal_upgraded") {
         upsertJob({
           id: `signal-upgraded-${notification.symbol}-${notification.expiry}-${notification.strike}-${Date.now()}`,

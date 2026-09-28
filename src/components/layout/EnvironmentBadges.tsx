@@ -1,11 +1,11 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { IconAlertTriangle } from "@tabler/icons-react";
+import { IconAlertTriangle, IconHandStop } from "@tabler/icons-react";
 import type { AppEnvironment, EnvironmentDetails, PublicEnvironment, TradingMode } from "../../api/environment";
 import { usePublicEnvironment, type EnvironmentStatus } from "../../hooks/useEnvironmentStatus";
 import { formatRelativeDate } from "../../lib/formatters";
 import "./EnvironmentBadges.css";
 
-type ChipKind = "paper" | "live" | "staging" | "dev" | "blocked" | "unknown";
+type ChipKind = "paper" | "live" | "staging" | "dev" | "blocked" | "halted" | "unknown";
 
 interface Chip {
   kind: ChipKind;
@@ -35,6 +35,7 @@ function chipsForStatus(status: EnvironmentStatus): Chip[] {
   const { details, unknown } = status;
   if (unknown || details === null) return [unknownChip];
   const chips = chipsForEnvironment(details.environment, details.tradingMode);
+  if (details.trading.state === "halted") chips.push({ kind: "halted", label: "Trading halted" });
   if (details.trading.state === "blocked") chips.push({ kind: "blocked", label: "Trading blocked" });
   if (details.trading.state === "offline") chips.push({ kind: "blocked", label: "Worker offline" });
   return chips;
@@ -45,6 +46,7 @@ function ChipView({ chip }: { chip: Chip }) {
     <span className={`env-badge env-badge-${chip.kind}`}>
       {chip.kind === "live" && <span className="env-badge-dot" aria-hidden="true" />}
       {chip.kind === "blocked" && <IconAlertTriangle size={12} stroke={2.4} aria-hidden="true" />}
+      {chip.kind === "halted" && <IconHandStop size={12} stroke={2.4} aria-hidden="true" />}
       <span className="env-badge-text">{chip.label}</span>
     </span>
   );
@@ -69,7 +71,14 @@ function EnvironmentPopover({ status }: { status: EnvironmentStatus }) {
       </div>
     );
   }
-  const title = details.trading.state === "ok" ? `${environmentLabels[details.environment]} · ${details.tradingMode} · trading OK` : details.trading.state === "offline" ? "Worker offline" : "Trading blocked";
+  const title =
+    details.trading.state === "ok"
+      ? `${environmentLabels[details.environment]} · ${details.tradingMode} · trading OK`
+      : details.trading.state === "offline"
+        ? "Worker offline"
+        : details.trading.state === "halted"
+          ? "Trading halted"
+          : "Trading blocked";
   const worker: EnvironmentDetails["worker"] = details.worker;
   return (
     <div className="env-popover" role="dialog" aria-label="Environment details">
@@ -80,7 +89,7 @@ function EnvironmentPopover({ status }: { status: EnvironmentStatus }) {
       <PopoverRow label="Worker version" value={worker?.gitSha ?? "—"} />
       <PopoverRow label="Account binding" value={worker?.bindingStatus ?? "—"} />
       <PopoverRow label="Worker heartbeat" value={worker ? formatRelativeDate(new Date(Date.now() - worker.heartbeatAgeSeconds * 1000)) : "never"} />
-      {details.trading.reason && <div className="env-popover-reason">{details.trading.reason}</div>}
+      {details.trading.reason && <div className={`env-popover-reason${details.trading.state === "halted" ? " env-popover-reason-halted" : ""}`}>{details.trading.reason}</div>}
     </div>
   );
 }

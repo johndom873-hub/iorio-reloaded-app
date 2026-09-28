@@ -207,3 +207,20 @@ function openLegacyExposureStream(onUpdate: (exposure: ExposureData) => void, on
 
   return () => source.close();
 }
+
+// The trading halt (kill switch, 2026-09-28): stops every order origin at confirm and in the worker.
+export interface TradingHalt {
+  enabled: boolean;
+  reason: string | null;
+  setByDisplayName: string | null;
+  setAt: string | null;
+}
+
+export function fetchTradingHalt(): Promise<TradingHalt> {
+  return apiRequest<TradingHalt>("/risk-limits/trading-halt");
+}
+
+/** A reason is required when halting; optional when lifting the halt. */
+export function updateTradingHalt(input: { enabled: boolean; reason: string | null }): Promise<TradingHalt> {
+  return apiRequest<TradingHalt>("/risk-limits/trading-halt", { method: "PUT", body: JSON.stringify(input) });
+}

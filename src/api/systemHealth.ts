@@ -96,6 +96,8 @@ export interface GatewayHealth {
   inFlightOrderCount: number;
   marketDataLineCount?: number;
   priorityReservedLineCount?: number;
+  /** The operator kill switch (platform_controls.trading_halt). */
+  tradingHalted?: boolean;
 }
 
 export function fetchGatewayHealth(): Promise<GatewayHealth> {

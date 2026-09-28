@@ -1177,6 +1177,13 @@ export function PulsePage() {
             <div className="node-sub">ibkrGatewayWorker · VPS</div>
           </div>
         </div>
+        {/* The operator kill switch (Risk & Limits → Trading halt): shown whether or not the worker reports. */}
+        <div className="sub-row">
+          <span className="sub-name">Trading</span>
+          <span className={`sub-value ${gatewayHealth == null ? "" : gatewayHealth.tradingHalted ? "err" : "ok"}`}>
+            {gatewayHealth == null ? "—" : gatewayHealth.tradingHalted ? "HALTED" : "allowed"}
+          </span>
+        </div>
         {gatewayHealth?.staleOrMissing ? (
           <div className="sub-row">
             <span className="sub-name">Status</span>
