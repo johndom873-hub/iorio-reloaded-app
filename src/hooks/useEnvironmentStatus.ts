@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
 import { fetchEnvironmentDetails, fetchPublicEnvironment, type EnvironmentDetails, type PublicEnvironment } from "../api/environment";
+import { openNotificationStream } from "../api/notifications";
 
 const pollIntervalMs = 30_000;
 /** One failed poll is noise; two in a row means the badge can no longer be trusted. */
@@ -11,7 +12,10 @@ export interface EnvironmentStatus {
   unknown: boolean;
 }
 
-/** Polls the authenticated environment status every 30 s while the tab is visible, and again when it regains focus. */
+/**
+ * Polls the authenticated environment status every 30 s while the tab is visible, and again when it regains focus.
+ * A market-data refusal is also pushed over the notification stream and applied at once, not on the next poll.
+ */
 export function useEnvironmentStatus(): EnvironmentStatus {
   const [details, setDetails] = useState<EnvironmentDetails | null>(null);
   const [failureCount, setFailureCount] = useState(0);
@@ -38,14 +42,26 @@ export function useEnvironmentStatus(): EnvironmentStatus {
       if (document.visibilityState === "visible") void load();
     };
     document.addEventListener("visibilitychange", onVisible);
+    const closeNotificationStream = openNotificationStream((notification) => {
+      if (notification.type !== "market_data_feed") return;
+      setDetails((current) => (current ? { ...current, marketDataFeedRefusal: notification.refusal } : current));
+    });
     return () => {
       isMounted.current = false;
       window.clearInterval(timer);
       document.removeEventListener("visibilitychange", onVisible);
+      closeNotificationStream();
     };
   }, [load]);
 
   return { details, unknown: details === null || failureCount >= consecutiveFailuresBeforeUnknown };
+}
+
+/** AppLayout's EnvironmentStatus, shared with the pages it renders so they don't start a second poller. */
+export const EnvironmentStatusContext = createContext<EnvironmentStatus | null>(null);
+
+export function useSharedEnvironmentStatus(): EnvironmentStatus | null {
+  return useContext(EnvironmentStatusContext);
 }
 
 /** Login page: fetched once, no login required. `null` while loading or if it failed. */

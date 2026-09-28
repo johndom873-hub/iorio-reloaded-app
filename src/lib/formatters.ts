@@ -163,6 +163,12 @@ export function todayInEasternIso(): string {
   }).format(new Date());
 }
 
+/** Clock time in US/Eastern (market time) regardless of the viewer's timezone, e.g. "09:31 ET". */
+export function formatEasternTime(isoTimestamp: string): string {
+  const time = new Intl.DateTimeFormat("en-US", { timeZone: "America/New_York", hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).format(new Date(isoTimestamp));
+  return `${time} ET`;
+}
+
 // Platform-wide convention (approved 2026-08-28): every plain expiry date
 // shown anywhere always carries its DTE alongside it, so "when does this
 // expire" and "how soon" are never split across a hover/lookup. Takes an

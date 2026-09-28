@@ -7,6 +7,7 @@ import { TickColoredPrice } from "../components/TickColoredPrice";
 import { TickerDetailModal } from "../components/TickerDetailModal";
 import { ApiError } from "../api/client";
 import { openNotificationStream } from "../api/notifications";
+import { useSharedEnvironmentStatus } from "../hooks/useEnvironmentStatus";
 import {
   fetchPricePerformance,
   openPricePerformanceStream,
@@ -18,7 +19,7 @@ import {
   type PricePerformanceRow,
   type ReferenceCloses,
 } from "../api/pricePerformance";
-import { formatCurrency, formatDate, formatNumber, formatPercentage, formatPercentageValue, pnlBadgeClass } from "../lib/formatters";
+import { formatCurrency, formatDate, formatEasternTime, formatNumber, formatPercentage, formatPercentageValue, pnlBadgeClass } from "../lib/formatters";
 import { percentChange } from "../lib/priceChange";
 import { useTickerDetailSymbol } from "../hooks/useTickerDetailSymbol";
 import { useTooltip } from "../hooks/useTooltip";
@@ -118,6 +119,7 @@ export function PricePerformancePage() {
   // Live prices arrive separately from the table (which renders at once from
   // stored daily bars), so the table never waits on IBKR.
   const [livePrices, setLivePrices] = useState<PricePerformanceLivePrices>({});
+  const environmentStatus = useSharedEnvironmentStatus();
   const [liveConnection, setLiveConnection] = useState<LiveConnection>("connecting");
   const [liveWaitExpired, setLiveWaitExpired] = useState(false);
   const [isRequestingRefresh, setIsRequestingRefresh] = useState(false);
@@ -220,8 +222,11 @@ export function PricePerformancePage() {
       ? `Refreshed moments ago — available again in ${refreshCooldown}s.`
       : `Fetch the missing daily bars for ${refreshableCount} ticker${refreshableCount === 1 ? "" : "s"} from IBKR.`;
 
-  const liveStatus =
-    liveConnection === "live"
+  // The stream stays open while IBKR refuses data, so "live" alone would claim prices are streaming when they are frozen.
+  const feedRefusal = environmentStatus?.details?.marketDataFeedRefusal ?? null;
+  const liveStatus = feedRefusal
+    ? { label: `Live prices stopped since ${formatEasternTime(feedRefusal.since)}`, className: "bg-danger-lt" }
+    : liveConnection === "live"
       ? { label: "Live prices streaming", className: "bg-success-lt" }
       : liveConnection === "unavailable"
         ? { label: "Live prices unavailable", className: "bg-warning-lt" }
@@ -283,6 +288,12 @@ export function PricePerformancePage() {
             );
           return <Spinner size="sm" label="Loading current price" />;
         }
+        if (feedRefusal)
+          return (
+            <TooltipSpan className="text-muted" text={`IBKR stopped sending prices at ${formatEasternTime(feedRefusal.since)} (the live account is logged in elsewhere) — this is the last price received`}>
+              {price === null ? "—" : formatCurrency(price)}
+            </TooltipSpan>
+          );
         if (price === null)
           return (
             <TooltipSpan className="text-muted" text="No live quote for this ticker right now (outside market hours or no market data)">

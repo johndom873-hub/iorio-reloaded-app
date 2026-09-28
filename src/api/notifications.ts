@@ -1,6 +1,7 @@
 import { apiBaseUrl, apiRequest } from "./client";
 import { openMultiplexedStream } from "./streamMultiplexer";
 import type { OrderLeg, OrderRequestStatus } from "./positions";
+import type { MarketDataFeedRefusal } from "./environment";
 
 export type AppNotification =
   | { type: "order_status"; orderId: string }
@@ -17,7 +18,9 @@ export type AppNotification =
   | { type: "genosuke_reply"; preview: string }
   | { type: "presence"; onlineUserIds: string[] }
   // Animation-only signal for Pulse's topology lines; only sent to the /pulse tab.
-  | { type: "pulse"; edgeId: "ibkr-gateway" | "heroku-browser" | "heroku-db" | "genosuke-db" | "genosuke-llm" };
+  | { type: "pulse"; edgeId: "ibkr-gateway" | "heroku-browser" | "heroku-db" | "genosuke-db" | "genosuke-llm" }
+  // IBKR started (refusal set) or stopped (null) refusing live market data — pushed the moment it happens.
+  | { type: "market_data_feed"; refusal: MarketDataFeedRefusal | null };
 
 // One long-lived connection per browser tab, shared by every caller —
 // replaces the old per-order 2s client poll. Pushed by the backend's

@@ -1,7 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 import { Link, NavLink, Outlet } from "react-router-dom";
 import { EnvironmentBadges } from "./EnvironmentBadges";
-import { useEnvironmentStatus } from "../../hooks/useEnvironmentStatus";
+import { EnvironmentStatusContext, useEnvironmentStatus } from "../../hooks/useEnvironmentStatus";
+import type { MarketDataFeedRefusal } from "../../api/environment";
+import { formatEasternTime } from "../../lib/formatters";
 import { Collapse } from "@tabler/core/dist/js/tabler.esm.min.js";
 import {
   IconCalendarEvent,
@@ -11,6 +13,7 @@ import {
   IconChevronRight,
   IconClipboardList,
   IconActivity,
+  IconAlertTriangle,
   IconHeartRateMonitor,
   IconLayoutDashboard,
   IconLogout,
@@ -94,6 +97,25 @@ function MarketDataRestrictionPill({
     <span ref={ref} className={`iorio-topbar-status${compact ? " iorio-topbar-status-compact" : ""}`} tabIndex={0} role="status">
       <IconClock size={compact ? 14 : 16} aria-hidden="true" />
       {disabled ? "Real-time data disabled" : "Live data restricted"}
+    </span>
+  );
+}
+
+/** Red while IBKR refuses live market data because the live account is logged in elsewhere (10197) — pushed the moment it starts and stops. */
+function MarketDataFeedRefusalPill({ refusal, compact = false }: { refusal: MarketDataFeedRefusal | null | undefined; compact?: boolean }) {
+  const ref = useTooltip<HTMLSpanElement>(
+    refusal
+      ? `Since ${formatEasternTime(refusal.since)}. Someone is logged into the live IBKR account (TWS, IBKR Mobile or Client Portal), so IBKR stopped sending prices here. Prices on screen are the last ones received; ask them to log out.`
+      : undefined,
+  );
+  if (!refusal) return null;
+  return (
+    <span ref={ref} className={`iorio-topbar-status iorio-topbar-status-danger${compact ? " iorio-topbar-status-compact" : ""}`} tabIndex={0} role="alert">
+      <IconAlertTriangle size={compact ? 14 : 16} aria-hidden="true" />
+      <span>
+        Live prices stopped
+        {!compact && <span className="d-none d-xl-inline">: IBKR live login elsewhere</span>}
+      </span>
     </span>
   );
 }
@@ -198,6 +220,7 @@ export function AppLayout() {
               <span className="iorio-pulse-dot" aria-hidden="true" />
               IORIO Pulse
             </Link>
+            <MarketDataFeedRefusalPill refusal={environmentStatus.details?.marketDataFeedRefusal} compact />
             <MarketDataRestrictionPill
               restriction={environmentStatus.details?.marketDataRestriction}
               linesEnabled={environmentStatus.details?.marketDataLinesEnabled ?? true}
@@ -255,6 +278,7 @@ export function AppLayout() {
           </h1>
           <EnvironmentBadges status={environmentStatus} />
           <div className="iorio-topbar-center">
+            <MarketDataFeedRefusalPill refusal={environmentStatus.details?.marketDataFeedRefusal} />
             <MarketDataRestrictionPill
               restriction={environmentStatus.details?.marketDataRestriction}
               linesEnabled={environmentStatus.details?.marketDataLinesEnabled ?? true}
@@ -283,7 +307,9 @@ export function AppLayout() {
       <div className="page-wrapper">
         <div className="page-body">
           <div className="container-fluid">
-            <Outlet />
+            <EnvironmentStatusContext.Provider value={environmentStatus}>
+              <Outlet />
+            </EnvironmentStatusContext.Provider>
           </div>
         </div>
       </div>

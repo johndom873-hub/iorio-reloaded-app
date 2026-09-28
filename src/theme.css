@@ -242,12 +242,13 @@
 /* The top bar's centre slot (Day Signals, 2026-09-24): empty in normal operation, carries the
    "Live data restricted" pill while the chain capture holds its priority market-data lines. The
    IORIO Pulse link moved to the right-hand group to free it. */
+/* Centred in the free space between the badges and the right-hand group (auto margins),
+   not the page: absolute centring overlapped the badges once two status pills showed. */
 .iorio-topbar-center {
-  position: absolute;
-  left: 50%;
-  transform: translateX(-50%);
   display: flex;
   align-items: center;
+  gap: 0.5rem;
+  margin-inline: auto;
 }
 .iorio-topbar-status {
   display: inline-flex;
@@ -262,6 +263,12 @@
   background: rgba(245, 180, 88, 0.08);
   cursor: default;
   white-space: nowrap;
+}
+/* The top bar is dark navy in both themes, so a fixed red reads the same in light and dark. */
+.iorio-topbar-status-danger {
+  color: #ff8a8a;
+  border-color: rgba(255, 138, 138, 0.5);
+  background: rgba(255, 138, 138, 0.1);
 }
 .iorio-topbar-status-compact {
   padding: 0.15rem 0.55rem;
