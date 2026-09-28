@@ -11,7 +11,7 @@ import {
   type ScreenerFilters,
   type ScreenerScanRow,
 } from "../../api/screener";
-import { formatCompactNumber, formatNumber, formatPercentage, formatRelativeDate } from "../../lib/formatters";
+import { formatCompactNumber, formatPercentage, formatRelativeDate } from "../../lib/formatters";
 
 interface FilterFormState {
   search: string;
@@ -195,13 +195,6 @@ export function ScreenerTab({ onOpenTickerDetail }: ScreenerTabProps) {
       headerTitle: "Average daily share volume (90-day, per IBKR)",
       align: "right",
       render: (row) => formatCompactNumber(row.avgShareVolume === null ? null : Number(row.avgShareVolume)),
-    },
-    {
-      key: "avgOptionVolume",
-      header: "Avg Opt Vol",
-      headerTitle: "Frequently unavailable under current IBKR data entitlements",
-      align: "right",
-      render: (row) => formatNumber(row.avgOptionVolume),
     },
     {
       key: "callOpenInterest",
