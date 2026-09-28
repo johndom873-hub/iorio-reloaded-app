@@ -94,8 +94,8 @@ export interface GatewayHealth {
   clientId?: number | null;
   updatedAt?: string;
   inFlightOrderCount: number;
-  marketDataLineCount?: number;
-  priorityReservedLineCount?: number;
+  /** IBKR market-data lines in use across every process sharing the login, by use (screens, chain capture, Day Signals, snapshots). */
+  marketDataLines?: { inUse: number; budget: number; byUse: { label: string; lines: number }[] };
 }
 
 export function fetchGatewayHealth(): Promise<GatewayHealth> {

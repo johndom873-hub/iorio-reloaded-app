@@ -389,6 +389,8 @@ interface EventItem {
   time: string;
   text: string;
   color: string;
+  /** Set on order rows: one row per order, replaced (not repeated) as its status changes. */
+  orderId?: string;
 }
 
 function EventRow({ time, text, color }: { time: string; text: string; color: string }) {
@@ -612,9 +614,10 @@ export function PulsePage() {
     window.setTimeout(() => setPulses((prev) => prev.filter((pulse) => pulse.key !== key)), durationMs + PULSE_REMOVAL_GRACE_MS);
   }, []);
 
-  const appendEvent = useCallback((text: string, color: string) => {
+  const appendEvent = useCallback((text: string, color: string, orderId?: string) => {
     eventIdRef.current += 1;
-    setEvents((prev) => [{ id: eventIdRef.current, time: new Date().toLocaleTimeString("en-US", { hour12: false }), text, color }, ...prev].slice(0, EVENTS_LIMIT));
+    const item: EventItem = { id: eventIdRef.current, time: new Date().toLocaleTimeString("en-US", { hour12: false }), text, color, orderId };
+    setEvents((prev) => [item, ...(orderId ? prev.filter((event) => event.orderId !== orderId) : prev)].slice(0, EVENTS_LIMIT));
   }, []);
 
   // Fetches the most recent events from the backend and describes them with
@@ -651,6 +654,7 @@ export function PulsePage() {
               occurredAt,
               text: `${orderEventStatusLabel(order.status)} — ${order.payload.symbol}${legsSummary ? `: ${legsSummary}` : ""}`,
               color: "var(--success)",
+              orderId: notification.orderId,
             };
           }
           case "position_opened":
@@ -665,10 +669,10 @@ export function PulsePage() {
       }),
     );
     return described
-      .filter((item): item is { occurredAt: string; text: string; color: string } => item !== null)
+      .filter((item): item is { occurredAt: string; text: string; color: string; orderId?: string } => item !== null)
       .map((item) => {
         eventIdRef.current += 1;
-        return { id: eventIdRef.current, time: formatFeedTime(item.occurredAt), text: item.text, color: item.color };
+        return { id: eventIdRef.current, time: formatFeedTime(item.occurredAt), text: item.text, color: item.color, orderId: item.orderId };
       });
   }, []);
 
@@ -743,7 +747,7 @@ export function PulsePage() {
             .then((order) => {
               firePulse("heroku-gateway", "var(--success)", { reverse: true });
               const legsSummary = formatOrderLegsSummary(order.payload.legs, todayInEasternIso());
-              appendEvent(`${orderEventStatusLabel(order.status)} — ${order.payload.symbol}${legsSummary ? `: ${legsSummary}` : ""}`, "var(--success)");
+              appendEvent(`${orderEventStatusLabel(order.status)} — ${order.payload.symbol}${legsSummary ? `: ${legsSummary}` : ""}`, "var(--success)", notification.orderId);
               if (order.status === "filled" || order.status === "partially_filled") {
                 loadTrades();
               }
@@ -1211,21 +1215,20 @@ export function PulsePage() {
               </span>
             </div>
             <div className="sub-row">
-              <span className="sub-name">{compact ? "Live connections" : "IBKR live connections"}</span>
-              <span className="sub-value-group">
-                <FlashingNumber value={gatewayHealth?.marketDataLineCount ?? null} className={`sub-value ${higherIsWorseStatus(gatewayHealth?.marketDataLineCount, ...GATEWAY_LIVE_CONNECTIONS_BANDS)}`}>
-                  {gatewayHealth?.marketDataLineCount ?? "—"}
+              <span className="sub-name">{compact ? "Data lines" : "IBKR data lines"}</span>
+              <TooltipSpan
+                className="sub-value-group"
+                text={
+                  gatewayHealth?.marketDataLines
+                    ? `${gatewayHealth.marketDataLines.byUse.map((use) => `${use.label} ${use.lines}`).join(" · ") || "None in use"}. Every process sharing the IBKR login counts; scans count the lines they hold.`
+                    : undefined
+                }
+              >
+                <FlashingNumber value={gatewayHealth?.marketDataLines?.inUse ?? null} className={`sub-value ${higherIsWorseStatus(gatewayHealth?.marketDataLines?.inUse, ...GATEWAY_LIVE_CONNECTIONS_BANDS)}`}>
+                  {gatewayHealth?.marketDataLines?.inUse ?? "—"}
                 </FlashingNumber>
-                {gatewayHealth?.priorityReservedLineCount != null && (
-                  <span className="sub-unit">
-                    {" ("}
-                    <FlashingNumber value={gatewayHealth.priorityReservedLineCount} className="sub-value">
-                      {gatewayHealth.priorityReservedLineCount}
-                    </FlashingNumber>
-                    {compact ? " rsv)" : " reserved)"}
-                  </span>
-                )}
-              </span>
+                {gatewayHealth?.marketDataLines && <span className="sub-unit">{` / ${gatewayHealth.marketDataLines.budget}`}</span>}
+              </TooltipSpan>
             </div>
           </>
         )}
