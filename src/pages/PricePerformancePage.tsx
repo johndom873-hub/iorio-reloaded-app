@@ -290,7 +290,7 @@ export function PricePerformancePage() {
         }
         if (feedRefusal)
           return (
-            <TooltipSpan className="text-muted" text={`IBKR stopped sending prices at ${formatEasternTime(feedRefusal.since)} (the live account is logged in elsewhere) — this is the last price received`}>
+            <TooltipSpan className="text-muted" text={`IBKR stopped sending prices at ${formatEasternTime(feedRefusal.since)} (error 10197) — this is the last price received`}>
               {price === null ? "—" : formatCurrency(price)}
             </TooltipSpan>
           );

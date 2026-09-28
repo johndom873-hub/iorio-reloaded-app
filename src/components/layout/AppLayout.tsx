@@ -101,11 +101,11 @@ function MarketDataRestrictionPill({
   );
 }
 
-/** Red while IBKR refuses live market data because the live account is logged in elsewhere (10197) — pushed the moment it starts and stops. */
+/** Red while IBKR refuses live market data (error 10197) — pushed the moment it starts and stops. */
 function MarketDataFeedRefusalPill({ refusal, compact = false }: { refusal: MarketDataFeedRefusal | null | undefined; compact?: boolean }) {
   const ref = useTooltip<HTMLSpanElement>(
     refusal
-      ? `Since ${formatEasternTime(refusal.since)}. Someone is logged into the live IBKR account (TWS, IBKR Mobile or Client Portal), so IBKR stopped sending prices here. Prices on screen are the last ones received; ask them to log out.`
+      ? `Since ${formatEasternTime(refusal.since)}, IBKR has refused market data (error 10197). Usually the Gateway's session went stale after IBKR briefly dropped its connection; the health check restarts the Gateway automatically within about 10 minutes. If it persists, someone may be logged into the live IBKR account elsewhere. Prices on screen are the last ones received.`
       : undefined,
   );
   if (!refusal) return null;
@@ -114,7 +114,7 @@ function MarketDataFeedRefusalPill({ refusal, compact = false }: { refusal: Mark
       <IconAlertTriangle size={compact ? 14 : 16} aria-hidden="true" />
       <span>
         Live prices stopped
-        {!compact && <span className="d-none d-xl-inline">: IBKR live login elsewhere</span>}
+        {!compact && <span className="d-none d-xl-inline">: IBKR refusing data</span>}
       </span>
     </span>
   );

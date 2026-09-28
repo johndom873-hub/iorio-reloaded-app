@@ -23,7 +23,7 @@ export interface EnvironmentDetails extends PublicEnvironment {
   marketDataRestriction: { priorityLines: number; holders: string[] } | null;
   /** False when IBKR_MARKET_DATA_LINES_ENABLED=false (typically dev) — the top bar's "Real-time data disabled" state. */
   marketDataLinesEnabled: boolean;
-  /** Non-null while IBKR refuses live market data because the live account is logged in elsewhere (code 10197) — the top bar's "Live prices stopped". */
+  /** Non-null while IBKR refuses live market data (code 10197: usually a stale Gateway session, sometimes a live login elsewhere) — the top bar's "Live prices stopped". */
   marketDataFeedRefusal: MarketDataFeedRefusal | null;
   worker: {
     gitSha: string | null;
