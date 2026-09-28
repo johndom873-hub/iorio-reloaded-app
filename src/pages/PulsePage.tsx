@@ -47,6 +47,7 @@ import { TooltipSpan } from "../components/TooltipSpan";
 import { AVAILABLE_CASH_PERCENT_BANDS, higherIsWorseStatus, lowerIsWorseStatus } from "../lib/statusThresholds";
 import { TopologyMap, type PulseEvent } from "../components/pulse/TopologyMap";
 import { ResizableRail } from "../components/pulse/ResizableRail";
+import { ResizableColumns } from "../components/pulse/ResizableColumns";
 import { TotalPnlChart } from "../components/pulse/TotalPnlChart";
 import { NetDeltaChart, type DeltaSeries } from "../components/pulse/NetDeltaChart";
 import { EnvironmentBadges } from "../components/layout/EnvironmentBadges";
@@ -891,7 +892,7 @@ export function PulsePage() {
         </div>
       </div>
 
-      <div className="main-grid">
+      <ResizableColumns leftStorageKey="pulse.leftColumnPercent" rightStorageKey="pulse.rightColumnPercent">
         <ResizableRail storageKey="pulse.leftRailTopPercent">
           <div className="panel">
             <div className="panel-title">
@@ -1324,7 +1325,7 @@ export function PulsePage() {
             </div>
           </div>
         </ResizableRail>
-      </div>
+      </ResizableColumns>
     </div>
   );
 }
