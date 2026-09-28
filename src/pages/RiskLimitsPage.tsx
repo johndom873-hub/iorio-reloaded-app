@@ -643,35 +643,35 @@ export function RiskLimitsPage() {
                   label="Max position % of portfolio"
                   value={formState.maxPositionPctOfPortfolio}
                   step="1"
-                  help="Target ceiling on how large a single position can be, as % of total portfolio value. Not yet auto-enforced — reference only."
+                  help="Ceiling on how large a single position can be, as % of total portfolio value. Enforced when an order that did not come from the Signals screen is confirmed."
                   onChange={(value) => updateField("maxPositionPctOfPortfolio", value)}
                 />
                 <NumberField
                   label="Max aggregate collateral %"
                   value={formState.maxAggregateCollateralPct}
                   step="1"
-                  help="Target ceiling on total collateral tied up across all open positions in this strategy, as % of portfolio. Not yet auto-enforced."
+                  help="Ceiling on total cash-secured-put collateral (open puts plus the one being placed), as % of portfolio. Enforced at confirm for cash-secured puts that did not come from the Signals screen."
                   onChange={(value) => updateField("maxAggregateCollateralPct", value)}
                 />
                 <NumberField
                   label="Max concentration per ticker %"
                   value={formState.maxConcentrationPerTickerPct}
                   step="1"
-                  help="Target ceiling on how much of the portfolio (by notional value) can sit in one ticker. Shown for reference against the Concentration by Ticker table above; not yet auto-enforced."
+                  help="Ceiling on how much of the portfolio (by notional value) can sit in one ticker. Compared against the Concentration by Ticker table above and enforced at confirm for orders that did not come from the Signals screen."
                   onChange={(value) => updateField("maxConcentrationPerTickerPct", value)}
                 />
                 <NumberField
                   label="Max concentration per sector %"
                   value={formState.maxConcentrationPerSectorPct}
                   step="1"
-                  help="Target ceiling on how much of the portfolio (by notional value) can sit in one sector. Shown for reference against the Concentration by Sector table above; not yet auto-enforced."
+                  help="Ceiling on how much of the portfolio (by notional value) can sit in one sector. Compared against the Concentration by Sector table above and enforced at confirm for orders that did not come from the Signals screen."
                   onChange={(value) => updateField("maxConcentrationPerSectorPct", value)}
                 />
                 <NumberField
                   label="Min cash reserve %"
                   value={formState.minCashReservePct}
                   step="1"
-                  help="Target floor on how much of the portfolio should stay as uncommitted cash. Not yet auto-enforced."
+                  help="Floor on how much of the portfolio must stay as uncommitted cash after an order. Enforced at confirm for orders that did not come from the Signals screen."
                   onChange={(value) => updateField("minCashReservePct", value)}
                 />
               </div>
