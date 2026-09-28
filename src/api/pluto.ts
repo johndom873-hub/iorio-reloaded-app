@@ -162,7 +162,10 @@ export interface PlutoAction {
   referenceMid: number | null;
   fillPrice: number | null;
   pessimisticPnl: number | null;
+  /** Derived at read time from the legs this action opened (or closed, when a human opened them); null while none has closed. */
   realizedPnl: number | null;
+  closedLegCount: number;
+  openLegCount: number;
   evaluatedAt: string | null;
   createdAt: string;
   updatedAt: string;

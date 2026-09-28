@@ -44,7 +44,22 @@ const columns = (onOpenTickerDetail: (symbol: string) => void): DataTableColumn<
     ),
   },
   { key: "pessimistic", header: "Pessimistic", headerTitle: "P&L difference had the order filled at the worse side of the market it was placed into", align: "right", render: (row) => (row.pessimisticPnl === null ? "—" : <span className={`font-monospace ${pnlTextClass(row.pessimisticPnl)}`}>{formatSignedPnl(row.pessimisticPnl)}</span>) },
-  { key: "realized", header: "Realized", align: "right", render: (row) => (row.realizedPnl === null ? "—" : <span className={`font-monospace ${pnlTextClass(row.realizedPnl)}`}>{formatSignedPnl(row.realizedPnl)}</span>) },
+  {
+    key: "realized",
+    header: "Realized",
+    headerTitle: "Realized P&L of the legs this action opened, net of closing commissions; 'open' until they close",
+    align: "right",
+    render: (row) => {
+      if (row.realizedPnl === null) return row.openLegCount > 0 ? <span className="text-muted">open</span> : "—";
+      const partial = row.openLegCount > 0 ? ` (${row.openLegCount} leg${row.openLegCount === 1 ? "" : "s"} open)` : "";
+      return (
+        <span className={`font-monospace ${pnlTextClass(row.realizedPnl)}`}>
+          {formatSignedPnl(row.realizedPnl)}
+          {partial && <span className="text-muted" style={{ fontSize: "0.72rem" }}>{partial}</span>}
+        </span>
+      );
+    },
+  },
   {
     key: "gates",
     header: "Gates",
