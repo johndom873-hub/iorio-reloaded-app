@@ -1,7 +1,7 @@
 import { Link } from "react-router-dom";
 import type { PlutoAction } from "../../api/pluto";
 import { formatFeedTime, formatSignedPnl, pnlTextClass } from "../../lib/formatters";
-import { describePlutoActionContract, gatesPassedLabel, plutoActionKindLabel, plutoOutcomeBadgeClass, plutoOutcomeLabel } from "../../lib/plutoPresentation";
+import { describeImpliedFill, describePlutoActionContract, gatesPassedLabel, plutoActionKindLabel, plutoOutcomeBadgeClass, plutoOutcomeLabel } from "../../lib/plutoPresentation";
 import { DataTable, type DataTableColumn } from "../DataTable/DataTable";
 import { TooltipSpan } from "../TooltipSpan";
 
@@ -29,7 +29,26 @@ const columns = (onOpenTickerDetail: (symbol: string) => void): DataTableColumn<
   { key: "action", header: "Action", render: (row) => (row.kind === "no_trade" ? "No trade" : `${plutoActionKindLabel(row)} ${describePlutoActionContract(row)}`) },
   { key: "quantity", header: "Qty", align: "right", render: (row) => (row.quantity === null ? "—" : <span className="font-monospace">{row.quantity}{row.sizeTier === "half" ? " (half)" : ""}</span>) },
   { key: "limit", header: "Limit", align: "right", render: (row) => (row.limitPrice === null ? "—" : <span className="font-monospace">{row.limitPrice.toFixed(2)}</span>) },
-  { key: "fill", header: "Fill", align: "right", render: (row) => (row.fillPrice === null ? "—" : <span className="font-monospace">{row.fillPrice.toFixed(2)}</span>) },
+  {
+    key: "fill",
+    header: "Fill",
+    align: "right",
+    render: (row) => {
+      if (row.fillPrice === null) return "—";
+      if (row.impliedFillPrice === null) return <span className="font-monospace">{row.fillPrice.toFixed(2)}</span>;
+      // Two-part order: the price implied by the net, with IBKR's own split kept visible (Marcelo, 2026-09-29).
+      return (
+        <>
+          <span className="font-monospace">{row.impliedFillPrice.toFixed(2)}</span>
+          <div>
+            <TooltipSpan text={describeImpliedFill(row.fillPrice, row.impliedFillPrice)} className="dotted-underline-label text-secondary text-nowrap" style={{ fontSize: "0.72rem" }}>
+              IBKR split: {row.fillPrice.toFixed(2)}
+            </TooltipSpan>
+          </div>
+        </>
+      );
+    },
+  },
   {
     key: "outcome",
     header: "Outcome",

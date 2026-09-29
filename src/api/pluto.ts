@@ -164,7 +164,10 @@ export interface PlutoAction {
   orderRequestId: string | null;
   referenceBid: number | null;
   referenceMid: number | null;
+  /** IBKR's reported average fill of the chosen option (for a two-part order, its own split of the net). */
   fillPrice: number | null;
+  /** Two-part orders only: the option's price implied by the net fill, with the other part at the price Pluto set. */
+  impliedFillPrice: number | null;
   pessimisticPnl: number | null;
   /** Derived at read time from the legs this action opened (or closed, when a human opened them); null while none has closed. */
   realizedPnl: number | null;

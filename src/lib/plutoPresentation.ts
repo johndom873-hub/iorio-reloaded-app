@@ -191,3 +191,12 @@ export function describePlutoTrigger(pass: PlutoPass): string {
   if ((pass.trigger === "grade_crossing" || pass.trigger === "held_leg") && Array.isArray(detail.symbols) && detail.symbols.length > 0) return `${humanizeKey(pass.trigger).toLowerCase()} on ${(detail.symbols as string[]).join(", ")}`;
   return humanizeKey(pass.trigger).toLowerCase();
 }
+
+/** Why a two-part order's Fill shows a price implied by the net instead of IBKR's own figure for the option. */
+export function describeImpliedFill(reportedFillPrice: number, impliedFillPrice: number): string {
+  return (
+    `Two-part order (shares + call, or a roll). IBKR filled the whole package at exactly its total price but split that total between the parts its own way, ` +
+    `reporting this option at ${reportedFillPrice.toFixed(2)}. The Fill shown (${impliedFillPrice.toFixed(2)}) is the option's price implied by the total, ` +
+    `with the other part counted at the price Pluto set. Both figures are stored.`
+  );
+}
