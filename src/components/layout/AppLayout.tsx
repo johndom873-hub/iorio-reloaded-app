@@ -6,6 +6,7 @@ import type { MarketDataFeedRefusal } from "../../api/environment";
 import { formatEasternTime } from "../../lib/formatters";
 import { Collapse } from "@tabler/core/dist/js/tabler.esm.min.js";
 import {
+  IconBookmark,
   IconCalendarEvent,
   IconChartCandle,
   IconClock,
@@ -18,7 +19,6 @@ import {
   IconLogout,
   IconMoon,
   IconReceipt2,
-  IconSearch,
   IconShieldCheck,
   IconSun,
   IconTrendingUp,
@@ -34,7 +34,7 @@ import { SignalsTickerModalProvider } from "../../contexts/SignalsTickerModalCon
 const navigationItems = [
   { to: "/", label: "Dashboard", icon: IconLayoutDashboard, end: true },
   { to: "/positions", label: "Positions", icon: IconChartCandle },
-  { to: "/screener", label: "Screener", icon: IconSearch },
+  { to: "/shortlist", label: "Shortlist", icon: IconBookmark },
   { to: "/signals", label: "Signals", icon: IconActivity },
   { to: "/price-performance", label: "Price Performance", icon: IconTrendingUp },
   { to: "/trade-blotter", label: "Trade Blotter", icon: IconReceipt2 },

@@ -4,21 +4,21 @@ import { ShortlistTab } from "../components/shortlist/ShortlistTab";
 import { ScreenerTab } from "../components/screener/ScreenerTab";
 import { useSignalsTickerModal } from "../hooks/useSignalsTickerModal";
 
-type ScreenerPageTab = "screener" | "shortlist";
+type ShortlistPageTab = "shortlist" | "screener";
 
-const tabs: { key: ScreenerPageTab; label: string }[] = [
-  { key: "screener", label: "Screener" },
+const tabs: { key: ShortlistPageTab; label: string }[] = [
   { key: "shortlist", label: "Shortlist" },
+  { key: "screener", label: "Screener" },
 ];
 
-export function ScreenerPage() {
-  const [activeTab, setActiveTab] = useState<ScreenerPageTab>("shortlist");
+export function ShortlistPage() {
+  const [activeTab, setActiveTab] = useState<ShortlistPageTab>("shortlist");
   const { open: openTickerModal } = useSignalsTickerModal();
 
   return (
     <>
       <PageHeader
-        title="Screener"
+        title="Shortlist"
         subtitle={activeTab === "screener" ? "Search for candidate tickers to monitor" : "Monitor tickers for trading opportunities"}
       />
 

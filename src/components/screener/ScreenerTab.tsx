@@ -11,7 +11,7 @@ import {
   type ScreenerFilters,
   type ScreenerScanRow,
 } from "../../api/screener";
-import { formatCompactNumber, formatPercentage, formatRelativeDate } from "../../lib/formatters";
+import { formatCompactNumber, formatCurrency, formatPercentage, formatRelativeDate } from "../../lib/formatters";
 
 interface FilterFormState {
   search: string;
@@ -181,6 +181,12 @@ export function ScreenerTab({ onOpenTickerModal }: ScreenerTabProps) {
             </span>
           ))
         ),
+    },
+    {
+      key: "lastPrice",
+      header: "Price",
+      align: "right",
+      render: (row) => (row.lastPrice === null ? "—" : formatCurrency(Number(row.lastPrice))),
     },
     {
       key: "impliedVolatility",
