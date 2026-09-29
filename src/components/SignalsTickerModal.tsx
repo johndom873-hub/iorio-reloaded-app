@@ -11,7 +11,7 @@ import { SignalOrderSetupForm } from "./SignalOrderSetupForm";
 import { ChainContractOrderSetupForm } from "./ChainContractOrderSetupForm";
 import { SignalsOptionChainCard, type ChainContractRef } from "./signals/SignalsOptionChainCard";
 import { formatCurrency, formatCurrencyTrimmed, formatDate, formatDateTime, formatNumber, formatPercentage, formatPercentageValue, formatSignedPercentageValue, formatSignedPnl, formatVolatilityPoints, pnlTextClass } from "../lib/formatters";
-import { candidateContractRight, describeHeldLeg, describeNoCandidatesMessage, describeQuoteAgeRange, describeRollSignalFlag, describeSignalFlag, gradeBadgeClass, gradeExplanation, gradeLabel, heldLegUnscoredReasonLabel, netRollEdgeExplanation, quoteAgeCellLabel, quoteSourceLabel, rollFlagLetter, signalContractKey, signalFlagLetter, surfaceIvTrustClass, unscoredReasonLabel } from "../lib/signalsPresentation";
+import { candidateContractRight, describeHeldLeg, describeSupportResistanceLevel, describeNoCandidatesMessage, describeQuoteAgeRange, describeRollSignalFlag, describeSignalFlag, gradeBadgeClass, gradeExplanation, gradeLabel, heldLegUnscoredReasonLabel, netRollEdgeExplanation, quoteAgeCellLabel, quoteSourceLabel, rollFlagLetter, signalContractKey, signalFlagLetter, surfaceIvTrustClass, unscoredReasonLabel } from "../lib/signalsPresentation";
 import { IvHistoryChart } from "./charts/IvHistoryChart";
 import { TickerPriceChart } from "./charts/TickerPriceChart";
 import { CollapsibleCard } from "./CollapsibleCard";
@@ -1105,14 +1105,14 @@ function TechnicalsCard({ technicals, technicalsError }: { technicals: TickerTec
           <div className="d-flex flex-wrap gap-3 text-secondary font-mono" style={{ fontSize: "0.8rem" }}>
             {support ? (
               <span>
-                Support <strong className="text-body">{formatCurrency(support.price)}</strong> ({support.touches} touches, {support.qualityPct.toFixed(1)}% quality)
+                {describeSupportResistanceLevel("support", support).label} <strong className="text-body">{formatCurrency(support.price)}</strong> ({describeSupportResistanceLevel("support", support).detail})
               </span>
             ) : (
               <span>Support —</span>
             )}
             {resistance ? (
               <span>
-                Resistance <strong className="text-body">{formatCurrency(resistance.price)}</strong> ({resistance.touches} touches, {resistance.qualityPct.toFixed(1)}% quality)
+                {describeSupportResistanceLevel("resistance", resistance).label} <strong className="text-body">{formatCurrency(resistance.price)}</strong> ({describeSupportResistanceLevel("resistance", resistance).detail})
               </span>
             ) : (
               <span>Resistance —</span>
