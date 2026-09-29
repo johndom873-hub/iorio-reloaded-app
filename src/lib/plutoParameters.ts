@@ -66,6 +66,7 @@ export const plutoParameterGroups: PlutoParameterGroup[] = [
       { field: "unfilledCancelMinutes", label: "Unfilled cancel, min", kind: "integer", step: "1", help: "A working Pluto order is cancelled after this long unfilled, or before the close if that comes first." },
       { field: "maxEdgeDriftVp", label: "Max edge drift, vp", kind: "number", step: "0.1", help: "If the net edge moved more than this between the model's look and the order, the order is refused." },
       { field: "tickerCooldownSessions", label: "Ticker cooldown, sessions", kind: "integer", step: "1", help: "Sessions Pluto waits before touching the same ticker again; 0 allows same-day repeats." },
+      { field: "maxFillSlippagePct", label: "Max fill slippage, %", kind: "number", step: "1", help: "A fill this far past the reference price (below the bid for a sell, above the ask for a buy), as a share of it, trips the fill_slippage breaker." },
     ],
   },
   {

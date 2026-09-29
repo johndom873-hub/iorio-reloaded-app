@@ -102,6 +102,8 @@ export function describePlutoEvent(event: PlutoEvent): PlutoTimelineEntry {
       return { badgeClass: "bg-secondary-lt", badgeLabel: "ticker off", line: `${symbol} disabled by ${text(payload.by)}`, reason: null };
     case "lines_changed":
       return { badgeClass: "bg-secondary-lt", badgeLabel: "lines", line: `${text(payload.held)} IBKR line(s) held${payload.detail ? ` · ${text(payload.detail)}` : ""}${payload.reason ? ` · ${text(payload.reason)}` : ""}`, reason: null };
+    case "order_adopted":
+      return { badgeClass: "bg-warning-lt", badgeLabel: "order adopted", line: `${text(payload.description) || symbol} — still working ${text(payload.ageMinutes)} min after a restart, watch resumed`, reason: null };
     case "stress_override_changed":
       return { badgeClass: payload.enabled ? "bg-warning text-white" : "bg-secondary-lt", badgeLabel: payload.enabled ? "stress override" : "override off", line: payload.enabled ? `${text(payload.by)} allowed new opens under SPY stress for ${text(payload.dateIso)}` : `${text(payload.by)} removed today's stress override`, reason: null };
     case "session_schedule":

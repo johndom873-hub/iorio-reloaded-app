@@ -93,6 +93,7 @@ export interface PlutoSettings {
   unfilledCancelMinutes: number;
   maxEdgeDriftVp: number;
   tickerCooldownSessions: number;
+  maxFillSlippagePct: number;
   modelId: string;
   reasoningEffort: PlutoReasoningEffort;
   callTimeoutSeconds: number;
