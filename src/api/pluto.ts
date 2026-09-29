@@ -92,7 +92,7 @@ export interface PlutoSettings {
   spyStressBreakerPct: number;
   unfilledCancelMinutes: number;
   maxEdgeDriftVp: number;
-  tickerCooldownSessions: number;
+  tickerCooldownMinutes: number;
   maxFillSlippagePct: number;
   modelId: string;
   reasoningEffort: PlutoReasoningEffort;
