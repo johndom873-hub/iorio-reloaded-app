@@ -219,7 +219,7 @@ export function describeChainExpiryTab(expiry: { expiry: string; dte: number }):
 export const chainCellStateExplanation = {
   candidate: "Signals candidate",
   filtered: "quoted, but left out by your Signals settings (hover for why)",
-  notCaptured: "not in today's capture — quoted live when picked",
+  notCaptured: "not in today's capture or refresh — quoted live when picked",
 } as const;
 
 /** Escapes server text for a Bootstrap html tooltip (DottedLabelTooltip). */

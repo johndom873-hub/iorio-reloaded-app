@@ -52,7 +52,7 @@ function describeCellForScreenReader(contract: ChainContractRef, cell: SignalsCh
   const contractLabel = `${contract.right === "C" ? "Call" : "Put"} ${formatCurrencyTrimmed(contract.strike)}`;
   if (cell.state === "candidate") return `${contractLabel}, Signals candidate${grade ? `, graded ${gradeLabel[grade]}` : ""}`;
   if (cell.state === "filtered") return `${contractLabel}, filtered: ${cell.reason ?? "not a Signals candidate"}`;
-  return `${contractLabel}, not in today's capture`;
+  return `${contractLabel}, not in today's capture or refresh`;
 }
 
 function ChainCellButton({ contract, cell, liveCandidate, selected, disabled, showStrike, onPick }: { contract: ChainContractRef; cell: SignalsChainCell; liveCandidate: SignalCandidate | undefined; selected: boolean; disabled: boolean; showStrike: boolean; onPick: () => void }) {
