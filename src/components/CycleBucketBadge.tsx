@@ -3,7 +3,7 @@ import { StrategyBadge } from "./StrategyBadge";
 
 // The cycle buckets are the three strategies under their own short keys; the
 // badge itself is the platform-wide StrategyBadge, so the scoreboard and the
-// Cycle card can never disagree with Positions, Trade Alerts, etc.
+// Cycle card can never disagree with Positions, Signals, etc.
 const strategyKeyByBucket: Record<CycleBucketKey, PositionStrategyKey> = {
   csp: "cash_secured_put",
   unstructured: "unstructured",

@@ -104,7 +104,7 @@ export function formatPercentageValue(percentOrNull: number | null | undefined, 
   return `${percentOrNull.toFixed(decimalPlaces)}%`;
 }
 
-// IBKR returns option expiries as "YYYYMMDD" (see OptionQuote.expiry); the
+// IBKR returns option expiries as "YYYYMMDD" (e.g. an order leg's expiry); the
 // rest of the app stores/sends dates as ISO "YYYY-MM-DD".
 export function ibkrExpiryToIsoDate(expiryYyyymmdd: string): string {
   return `${expiryYyyymmdd.slice(0, 4)}-${expiryYyyymmdd.slice(4, 6)}-${expiryYyyymmdd.slice(6, 8)}`;
@@ -195,7 +195,7 @@ export function formatOptionContractShort(strike: number | string, right: "C" | 
 }
 
 // Pairs with daysToExpiry for the "(in X days)" label shown next to an
-// expiry date across the app (Positions table, Order Review, Trade Alerts).
+// expiry date across the app (Positions table, Order Review).
 export function formatDaysToExpiry(days: number): string {
   if (days < 0) return "expired";
   if (days === 0) return "today";

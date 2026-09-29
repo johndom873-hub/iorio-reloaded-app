@@ -3,14 +3,13 @@ import { PageHeader } from "../components/layout/PageHeader";
 import { DataTable, type DataTableColumn } from "../components/DataTable/DataTable";
 import { Pagination } from "../components/Pagination";
 import { Spinner } from "../components/Spinner";
-import { TickerDetailModal } from "../components/TickerDetailModal";
 import { ConfirmModal } from "../components/ConfirmModal";
 import { ApiError } from "../api/client";
 import { cancelOrder, type PositionStrategyKey } from "../api/positions";
 import { fetchTradeBlotter, type PendingOrder, type Trade } from "../api/tradeBlotter";
 import { StrategyBadge } from "../components/StrategyBadge";
 import { TooltipSpan } from "../components/TooltipSpan";
-import { useTickerDetailSymbol } from "../hooks/useTickerDetailSymbol";
+import { useSignalsTickerModal } from "../hooks/useSignalsTickerModal";
 import {
   formatCurrency,
   formatCurrencyTrimmed,
@@ -56,7 +55,7 @@ export function TradeBlotterPage() {
   const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [detailSymbol, setDetailSymbol] = useTickerDetailSymbol();
+  const { open: openTickerModal } = useSignalsTickerModal();
   const [cancellingId, setCancellingId] = useState<string | null>(null);
   const [cancelConfirm, setCancelConfirm] = useState<{ orderId: string; symbol: string; liveAtIbkr: boolean } | null>(null);
 
@@ -144,7 +143,7 @@ export function TradeBlotterPage() {
         <button
           type="button"
           className="btn btn-link p-0 text-decoration-none fw-bold"
-          onClick={() => setDetailSymbol(row.symbol)}
+          onClick={() => openTickerModal(row.symbol)}
         >
           {row.symbol}
         </button>
@@ -344,7 +343,6 @@ export function TradeBlotterPage() {
 
       <Pagination page={currentPage} pageSize={rowsPerPage} totalRows={rows.length} onPageChange={setPage} />
 
-      {detailSymbol && <TickerDetailModal symbol={detailSymbol} onClose={() => setDetailSymbol(null)} />}
 
       {cancelConfirm && (
         <ConfirmModal

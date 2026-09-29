@@ -6,7 +6,6 @@ import { Spinner } from "../components/Spinner";
 import { ApexChart, textColorByTheme } from "../components/charts/ApexChart";
 import { CollapsibleCard } from "../components/CollapsibleCard";
 import { DottedLabelTooltip, HelpTooltip } from "../components/HelpTooltip";
-import { TickerDetailModal } from "../components/TickerDetailModal";
 import { ClosePositionModal } from "../components/ClosePositionModal";
 import { TickColoredPrice } from "../components/TickColoredPrice";
 import { useTheme } from "../contexts/ThemeContext";
@@ -24,7 +23,7 @@ import {
   type PositionEvent,
   type StrategyPeriodPnlRow,
 } from "../api/dashboard";
-import { openTradeAlertCurrentPricesStream } from "../api/tradeAlerts";
+import { openStockPricesStream } from "../api/stockPrices";
 import { fetchPositions, fetchUnrealizedPnl, type Position, type UnrealizedPnlResult } from "../api/positions";
 import { AVAILABLE_CASH_PERCENT_BANDS, lowerIsWorseStatus, statusTextClass } from "../lib/statusThresholds";
 import { fetchExposure, type ConcentrationRow, type ExposureData, type StrategyAllocationRow, type TopPositionRow } from "../api/riskLimits";
@@ -40,7 +39,7 @@ import {
   pnlTextClass,
 } from "../lib/formatters";
 import { portfolioFromExposure } from "../lib/portfolioFromExposure";
-import { useTickerDetailSymbol } from "../hooks/useTickerDetailSymbol";
+import { useRefreshAfterSignalsTickerModal, useSignalsTickerModal } from "../hooks/useSignalsTickerModal";
 import { TooltipSpan } from "../components/TooltipSpan";
 
 const strategyLabels: Record<string, string> = {
@@ -100,7 +99,7 @@ interface AllocationListProps {
   donutTotalLabel?: string;
   // Only "Top Positions" rows carry a tickerSymbol — that's what makes them
   // clickable, matching the platform-wide convention that any displayed
-  // ticker opens TickerDetailModal (By Strategy/By Industry labels aren't
+  // ticker opens the Signals modal (By Strategy/By Industry labels aren't
   // tickers, so they stay plain text).
   onTickerClick?: (ticker: { symbol: string; focusPositionId?: string }) => void;
 }
@@ -501,17 +500,11 @@ export function DashboardPage() {
   const [needsAttentionError, setNeedsAttentionError] = useState<string | null>(null);
   const [needsAttentionPriceBySymbol, setNeedsAttentionPriceBySymbol] = useState<Record<string, number | null>>({});
   const [needsAttentionPriceStreamFailed, setNeedsAttentionPriceStreamFailed] = useState(false);
-  const [detailSymbol, setDetailSymbol] = useTickerDetailSymbol();
-  // Not persisted across a refresh (unlike detailSymbol) -- it's a one-shot
-  // "scroll to this position" aid, not state worth surviving a reload.
-  const [focusPositionId, setFocusPositionId] = useState<string | undefined>(undefined);
+  const { open: openTickerModal } = useSignalsTickerModal();
   const [closePosition, setClosePosition] = useState<Position | null>(null);
-  const openTickerDetail = useCallback(
-    (ticker: { symbol: string; focusPositionId?: string }) => {
-      setDetailSymbol(ticker.symbol);
-      setFocusPositionId(ticker.focusPositionId);
-    },
-    [setDetailSymbol],
+  const openTickerModalAtPosition = useCallback(
+    (ticker: { symbol: string; focusPositionId?: string }) => openTickerModal(ticker.symbol, { focusPositionId: ticker.focusPositionId }),
+    [openTickerModal],
   );
 
   useEffect(() => {
@@ -602,13 +595,14 @@ export function DashboardPage() {
   useEffect(() => {
     loadNeedsAttention();
   }, [loadNeedsAttention]);
+  useRefreshAfterSignalsTickerModal(loadNeedsAttention);
 
   const needsAttentionSymbols = Array.from(new Set(needsAttention.map((position) => position.symbol))).sort().join(",");
 
   useEffect(() => {
     if (!needsAttentionSymbols) return;
     setNeedsAttentionPriceStreamFailed(false);
-    return openTradeAlertCurrentPricesStream(
+    return openStockPricesStream(
       needsAttentionSymbols.split(","),
       (result) => {
         setNeedsAttentionPriceStreamFailed(false);
@@ -741,7 +735,7 @@ export function DashboardPage() {
                           <button
                             type="button"
                             className="btn btn-link px-0 py-0 text-decoration-none fw-bold"
-                            onClick={() => openTickerDetail({ symbol: position.symbol, focusPositionId: position.id })}
+                            onClick={() => openTickerModalAtPosition({ symbol: position.symbol, focusPositionId: position.id })}
                           >
                             {position.symbol}
                           </button>
@@ -767,7 +761,7 @@ export function DashboardPage() {
                             <button
                               type="button"
                               className="btn btn-sm btn-outline-warning"
-                              onClick={() => openTickerDetail({ symbol: position.symbol, focusPositionId: position.id })}
+                              onClick={() => openTickerModalAtPosition({ symbol: position.symbol, focusPositionId: position.id })}
                             >
                               Sell Call
                             </button>
@@ -817,7 +811,7 @@ export function DashboardPage() {
               </thead>
               <tbody>
                 {events.map((event) => (
-                  <EventRow key={`${event.positionId}-${event.eventType}-${event.eventAt}`} event={event} onSymbolClick={openTickerDetail} />
+                  <EventRow key={`${event.positionId}-${event.eventType}-${event.eventAt}`} event={event} onSymbolClick={openTickerModalAtPosition} />
                 ))}
               </tbody>
             </table>
@@ -951,7 +945,7 @@ export function DashboardPage() {
                 title="Top Positions"
                 emptyMessage="No open positions yet."
                 totalAccountValue={exposure?.totalAccountValue ?? null}
-                onTickerClick={openTickerDetail}
+                onTickerClick={openTickerModalAtPosition}
                 rows={(() => {
                   const topRows = (exposure?.topPositions ?? []).map((row: TopPositionRow) => ({
                     key: row.positionId,
@@ -1054,17 +1048,6 @@ export function DashboardPage() {
         />
       )}
 
-      {detailSymbol && (
-        <TickerDetailModal
-          symbol={detailSymbol}
-          focusPositionId={focusPositionId}
-          onClose={() => {
-            setDetailSymbol(null);
-            setFocusPositionId(undefined);
-            loadNeedsAttention();
-          }}
-        />
-      )}
     </>
   );
 }

@@ -200,7 +200,7 @@ export function TickerPrepModal({ tickerId, symbol, companyName, onRunChange, on
                   )}
                   {!isRunning && !isPartial && (
                     <div className="prep-note is-ok">
-                      <p>{completionNote ?? `${symbol} will be included in tomorrow's trade-alert scan.`}</p>
+                      <p>{completionNote ?? `${symbol} is ready and will be picked up by the next scheduled jobs.`}</p>
                     </div>
                   )}
                   {isPartial && (

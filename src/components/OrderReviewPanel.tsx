@@ -4,11 +4,9 @@ import { ApiError } from "../api/client";
 import { useBackgroundJobs, type OrderJob } from "../contexts/BackgroundJobsContext";
 import { cancelOrder, clearOrderConfirmationSent, confirmOrder, markOrderConfirmationSent, openOrderLegQuoteStream, type AdaptivePriority, type OrderLegQuote, type OrderRequest } from "../api/positions";
 
-// Just the fields the Live Quote card below actually renders -- deliberately
-// not OptionQuote itself, since a Day Signals caller's already-known quote
-// (SignalCandidate) has no gamma/last of its own to offer, only
-// bid/ask/delta/vega/IV. TickerDetailModal's OptionQuote satisfies this
-// structurally (it has every field here, plus more), so it needs no mapping.
+// Just the fields the Live Quote card below actually renders -- a Signals
+// caller's already-known quote (SignalCandidate) has no gamma/last of its own
+// to offer, only bid/ask/delta/vega/IV.
 export interface OrderReviewQuoteSeed {
   bid: number | null;
   ask: number | null;
@@ -49,22 +47,22 @@ interface OrderReviewPanelProps {
   onFilled: () => void;
   /**
    * Real live underlying price, when the caller already has one streaming
-   * (TickerDetailModal's own overview stream) -- used for POP instead of the
+   * (the Signals modal's pooled spot price) -- used for POP instead of the
    * stockLeg-unitPrice-or-strike approximation below. Genuinely needed here
    * (not just nice-to-have): a CSP or a covered call sold against
    * already-held shares has no stock leg in the order at all, so without
    * this the fallback would silently use the strike itself as "spot,"
    * materially skewing POP for exactly the orders Juan flagged POP as most
-   * important for. Left undefined for Roll/Close (RollPositionModal/
-   * ClosePositionModal), which don't have a spot price already on hand --
+   * important for. Left undefined for Close (ClosePositionModal), which
+   * doesn't have a spot price already on hand --
    * POP simply doesn't render there rather than opening a second live IBKR
    * stream just for this one number.
    */
   liveSpotPrice?: number | null;
   /**
-   * The option-chain quote the caller already had for this leg a moment
-   * ago (TickerDetailModal's own optionChain stream, still warm on the
-   * same IBKR line the Live Quote card is about to subscribe to) -- lets
+   * The quote the caller already had for this leg a moment ago (the
+   * Signals modal's scored candidate, often still warm on the same IBKR
+   * line the Live Quote card is about to subscribe to) -- lets
    * the card paint bid/ask/spread/IV/Greeks instantly instead of sitting
    * on a spinner for a fresh subscribe-and-first-tick round trip (found
    * 2026-09-24). Display only: it never feeds the compliance/signalLimits

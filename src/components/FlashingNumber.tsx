@@ -13,9 +13,8 @@ interface FlashingNumberProps {
   children: ReactNode;
 }
 
-// Table-cell counterpart to the inline flash spans already used in
-// TickerDetailModal's quote rows (approved 2026-09-11) — same
-// useFlashOnChange/.flash-changed mechanism, packaged as a component so a
+// Table-cell counterpart to the inline flash spans (e.g. the Signals modal's
+// chain cells) — same useFlashOnChange/.flash-changed mechanism, packaged as a component so a
 // DataTable column's `render(row)` callback (a plain function, not a
 // component itself — see DataTable.tsx) can still get one flashing
 // component instance per cell rather than calling the hook directly, which

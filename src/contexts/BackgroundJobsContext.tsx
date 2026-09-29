@@ -1,10 +1,10 @@
 import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from "react";
 import { fetchOrder, type OrderRequest } from "../api/positions";
 import { openNotificationStream } from "../api/notifications";
-import { describeRollSignalUpgrade, describeSignalUpgrade } from "../lib/signalsPresentation";
+import { describeAssignmentRisk, describeRollSignalUpgrade, describeSignalUpgrade } from "../lib/signalsPresentation";
 import { useAuth } from "./AuthContext";
 
-export type BackgroundJobKind = "order" | "position-closed" | "signal-upgraded";
+export type BackgroundJobKind = "order" | "position-closed" | "signal-upgraded" | "assignment-risk";
 export type BackgroundJobStatus = "running" | "done" | "error";
 
 interface BackgroundJobBase {
@@ -37,7 +37,12 @@ export interface SignalUpgradedJob extends BackgroundJobBase {
   kind: "signal-upgraded";
 }
 
-export type BackgroundJob = OrderJob | PositionClosedJob | SignalUpgradedJob;
+// Fed by the Day Signals loop's "assignment_risk" event: an open short leg's |delta| crossed the threshold. One-shot.
+export interface AssignmentRiskJob extends BackgroundJobBase {
+  kind: "assignment-risk";
+}
+
+export type BackgroundJob = OrderJob | PositionClosedJob | SignalUpgradedJob | AssignmentRiskJob;
 
 const terminalOrderStatuses = new Set(["filled", "partially_filled", "cancelled", "rejected", "error"]);
 
@@ -175,6 +180,16 @@ export function BackgroundJobsProvider({ children }: { children: ReactNode }) {
           dismissed: false,
           link: { to: `/signals?signal=${encodeURIComponent(notification.symbol)}&roll=${encodeURIComponent(notification.legId)}`, label: "Open in Signals" },
         });
+      } else if (notification.type === "assignment_risk") {
+        upsertJob({
+          id: `assignment-risk-${notification.legId}-${Date.now()}`,
+          kind: "assignment-risk",
+          label: `Assignment risk — ${notification.symbol}`,
+          status: "done",
+          message: describeAssignmentRisk(notification).replace(`${notification.symbol} `, ""),
+          dismissed: false,
+          link: { to: `/signals?signal=${encodeURIComponent(notification.symbol)}&roll=${encodeURIComponent(notification.legId)}`, label: "Open in Signals" },
+        });
       } else if (notification.type === "signal_upgraded") {
         upsertJob({
           id: `signal-upgraded-${notification.symbol}-${notification.expiry}-${notification.strike}-${Date.now()}`,
@@ -201,10 +216,3 @@ export function useBackgroundJobs(): BackgroundJobsContextValue {
   if (!context) throw new Error("useBackgroundJobs must be used within a BackgroundJobsProvider");
   return context;
 }
-
-// Subscribes to one job's raw event stream for as long as the calling
-// component stays mounted — e.g. TradeAlertsPage using this to refetch its
-// list the instant a ticker/roll result lands, without waiting for the scan
-// (which lives in BackgroundJobsContext, not this component) to finish.
-// handlerRef avoids re-subscribing whenever the caller passes a new inline
-// handler function.

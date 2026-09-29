@@ -55,7 +55,7 @@ import { TotalPnlChart } from "../components/pulse/TotalPnlChart";
 import { NetDeltaChart, type DeltaSeries } from "../components/pulse/NetDeltaChart";
 import { EnvironmentBadges } from "../components/layout/EnvironmentBadges";
 import { useEnvironmentStatus } from "../hooks/useEnvironmentStatus";
-import { describeSignalUpgradeCompact } from "../lib/signalsPresentation";
+import { describeAssignmentRisk, describeSignalUpgradeCompact } from "../lib/signalsPresentation";
 
 const CHART_SAMPLE_INTERVAL_MS = 60_000;
 // 8 hours of history at one sample/minute — matches the backend's rolling
@@ -634,12 +634,8 @@ export function PulsePage() {
             const color = notification.status === "success" ? "var(--accent-glow)" : "var(--danger)";
             return { occurredAt, text: `Job ${notification.status === "success" ? "done" : "failed"} — ${notification.jobName}`, color };
           }
-          case "alert_generated":
-            return {
-              occurredAt,
-              text: `Alert — ${notification.symbol} ${strategyAbbrev(notification.strategyKey)}, ${(notification.annualizedYield * 100).toFixed(1)}% yield`,
-              color: "var(--warning)",
-            };
+          case "assignment_risk":
+            return { occurredAt, text: `Assignment risk — ${describeAssignmentRisk(notification)}`, color: "var(--warning)" };
           case "signal_upgraded":
             return { occurredAt, text: `Signal — ${describeSignalUpgradeCompact(notification)}`, color: "var(--success)" };
           case "order_status": {
@@ -728,9 +724,9 @@ export function PulsePage() {
           }
           break;
         }
-        case "alert_generated": {
-          firePulse("gateway-db", "var(--warning)");
-          appendEvent(`Alert — ${notification.symbol} ${strategyAbbrev(notification.strategyKey)}, ${(notification.annualizedYield * 100).toFixed(1)}% yield`, "var(--warning)");
+        case "assignment_risk": {
+          firePulse("heroku-db", "var(--warning)");
+          appendEvent(`Assignment risk — ${describeAssignmentRisk(notification)}`, "var(--warning)");
           break;
         }
         case "signal_upgraded": {

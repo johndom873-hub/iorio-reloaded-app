@@ -9,7 +9,7 @@ interface RecoveryPathModalProps {
   positionId: string;
   symbol: string;
   onClose: () => void;
-  /** Sell This on the suggested candidate — jumps to the option chain in the parent TickerDetailModal, prefilled. */
+  /** Sell This on the suggested candidate — selects that exact call in the Signals modal's chain and order setup, scored on demand when it is not a Signals candidate. */
   onSellCandidate: (prefill: { strike: number; expiry: string; quantity: number; premium: number }) => void;
 }
 

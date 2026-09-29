@@ -4,7 +4,6 @@ import { PageHeader } from "../components/layout/PageHeader";
 import { DataTable, type DataTableColumn } from "../components/DataTable/DataTable";
 import { Spinner } from "../components/Spinner";
 import { TickColoredPrice } from "../components/TickColoredPrice";
-import { TickerDetailModal } from "../components/TickerDetailModal";
 import { ApiError } from "../api/client";
 import { openNotificationStream } from "../api/notifications";
 import { useSharedEnvironmentStatus } from "../hooks/useEnvironmentStatus";
@@ -21,7 +20,7 @@ import {
 } from "../api/pricePerformance";
 import { formatCurrency, formatDate, formatEasternTime, formatNumber, formatPercentage, formatPercentageValue, pnlBadgeClass } from "../lib/formatters";
 import { percentChange } from "../lib/priceChange";
-import { useTickerDetailSymbol } from "../hooks/useTickerDetailSymbol";
+import { useSignalsTickerModal } from "../hooks/useSignalsTickerModal";
 import { useTooltip } from "../hooks/useTooltip";
 import { TooltipSpan } from "../components/TooltipSpan";
 
@@ -115,7 +114,7 @@ export function PricePerformancePage() {
   const [clockMs, setClockMs] = useState(() => Date.now());
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [detailSymbol, setDetailSymbol] = useTickerDetailSymbol();
+  const { open: openTickerModal } = useSignalsTickerModal();
   // Live prices arrive separately from the table (which renders at once from
   // stored daily bars), so the table never waits on IBKR.
   const [livePrices, setLivePrices] = useState<PricePerformanceLivePrices>({});
@@ -242,7 +241,7 @@ export function PricePerformancePage() {
         <button
           type="button"
           className="btn btn-link p-0 text-decoration-none fw-bold"
-          onClick={() => setDetailSymbol(row.symbol)}
+          onClick={() => openTickerModal(row.symbol)}
         >
           {row.symbol}
         </button>
@@ -460,7 +459,6 @@ export function PricePerformancePage() {
         emptyMessage="No shortlisted tickers yet."
       />
 
-      {detailSymbol && <TickerDetailModal symbol={detailSymbol} onClose={() => setDetailSymbol(null)} />}
     </>
   );
 }

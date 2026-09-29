@@ -4,13 +4,13 @@ import { buildOpenOrder, type AdaptivePriority, type OrderRequest } from "../api
 import type { SignalCandidate, TickerSignals } from "../api/signals";
 import { checkSignalOrderLimits } from "../api/signalSettings";
 import { flashClassName, useFlashOnChange } from "../hooks/useFlashOnChange";
+import { computePayoff } from "../lib/payoff";
 import { formatCurrency, formatDate, formatPercentage, formatSignedPercentageValue, formatSignedPnl, formatVolatilityPoints } from "../lib/formatters";
 import { describeCandidate, describeSignalFlag, gradeBadgeClass, gradeLabel, signalFlagLetter } from "../lib/signalsPresentation";
 import { Spinner } from "./Spinner";
 import { useTooltip } from "../hooks/useTooltip";
 
-// Signals order setup (stage 5, approved 2026-09-22). Same split as
-// RollOrderSetupForm: this is only the "form" half -- it builds the order
+// Signals order setup (stage 5, approved 2026-09-22). This is only the "form" half -- it builds the order
 // through the existing POST /positions/orders and hands the OrderRequest up;
 // the caller renders the shared OrderReviewPanel, which confirms and places
 // it exactly as every other order in the app. What is new: the Signal card
@@ -35,6 +35,8 @@ interface SignalOrderSetupFormProps {
   selectedAtIso: string;
   onCancel: () => void;
   onSubmitted: (order: OrderRequest, adaptivePriority: AdaptivePriority) => void;
+  /** Shown under the title, e.g. why a contract picked from the full chain is not a Signals candidate. */
+  notice?: ReactNode;
 }
 
 function Row({ label, value, tone, strong }: { label: string; value: ReactNode; tone?: string; strong?: boolean }) {
@@ -67,7 +69,7 @@ function ReviewOrderButton({ disabled, blockedTooltip, building, onClick }: { di
   );
 }
 
-export function SignalOrderSetupForm({ symbol, signals, candidate, spotPrice, netEdgeAtSelection, selectedAtIso, onCancel, onSubmitted }: SignalOrderSetupFormProps) {
+export function SignalOrderSetupForm({ symbol, signals, candidate, spotPrice, netEdgeAtSelection, selectedAtIso, onCancel, onSubmitted, notice }: SignalOrderSetupFormProps) {
   const isCall = candidate.strategyKey === "covered_call";
   const defaultQuantity = isCall && signals.freeShares >= 100 ? Math.floor(signals.freeShares / 100) : 1;
   const [contractQty, setContractQty] = useState(String(defaultQuantity));
@@ -97,6 +99,15 @@ export function SignalOrderSetupForm({ symbol, signals, candidate, spotPrice, ne
   const insufficientCashFlagged = candidate.flags.includes("insufficient_cash");
   const capitalAtRisk = isCall ? (spotPrice ?? 0) * 100 * quantity : candidate.strike * 100 * quantity;
   const maxGainAtBid = candidate.bid * 100 * quantity;
+  // Expiration payoff at the bid (same computePayoff as the Positions cards and Order Review): a covered call
+  // buys the shares at spot in the same order, so its max gain includes the stock's upside to the strike.
+  const payoffAtBid =
+    isCall && spotPrice === null
+      ? null
+      : computePayoff(candidate.strategyKey, [
+          ...(isCall ? [{ legType: "stock" as const, optionType: null, entryPrice: String(spotPrice), strikePrice: null, quantity: quantity * 100, multiplier: 1 }] : []),
+          { legType: "option", optionType: isCall ? "call" : "put", entryPrice: String(candidate.bid), strikePrice: String(candidate.strike), quantity, multiplier: 100 },
+        ]);
 
   // The three Signals-tab blocking limits (max position %, max concentration per ticker %, min cash
   // reserve %) depend on the chosen contract quantity and live portfolio state, so they're re-checked
@@ -174,6 +185,8 @@ export function SignalOrderSetupForm({ symbol, signals, candidate, spotPrice, ne
         </h4>
       </div>
 
+      {notice}
+
       {blockingReasons.length > 0 && (
         <div className="alert alert-warning mb-0 py-2" style={{ fontSize: "0.85rem" }}>
           <strong>Cannot place now:</strong> {blockingReasons.join(" ")} The score is still shown.
@@ -202,7 +215,7 @@ export function SignalOrderSetupForm({ symbol, signals, candidate, spotPrice, ne
           </span>
         </div>
         <div className="mt-2">
-          <Row label="Surface IV at this strike (10:00 snapshot, live spot)" value={formatPercentage(candidate.surfaceImpliedVolatility, 1)} />
+          <Row label="Surface IV at this strike (9:30 snapshot, live spot)" value={formatPercentage(candidate.surfaceImpliedVolatility, 1)} />
           <Row label={`Forecast volatility (${signals.forecast?.windowDays ?? 63}-day Yang-Zhang)`} value={formatPercentage(candidate.forecastVolatility, 1)} />
           <Row label="Friction (mid-bid range)" value={`${formatVolatilityPoints(frictionAtMid).replace("+", "")} – ${formatVolatilityPoints(frictionAtBid).replace("+", "")}`} />
         </div>
@@ -253,7 +266,13 @@ export function SignalOrderSetupForm({ symbol, signals, candidate, spotPrice, ne
           </div>
         </div>
         <Row label="Reference premium (bid)" value={formatCurrency(candidate.bid)} />
-        <Row label="Max gain (at bid)" value={formatSignedPnl(maxGainAtBid, 0)} tone="text-success" />
+        <Row label="Max gain (at bid)" value={formatSignedPnl(payoffAtBid?.maxGain ?? maxGainAtBid, 0)} tone="text-success" />
+        {payoffAtBid && (
+          <>
+            <Row label="Max loss (at bid)" value={formatSignedPnl(-payoffAtBid.maxLoss, 0)} tone="text-danger" />
+            <Row label="Breakeven" value={formatCurrency(payoffAtBid.breakeven)} />
+          </>
+        )}
         <Row label="Capital at risk" value={formatCurrency(capitalAtRisk, 0)} />
         <Row label="Annualised yield" value={formatPercentage(candidate.annualizedYield, 0)} />
         {isCall && (

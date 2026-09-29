@@ -630,8 +630,8 @@
 /* Dense, trading-terminal-style tables app-wide (approved 2026-08-31) —
    Bootstrap's table-sm only tightens cell padding, it doesn't shrink the
    font, so this was previously hand-inlined only on the shared DataTable
-   component and every other table.table-sm in the app (TradeAlerts,
-   TickerDetailModal, PositionDetailModal) stayed at the larger base font.
+   component and every other table.table-sm in the app stayed at the larger
+   base font.
    One rule here instead of repeating the inline style at every call site. */
 .table.table-sm {
   font-size: 0.8125rem;
@@ -728,7 +728,7 @@
   color: #fff !important;
 }
 
-/* Trade Alerts' "Expired" status badge — same -lt contrast bug. #6c757d is
+/* Secondary badges — same -lt contrast bug. #6c757d is
    Bootstrap's own $secondary, already verified >4.5:1 with white text. */
 .badge.bg-secondary,
 .badge.bg-secondary-lt {
@@ -841,7 +841,7 @@
   animation: flash-bg-changed 1200ms ease-out;
 }
 
-/* Ticker Detail modal: a small inset + rounded corners instead of true
+/* Signals modal: a small inset + rounded corners instead of true
    edge-to-edge full-bleed, so the backdrop stays visible and it reads as a
    modal rather than a full-page view (Marcelo, 2026-08-27). Combined-class
    selectors (rather than !important) beat Bootstrap's plain .modal-dialog
@@ -859,6 +859,21 @@
 .modal-dialog-inset .modal-content {
   height: 100%;
   max-height: 100%;
+}
+
+/* Signals modal header: the live-status line sits between the title and the close button, and drops to its
+   own full-width row under the title on phones so it doesn't squeeze the symbol/company name. */
+.signals-modal-live-status {
+  order: 3;
+  flex-basis: 100%;
+  margin-top: 0.25rem;
+}
+@media (min-width: 576px) {
+  .signals-modal-live-status {
+    order: 0;
+    flex-basis: auto;
+    margin: 0 1rem 0 auto;
+  }
 }
 
 /* Volatility Surface modal: chart/table split at an exact 50/50 -- stacks to full width below lg like the
@@ -1080,4 +1095,131 @@
 }
 :root[data-bs-theme="dark"] .iorio-note-amber {
   color: #f5b458;
+}
+
+/* Signals modal full option chain (SignalsOptionChainCard). Each side of a strike row is one button laid out
+   as a grid, so the header's column labels use the same grid to line up. Colours come from Tabler tokens. */
+.signals-chain-expiry-tabs {
+  display: flex;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  padding: 0 0.5rem;
+  scrollbar-width: thin;
+}
+.signals-chain-expiry-tab {
+  position: relative;
+  flex: none;
+  padding: 0.6rem 0.85rem;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  background: transparent;
+  color: var(--tblr-body-color);
+  font-size: 0.8rem;
+  font-weight: 500;
+  white-space: nowrap;
+}
+/* Active tab: body text (AA in both themes; primary-blue text is too dark on the dark surface) over a primary underline. */
+.signals-chain-expiry-tab:hover {
+  border-bottom-color: var(--tblr-border-color);
+}
+.signals-chain-expiry-tab.is-active {
+  border-bottom-color: var(--tblr-primary);
+  font-weight: 700;
+}
+.signals-chain-candidate-dot {
+  position: absolute;
+  top: 0.45rem;
+  right: 0.3rem;
+  width: 0.4rem;
+  height: 0.4rem;
+  border-radius: 50%;
+  background: var(--tblr-success);
+}
+.signals-chain-scroll {
+  max-height: 28rem;
+  overflow-y: auto;
+}
+.signals-chain-table {
+  table-layout: fixed;
+  font-size: 0.8rem;
+}
+.signals-chain-table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  /* A sticky cell loses the table's collapsed bottom border while scrolled: draw it on the cell itself. */
+  box-shadow: inset 0 -1px 0 var(--tblr-border-color);
+}
+.signals-chain-strike-column {
+  width: 5rem;
+  background: var(--tblr-bg-surface-secondary);
+}
+.signals-chain-column-labels,
+.signals-chain-cell {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.25rem;
+  align-items: center;
+  padding: 0.25rem 0.5rem;
+  text-align: right;
+}
+.signals-chain-column-labels.has-strike,
+.signals-chain-cell.has-strike {
+  grid-template-columns: 4rem repeat(4, minmax(0, 1fr));
+}
+.signals-chain-cell {
+  width: 100%;
+  min-height: 2rem;
+  border: 0;
+  background: transparent;
+  color: var(--tblr-body-color);
+  font-size: 0.8rem;
+  cursor: pointer;
+}
+.signals-chain-cell.has-strike {
+  min-height: 2.75rem;
+}
+.signals-chain-cell.text-secondary {
+  color: var(--tblr-secondary-color) !important;
+}
+.signals-chain-cell:hover:not(:disabled) {
+  background: var(--tblr-active-bg);
+}
+.signals-chain-cell:focus-visible {
+  outline: 2px solid var(--tblr-primary);
+  outline-offset: -2px;
+}
+/* A ring drawn with box-shadow, not outline: Bootstrap's :focus:not(:focus-visible) reset would drop an outline right after the click. */
+.signals-chain-scroll .signals-chain-cell.is-selected {
+  background: var(--tblr-primary-lt);
+  box-shadow: inset 0 0 0 2px var(--tblr-primary);
+}
+.signals-chain-cell:disabled {
+  cursor: default;
+}
+.signals-chain-filtered-label {
+  font-size: 0.72rem;
+}
+.signals-chain-spot-marker {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.1rem 0.75rem;
+  font-size: 0.75rem;
+}
+.signals-chain-spot-line {
+  flex: 1 1 auto;
+  border-top: 2px solid currentColor;
+}
+/* Order-pane notice for a chain contract that is not a Signals candidate: amber (.iorio-note-amber) when filtered, secondary text otherwise. */
+.signals-chain-notice {
+  border: 1px solid currentColor;
+  border-radius: var(--tblr-border-radius);
+  padding: 0.5rem 0.75rem;
+  font-size: 0.85rem;
+}
+
+/* Branded 404 (NotFoundPage): Tabler's .empty, centred in the page body's visible height. */
+.iorio-not-found {
+  min-height: 60vh;
 }

@@ -134,10 +134,10 @@ function OptionChainExpiriesCell({ expiries }: { expiries: ShortlistRow["optionC
 }
 
 interface ShortlistTabProps {
-  onOpenTickerDetail: (symbol: string) => void;
+  onOpenTickerModal: (symbol: string) => void;
 }
 
-export function ShortlistTab({ onOpenTickerDetail }: ShortlistTabProps) {
+export function ShortlistTab({ onOpenTickerModal }: ShortlistTabProps) {
   const [rows, setRows] = useState<ShortlistRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -339,7 +339,7 @@ export function ShortlistTab({ onOpenTickerDetail }: ShortlistTabProps) {
         <button
           type="button"
           className="btn btn-link p-0 text-decoration-none fw-bold"
-          onClick={() => onOpenTickerDetail(row.symbol)}
+          onClick={() => onOpenTickerModal(row.symbol)}
         >
           {row.symbol}
         </button>
@@ -634,7 +634,7 @@ export function ShortlistTab({ onOpenTickerDetail }: ShortlistTabProps) {
       {removeConfirmRow && (
         <ConfirmModal
           title="Remove from Shortlist"
-          message={<>Remove <strong>{removeConfirmRow.symbol}</strong> from the shortlist? It will stop being scanned for trade alerts.</>}
+          message={<>Remove <strong>{removeConfirmRow.symbol}</strong> from the shortlist? It will no longer be scored on the Signals screen unless it has an open short option.</>}
           confirmLabel="Remove"
           confirming={removingId === removeConfirmRow.id}
           onConfirm={() => handleRemove(removeConfirmRow.id)}

@@ -16,7 +16,7 @@ export interface MacroEvent {
 }
 export type SignalsUnscoredReason = "no_snapshot" | "no_surface_fit" | "no_forecast" | "suspected_split";
 export type SignalsPriceSource = "live" | "frozen" | "snapshot";
-/** live = a pooled IBKR line (modal / screen best line), day = the Day Signals refresh loop, snapshot = the 10:00 ET capture. */
+/** live = a pooled IBKR line (modal / screen best line), day = the Day Signals refresh loop, snapshot = the 9:30 ET capture. */
 export type SignalQuoteSource = "live" | "day" | "snapshot";
 
 export interface SignalCandidate {
@@ -323,4 +323,96 @@ export function openSignalsScreenStream(onFrame: (frame: SignalsScreenFrame) => 
       return () => {};
     },
   });
+}
+
+// ---- Full option chain in the Signals modal (backend: lib/signalsChain.ts) ----
+
+/** candidate = one of the modal's graded candidates; filtered = quoted but left out by Signals (reason says why); not_captured = never quoted today. */
+export type SignalsChainCellState = "candidate" | "filtered" | "not_captured";
+
+export interface SignalsChainCell {
+  state: SignalsChainCellState;
+  bid: number | null;
+  ask: number | null;
+  delta: number | null;
+  quoteSource: SignalQuoteSource | null;
+  quotedAt: string | null;
+  /** Candidates only. */
+  grade: SignalGrade | null;
+  netEdge: number | null;
+  /** Filtered only: why Signals left it out, in plain words. */
+  reason: string | null;
+}
+
+export interface SignalsChainStrikeRow {
+  strike: number;
+  call: SignalsChainCell;
+  put: SignalsChainCell;
+}
+
+export interface SignalsChainExpiry {
+  expiry: string;
+  dte: number;
+  hasCandidate: boolean;
+  hasFittedSurface: boolean;
+}
+
+export interface SignalsChain {
+  symbol: string;
+  inSignalsUniverse: boolean;
+  snapshotDateIso: string | null;
+  spotPrice: number | null;
+  unscoredReason: SignalsUnscoredReason | null;
+  expiries: SignalsChainExpiry[];
+  /** The expiry `strikes` belongs to; null when the ticker has no listed expiry stored. */
+  selectedExpiry: string | null;
+  strikes: SignalsChainStrikeRow[];
+}
+
+export interface SignalContractContext {
+  right: "C" | "P";
+  /** Passes today's Signals tab filters too (it is one of the modal's candidates). */
+  isCandidate: boolean;
+  /** Why it is not a candidate (or not scored); null for a candidate. */
+  notCandidateReason: string | null;
+  /** The spot the contract was scored at. */
+  spotPrice: number | null;
+  priceSource: SignalsPriceSource;
+}
+
+/** Scored exactly like a candidate: SignalOrderSetupForm takes it unchanged. */
+export interface ScoredSignalContract extends SignalCandidate, SignalContractContext {
+  scored: true;
+}
+
+/** No Signals score (in the money, spans earnings, no surface for the expiry, no two-sided quote, ...): the quote alone. */
+export interface UnscoredSignalContract extends SignalContractContext {
+  scored: false;
+  strategyKey: SignalStrategyKey;
+  expiry: string;
+  strike: number;
+  dte: number;
+  bid: number | null;
+  ask: number | null;
+  delta: number | null;
+  quoteSource: SignalQuoteSource | null;
+  quotedAt: string | null;
+}
+
+export type SignalContractScore = ScoredSignalContract | UnscoredSignalContract;
+
+/** Every stored strike of one expiry (null = the API picks: first expiry with a candidate, else the nearest). `spotPrice` = the modal's live spot. */
+export function fetchSignalsChain(symbol: string, expiry: string | null, spotPrice: number | null): Promise<SignalsChain> {
+  const query = new URLSearchParams();
+  if (expiry) query.set("expiry", expiry);
+  if (spotPrice !== null && spotPrice > 0) query.set("spotPrice", String(spotPrice));
+  const queryString = query.toString();
+  return apiRequest<SignalsChain>(`/signals/${encodeURIComponent(symbol)}/chain${queryString ? `?${queryString}` : ""}`);
+}
+
+/** One contract scored like a Signals candidate with the filters lifted; takes one pooled live quote when the market is open (up to ~3 s). */
+export function fetchSignalContractScore(symbol: string, contract: { expiry: string; strike: number; right: "C" | "P" }, spotPrice: number | null): Promise<SignalContractScore> {
+  const query = new URLSearchParams({ expiry: contract.expiry, strike: String(contract.strike), right: contract.right });
+  if (spotPrice !== null && spotPrice > 0) query.set("spotPrice", String(spotPrice));
+  return apiRequest<SignalContractScore>(`/signals/${encodeURIComponent(symbol)}/contract?${query.toString()}`);
 }

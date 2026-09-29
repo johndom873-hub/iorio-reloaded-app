@@ -1,25 +1,24 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { IconAlertTriangle, IconChevronDown, IconRefresh } from "@tabler/icons-react";
-import { useSearchParams } from "react-router-dom";
+import { useEffect, useMemo, useState } from "react";
+import { IconAlertTriangle, IconChevronDown } from "@tabler/icons-react";
 import { ApiError } from "../api/client";
 import { fetchSignalsRoadmap, fetchSignalsScreen, openSignalsScreenStream, type DayQuotesFrameStatus, type RoadmapItem, type SignalGrade, type SignalsScreenRow } from "../api/signals";
 import { DataTable, type DataTableColumn } from "../components/DataTable/DataTable";
 import { FlashingNumber } from "../components/FlashingNumber";
 import { PageHeader } from "../components/layout/PageHeader";
 import { ModelCaveatBadge, RoadmapEtaText } from "../components/signals/ModelCaveatBadge";
-import { SignalsTickerModal } from "../components/SignalsTickerModal";
+import { RollBadge } from "../components/signals/RollBadge";
 import { TickColoredPrice } from "../components/TickColoredPrice";
 import { TooltipSpan } from "../components/TooltipSpan";
-import { useTickerDetailSymbol } from "../hooks/useTickerDetailSymbol";
+import { useSignalsTickerModal } from "../hooks/useSignalsTickerModal";
 import { daysToExpiry, formatCurrency, formatDateTime, formatDaysToExpiry, formatPercentage, formatRelativeTime, formatSignedPercentageValue, formatSignedPnl, formatVolatilityPoints, pnlTextClass } from "../lib/formatters";
-import { describeCandidateCompact, describeDayQuotesStatus, describeNoCandidatesReason, noSignalBadgeLabel, describeRoll, gradeBadgeClass, gradeExplanation, gradeLabel, priceSourceLabel, quoteAgeCellLabel, quoteSourceLabel, roadmapStatusBadgeClass, roadmapStatusLabel, signalsColumnExplanation, unscoredReasonLabel } from "../lib/signalsPresentation";
+import { describeCandidateCompact, describeDayQuotesStatus, describeNoCandidatesReason, noSignalBadgeLabel, gradeBadgeClass, gradeExplanation, gradeLabel, priceSourceLabel, quoteAgeCellLabel, quoteSourceLabel, roadmapStatusBadgeClass, roadmapStatusLabel, signalsColumnExplanation, unscoredReasonLabel } from "../lib/signalsPresentation";
 import { useTooltip } from "../hooks/useTooltip";
 
 // Signals screen (stage 3 of the build; mockup approved 2026-09-22, v3):
-// every shortlist ticker, scored against the 10:00 ET fitted surface at live
+// every shortlist ticker, scored against the 9:30 ET fitted surface at live
 // prices. First paint from GET /signals, then the signalsScreen stream
 // replaces the rows at most once a second. A row opens the Signals modal
-// (stage 4), kept in the URL as ?signal=SYMBOL like Ticker Detail's ?ticker=.
+// (stage 4, mounted globally), kept in the URL as ?signal=SYMBOL.
 
 type StreamState = "connecting" | "live" | "failed";
 
@@ -31,24 +30,6 @@ function GradeBadge({ grade }: { grade: SignalGrade }) {
     <span ref={ref} className={`badge ${gradeBadgeClass[grade]}`} style={badgeFontSize} tabIndex={0}>
       {gradeLabel[grade]}
     </span>
-  );
-}
-
-/**
- * Roll Signals badge (variant B, approved 2026-09-24): solid, in the best roll's grade colour, counting the
- * held legs with a roll above Avoid. Click opens the modal on that roll.
- */
-function RollBadge({ row, onClick }: { row: SignalsScreenRow; onClick: (legId: string) => void }) {
-  const best = row.bestRoll;
-  const held = best ? row.heldLegs.find((leg) => leg.legId === best.legId) : undefined;
-  const tooltip = best && held ? `${signalsColumnExplanation.roll} Best: ${describeRoll(best, held)} · ${formatVolatilityPoints(best.netRollEdge)} (${formatSignedPnl(best.netRollEdgeDollars, 0)}) · net credit ${formatCurrency(best.netCreditPerShare)}/sh.` : "";
-  const ref = useTooltip<HTMLButtonElement>(tooltip);
-  if (!best || row.rollCount === 0) return null;
-  return (
-    <button ref={ref} type="button" className={`badge border-0 d-inline-flex align-items-center gap-1 px-2 py-1 ${gradeBadgeClass[best.grade]}`} style={{ ...badgeFontSize, cursor: "pointer" }} onClick={() => onClick(best.legId)}>
-      <IconRefresh size={12} />
-      {row.rollCount} roll{row.rollCount === 1 ? "" : "s"} · {gradeLabel[best.grade]}
-    </button>
   );
 }
 
@@ -146,36 +127,7 @@ export function SignalsPage() {
   const [streamState, setStreamState] = useState<StreamState>("connecting");
   const [lastFrameAt, setLastFrameAt] = useState<string | null>(null);
   const [dayQuotes, setDayQuotes] = useState<DayQuotesFrameStatus | null>(null);
-  const [modalSymbol, setModalSymbol] = useTickerDetailSymbol("signal");
-  // Roll Signals: `?roll=<legId>` beside `?signal=` pre-selects that leg's best roll in the modal (badge click, Telegram link).
-  const [searchParams, setSearchParams] = useSearchParams();
-  const modalRollLegId = searchParams.get("roll");
-  const openModalOnRoll = useCallback(
-    (symbol: string, legId: string) =>
-      setSearchParams(
-        (previous) => {
-          const params = new URLSearchParams(previous);
-          params.set("signal", symbol);
-          params.set("roll", legId);
-          return params;
-        },
-        { replace: true },
-      ),
-    [setSearchParams],
-  );
-  const closeModal = useCallback(
-    () =>
-      setSearchParams(
-        (previous) => {
-          const params = new URLSearchParams(previous);
-          params.delete("signal");
-          params.delete("roll");
-          return params;
-        },
-        { replace: true },
-      ),
-    [setSearchParams],
-  );
+  const { symbol: modalSymbol, open: openTickerModal } = useSignalsTickerModal();
   const [roadmapOpen, setRoadmapOpen] = useState(false);
 
   useEffect(() => {
@@ -232,7 +184,7 @@ export function SignalsPage() {
         key: "ticker",
         header: "Ticker",
         render: (row) => (
-          <button type="button" className="btn btn-link p-0 text-decoration-none fw-bold" onClick={() => setModalSymbol(row.symbol)}>
+          <button type="button" className="btn btn-link p-0 text-decoration-none fw-bold" onClick={() => openTickerModal(row.symbol)}>
             {row.symbol}
           </button>
         ),
@@ -315,12 +267,12 @@ export function SignalsPage() {
         render: (row) => (
           <span className="d-inline-flex align-items-center gap-1 justify-content-end w-100">
             <ModelCaveatBadge symbol={row.symbol} caveats={row.caveats} />
-            <RollBadge row={row} onClick={(legId) => openModalOnRoll(row.symbol, legId)} />
+            <RollBadge row={row} onClick={(legId) => openTickerModal(row.symbol, { rollLegId: legId })} />
           </span>
         ),
       },
     ],
-    [setModalSymbol, openModalOnRoll],
+    [openTickerModal],
   );
 
   if (error) {
@@ -376,7 +328,7 @@ export function SignalsPage() {
 
   return (
     <>
-      <PageHeader title="Signals" subtitle="Live opportunity scoring for your shortlist · scores use the 10:00 ET surface, live prices" />
+      <PageHeader title="Signals" subtitle="Live opportunity scoring for your shortlist · scores use the 9:30 ET surface, live prices" />
 
       <div className="d-none d-md-block">
         <DataTable
@@ -403,7 +355,7 @@ export function SignalsPage() {
               <div className="card-body py-2">
                 <div className="d-flex justify-content-between align-items-center">
                   <span>
-                    <button type="button" className="btn btn-link p-0 text-decoration-none fw-bold" onClick={() => setModalSymbol(row.symbol)}>
+                    <button type="button" className="btn btn-link p-0 text-decoration-none fw-bold" onClick={() => openTickerModal(row.symbol)}>
                       {row.symbol}
                     </button>{" "}
                     <TickColoredPrice value={row.spotPrice} initialReference={row.previousClose?.close ?? null} precision={2} title={priceSourceLabel[row.priceSource]}>
@@ -435,7 +387,7 @@ export function SignalsPage() {
                 {(row.caveats.length > 0 || (row.bestRoll !== null && row.rollCount > 0)) && (
                   <div className="d-flex justify-content-end align-items-center gap-1 mt-1">
                     <ModelCaveatBadge symbol={row.symbol} caveats={row.caveats} />
-                    <RollBadge row={row} onClick={(legId) => openModalOnRoll(row.symbol, legId)} />
+                    <RollBadge row={row} onClick={(legId) => openTickerModal(row.symbol, { rollLegId: legId })} />
                   </div>
                 )}
               </div>
@@ -443,8 +395,6 @@ export function SignalsPage() {
           ))}
         </div>
       </div>
-
-      {modalSymbol && <SignalsTickerModal key={`${modalSymbol}|${modalRollLegId ?? ""}`} symbol={modalSymbol} initialRollLegId={modalRollLegId} onClose={closeModal} />}
 
     </>
   );

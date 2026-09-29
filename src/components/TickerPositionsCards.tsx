@@ -1,29 +1,27 @@
 import type { RefObject } from "react";
-import type { RollStructure, TradeAlert } from "../api/tradeAlerts";
 import type { TickerPositionsData } from "../hooks/useTickerPositions";
 import { CollapsibleCard } from "./CollapsibleCard";
 import { CycleCard } from "./CycleCard";
 import { PositionCard } from "./PositionCard";
-import type { RollAlertLike } from "./RollOrderSetupForm";
 import { Spinner } from "./Spinner";
 
-// The Positions card(s) + Wheel cycle card of a ticker modal — extracted from
-// TickerDetailModal (2026-09-22) so the Signals modal shows the same cards.
+// The Positions card(s) + Wheel cycle card of the Signals modal.
 
 interface TickerPositionsCardsProps {
   symbol: string;
   data: TickerPositionsData;
   currentPrice: number | null;
-  rollAlertsByPositionId?: Record<string, TradeAlert & { suggestedStructure: RollStructure }>;
   /** Scrolls this position's card into view when there is more than one for the symbol. */
   focusPositionId?: string;
   focusedPositionRef?: RefObject<HTMLDivElement | null>;
   forceOpenSignal?: number;
   onSellCall: (prefill?: { strike: number; expiry: string; quantity: number; premium: number }) => void;
-  onRollSelect: (alert: RollAlertLike) => void;
+  onRollLeg: (legId: string) => void;
+  /** After a position is closed or edited from its card. */
+  onPositionChanged?: () => void;
 }
 
-export function TickerPositionsCards({ symbol, data, currentPrice, rollAlertsByPositionId = {}, focusPositionId, focusedPositionRef, forceOpenSignal = 0, onSellCall, onRollSelect }: TickerPositionsCardsProps) {
+export function TickerPositionsCards({ symbol, data, currentPrice, focusPositionId, focusedPositionRef, forceOpenSignal = 0, onSellCall, onRollLeg, onPositionChanged }: TickerPositionsCardsProps) {
   const { positions, positionsError } = data;
   if (positionsError) return <div className="alert alert-danger">{positionsError}</div>;
   if (positions === null) {
@@ -51,9 +49,11 @@ export function TickerPositionsCards({ symbol, data, currentPrice, rollAlertsByP
                 unrealizedPnlFetchFailed={data.unrealizedPnlFetchFailed}
                 totalAccountValue={data.totalAccountValue}
                 currentPrice={currentPrice}
-                rollAlert={rollAlertsByPositionId[position.id]}
-                onChanged={() => void data.loadPositions()}
-                onRollSelect={onRollSelect}
+                onChanged={() => {
+                  void data.loadPositions();
+                  onPositionChanged?.();
+                }}
+                onRollLeg={onRollLeg}
                 onSellCall={onSellCall}
               />
             </div>

@@ -115,13 +115,10 @@ export function orderLegsToPayoffInput(legs: OrderLeg[]): PayoffLegInput[] {
   }));
 }
 
-// Same ranking formula already approved and shipped server-side for trade
-// alert candidates (generateTradeAlertCandidates.ts, approved 2026-08-20):
+// Approved annualized-yield formula (2026-08-20), same as the server's:
 //   annualizedYield = (premium / capitalAtRisk) * (365 / dte)
 // capitalAtRisk = spot price for a covered call (the stock you'd hold),
-// strike price for a cash-secured put (the cash you'd reserve). Reused here
-// so the option chain can show yield for every browsable strike, not just
-// alert candidates -- same math, no new formula, just applied more broadly.
+// strike price for a cash-secured put (the cash you'd reserve).
 // Returns null when the inputs can't support a real number (no premium, or
 // dte/capitalAtRisk <= 0).
 export function computeAnnualizedYield(
@@ -135,7 +132,7 @@ export function computeAnnualizedYield(
   return (premium / capitalAtRisk) * (365 / dte);
 }
 
-// Same definition already established for Trade Alerts/Positions'
+// Same definition already established for Positions'
 // capitalAtRisk (stock entry cost for a covered call, strike collateral for
 // a CSP) -- computed here from the order's own proposed legs since an
 // unconfirmed order has no stored capitalAtRisk field the way a real

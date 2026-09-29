@@ -10,11 +10,12 @@ export type AppNotification =
   // Iorio Pulse — see notificationChannel.ts on the backend.
   | { type: "job_started"; jobName: string }
   | { type: "job_completed"; jobName: string; status: "success" | "failure" }
-  | { type: "alert_generated"; strategyKey: string; symbol: string; annualizedYield: number }
   // Day Signals: a pooled contract's grade went up between two refresh cycles.
   | { type: "signal_upgraded"; symbol: string; strategyKey: string; strike: number; expiry: string; dte: number; previousGrade: string; grade: string; netEdge: number; edgeDollars: number; annualizedYield: number }
   // Roll Signals: a (held leg, replacement) roll's grade went up between two refresh cycles.
   | { type: "roll_signal_upgraded"; symbol: string; strategyKey: string; legId: string; heldStrike: number; heldExpiry: string; heldDte: number | null; strike: number; expiry: string; dte: number; previousGrade: string; grade: string; netRollEdge: number; netRollEdgeDollars: number; netCreditPerShare: number }
+  // Roll Signals: an open short leg's |delta| crossed the assignment-risk threshold (once per leg per trading day).
+  | { type: "assignment_risk"; symbol: string; strategyKey: string; positionId: string; legId: string; right: "C" | "P"; strike: number; expiry: string; dte: number | null; delta: number; spotPrice: number | null }
   | { type: "genosuke_reply"; preview: string }
   | { type: "presence"; onlineUserIds: string[] }
   // Animation-only signal for Pulse's topology lines; only sent to the /pulse tab.
@@ -31,7 +32,7 @@ export type AppNotification =
 // expiry/assignment.
 //
 // Shared on purpose: BackgroundJobsContext, PositionsPage, PulsePage and
-// TickerDetailModal all subscribe, and each opening its own EventSource
+// the Signals modal all subscribe, and each opening its own EventSource
 // burned 2-3 of Chrome's 6 HTTP/1.1 connections per host (shared across ALL
 // tabs) on nothing but duplicate copies of the same events — enough for two
 // tabs to starve every later stream, so prices never arrived. The stream is

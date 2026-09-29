@@ -2,12 +2,9 @@ import { useMemo, useState } from "react";
 import { Spinner } from "./Spinner";
 import { ApexChart } from "./charts/ApexChart";
 import { ClosePositionModal } from "./ClosePositionModal";
-import type { RollAlertLike } from "./RollOrderSetupForm";
 import { RecoveryPathModal } from "./RecoveryPathModal";
-import { ApiError } from "../api/client";
 import { useTheme } from "../contexts/ThemeContext";
-import { fetchRollCandidate, type Greeks, type Position, type UnrealizedPnlResult } from "../api/positions";
-import type { RollStructure, TradeAlert } from "../api/tradeAlerts";
+import type { Greeks, Position, UnrealizedPnlResult } from "../api/positions";
 import { computePayoff } from "../lib/payoff";
 import {
   daysAgo,
@@ -36,7 +33,6 @@ import {
 } from "../lib/positionPnl";
 import { StrategyBadge } from "./StrategyBadge";
 import { TooltipSpan } from "./TooltipSpan";
-import { useTooltip } from "../hooks/useTooltip";
 
 interface PositionCardProps {
   position: Position;
@@ -47,8 +43,6 @@ interface PositionCardProps {
   /** Last-known total account value, for EXP% — see PositionsPage's own prop of the same name. */
   totalAccountValue: number | null;
   currentPrice: number | null;
-  /** This position's pending roll alert, if any — drives the roll-alert banner and the enhanced Roll button on its leg. */
-  rollAlert?: TradeAlert & { suggestedStructure: RollStructure };
   onChanged: () => void;
   /**
    * Scrolls to this ticker's option chain so the user can pick a strike to
@@ -57,25 +51,8 @@ interface PositionCardProps {
    * quantity in the chain's order panel instead of leaving it blank.
    */
   onSellCall: (prefill?: { strike: number; expiry: string; quantity: number; premium: number }) => void;
-  /**
-   * Opens (or replaces) the roll review in TickerDetailModal's own Order
-   * Setup slot — since 2026-09-15, a roll no longer opens its own stacked
-   * modal, so this card just hands the alert/candidate shape up to the
-   * parent instead of rendering RollPositionModal itself.
-   */
-  onRollSelect: (alert: RollAlertLike) => void;
-}
-
-// Extracted so useTooltip (a hook) can be called once per row from inside
-// displayedLegs.map() without violating the Rules of Hooks — see
-// FlashingNumber.tsx's doc comment for the same constraint.
-function RollAlertButton({ rationale, onClick }: { rationale: string | null | undefined; onClick: () => void }) {
-  const ref = useTooltip<HTMLButtonElement>(rationale ?? "Roll alert pending");
-  return (
-    <button ref={ref} type="button" className="btn btn-sm btn-outline-warning" onClick={onClick}>
-      Roll Alert
-    </button>
-  );
+  /** Selects this open short leg's best Signals roll in the Signals modal's order setup (or explains there is none). */
+  onRollLeg: (legId: string) => void;
 }
 
 const annotationColorsByTheme = {
@@ -83,15 +60,13 @@ const annotationColorsByTheme = {
   dark: { breakeven: "#f59f00", current: "#748ffc", zero: "#adb5bd" },
 } as const;
 
-// One open position's full detail + actions, as a card inside the
-// consolidated ticker/position modal (2026-08-31 modal-wiring-audit merge).
-// A symbol can have more than one concurrently open position here (e.g. an
+// One open position's full detail + actions, as a card inside the Signals
+// modal. A symbol can have more than one concurrently open position here (e.g. an
 // open CSP and an open covered call at once), so the parent renders one of
 // these per open position rather than assuming exactly one. Extracted from
 // the old standalone PositionDetailModal — same legs table/payoff
-// chart/editable fields/Close flow, now reusable per-card. Roll is new here:
-// PositionDetailModal never had it (Roll was only reachable from a live
-// Trade Alert's roll row).
+// chart/editable fields/Close flow, now reusable per-card. Roll on a short
+// option leg selects that leg's best Signals roll in the Signals modal.
 export function PositionCard({
   position,
   greeksByLegId,
@@ -100,10 +75,9 @@ export function PositionCard({
   unrealizedPnlFetchFailed,
   totalAccountValue,
   currentPrice,
-  rollAlert,
   onChanged,
   onSellCall,
-  onRollSelect,
+  onRollLeg,
 }: PositionCardProps) {
   const { theme } = useTheme();
   const annotationColors = annotationColorsByTheme[theme];
@@ -127,30 +101,10 @@ export function PositionCard({
     [position],
   );
 
-  const [rollingLegId, setRollingLegId] = useState<string | null>(null);
-  const [rollError, setRollError] = useState<string | null>(null);
-
   const payoff = useMemo(
     () => (position.strategyKey !== "unstructured" ? computePayoff(position.strategyKey, displayedLegs) : null),
     [position, displayedLegs],
   );
-
-  async function handleRollClick(legId: string) {
-    setRollingLegId(legId);
-    setRollError(null);
-    try {
-      const candidate = await fetchRollCandidate(position.id, legId);
-      onRollSelect({
-        symbol: candidate.symbol,
-        relatedPositionId: candidate.relatedPositionId,
-        suggestedStructure: candidate.suggestedStructure,
-      });
-    } catch (err) {
-      setRollError(err instanceof ApiError ? err.message : "Failed to compute a roll candidate.");
-    } finally {
-      setRollingLegId(null);
-    }
-  }
 
   return (
     <div>
@@ -244,20 +198,6 @@ export function PositionCard({
           <span className="text-muted">Opened:</span> {formatDaysAgo(daysAgo(position.openedAt))}
         </TooltipSpan>
       </div>
-      {rollAlert && (
-        <div className="alert alert-warning d-flex flex-wrap align-items-center justify-content-between gap-2">
-          <div>
-            <strong>Roll alert:</strong> {rollAlert.rationale ?? "This position is ready to roll."}
-          </div>
-          <button
-            type="button"
-            className="btn btn-outline-secondary"
-            onClick={() => onRollSelect({ id: rollAlert.id, symbol: rollAlert.symbol, relatedPositionId: rollAlert.relatedPositionId, suggestedStructure: rollAlert.suggestedStructure })}
-          >
-            Review Roll
-          </button>
-        </div>
-      )}
       <div>
         <div className="table-responsive mb-3">
           <table className="table table-sm table-vcenter card-table mb-0">
@@ -280,7 +220,6 @@ export function PositionCard({
             <tbody>
               {displayedLegs.map((leg) => {
                 const rollEligible = position.status === "open" && leg.legType === "option" && leg.side === "short" && !leg.exitAt;
-                const legRollAlert = rollAlert && rollAlert.suggestedStructure.closeLeg.legId === leg.id ? rollAlert : undefined;
                 return (
                   <tr key={leg.id}>
                     <td>{leg.legType === "stock" ? "Stock" : leg.optionType === "call" ? "Call" : "Put"}</td>
@@ -321,27 +260,8 @@ export function PositionCard({
                     </td>
                     <td className="text-end">{leg.exitAt ? formatCurrency(Number(leg.exitPrice)) : "—"}</td>
                     <td className="text-end">
-                      {rollEligible && legRollAlert && (
-                        <RollAlertButton
-                          rationale={legRollAlert.rationale}
-                          onClick={() =>
-                            onRollSelect({
-                              id: legRollAlert.id,
-                              symbol: legRollAlert.symbol,
-                              relatedPositionId: legRollAlert.relatedPositionId,
-                              suggestedStructure: legRollAlert.suggestedStructure,
-                            })
-                          }
-                        />
-                      )}
-                      {rollEligible && !legRollAlert && (
-                        <button
-                          type="button"
-                          className="btn btn-sm btn-outline-primary d-inline-flex align-items-center gap-1"
-                          disabled={rollingLegId === leg.id}
-                          onClick={() => handleRollClick(leg.id)}
-                        >
-                          {rollingLegId === leg.id && <Spinner size="sm" />}
+                      {rollEligible && (
+                        <button type="button" className="btn btn-sm btn-outline-primary" onClick={() => onRollLeg(leg.id)}>
                           Roll
                         </button>
                       )}
@@ -352,7 +272,6 @@ export function PositionCard({
             </tbody>
           </table>
         </div>
-        {rollError && <div className="alert alert-danger">{rollError}</div>}
 
         {payoff && (
           <div className="mb-3">

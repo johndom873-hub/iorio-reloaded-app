@@ -2,7 +2,6 @@ import { apiRequest, apiBaseUrl, apiStreamedRequest } from "./client";
 import { openMultiplexedStream } from "./streamMultiplexer";
 import { openDeferredEventSource } from "./tickerDetail";
 import type { StrategyKey } from "./strategy";
-import type { RollStructure } from "./tradeAlerts";
 
 export type PositionStatus = "open" | "closed";
 export type LegType = "stock" | "option";
@@ -79,34 +78,17 @@ export function fetchPositionsBySymbol(symbol: string): Promise<Position[]> {
   return apiRequest<Position[]>(`/positions?symbol=${encodeURIComponent(symbol)}&status=all`);
 }
 
-export interface RollCandidate {
-  symbol: string;
-  relatedPositionId: string;
-  rationale: string;
-  suggestedStructure: RollStructure;
-}
-
-// On-demand equivalent of a scheduled roll alert, for one specific leg —
-// read-only, writes nothing (no trade_alerts/order_requests row). Feeds
-// straight into RollPositionModal the same way a real roll alert's
-// suggestedStructure does.
-export function fetchRollCandidate(positionId: string, legId: string): Promise<RollCandidate> {
-  return apiStreamedRequest<RollCandidate>(`/positions/${positionId}/roll-candidate`, {
-    method: "POST",
-    body: JSON.stringify({ legId }),
-  });
-}
-
 export interface RecoveryPathCandidate {
   expiry: string;
   strike: number;
   right: "call" | "put";
   delta: number;
   premium: number;
+  bid: number | null;
+  ask: number | null;
   dte: number;
   annualizedYield: number;
   spotPrice: number;
-  probabilityOfProfit: number | null;
   calendarUnverified: boolean;
 }
 
@@ -168,7 +150,6 @@ export interface OrderRequest {
   requestType: string;
   payload: { symbol: string; strategyKey: string; legs: OrderLeg[]; adaptivePriority?: AdaptivePriority };
   relatedPositionId: string | null;
-  sourceAlertId: string | null;
   status: OrderRequestStatus;
   ibkrOrderId: number | null;
   errorMessage: string | null;
@@ -189,8 +170,6 @@ export interface OpenOrderInput {
   strategyKey: StrategyKey;
   stock?: { quantity: number; limitPrice: number };
   option: { quantity: number; limitPrice: number; strikePrice: number; expiryDate: string };
-  /** Links this order back to the Trade Alert it was created from, if any — see tradeAlerts.ts. */
-  sourceAlertId?: string;
   /** Signals modal only: the scores at the moment the order was built, stored with the order for Phase 2 (see signals.ts). */
   signalSnapshot?: Record<string, unknown>;
 }
@@ -220,8 +199,6 @@ export interface RollLegInput {
 }
 
 export interface RollOrderInput {
-  /** Omitted for a roll built from an on-demand candidate (fetchRollCandidate), which has no backing trade_alerts row. */
-  sourceAlertId?: string;
   closeLegId: string;
   closeLimitPrice: number;
   newLeg: RollLegInput;
@@ -325,24 +302,6 @@ export function openOrderLegQuoteStream(orderId: string, onEvent: (event: OrderL
   return openDeferredEventSource<OrderLegQuoteStreamEvent>(`${apiBaseUrl}/positions/orders/${orderId}/quote/stream`, onEvent);
 }
 
-/**
- * Same live quote as openOrderLegQuoteStream, but for a contract that has no
- * order_requests row yet — used by RollPositionModal, which needs live
- * pricing for both legs of a proposed roll (the closing leg and the
- * replacement) before the roll order is built. Never carries a compliance
- * verdict (always null) — rolling isn't gated the way an opening order is.
- */
-export function openContractQuoteStream(
-  symbol: string,
-  expiry: string,
-  strike: number,
-  right: "C" | "P",
-  onEvent: (event: OrderLegQuoteStreamEvent) => void,
-): () => void {
-  const params = new URLSearchParams({ symbol, expiry, strike: String(strike), right });
-  return openDeferredEventSource<OrderLegQuoteStreamEvent>(`${apiBaseUrl}/positions/quote/stream?${params.toString()}`, onEvent);
-}
-
 /** One leg's live quote in the Close form's stream; `mid` is null unless both bid and ask are present. */
 export interface CloseLiveLegQuote {
   bid: number | null;
@@ -426,8 +385,8 @@ function openLegacyGreeksStream(legIds: string[], onUpdate: (result: Record<stri
   // server-side (see streamLiveGreeks.ts), so under sustained IBKR/Gateway
   // trouble this would otherwise keep piling on more concurrent connection
   // attempts forever instead of failing once. Found 2026-09-11: opening
-  // Ticker Detail (which already holds several of its own one-shot
-  // connections — chart/chain/technicals/overview) on top of the Positions
+  // a ticker modal (which already holds several of its own one-shot
+  // connections — chart/technicals/overview) on top of the Positions
   // table's own greeks/pnl streams could leave IBKR/the SSH tunnel
   // saturated, and this stream would retry into that pile-up indefinitely
   // rather than ever settling into a visible "failed to load" state.

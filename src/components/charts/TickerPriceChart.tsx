@@ -257,8 +257,8 @@ interface HoveredBar {
 
 interface TickerPriceChartProps {
   symbol: string;
-  // Seeds the default 3M range from the parent's SSE stream (see
-  // TickerDetailModal) so this component's own first fetch — otherwise a
+  // Seeds the default 3M range from the parent's SSE stream (the Signals
+  // modal's ticker detail stream) so this component's own first fetch — otherwise a
   // redundant duplicate of data the stream already delivered — is skipped.
   // Only consulted on mount; switching ranges afterward always fetches.
   initialBars?: PriceBar[];

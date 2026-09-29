@@ -69,13 +69,13 @@ export function describeNoCandidatesMessage(reason: SignalsNoCandidatesReason): 
 export const priceSourceLabel: Record<SignalsPriceSource, string> = {
   live: "Live price",
   frozen: "Last known price (pre-live)",
-  snapshot: "10:00 ET snapshot price",
+  snapshot: "9:30 ET snapshot price",
 };
 
 export const quoteSourceLabel: Record<SignalQuoteSource, string> = {
   live: "Live IBKR quote",
   day: "Day Signals quote — refreshed by the intraday loop every few minutes",
-  snapshot: "10:00 ET snapshot quote — this contract is not in today's refresh pool",
+  snapshot: "9:30 ET snapshot quote — this contract is not in today's refresh pool",
 };
 
 /** A day quote's age as the Quote column shows it, standalone and capitalised: "Now", "3m", "1h 05m", or "—". */
@@ -118,7 +118,7 @@ export function describeDayQuotesStatus(dayQuotes: DayQuotesFrameStatus | null, 
   if (loop.reason.startsWith("market closed")) {
     return status.newestQuotedAt ? { label: `Day quotes as of ${formatLocalTime(status.newestQuotedAt)} · market closed`, tone: "text-secondary", pulse: false } : { label: "Day quotes idle · market closed", tone: "text-secondary", pulse: false };
   }
-  if (loop.reason.startsWith("waiting for today's pool")) return { label: "Day quotes idle · waiting for the 10:00 ET capture", tone: "text-secondary", pulse: false };
+  if (loop.reason.startsWith("waiting for today's pool")) return { label: "Day quotes idle · waiting for the 9:30 ET capture", tone: "text-secondary", pulse: false };
   return { label: `Day quotes idle · ${loop.reason}`, tone: "iorio-note-amber", pulse: false };
 }
 
@@ -191,13 +191,40 @@ export function surfaceIvTrustClass(surfaceIv: number, midIv: number | null): st
 }
 
 /** "Put $106 · Oct 23, 2026" */
-export function describeCandidate(candidate: SignalCandidate): string {
+export function describeCandidate(candidate: Pick<SignalCandidate, "strategyKey" | "strike" | "expiry">): string {
   return `${candidate.strategyKey === "covered_call" ? "Call" : "Put"} ${formatCurrencyTrimmed(candidate.strike)} · ${formatDate(candidate.expiry)}`;
 }
 
 /** "110C 12DTE" — compact form for the Signals screen's Top Signal column. */
 export function describeCandidateCompact(candidate: SignalCandidate): string {
   return formatOptionContractShort(candidate.strike, candidate.strategyKey === "covered_call" ? "C" : "P", candidate.dte);
+}
+
+// --- Full option chain in the Signals modal -------------------------------------------------------
+
+/** "2026-10-16|110|C": one contract across the chain, the candidates list and the order pane. */
+export function signalContractKey(contract: { expiry: string; strike: number; right: "C" | "P" }): string {
+  return `${contract.expiry}|${contract.strike}|${contract.right}`;
+}
+
+export function candidateContractRight(candidate: Pick<SignalCandidate, "strategyKey">): "C" | "P" {
+  return candidate.strategyKey === "covered_call" ? "C" : "P";
+}
+
+/** Expiry tab label: "Oct 16 17D". */
+export function describeChainExpiryTab(expiry: { expiry: string; dte: number }): string {
+  return `${formatMonthDay(expiry.expiry)} ${expiry.dte}D`;
+}
+
+export const chainCellStateExplanation = {
+  candidate: "Signals candidate",
+  filtered: "quoted, but left out by your Signals settings (hover for why)",
+  notCaptured: "not in today's capture — quoted live when picked",
+} as const;
+
+/** Escapes server text for a Bootstrap html tooltip (DottedLabelTooltip). */
+export function escapeTooltipHtml(text: string): string {
+  return text.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;");
 }
 
 // --- Roll Signals (Formula 3j, approved 2026-09-24) ---------------------------------------------
@@ -244,6 +271,12 @@ export function describeRollSignalUpgrade(notification: Extract<AppNotification,
   return `${notification.symbol} ${held} → ${replacement} roll upgraded ${previous} → ${next} (${formatVolatilityPoints(notification.netRollEdge)}, ${formatSignedPnl(notification.netRollEdgeDollars, 0)})`;
 }
 
+/** "HOOD 120P 3DTE, Δ −0.53" — the assignment-risk toast and Pulse's Latest Events. */
+export function describeAssignmentRisk(notification: Extract<AppNotification, { type: "assignment_risk" }>): string {
+  const signedDelta = `${notification.delta < 0 ? "−" : ""}${Math.abs(notification.delta).toFixed(2)}`;
+  return `${notification.symbol} ${formatOptionContractShort(notification.strike, notification.right, notification.dte)}, Δ ${signedDelta}`;
+}
+
 /** Column explanations, shown as header tooltips and in the mobile cards. */
 export const signalsColumnExplanation = {
   price: "Live stock price (same source as the Positions table).",
@@ -260,5 +293,5 @@ export const signalsColumnExplanation = {
   earnings: "Next earnings date on record.",
   notAccountedFor: "Measures the ranking does not use yet, what each is waiting on, and when it should be ready.",
   roll: "Open short legs on this ticker with a credit roll graded above Avoid; the colour is the best roll's grade. Click to review it.",
-  quotes: "What the best opportunity's numbers are based on: a live IBKR line, a Day Signals quote (age shown), or still the 10:00 ET snapshot quote.",
+  quotes: "What the best opportunity's numbers are based on: a live IBKR line, a Day Signals quote (age shown), or still the 9:30 ET snapshot quote.",
 } as const;

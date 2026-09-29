@@ -7,8 +7,7 @@ import { formatCompactNumber, formatCurrency, formatDate, formatNumber, formatPe
 import { flashClassName, useFlashOnChange } from "../hooks/useFlashOnChange";
 import { Spinner } from "./Spinner";
 
-// The price/stats strip under a ticker modal's title — extracted from
-// TickerDetailModal (2026-09-22) so the Signals modal shows the identical header.
+// The price/stats strip under the Signals modal's title.
 
 interface TickerHeaderStripProps {
   symbol: string;
@@ -59,8 +58,15 @@ export function TickerHeaderStrip({ symbol, overview, spotPrice, nextCalendarEve
           </strong>
         )}
         <span className="text-secondary small">
-          <strong>Day range</strong> $<span className={flashClassName(lowFlash)}>{formatNumber(pricing.low ?? null, 2)}</span>-
-          <span className={flashClassName(highFlash)}>{formatNumber(pricing.high ?? null, 2)}</span>
+          <strong>Day range</strong>{" "}
+          {pricing.low == null && pricing.high == null ? (
+            formatNumber(null, 2)
+          ) : (
+            <>
+              $<span className={flashClassName(lowFlash)}>{formatNumber(pricing.low ?? null, 2)}</span>-
+              <span className={flashClassName(highFlash)}>{formatNumber(pricing.high ?? null, 2)}</span>
+            </>
+          )}
         </span>
         <span className="text-secondary small">
           <strong>Volume</strong> <span className={flashClassName(volumeFlash)}>{formatCompactNumber(pricing.volume ?? null)}</span>

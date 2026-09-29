@@ -4,7 +4,6 @@ import { Spinner } from "../components/Spinner";
 import { CollapsibleCard } from "../components/CollapsibleCard";
 import { HelpTooltip } from "../components/HelpTooltip";
 import { TooltipSpan } from "../components/TooltipSpan";
-import { TickerDetailModal } from "../components/TickerDetailModal";
 import { ApiError } from "../api/client";
 import {
   fetchStrategySettings,
@@ -17,12 +16,12 @@ import { fetchSignalSettings, updateSignalSettings, type SignalSettings, type Si
 import type { StrategyKey } from "../api/strategy";
 import { formatCurrency, formatDateTime, formatPercentage, formatPercentageValue, formatRelativeTime } from "../lib/formatters";
 import { useExposureStream } from "../hooks/useExposureStream";
-import { useTickerDetailSymbol } from "../hooks/useTickerDetailSymbol";
+import { useSignalsTickerModal } from "../hooks/useSignalsTickerModal";
 
 const strategyKeys: StrategyKey[] = ["covered_call", "cash_secured_put"];
 
-const pageTabs: { key: "trade-alerts" | "signals"; label: string }[] = [
-  { key: "trade-alerts", label: "Trade Alerts" },
+const pageTabs: { key: "recovery-path" | "signals"; label: string }[] = [
+  { key: "recovery-path", label: "Recovery Path" },
   { key: "signals", label: "Signals" },
 ];
 
@@ -30,8 +29,8 @@ const pageTabs: { key: "trade-alerts" | "signals"; label: string }[] = [
 // Marcelo 2026-09-24 — a single form now writes the same values to both
 // strategy_settings rows) — the only per-strategy difference left is the
 // covered-call "existing position" delta override below.
-const tradeAlertsDescription =
-  "Trade alerts scan for covered calls (selling a call against shares you already own) and cash-secured puts (selling a put backed by cash to buy the shares if assigned), using the same delta and DTE targets below for both. A lower delta targets strikes further from the current price (less likely to be assigned, smaller premium), and the DTE range sets how many days out those expirations can be.";
+const recoveryPathDescription =
+  "Recovery Path suggests a covered call to sell against shares held at a loss, picked within the delta and DTE targets below. A lower delta targets strikes further from the current price (less likely to be assigned, smaller premium), and the DTE range sets how many days out those expirations can be. The portfolio limits are reference targets; the concentration lists above compare against them.";
 
 interface SettingsFormState {
   deltaTargetMin: string;
@@ -231,14 +230,14 @@ function NumberField({ label, value, step = "1", help, note, onChange }: NumberF
 export function RiskLimitsPage() {
   const { exposure, loading: exposureLoading, error: exposureError } = useExposureStream("Failed to load account exposure.");
 
-  const [pageTab, setPageTab] = useState<"trade-alerts" | "signals">("trade-alerts");
+  const [pageTab, setPageTab] = useState<"recovery-path" | "signals">("recovery-path");
   const [allSettings, setAllSettings] = useState<StrategySettings[]>([]);
   const [formState, setFormState] = useState<SettingsFormState | null>(null);
   const [settingsLoading, setSettingsLoading] = useState(true);
   const [settingsError, setSettingsError] = useState<string | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
-  const [detailSymbol, setDetailSymbol] = useTickerDetailSymbol();
+  const { open: openTickerModal } = useSignalsTickerModal();
 
   const [signalSettings, setSignalSettings] = useState<SignalSettings | null>(null);
   const [signalFormState, setSignalFormState] = useState<SignalSettingsFormState | null>(null);
@@ -381,7 +380,7 @@ export function RiskLimitsPage() {
                 totalAccountValue={exposure?.totalAccountValue ?? null}
                 limitPct={formState ? Number(formState.maxConcentrationPerTickerPct) : null}
                 unallocatedLabel="Unallocated"
-                onSymbolClick={setDetailSymbol}
+                onSymbolClick={openTickerModal}
               />
               <ConcentrationList
                 title="Concentration by Sector"
@@ -398,7 +397,7 @@ export function RiskLimitsPage() {
               />
             </div>
             <div className="text-muted mt-2" style={{ fontSize: "0.72rem" }}>
-              % of total account value (net liquidation value, including cash). "over limit" compares against the Trade Alerts tab's configured limit below.
+              % of total account value (net liquidation value, including cash). "over limit" compares against the Recovery Path tab's configured limit below.
             </div>
           </>
         )}
@@ -418,7 +417,7 @@ export function RiskLimitsPage() {
         ))}
       </ul>
 
-      {pageTab === "trade-alerts" && (
+      {pageTab === "recovery-path" && (
       <div className="card">
         <div className="card-body">
           {settingsLoading ? (
@@ -432,7 +431,7 @@ export function RiskLimitsPage() {
               {saveError && <div className="alert alert-danger">{saveError}</div>}
 
               <p className="text-muted mb-1" style={{ fontSize: "0.85rem" }}>
-                {tradeAlertsDescription}
+                {recoveryPathDescription}
               </p>
               {(() => {
                 // Both strategy rows are always written together (see handleSave), so they
@@ -456,14 +455,14 @@ export function RiskLimitsPage() {
                   label="Delta target min"
                   value={formState.deltaTargetMin}
                   step="0.01"
-                  help="Lowest option delta (absolute value) the screener will consider when picking strikes. Lower = further out-of-the-money, lower assignment risk."
+                  help="Lowest option delta (absolute value) Recovery Path will consider when picking a strike. Lower = further out-of-the-money, lower assignment risk."
                   onChange={(value) => updateField("deltaTargetMin", value)}
                 />
                 <NumberField
                   label="Delta target max"
                   value={formState.deltaTargetMax}
                   step="0.01"
-                  help="Highest option delta (absolute value) the screener will consider. Higher = closer to the money, more premium, more assignment risk."
+                  help="Highest option delta (absolute value) Recovery Path will consider. Higher = closer to the money, more premium, more assignment risk."
                   onChange={(value) => updateField("deltaTargetMax", value)}
                 />
                 <div className="col-12" style={{ flex: "0 0 100%", maxWidth: "100%" }}>
@@ -471,36 +470,34 @@ export function RiskLimitsPage() {
                     Delta target (existing pos.) — covered calls only
                   </h4>
                   <p className="text-muted mb-0" style={{ fontSize: "0.75rem" }}>
-                    Applies instead of the generic delta target above, and only for covered calls, when you already
-                    own enough shares of the ticker (100+, uncommitted to another covered call) to write a real
-                    covered call against — otherwise the generic range above is used, as a buy-write/hypothetical
-                    scan. Cash-secured puts always use the generic range.
+                    A separate delta range for selling calls against shares you already own. Stored with the covered-call
+                    settings; Recovery Path currently picks within the delta target above.
                   </p>
                 </div>
                 <NumberField
                   label="Delta target min (existing pos.)"
                   value={formState.deltaTargetMinExistingPosition}
                   step="0.01"
-                  help="Lowest option delta (absolute value) the screener will consider when selling calls against shares you already own."
+                  help="Lowest option delta (absolute value) for selling calls against shares you already own."
                   onChange={(value) => updateField("deltaTargetMinExistingPosition", value)}
                 />
                 <NumberField
                   label="Delta target max (existing pos.)"
                   value={formState.deltaTargetMaxExistingPosition}
                   step="0.01"
-                  help="Highest option delta (absolute value) the screener will consider when selling calls against shares you already own."
+                  help="Highest option delta (absolute value) for selling calls against shares you already own."
                   onChange={(value) => updateField("deltaTargetMaxExistingPosition", value)}
                 />
                 <NumberField
                   label="DTE target min"
                   value={formState.dteTargetMin}
-                  help="Fewest days to expiration the screener will look at when generating trade alerts."
+                  help="Fewest days to expiration Recovery Path will look at."
                   onChange={(value) => updateField("dteTargetMin", value)}
                 />
                 <NumberField
                   label="DTE target max"
                   value={formState.dteTargetMax}
-                  help="Most days to expiration the screener will look at when generating trade alerts."
+                  help="Most days to expiration Recovery Path will look at."
                   onChange={(value) => updateField("dteTargetMax", value)}
                 />
                 <NumberField
@@ -606,21 +603,21 @@ export function RiskLimitsPage() {
                     label="Max position % of portfolio"
                     value={signalFormState.maxPositionPctOfPortfolio}
                     step="1"
-                    help="Target ceiling on how large a single position can be, as % of total portfolio value. Independent from the Trade Alerts tab's own setting of the same name."
+                    help="Target ceiling on how large a single position can be, as % of total portfolio value. Independent from the Recovery Path tab's own setting of the same name."
                     onChange={(value) => updateSignalField("maxPositionPctOfPortfolio", value)}
                   />
                   <NumberField
                     label="Max concentration per ticker %"
                     value={signalFormState.maxConcentrationPerTickerPct}
                     step="1"
-                    help="Target ceiling on how much of the portfolio (by notional value) can sit in one ticker. Independent from the Trade Alerts tab's own setting of the same name."
+                    help="Target ceiling on how much of the portfolio (by notional value) can sit in one ticker. Independent from the Recovery Path tab's own setting of the same name."
                     onChange={(value) => updateSignalField("maxConcentrationPerTickerPct", value)}
                   />
                   <NumberField
                     label="Min cash reserve %"
                     value={signalFormState.minCashReservePct}
                     step="1"
-                    help="Target floor on how much of the portfolio should stay as uncommitted cash. Independent from the Trade Alerts tab's own setting of the same name."
+                    help="Target floor on how much of the portfolio should stay as uncommitted cash. Independent from the Recovery Path tab's own setting of the same name."
                     onChange={(value) => updateSignalField("minCashReservePct", value)}
                   />
                 </div>
@@ -640,7 +637,6 @@ export function RiskLimitsPage() {
         </div>
       )}
 
-      {detailSymbol && <TickerDetailModal symbol={detailSymbol} onClose={() => setDetailSymbol(null)} />}
     </>
   );
 }

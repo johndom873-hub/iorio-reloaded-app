@@ -1,9 +1,8 @@
 import { useState } from "react";
 import { PageHeader } from "../components/layout/PageHeader";
-import { TickerDetailModal } from "../components/TickerDetailModal";
 import { ShortlistTab } from "../components/shortlist/ShortlistTab";
 import { ScreenerTab } from "../components/screener/ScreenerTab";
-import { useTickerDetailSymbol } from "../hooks/useTickerDetailSymbol";
+import { useSignalsTickerModal } from "../hooks/useSignalsTickerModal";
 
 type ScreenerPageTab = "screener" | "shortlist";
 
@@ -14,7 +13,7 @@ const tabs: { key: ScreenerPageTab; label: string }[] = [
 
 export function ScreenerPage() {
   const [activeTab, setActiveTab] = useState<ScreenerPageTab>("shortlist");
-  const [detailSymbol, setDetailSymbol] = useTickerDetailSymbol();
+  const { open: openTickerModal } = useSignalsTickerModal();
 
   return (
     <>
@@ -38,12 +37,11 @@ export function ScreenerPage() {
       </ul>
 
       {activeTab === "screener" ? (
-        <ScreenerTab onOpenTickerDetail={setDetailSymbol} />
+        <ScreenerTab onOpenTickerModal={openTickerModal} />
       ) : (
-        <ShortlistTab onOpenTickerDetail={setDetailSymbol} />
+        <ShortlistTab onOpenTickerModal={openTickerModal} />
       )}
 
-      {detailSymbol && <TickerDetailModal symbol={detailSymbol} onClose={() => setDetailSymbol(null)} />}
     </>
   );
 }
