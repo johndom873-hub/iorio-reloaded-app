@@ -751,12 +751,16 @@ export function PulsePage() {
           firePulse("gateway-db", "var(--success)");
           appendEvent(`Position opened — ${notification.symbol}`, "var(--success)");
           loadPositions();
+          // The worker buffers an opening fill until reconciliation creates the leg, so the
+          // trade rows land after the order's "filled" event; this event follows the insert.
+          loadTrades();
           break;
         }
         case "position_closed": {
           firePulse("gateway-db", "var(--success)");
           appendEvent(`Position closed — ${notification.symbol}`, "var(--success)");
           loadPositions();
+          loadTrades();
           break;
         }
         case "genosuke_reply": {
