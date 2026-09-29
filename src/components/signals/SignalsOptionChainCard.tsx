@@ -27,6 +27,8 @@ interface SignalsOptionChainCardProps {
   spotPrice: number | null;
   /** The modal's live-scored candidates by signalContractKey: a candidate cell shows (and flashes) these rather than the chain's fetch-time copy. */
   liveCandidatesByKey: Map<string, SignalCandidate>;
+  /** Cells of the contracts holding a live line, scored at the live spot by the stream: they replace the chain's fetch-time cell. */
+  liveChainCells: Record<string, SignalsChainCell>;
   selectedContractKey: string | null;
   /** While an order is under review nothing else can be picked. */
   pickingDisabled: boolean;
@@ -57,10 +59,10 @@ function describeCellForScreenReader(contract: ChainContractRef, cell: SignalsCh
 
 function ChainCellButton({ contract, cell, liveCandidate, selected, disabled, showStrike, onPick }: { contract: ChainContractRef; cell: SignalsChainCell; liveCandidate: SignalCandidate | undefined; selected: boolean; disabled: boolean; showStrike: boolean; onPick: () => void }) {
   const shown = displayedCell(cell, liveCandidate);
-  // Only candidate cells update between fetches (live frames), so only they can flash; compared at the displayed 2 decimals.
-  const bidFlash = useFlashOnChange(cell.state === "candidate" ? shown.bid : null, 1200, 2);
-  const askFlash = useFlashOnChange(cell.state === "candidate" ? shown.ask : null, 1200, 2);
-  const deltaFlash = useFlashOnChange(cell.state === "candidate" ? shown.delta : null, 1200, 2);
+  // Cells update between fetches (live frames); compared at the displayed 2 decimals.
+  const bidFlash = useFlashOnChange(cell.state !== "not_captured" ? shown.bid : null, 1200, 2);
+  const askFlash = useFlashOnChange(cell.state !== "not_captured" ? shown.ask : null, 1200, 2);
+  const deltaFlash = useFlashOnChange(cell.state !== "not_captured" ? shown.delta : null, 1200, 2);
   const notCaptured = cell.state === "not_captured";
   return (
     <button
@@ -110,7 +112,7 @@ const columnLabels = (
   </>
 );
 
-export function SignalsOptionChainCard({ chain, loading, error, spotPrice, liveCandidatesByKey, selectedContractKey, pickingDisabled, phoneSide, onPhoneSideChange, onSelectExpiry, onPickContract }: SignalsOptionChainCardProps) {
+export function SignalsOptionChainCard({ chain, loading, error, spotPrice, liveCandidatesByKey, liveChainCells, selectedContractKey, pickingDisabled, phoneSide, onPhoneSideChange, onSelectExpiry, onPickContract }: SignalsOptionChainCardProps) {
   const isPhoneLayout = useMediaQuery(phoneLayoutQuery);
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
   const expiryTabsRef = useRef<HTMLDivElement | null>(null);
@@ -155,15 +157,16 @@ export function SignalsOptionChainCard({ chain, loading, error, spotPrice, liveC
     const contract: ChainContractRef = { expiry: selectedExpiry ?? "", strike, right };
     const key = signalContractKey(contract);
     if (isHiddenAsInTheMoney(strike, right)) return <div className="signals-chain-cell is-in-the-money" aria-hidden="true" />;
+    const shownCell = liveChainCells[key] ?? cell;
     return (
       <ChainCellButton
         contract={contract}
-        cell={cell}
-        liveCandidate={cell.state === "candidate" ? liveCandidatesByKey.get(key) : undefined}
+        cell={shownCell}
+        liveCandidate={shownCell.state === "candidate" && !liveChainCells[key] ? liveCandidatesByKey.get(key) : undefined}
         selected={key === selectedContractKey}
         disabled={pickingDisabled}
         showStrike={showStrike}
-        onPick={() => onPickContract(contract, cell)}
+        onPick={() => onPickContract(contract, shownCell)}
       />
     );
   };

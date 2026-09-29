@@ -273,6 +273,8 @@ export interface SignalsTickerFrame {
   signals: TickerSignals;
   /** Contract keys (expiry|strike|right) with a live IBKR quote subscription for this stream's life. */
   liveQuoteContracts: string[];
+  /** The chain cell of every live-quoted contract, scored at the live spot (keyed like liveQuoteContracts); the chain overlays these. */
+  liveChainCells: Record<string, SignalsChainCell>;
   uncompensatedAsOf: { spotPrice: number; at: string } | null;
 }
 

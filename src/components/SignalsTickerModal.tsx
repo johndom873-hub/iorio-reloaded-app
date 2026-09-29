@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import { fetchNextTickerCalendarEvents, type NextTickerCalendarEvents } from "../api/calendarEvents";
 import { ApiError } from "../api/client";
-import { fetchSignalContractScore, fetchSignalsChain, fetchTickerSignals, openSignalsTickerStream, type HeldLegScore, type MacroEvent, type RollSignalCandidate, type SignalCandidate, type SignalContractScore, type SignalsChain, type SignalsChainCellState, type SignalStrategyKey, type TickerSignals } from "../api/signals";
+import { fetchSignalContractScore, fetchSignalsChain, fetchTickerSignals, openSignalsTickerStream, type HeldLegScore, type MacroEvent, type RollSignalCandidate, type SignalCandidate, type SignalContractScore, type SignalsChain, type SignalsChainCell, type SignalsChainCellState, type SignalStrategyKey, type TickerSignals } from "../api/signals";
 import { openTickerDetailStream, type MacdSignal, type PriceBar, type TickerOverview, type TickerTechnicals } from "../api/tickerDetail";
 import { useTickerPositions } from "../hooks/useTickerPositions";
 import { cancelUnconfirmedOrder, type AdaptivePriority, type OrderRequest } from "../api/positions";
@@ -276,6 +276,7 @@ export function SignalsTickerModal({ symbol, initialRollLegId = null, focusPosit
   const [signalsReloadKey, setSignalsReloadKey] = useState(0);
   const [liveQuoteContractCount, setLiveQuoteContractCount] = useState<number | null>(null);
   const [uncompensatedAsOf, setUncompensatedAsOf] = useState<{ spotPrice: number; at: string } | null>(null);
+  const [liveChainCells, setLiveChainCells] = useState<Record<string, SignalsChainCell>>({});
   const [streamFailed, setStreamFailed] = useState(false);
 
   const [overview, setOverview] = useState<TickerOverview | null>(null);
@@ -426,6 +427,7 @@ export function SignalsTickerModal({ symbol, initialRollLegId = null, focusPosit
       (frame) => {
         setSignals(frame.signals);
         setLiveQuoteContractCount(frame.liveQuoteContracts.length);
+        setLiveChainCells(frame.liveChainCells ?? {});
         setUncompensatedAsOf(frame.uncompensatedAsOf);
         setStreamFailed(false);
       },
@@ -936,6 +938,7 @@ export function SignalsTickerModal({ symbol, initialRollLegId = null, focusPosit
                         error={chainError}
                         spotPrice={spotPrice}
                         liveCandidatesByKey={liveCandidatesByKey}
+                        liveChainCells={liveChainCells}
                         selectedContractKey={selectedKey ?? chainPick?.key ?? null}
                         pickingDisabled={pendingOrder !== null}
                         phoneSide={chainPhoneSide}
