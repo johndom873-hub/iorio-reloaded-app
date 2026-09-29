@@ -153,6 +153,12 @@ export function SignalsOptionChainCard({ chain, loading, error, spotPrice, liveC
     if (tabLeft < strip.scrollLeft || tabLeft + activeTab.offsetWidth > strip.scrollLeft + strip.clientWidth) strip.scrollLeft = Math.max(0, tabLeft - (strip.clientWidth - activeTab.offsetWidth) / 2);
   }, [selectedExpiry, isPhoneLayout]);
 
+  // Live lines only for what is on screen (useVisibleLiveContracts): each row names its shown, out-of-the-money contracts.
+  const liveRowAttributes = (strike: number, index: number, rights: ("C" | "P")[]) => {
+    const keys = selectedExpiry ? rights.filter((right) => !isHiddenAsInTheMoney(strike, right)).map((right) => signalContractKey({ expiry: selectedExpiry, strike, right })) : [];
+    return keys.length > 0 ? { "data-live-contracts": keys.join(","), "data-live-group": `chain:${selectedExpiry}`, "data-live-index": String(index) } : {};
+  };
+
   const cellFor = (strike: number, right: "C" | "P", cell: SignalsChainCell, showStrike: boolean) => {
     const contract: ChainContractRef = { expiry: selectedExpiry ?? "", strike, right };
     const key = signalContractKey(contract);
@@ -230,7 +236,7 @@ export function SignalsOptionChainCard({ chain, loading, error, spotPrice, liveC
       )}
 
       {!error && !loading && chain && rows.length > 0 && (
-        <div ref={scrollContainerRef} className="signals-chain-scroll">
+        <div ref={scrollContainerRef} className={`signals-chain-scroll${isPhoneLayout ? " is-phone" : ""}`}>
           {isPhoneLayout ? (
             <table className="table table-sm card-table mb-0 signals-chain-table">
               <thead className="table-light">
@@ -247,7 +253,7 @@ export function SignalsOptionChainCard({ chain, loading, error, spotPrice, liveC
                 {rows.map((row, index) => (
                   <Fragment key={row.strike}>
                     {index === spotMarkerIndex && spotPrice !== null && <SpotMarkerRow spotPrice={spotPrice} columnCount={1} markerRef={setSpotMarker} />}
-                    <tr>
+                    <tr {...liveRowAttributes(row.strike, index, [phoneSide])}>
                       <td className="p-0">{cellFor(row.strike, phoneSide, phoneSide === "C" ? row.call : row.put, true)}</td>
                     </tr>
                   </Fragment>
@@ -274,7 +280,7 @@ export function SignalsOptionChainCard({ chain, loading, error, spotPrice, liveC
                 {rows.map((row, index) => (
                   <Fragment key={row.strike}>
                     {index === spotMarkerIndex && spotPrice !== null && <SpotMarkerRow spotPrice={spotPrice} columnCount={3} markerRef={setSpotMarker} />}
-                    <tr>
+                    <tr {...liveRowAttributes(row.strike, index, ["C", "P"])}>
                       <td className="p-0">{cellFor(row.strike, "C", row.call, false)}</td>
                       <td className="text-center align-middle fw-bold font-mono signals-chain-strike-column">{formatCurrencyTrimmed(row.strike).replace("$", "")}</td>
                       <td className="p-0">{cellFor(row.strike, "P", row.put, false)}</td>

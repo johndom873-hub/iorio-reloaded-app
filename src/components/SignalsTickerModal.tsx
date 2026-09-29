@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import { fetchNextTickerCalendarEvents, type NextTickerCalendarEvents } from "../api/calendarEvents";
 import { ApiError } from "../api/client";
-import { fetchSignalContractScore, fetchSignalsChain, fetchTickerSignals, openSignalsTickerStream, type HeldLegScore, type MacroEvent, type RollSignalCandidate, type SignalCandidate, type SignalContractScore, type SignalsChain, type SignalsChainCell, type SignalsChainCellState, type SignalStrategyKey, type TickerSignals } from "../api/signals";
+import { fetchSignalContractScore, fetchSignalsChain, fetchTickerSignals, openSignalsQuotesStream, openSignalsTickerStream, type HeldLegScore, type MacroEvent, type RollSignalCandidate, type SignalCandidate, type SignalContractScore, type SignalsChain, type SignalsChainCellState, type SignalsQuotesFrame, type SignalStrategyKey, type TickerSignals } from "../api/signals";
+import { useVisibleLiveContracts } from "../hooks/useVisibleLiveContracts";
 import { openTickerDetailStream, type MacdSignal, type PriceBar, type TickerOverview, type TickerTechnicals } from "../api/tickerDetail";
 import { useTickerPositions } from "../hooks/useTickerPositions";
 import { cancelUnconfirmedOrder, type AdaptivePriority, type OrderRequest } from "../api/positions";
@@ -90,12 +91,15 @@ function RollFlagBadges({ roll, held }: { roll: RollSignalCandidate; held: HeldL
  * "Your positions" (Roll Signals, mockup rev 4 approved 2026-09-24): one block per open short leg with
  * what holding it still offers and its ranked credit rolls; selecting a roll fills the order pane.
  */
+const liveContractsSettleMs = 300;
+
 function HeldLegRolls({ held, rolls, showAvoid, selectedRollKey, disabled, onSelect }: { held: HeldLegScore; rolls: RollSignalCandidate[]; showAvoid: boolean; selectedRollKey: string | null; disabled: boolean; onSelect: (roll: RollSignalCandidate) => void }) {
   const shown = showAvoid ? rolls : rolls.filter((roll) => roll.grade !== "avoid");
   const hiddenAvoid = rolls.length - shown.length;
+  const heldKey = signalContractKey({ expiry: held.expiry, strike: held.strike, right: held.right });
   return (
     <div className="border rounded mb-2">
-      <div className="d-flex flex-wrap justify-content-between align-items-center gap-2 px-2 py-1 border-bottom bg-secondary-lt" style={{ fontSize: "0.8rem" }}>
+      <div className="d-flex flex-wrap justify-content-between align-items-center gap-2 px-2 py-1 border-bottom bg-secondary-lt" style={{ fontSize: "0.8rem" }} data-live-contracts={heldKey}>
         <span>
           Short <strong>{describeHeldLeg(held)}</strong> · {held.quantity} contract{held.quantity === 1 ? "" : "s"} · sold at {formatCurrency(held.entryPrice)}
         </span>
@@ -143,11 +147,13 @@ function HeldLegRolls({ held, rolls, showAvoid, selectedRollKey, disabled, onSel
               </tr>
             </thead>
             <tbody>
-              {shown.map((roll) => {
+              {shown.map((roll, index) => {
                 const key = rollKey(roll);
                 const isCall = roll.strategyKey === "covered_call";
+                // A roll's price needs both legs: closing the held one and opening the replacement.
+                const liveKeys = `${heldKey},${signalContractKey({ expiry: roll.replacement.expiry, strike: roll.replacement.strike, right: isCall ? "C" : "P" })}`;
                 return (
-                  <tr key={key} className={[selectedRollKey === key ? "table-active" : "", roll.grade === "avoid" ? "text-secondary" : ""].filter(Boolean).join(" ") || undefined} style={{ cursor: disabled ? undefined : "pointer" }} onClick={disabled ? undefined : () => onSelect(roll)}>
+                  <tr key={key} data-live-contracts={liveKeys} data-live-group={`rolls:${held.legId}`} data-live-index={String(index)} className={[selectedRollKey === key ? "table-active" : "", roll.grade === "avoid" ? "text-secondary" : ""].filter(Boolean).join(" ") || undefined} style={{ cursor: disabled ? undefined : "pointer" }} onClick={disabled ? undefined : () => onSelect(roll)}>
                     <td>
                       <input type="radio" className="form-check-input" checked={selectedRollKey === key} readOnly aria-label={`Select roll to ${describeHeldLeg({ right: isCall ? "C" : "P", strike: roll.replacement.strike, dte: roll.replacement.dte })}`} />
                     </td>
@@ -274,9 +280,9 @@ export function SignalsTickerModal({ symbol, initialRollLegId = null, focusPosit
   // GET /signals/:symbol answers 404 for a ticker neither shortlisted nor carrying an open short option leg.
   const [notInSignalsUniverse, setNotInSignalsUniverse] = useState(false);
   const [signalsReloadKey, setSignalsReloadKey] = useState(0);
-  const [liveQuoteContractCount, setLiveQuoteContractCount] = useState<number | null>(null);
   const [uncompensatedAsOf, setUncompensatedAsOf] = useState<{ spotPrice: number; at: string } | null>(null);
-  const [liveChainCells, setLiveChainCells] = useState<Record<string, SignalsChainCell>>({});
+  const [quotesFrame, setQuotesFrame] = useState<SignalsQuotesFrame | null>(null);
+  const modalContentRef = useRef<HTMLDivElement | null>(null);
   const [streamFailed, setStreamFailed] = useState(false);
 
   const [overview, setOverview] = useState<TickerOverview | null>(null);
@@ -423,17 +429,31 @@ export function SignalsTickerModal({ symbol, initialRollLegId = null, focusPosit
     if (notInSignalsUniverse) return;
     return openSignalsTickerStream(
       symbol,
-      selectedExpiry,
+      null,
       (frame) => {
         setSignals(frame.signals);
-        setLiveQuoteContractCount(frame.liveQuoteContracts.length);
-        setLiveChainCells(frame.liveChainCells ?? {});
         setUncompensatedAsOf(frame.uncompensatedAsOf);
         setStreamFailed(false);
       },
       () => setStreamFailed(true),
     );
-  }, [symbol, selectedExpiry, streamKey, notInSignalsUniverse]);
+  }, [symbol, streamKey, notInSignalsUniverse]);
+
+  // Live option quotes only for what is on screen (visible rows plus one each side, useVisibleLiveContracts): the set is
+  // settled for 300 ms before the stream is reopened, so scrolling does not churn IBKR subscriptions.
+  const visibleLiveContracts = useVisibleLiveContracts(modalContentRef);
+  const [subscribedLiveContracts, setSubscribedLiveContracts] = useState<string[]>([]);
+  useEffect(() => {
+    const timer = setTimeout(() => setSubscribedLiveContracts(visibleLiveContracts), liveContractsSettleMs);
+    return () => clearTimeout(timer);
+  }, [visibleLiveContracts]);
+  useEffect(() => {
+    if (notInSignalsUniverse || subscribedLiveContracts.length === 0) {
+      setQuotesFrame(null);
+      return;
+    }
+    return openSignalsQuotesStream(symbol, subscribedLiveContracts, setQuotesFrame, () => setQuotesFrame(null));
+  }, [symbol, subscribedLiveContracts, notInSignalsUniverse, streamKey]);
 
   const effectiveExpiry = selectedExpiry ?? chainDefaultExpiry ?? signals?.best?.expiry ?? null;
   // Displayed everywhere in the modal: the pooled live price, the overview's last before its first tick.
@@ -504,12 +524,29 @@ export function SignalsTickerModal({ symbol, initialRollLegId = null, focusPosit
   // the instant OrderReviewPanel mounts. Seeds its Live Quote card instantly
   // instead of a multi-second spinner for a fresh subscribe.
   const pendingOrderQuoteSeed = selectedCandidate || selectedRoll ? signalCandidateToQuoteSeed(selectedCandidate ?? selectedRoll?.replacement ?? null) : signalContractScoreToQuoteSeed(chainPick?.result ?? null);
-  const liveCandidatesByKey = useMemo(() => new Map((signals?.candidates ?? []).map((candidate) => [candidateKey(candidate), candidate])), [signals]);
+  // The ticker stream's candidates, with the on-screen ones replaced by their live-scored version (keeping the ticker
+  // stream's Monte Carlo share, which only it computes). Order and filtering stay on the ticker stream's values so a
+  // live re-grade never reshuffles the rows on screen (and with them the live set).
+  const liveCandidatesByKey = useMemo(
+    () =>
+      new Map(
+        (signals?.candidates ?? []).map((candidate) => {
+          const key = candidateKey(candidate);
+          const live = quotesFrame?.candidates[key];
+          return [key, live ? { ...live, uncompensatedSharePercent: candidate.uncompensatedSharePercent } : candidate];
+        }),
+      ),
+    [signals, quotesFrame],
+  );
+  const displayedHeldLegs = useMemo(() => (signals?.heldLegs ?? []).map((held) => quotesFrame?.heldLegs[held.legId] ?? held), [signals, quotesFrame]);
   const rollsByLegId = useMemo(() => {
     const byLeg = new Map<string, RollSignalCandidate[]>();
-    for (const roll of signals?.rolls ?? []) byLeg.set(roll.legId, [...(byLeg.get(roll.legId) ?? []), roll]);
+    for (const roll of signals?.rolls ?? []) {
+      const live = quotesFrame?.rolls[rollKey(roll)];
+      byLeg.set(roll.legId, [...(byLeg.get(roll.legId) ?? []), live ? { ...live, replacement: { ...live.replacement, uncompensatedSharePercent: roll.replacement.uncompensatedSharePercent } } : roll]);
+    }
     return byLeg;
-  }, [signals]);
+  }, [signals, quotesFrame]);
 
   function selectCandidate(candidate: SignalCandidate) {
     if (pendingOrder) return; // an order under review keeps its contract until cancelled or filled
@@ -716,7 +753,7 @@ export function SignalsTickerModal({ symbol, initialRollLegId = null, focusPosit
     ],
     [yieldTierByKey],
   );
-  const opportunityRows = useMemo(() => shownCandidates.map((candidate, index) => ({ ...candidate, rank: index + 1 })), [shownCandidates]);
+  const opportunityRows = useMemo(() => shownCandidates.map((candidate, index) => ({ ...(liveCandidatesByKey.get(candidateKey(candidate)) ?? candidate), rank: index + 1 })), [shownCandidates, liveCandidatesByKey]);
 
   const dayQuoteAgeRange = describeQuoteAgeRange(signals?.dayQuotesAsOf);
   const liveLabel = notInSignalsUniverse
@@ -726,7 +763,7 @@ export function SignalsTickerModal({ symbol, initialRollLegId = null, focusPosit
     : streamFailed
       ? "Live stream unavailable — snapshot values"
       : signals?.priceSource === "live"
-        ? `Live · ${liveQuoteContractCount ?? 0} contracts live${effectiveExpiry ? ` for the ${formatDate(effectiveExpiry)} expiry` : ""} · ${dayQuoteAgeRange ? `other expiries on day quotes ${dayQuoteAgeRange}` : "no day quotes yet"}`
+        ? `Live · ${quotesFrame?.contractKeys.length ?? 0} contracts on screen live · ${dayQuoteAgeRange ? `the rest on day quotes ${dayQuoteAgeRange}` : "no day quotes yet"}`
         : "Connecting live prices…";
   const showLivePulse = notInSignalsUniverse ? liveSpotPrice !== null : signals?.priceSource === "live" && !streamFailed;
 
@@ -794,7 +831,7 @@ export function SignalsTickerModal({ symbol, initialRollLegId = null, focusPosit
               </div>
               <button type="button" className="btn-close" aria-label="Close" onClick={requestClose} />
             </div>
-            <div className="modal-body">
+            <div className="modal-body" ref={modalContentRef}>
               {overviewError && <div className="alert alert-danger">{overviewError}</div>}
               {!overviewError && !overview && (
                 <div className="d-flex justify-content-center py-3">
@@ -876,7 +913,7 @@ export function SignalsTickerModal({ symbol, initialRollLegId = null, focusPosit
                           </span>
                         </div>
                         <div className="card-body py-2">
-                          {signals.heldLegs.map((held) => (
+                          {displayedHeldLegs.map((held) => (
                             <HeldLegRolls key={held.legId} held={held} rolls={rollsByLegId.get(held.legId) ?? []} showAvoid={showAvoid} selectedRollKey={selectedRollKey} disabled={pendingOrder !== null} onSelect={selectRoll} />
                           ))}
                         </div>
@@ -890,6 +927,7 @@ export function SignalsTickerModal({ symbol, initialRollLegId = null, focusPosit
                         columns={opportunityColumns}
                         rows={opportunityRows}
                         rowKey={(row) => candidateKey(row)}
+                        rowAttributes={(row, index) => ({ "data-live-contracts": candidateKey(row), "data-live-group": "opportunities", "data-live-index": String(index) })}
                         emptyMessage={hiddenAvoidCount > 0 ? `No candidate has positive net Edge right now. Tick "Show Avoid" to see the ${hiddenAvoidCount} hidden.` : signals.noCandidatesReason ? describeNoCandidatesMessage(signals.noCandidatesReason) : "No candidates match the filters."}
                         onRowClick={selectCandidate}
                         rowClassName={(row) => [candidateKey(row) === selectedKey ? "table-active" : "", row.grade === "avoid" ? "text-secondary" : ""].filter(Boolean).join(" ") || undefined}
@@ -920,7 +958,7 @@ export function SignalsTickerModal({ symbol, initialRollLegId = null, focusPosit
                         }
                         afterTable={
                           <div className="card-footer text-secondary" style={{ fontSize: "0.75rem" }}>
-                            * quote from the 9:30 ET snapshot. Live quotes stream only for the selected expiry's contracts (up to 40); every other pooled contract shows the Day Signals loop's latest quote with its age.
+                            * quote from the 9:30 ET snapshot. Live quotes stream only for the contracts on screen (visible rows plus one each side); every other pooled contract shows the Day Signals loop's latest quote with its age.
                           </div>
                         }
                       />
@@ -938,7 +976,7 @@ export function SignalsTickerModal({ symbol, initialRollLegId = null, focusPosit
                         error={chainError}
                         spotPrice={spotPrice}
                         liveCandidatesByKey={liveCandidatesByKey}
-                        liveChainCells={liveChainCells}
+                        liveChainCells={quotesFrame?.cells ?? {}}
                         selectedContractKey={selectedKey ?? chainPick?.key ?? null}
                         pickingDisabled={pendingOrder !== null}
                         phoneSide={chainPhoneSide}

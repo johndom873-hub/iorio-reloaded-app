@@ -33,6 +33,8 @@ interface DataTableProps<TRow> {
   afterTable?: ReactNode;
   onRowClick?: (row: TRow) => void;
   rowClassName?: (row: TRow) => string | undefined;
+  /** Extra data-* attributes per row (e.g. data-live-contracts for useVisibleLiveContracts); `index` is the row's position in `rows`. */
+  rowAttributes?: (row: TRow, index: number) => Record<`data-${string}`, string>;
   /** Smaller type (0.8rem) for dense, many-column tables. */
   dense?: boolean;
   /** Caps the table body to roughly this many rows and makes it scroll (sticky header) instead of growing the page. */
@@ -52,6 +54,7 @@ export function DataTable<TRow>({
   afterTable,
   onRowClick,
   rowClassName,
+  rowAttributes,
   dense = false,
   maxVisibleRows,
 }: DataTableProps<TRow>) {
@@ -128,9 +131,10 @@ export function DataTable<TRow>({
                 </td>
               </tr>
             ) : (
-              rows.map((row) => (
+              rows.map((row, rowIndex) => (
                 <tr
                   key={rowKey(row)}
+                  {...rowAttributes?.(row, rowIndex)}
                   className={[rowClassName?.(row), onRowClick ? "cursor-pointer" : undefined].filter(Boolean).join(" ") || undefined}
                   onClick={onRowClick ? () => onRowClick(row) : undefined}
                 >

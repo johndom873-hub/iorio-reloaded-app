@@ -271,11 +271,36 @@ export interface SignalsTickerFrame {
   type: "signalsTicker";
   at: string;
   signals: TickerSignals;
-  /** Contract keys (expiry|strike|right) with a live IBKR quote subscription for this stream's life. */
-  liveQuoteContracts: string[];
-  /** The chain cell of every live-quoted contract, scored at the live spot (keyed like liveQuoteContracts); the chain overlays these. */
-  liveChainCells: Record<string, SignalsChainCell>;
   uncompensatedAsOf: { spotPrice: number; at: string } | null;
+}
+
+/** Live quotes for exactly the contracts the modal has on screen, scored at the live spot (keys expiry|strike|right). */
+export interface SignalsQuotesFrame {
+  type: "signalsQuotes";
+  at: string;
+  spotPrice: number | null;
+  /** Requested contracts, each holding a live line. */
+  contractKeys: string[];
+  cells: Record<string, SignalsChainCell>;
+  candidates: Record<string, SignalCandidate>;
+  /** By leg id. */
+  heldLegs: Record<string, HeldLegScore>;
+  /** By roll key (legId|expiry|strike|right). */
+  rolls: Record<string, RollSignalCandidate>;
+}
+
+/** Opens the live-quote stream for the contracts on screen; reopen it (close + open) when that set changes. */
+export function openSignalsQuotesStream(symbol: string, contractKeys: string[], onFrame: (frame: SignalsQuotesFrame) => void, onError: () => void): () => void {
+  return openMultiplexedStream<SignalsQuotesFrame>({
+    kind: "signalsQuotes",
+    parameters: { symbol, contracts: contractKeys },
+    onData: onFrame,
+    onError,
+    openLegacy: () => {
+      onError();
+      return () => {};
+    },
+  });
 }
 
 export interface SignalsRoadmap {

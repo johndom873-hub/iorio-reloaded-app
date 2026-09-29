@@ -1135,9 +1135,15 @@
   border-radius: 50%;
   background: var(--tblr-success);
 }
+/* Ten strike rows plus the spot row (and the header): the chain only holds live lines for what is on screen,
+   so its height sets how many it uses. Desktop (measured): header 2.8rem, row 2.0625rem, spot row 1.35rem. */
 .signals-chain-scroll {
-  max-height: 28rem;
+  max-height: calc(2.8rem + 10 * 2.0625rem + 1.35rem);
   overflow-y: auto;
+}
+.signals-chain-scroll.is-phone {
+  /* Phone (measured): header 1.55rem, row 2.8125rem. */
+  max-height: calc(1.55rem + 10 * 2.8125rem + 1.35rem);
 }
 .signals-chain-table {
   table-layout: fixed;

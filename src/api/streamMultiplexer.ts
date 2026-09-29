@@ -12,7 +12,23 @@ import { ApiError, apiBaseUrl, apiRequest } from "./client";
 // new browser can briefly meet an old server) — see connect(). Both go away
 // once the legacy routes are deleted.
 
-export type MultiplexedStreamKind = "greeks" | "pnl" | "exposure" | "pricePerformancePrices" | "stockPrices" | "signalsScreen" | "signalsTicker" | "notifications" | "pulses";
+export type MultiplexedStreamKind = "greeks" | "pnl" | "exposure" | "pricePerformancePrices" | "stockPrices" | "signalsScreen" | "signalsTicker" | "signalsQuotes" | "notifications" | "pulses";
+
+// IBKR market-data lines only for the tab being looked at (Marcelo 2026-09-29): every kind here holds live
+// price lines on the server, so while this tab is hidden (another tab in front, window minimised, screen
+// locked) for hiddenTabPauseGraceMs they are unsubscribed, and re-sent — under a fresh id, since the server
+// ignores a subscribe that follows its own unsubscribe — the moment the tab is shown again. Every one of them
+// is a snapshot stream, so its first frame back is full current state. Notifications (which carry presence)
+// and the Pulse topology stream hold no lines and stay connected. The grace keeps a quick tab switch from
+// re-subscribing everything.
+const lineHoldingKinds: ReadonlySet<MultiplexedStreamKind> = new Set(["greeks", "pnl", "exposure", "pricePerformancePrices", "stockPrices", "signalsScreen", "signalsTicker", "signalsQuotes"]);
+export const hiddenTabPauseGraceMs = 10_000;
+let areLineHoldingStreamsPaused = false;
+let hiddenTabPauseTimer: ReturnType<typeof setTimeout> | null = null;
+
+function isPausedByHiddenTab(subscription: Subscription): boolean {
+  return areLineHoldingStreamsPaused && lineHoldingKinds.has(subscription.kind);
+}
 
 type ServerFrame =
   | { type: "hello"; connectionId: string; protocolVersion: number }
@@ -177,20 +193,73 @@ function removeSubscription(subscription: Subscription) {
   if (subscription.closeLegacy) {
     subscription.closeLegacy();
     subscription.closeLegacy = null;
-  } else if (subscription.isSentToServer && connectionId !== null) {
-    const connectionIdAtCall = connectionId;
-    const generationAtCall = connectionGeneration;
-    enqueueControl(async () => {
-      if (generationAtCall !== connectionGeneration) return; // the connection is gone; so is the subscription
-      await apiRequest(`/stream/${connectionIdAtCall}/unsubscribe`, {
-        method: "POST",
-        body: JSON.stringify({ subscriptionId: subscription.subscriptionId }),
-      }).catch(() => {
-        // Best effort: closing the connection cleans up anyway.
-      });
-    });
+  } else {
+    sendUnsubscribe(subscription);
   }
   scheduleEvaluation();
+}
+
+function sendUnsubscribe(subscription: Subscription) {
+  if (!subscription.isSentToServer || connectionId === null) return;
+  subscription.isSentToServer = false;
+  const connectionIdAtCall = connectionId;
+  const generationAtCall = connectionGeneration;
+  const subscriptionIdAtCall = subscription.subscriptionId;
+  enqueueControl(async () => {
+    if (generationAtCall !== connectionGeneration) return; // the connection is gone; so is the subscription
+    await apiRequest(`/stream/${connectionIdAtCall}/unsubscribe`, {
+      method: "POST",
+      body: JSON.stringify({ subscriptionId: subscriptionIdAtCall }),
+    }).catch(() => {
+      // Best effort: closing the connection cleans up anyway.
+    });
+  });
+}
+
+function pauseLineHoldingStreams() {
+  hiddenTabPauseTimer = null;
+  if (areLineHoldingStreamsPaused) return;
+  areLineHoldingStreamsPaused = true;
+  for (const subscription of subscriptions.values()) {
+    if (!lineHoldingKinds.has(subscription.kind)) continue;
+    if (subscription.retryTimer !== null) {
+      clearTimeout(subscription.retryTimer);
+      subscription.retryTimer = null;
+    }
+    sendUnsubscribe(subscription);
+  }
+}
+
+function resumeLineHoldingStreams() {
+  if (hiddenTabPauseTimer !== null) {
+    clearTimeout(hiddenTabPauseTimer);
+    hiddenTabPauseTimer = null;
+  }
+  if (!areLineHoldingStreamsPaused) return;
+  areLineHoldingStreamsPaused = false;
+  for (const subscription of [...subscriptions.values()]) {
+    if (!lineHoldingKinds.has(subscription.kind) || subscription.isSentToServer) continue;
+    // A fresh id: the server refuses to resurrect one it was told to unsubscribe.
+    subscriptions.delete(subscription.subscriptionId);
+    subscription.subscriptionId = newSubscriptionId();
+    subscription.consecutiveFailures = 0;
+    subscriptions.set(subscription.subscriptionId, subscription);
+    if (connectionState === "ready") sendSubscribe(subscription);
+  }
+}
+
+function onTabVisibilityChange() {
+  if (document.visibilityState === "hidden") {
+    if (hiddenTabPauseTimer === null && !areLineHoldingStreamsPaused) hiddenTabPauseTimer = setTimeout(pauseLineHoldingStreams, hiddenTabPauseGraceMs);
+  } else {
+    resumeLineHoldingStreams();
+  }
+}
+
+if (typeof document !== "undefined") {
+  document.addEventListener("visibilitychange", onTabVisibilityChange);
+  // A tab opened in the background starts hidden and fires no change event until it is shown.
+  if (document.visibilityState === "hidden") onTabVisibilityChange();
 }
 
 function enqueueControl(task: () => Promise<void>) {
@@ -198,7 +267,7 @@ function enqueueControl(task: () => Promise<void>) {
 }
 
 function sendSubscribe(subscription: Subscription) {
-  if (subscription.isSentToServer || connectionId === null) return;
+  if (subscription.isSentToServer || connectionId === null || isPausedByHiddenTab(subscription)) return;
   subscription.isSentToServer = true;
   const connectionIdAtCall = connectionId;
   const generationAtCall = connectionGeneration;
