@@ -22,6 +22,8 @@ export const decayWarningVolatilityPoints = 1;
 const signalOrderLimitsDebounceMs = 400;
 const adaptivePriorities: AdaptivePriority[] = ["Patient", "Normal", "Urgent"];
 // Where an Adaptive order is expected to fill, as a share of the way from the mid to the bid.
+// A buy-write (shares + call in one combo) takes no Adaptive: it rests at its net limit, built
+// from the mid, and fills there (Marcelo, 2026-09-29), so it is expected at the mid.
 const expectedSpreadConcession: Record<AdaptivePriority, number> = { Patient: 0, Normal: 0.5, Urgent: 1 };
 
 interface SignalOrderSetupFormProps {
@@ -81,7 +83,9 @@ export function SignalOrderSetupForm({ symbol, signals, candidate, spotPrice, ne
   const mid = (candidate.bid + candidate.ask) / 2;
   const frictionAtMid = candidate.edge - candidate.netEdgeAtMid;
   const frictionAtBid = candidate.frictionVolatility;
-  const concession = expectedSpreadConcession[adaptivePriority];
+  // Fewer free shares than the contracts need: the order buys the rest with the call, as one combo.
+  const isBuyWrite = isCall && signals.freeShares < quantity * 100;
+  const concession = isBuyWrite ? 0 : expectedSpreadConcession[adaptivePriority];
   const netEdgeExpected = candidate.netEdgeAtMid - (candidate.netEdgeAtMid - candidate.netEdge) * concession;
   const edgeDollarsExpected = netEdgeExpected * candidate.vega * 100;
   // Same mid-to-bid interpolation as netEdgeExpected, so the expected fill price backing the risk
@@ -157,7 +161,7 @@ export function SignalOrderSetupForm({ symbol, signals, candidate, spotPrice, ne
             nextEarningsDateIso: signals.nextEarningsDateIso,
             gradeCounts: signals.gradeCounts,
           },
-          order: { quantity, adaptivePriority, referencePremium: Number(mid.toFixed(2)), netEdgeExpected, edgeDollarsExpected, riskAdjustedRatioExpected },
+          order: { quantity, adaptivePriority: isBuyWrite ? null : adaptivePriority, referencePremium: Number(mid.toFixed(2)), netEdgeExpected, edgeDollarsExpected, riskAdjustedRatioExpected },
           timing: { selectedAtIso, builtAtIso, netEdgeAtSelection, netEdgeAtBuild: candidate.netEdge },
         },
       });
@@ -253,18 +257,20 @@ export function SignalOrderSetupForm({ symbol, signals, candidate, spotPrice, ne
           </label>
           <input id="signal-order-qty" type="number" min={1} step={1} className="form-control form-control-sm font-mono" style={{ width: "6rem" }} value={contractQty} onChange={(event) => setContractQty(event.target.value)} />
         </div>
-        <div className="d-flex justify-content-between align-items-center gap-3 mb-2">
-          <span className="text-secondary text-uppercase" style={{ fontSize: "0.7rem", fontWeight: 600, letterSpacing: "0.04em" }}>
-            Fill priority (IBKR Adaptive)
-          </span>
-          <div className="btn-group" role="group">
-            {adaptivePriorities.map((priority) => (
-              <button key={priority} type="button" className={`btn btn-sm ${priority === adaptivePriority ? "btn-primary" : "btn-outline-secondary"}`} onClick={() => setAdaptivePriority(priority)}>
-                {priority}
-              </button>
-            ))}
+        {!isBuyWrite && (
+          <div className="d-flex justify-content-between align-items-center gap-3 mb-2">
+            <span className="text-secondary text-uppercase" style={{ fontSize: "0.7rem", fontWeight: 600, letterSpacing: "0.04em" }}>
+              Fill priority (IBKR Adaptive)
+            </span>
+            <div className="btn-group" role="group">
+              {adaptivePriorities.map((priority) => (
+                <button key={priority} type="button" className={`btn btn-sm ${priority === adaptivePriority ? "btn-primary" : "btn-outline-secondary"}`} onClick={() => setAdaptivePriority(priority)}>
+                  {priority}
+                </button>
+              ))}
+            </div>
           </div>
-        </div>
+        )}
         <Row label="Reference premium (bid)" value={formatCurrency(candidate.bid)} />
         <Row label="Max gain (at bid)" value={formatSignedPnl(payoffAtBid?.maxGain ?? maxGainAtBid, 0)} tone="text-success" />
         {payoffAtBid && (

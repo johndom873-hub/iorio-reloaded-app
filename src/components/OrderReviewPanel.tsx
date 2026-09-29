@@ -134,7 +134,10 @@ export function OrderReviewPanel({ order: initialOrder, initialAdaptivePriority,
   // type -- open/close/roll all render this same panel. Only meaningful
   // while pending (sent along with Confirm); a resumed/reloaded order
   // that's already past pending_confirmation shows its actual stored value.
+  // Not offered on combos: IBKR's Adaptive is single-leg only, so a combo is a
+  // plain limit order at its net price.
   const [adaptivePriority, setAdaptivePriority] = useState<AdaptivePriority>(initialAdaptivePriority ?? "Normal");
+  const isComboOrder = localOrder.payload.legs.length > 1;
   const [cancelling, setCancelling] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [quote, setQuote] = useState<OrderLegQuote | null>(null);
@@ -308,7 +311,7 @@ export function OrderReviewPanel({ order: initialOrder, initialAdaptivePriority,
     setError(null);
     markOrderConfirmationSent(localOrder.id);
     try {
-      const confirmed = await confirmOrder(localOrder.id, adaptivePriority);
+      const confirmed = await confirmOrder(localOrder.id, isComboOrder ? undefined : adaptivePriority);
       setLocalOrder(confirmed);
       startOrderJob(confirmed);
     } catch (err) {
@@ -535,23 +538,25 @@ export function OrderReviewPanel({ order: initialOrder, initialAdaptivePriority,
 
       {isPending && (
         <>
-          <div className="d-flex justify-content-between align-items-center">
-            <label htmlFor="adaptive-priority-select" className="text-secondary mb-0" style={{ fontSize: "0.8rem" }}>
-              Fill priority (IBKR Adaptive)
-            </label>
-            <select
-              id="adaptive-priority-select"
-              className="form-select form-select-sm"
-              style={{ width: "auto" }}
-              ref={adaptivePrioritySelectTooltipRef}
-              value={adaptivePriority}
-              onChange={(event) => setAdaptivePriority(event.target.value as AdaptivePriority)}
-            >
-              <option value="Urgent">Urgent</option>
-              <option value="Normal">Normal</option>
-              <option value="Patient">Patient</option>
-            </select>
-          </div>
+          {!isComboOrder && (
+            <div className="d-flex justify-content-between align-items-center">
+              <label htmlFor="adaptive-priority-select" className="text-secondary mb-0" style={{ fontSize: "0.8rem" }}>
+                Fill priority (IBKR Adaptive)
+              </label>
+              <select
+                id="adaptive-priority-select"
+                className="form-select form-select-sm"
+                style={{ width: "auto" }}
+                ref={adaptivePrioritySelectTooltipRef}
+                value={adaptivePriority}
+                onChange={(event) => setAdaptivePriority(event.target.value as AdaptivePriority)}
+              >
+                <option value="Urgent">Urgent</option>
+                <option value="Normal">Normal</option>
+                <option value="Patient">Patient</option>
+              </select>
+            </div>
+          )}
           <div className="d-flex gap-2">
             <span ref={confirmWrapperTooltipRef} tabIndex={complianceBlockReason ? 0 : undefined} style={{ display: "inline-block", flex: 1 }}>
               <button
