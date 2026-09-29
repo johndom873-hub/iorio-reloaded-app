@@ -216,6 +216,12 @@ export function describeChainExpiryTab(expiry: { expiry: string; dte: number }):
   return `${formatMonthDay(expiry.expiry)} ${expiry.dte}D`;
 }
 
+/** In the money at the live spot: a call struck below it, a put struck above it. Signals only sells out-of-the-money contracts, so the chain does not show these. */
+export function isChainContractInTheMoney(right: "C" | "P", strike: number, spotPrice: number | null): boolean {
+  if (spotPrice === null) return false;
+  return right === "C" ? strike < spotPrice : strike > spotPrice;
+}
+
 export const chainCellStateExplanation = {
   candidate: "Signals candidate",
   filtered: "quoted, but left out by your Signals settings (hover for why)",

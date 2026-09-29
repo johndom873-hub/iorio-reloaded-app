@@ -1194,7 +1194,8 @@
   background: var(--tblr-primary-lt);
   box-shadow: inset 0 0 0 2px var(--tblr-primary);
 }
-.signals-chain-cell:disabled {
+.signals-chain-cell:disabled,
+.signals-chain-cell.is-in-the-money {
   cursor: default;
 }
 .signals-chain-filtered-label {

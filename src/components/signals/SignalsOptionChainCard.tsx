@@ -3,7 +3,7 @@ import type { SignalCandidate, SignalGrade, SignalsChain, SignalsChainCell } fro
 import { flashClassName, useFlashOnChange } from "../../hooks/useFlashOnChange";
 import { useMediaQuery } from "../../hooks/useMediaQuery";
 import { formatCurrency, formatCurrencyTrimmed, formatQuotePrice } from "../../lib/formatters";
-import { chainCellStateExplanation, describeChainExpiryTab, escapeTooltipHtml, gradeBadgeClass, gradeLabel, signalContractKey } from "../../lib/signalsPresentation";
+import { chainCellStateExplanation, describeChainExpiryTab, escapeTooltipHtml, gradeBadgeClass, gradeLabel, isChainContractInTheMoney, signalContractKey } from "../../lib/signalsPresentation";
 import { DottedLabelTooltip } from "../HelpTooltip";
 import { Spinner } from "../Spinner";
 
@@ -119,9 +119,14 @@ export function SignalsOptionChainCard({ chain, loading, error, spotPrice, liveC
     spotMarkerRef.current = element;
   };
 
-  const rows = chain?.strikes ?? [];
-  const spotMarkerIndex = spotPrice === null ? -1 : rows.findIndex((row) => row.strike >= spotPrice);
   const selectedExpiry = chain?.selectedExpiry ?? null;
+  const allRows = chain?.strikes ?? [];
+  // A phone shows one side at a time, so its in-the-money strikes are dropped as rows; the desktop keeps the shared strike column and blanks the cell.
+  // The contract under an open order review stays visible even if the spot has since carried it in the money.
+  const isHiddenAsInTheMoney = (strike: number, right: "C" | "P") => isChainContractInTheMoney(right, strike, spotPrice) && signalContractKey({ expiry: selectedExpiry ?? "", strike, right }) !== selectedContractKey;
+  const rows = isPhoneLayout ? allRows.filter((row) => !isHiddenAsInTheMoney(row.strike, phoneSide)) : allRows;
+  // With every visible strike below the spot (a phone's puts) the marker closes the list.
+  const spotMarkerIndex = spotPrice === null || rows.length === 0 ? -1 : rows.findIndex((row) => row.strike >= spotPrice) === -1 ? rows.length : rows.findIndex((row) => row.strike >= spotPrice);
 
   // A chain has ~90 strikes: open each expiry (and each phone side) centred on the spot.
   useEffect(() => {
@@ -149,6 +154,7 @@ export function SignalsOptionChainCard({ chain, loading, error, spotPrice, liveC
   const cellFor = (strike: number, right: "C" | "P", cell: SignalsChainCell, showStrike: boolean) => {
     const contract: ChainContractRef = { expiry: selectedExpiry ?? "", strike, right };
     const key = signalContractKey(contract);
+    if (isHiddenAsInTheMoney(strike, right)) return <div className="signals-chain-cell is-in-the-money" aria-hidden="true" />;
     return (
       <ChainCellButton
         contract={contract}
@@ -169,7 +175,7 @@ export function SignalsOptionChainCard({ chain, loading, error, spotPrice, liveC
           Option chain
         </span>
         <span className="text-secondary ms-lg-auto" style={{ fontSize: "0.75rem" }}>
-          Pick any contract, call or put, to build an order
+          Pick any out-of-the-money contract, call or put, to build an order
         </span>
       </div>
 
@@ -243,6 +249,7 @@ export function SignalsOptionChainCard({ chain, loading, error, spotPrice, liveC
                     </tr>
                   </Fragment>
                 ))}
+                {spotMarkerIndex === rows.length && spotPrice !== null && <SpotMarkerRow spotPrice={spotPrice} columnCount={1} markerRef={setSpotMarker} />}
               </tbody>
             </table>
           ) : (
@@ -271,6 +278,7 @@ export function SignalsOptionChainCard({ chain, loading, error, spotPrice, liveC
                     </tr>
                   </Fragment>
                 ))}
+                {spotMarkerIndex === rows.length && spotPrice !== null && <SpotMarkerRow spotPrice={spotPrice} columnCount={3} markerRef={setSpotMarker} />}
               </tbody>
             </table>
           )}
