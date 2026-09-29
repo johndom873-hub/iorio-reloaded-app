@@ -56,6 +56,8 @@ import { NetDeltaChart, type DeltaSeries } from "../components/pulse/NetDeltaCha
 import { EnvironmentBadges } from "../components/layout/EnvironmentBadges";
 import { useEnvironmentStatus } from "../hooks/useEnvironmentStatus";
 import { describeAssignmentRisk, describeSignalUpgradeCompact } from "../lib/signalsPresentation";
+import { openPositionsSignature } from "../lib/positionsSignature";
+import { usePollWhileVisible } from "../hooks/usePollWhileVisible";
 
 const CHART_SAMPLE_INTERVAL_MS = 60_000;
 // 8 hours of history at one sample/minute — matches the backend's rolling
@@ -65,6 +67,7 @@ const CHART_MAX_SAMPLES = 480;
 const HEALTH_POLL_INTERVAL_MS = 30_000;
 const ACCOUNT_POLL_INTERVAL_MS = 60_000;
 const TRADES_LIMIT = 30;
+const POSITIONS_POLL_INTERVAL_MS = 60_000;
 const EVENTS_LIMIT = 30;
 // Reference line on the Net Delta chart, carried over unchanged from the
 // earlier profit-probability plot (set 2026-09-19, kept as-is 2026-09-24
@@ -497,9 +500,14 @@ export function PulsePage() {
   const [unrealizedPnlByPositionId, setUnrealizedPnlByPositionId] = useState<Record<string, UnrealizedPnlResult>>({});
 
   const loadPositions = useCallback(() => {
-    fetchPositions({ status: "open" }).then(setPositions).catch(() => {});
+    fetchPositions({ status: "open" })
+      .then((fetchedPositions) => setPositions((current) => (openPositionsSignature(current) === openPositionsSignature(fetchedPositions) ? current : fetchedPositions)))
+      .catch(() => {});
   }, []);
   useEffect(() => loadPositions(), [loadPositions]);
+  // The worker's reconcile pass (every 60s) can change positions without publishing an event
+  // (a leftover-stock position closing, a leg's quantity growing as a multi-lot order fills).
+  usePollWhileVisible(loadPositions, POSITIONS_POLL_INTERVAL_MS);
 
   useEffect(() => {
     const optionLegIds = positions.flatMap((position) => position.legs.filter((leg) => leg.legType === "option").map((leg) => leg.id));
