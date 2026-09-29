@@ -189,6 +189,11 @@ export function formatExpiryWithDte(expiryIsoDate: string | null | undefined, as
   return `${formatDate(expiryIsoDate)} (${daysToExpiry(expiryIsoDate, asOf)} DTE)`;
 }
 
+/** "114P 3DTE" / "202.5C 3DTE" — the compact contract label shared by Pulse's Trades and Latest Events and the Signals Top Signal column. */
+export function formatOptionContractShort(strike: number | string, right: "C" | "P", dte: number | null): string {
+  return `${formatNumber(strike, 2)}${right}${dte === null ? "" : ` ${dte}DTE`}`;
+}
+
 // Pairs with daysToExpiry for the "(in X days)" label shown next to an
 // expiry date across the app (Positions table, Order Review, Trade Alerts).
 export function formatDaysToExpiry(days: number): string {

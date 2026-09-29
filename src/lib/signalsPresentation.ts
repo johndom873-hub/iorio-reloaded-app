@@ -1,6 +1,6 @@
 import type { AppNotification } from "../api/notifications";
 import type { DayQuotesFrameStatus, HeldLegScore, HeldLegUnscoredReason, RoadmapStatus, RollSignalCandidate, RollSignalFlag, SignalCandidate, SignalFlag, SignalGrade, SignalQuoteSource, SignalsNoCandidatesReason, SignalsPriceSource, SignalsUnscoredReason, MacroEvent } from "../api/signals";
-import { formatCurrencyTrimmed, formatDate, formatLocalTime, formatMonthDay, formatPercentageValue, formatShortAge, formatSignedPnl, formatVolatilityPoints } from "./formatters";
+import { formatCurrencyTrimmed, formatDate, formatLocalTime, formatMonthDay, formatOptionContractShort, formatPercentageValue, formatShortAge, formatSignedPnl, formatVolatilityPoints } from "./formatters";
 
 // Labels, badge classes and short explanations for the Signals screen and
 // modal (mockup approved 2026-09-22). Every label a user can see has a plain
@@ -122,12 +122,20 @@ export function describeDayQuotesStatus(dayQuotes: DayQuotesFrameStatus | null, 
   return { label: `Day quotes idle · ${loop.reason}`, tone: "iorio-note-amber", pulse: false };
 }
 
-/** "AAOI Put $95 · Oct 17 upgraded Weak → Good (+6.3vp, +$142)" — Pulse's Latest Events and the in-app toast. */
+function signalUpgradeContract(notification: Extract<AppNotification, { type: "signal_upgraded" }>): string {
+  return formatOptionContractShort(notification.strike, notification.strategyKey === "covered_call" ? "C" : "P", notification.dte);
+}
+
+/** "AAOI 95P 4DTE upgraded Weak → Good (+6.3vp, +$142)" — the in-app toast. */
 export function describeSignalUpgrade(notification: Extract<AppNotification, { type: "signal_upgraded" }>): string {
-  const contract = `${notification.strategyKey === "covered_call" ? "Call" : "Put"} ${formatCurrencyTrimmed(notification.strike)} · ${formatDate(notification.expiry)}`;
   const previous = gradeLabel[notification.previousGrade as SignalGrade] ?? notification.previousGrade;
   const next = gradeLabel[notification.grade as SignalGrade] ?? notification.grade;
-  return `${notification.symbol} ${contract} upgraded ${previous} → ${next} (${formatVolatilityPoints(notification.netEdge)}, ${formatSignedPnl(notification.edgeDollars, 0)})`;
+  return `${notification.symbol} ${signalUpgradeContract(notification)} upgraded ${previous} → ${next} (${formatVolatilityPoints(notification.netEdge)}, ${formatSignedPnl(notification.edgeDollars, 0)})`;
+}
+
+/** "AAOI 95P 4DTE → Good" — Pulse's Latest Events, whose rows have room for little more than the contract. */
+export function describeSignalUpgradeCompact(notification: Extract<AppNotification, { type: "signal_upgraded" }>): string {
+  return `${notification.symbol} ${signalUpgradeContract(notification)} → ${gradeLabel[notification.grade as SignalGrade] ?? notification.grade}`;
 }
 
 export const roadmapStatusLabel: Record<RoadmapStatus, string> = {
@@ -187,10 +195,9 @@ export function describeCandidate(candidate: SignalCandidate): string {
   return `${candidate.strategyKey === "covered_call" ? "Call" : "Put"} ${formatCurrencyTrimmed(candidate.strike)} · ${formatDate(candidate.expiry)}`;
 }
 
-/** "C110 · 12 DTE" — compact form for the Signals screen's Top Signal column. */
+/** "110C 12DTE" — compact form for the Signals screen's Top Signal column. */
 export function describeCandidateCompact(candidate: SignalCandidate): string {
-  const right = candidate.strategyKey === "covered_call" ? "C" : "P";
-  return `${right}${formatCurrencyTrimmed(candidate.strike).replace("$", "")} · ${candidate.dte} DTE`;
+  return formatOptionContractShort(candidate.strike, candidate.strategyKey === "covered_call" ? "C" : "P", candidate.dte);
 }
 
 // --- Roll Signals (Formula 3j, approved 2026-09-24) ---------------------------------------------
@@ -226,12 +233,15 @@ export function describeRoll(roll: RollSignalCandidate, held: Pick<HeldLegScore,
   return `${describeHeldLeg(held)} → ${describeHeldLeg({ right: roll.replacement.strategyKey === "covered_call" ? "C" : "P", strike: roll.replacement.strike, dte: roll.replacement.dte })}`;
 }
 
-/** "COIN Put $177.50 → Put $170 · Oct 17 upgraded Weak → Good (+5.6vp, +$262)" — the in-app toast and Pulse's Latest Events. */
+/** "COIN 177.5P 4DTE → 170P 18DTE roll upgraded Weak → Good (+5.6vp, +$262)" — the in-app toast. */
 export function describeRollSignalUpgrade(notification: Extract<AppNotification, { type: "roll_signal_upgraded" }>): string {
-  const right = notification.strategyKey === "covered_call" ? "Call" : "Put";
+  const right = notification.strategyKey === "covered_call" ? "C" : "P";
   const previous = gradeLabel[notification.previousGrade as SignalGrade] ?? notification.previousGrade;
   const next = gradeLabel[notification.grade as SignalGrade] ?? notification.grade;
-  return `${notification.symbol} ${right} ${formatCurrencyTrimmed(notification.heldStrike)} → ${right} ${formatCurrencyTrimmed(notification.strike)} · ${formatDate(notification.expiry)} roll upgraded ${previous} → ${next} (${formatVolatilityPoints(notification.netRollEdge)}, ${formatSignedPnl(notification.netRollEdgeDollars, 0)})`;
+  // heldDte is absent from payloads sent by an api deploy older than this app's.
+  const held = formatOptionContractShort(notification.heldStrike, right, notification.heldDte ?? null);
+  const replacement = formatOptionContractShort(notification.strike, right, notification.dte);
+  return `${notification.symbol} ${held} → ${replacement} roll upgraded ${previous} → ${next} (${formatVolatilityPoints(notification.netRollEdge)}, ${formatSignedPnl(notification.netRollEdgeDollars, 0)})`;
 }
 
 /** Column explanations, shown as header tooltips and in the mobile cards. */

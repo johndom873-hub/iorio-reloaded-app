@@ -40,7 +40,7 @@ import {
   type MarketStatus,
   type MarketSessionState,
 } from "../api/systemHealth";
-import { daysToExpiry, todayInEasternIso, formatSignedPnl, formatSignedPercentageValue, formatCompactDollars, formatDateTime, formatFeedTime, formatNumber, formatPercentageValue, formatRelativeDate, ibkrExpiryToIsoDate } from "../lib/formatters";
+import { daysToExpiry, todayInEasternIso, formatSignedPnl, formatSignedPercentageValue, formatCompactDollars, formatDateTime, formatFeedTime, formatNumber, formatPercentageValue, formatRelativeDate, formatOptionContractShort, ibkrExpiryToIsoDate } from "../lib/formatters";
 import { positionExpiryDate, strategyAbbrev as positionStrategyAbbrev, strategyTooltip } from "../lib/positionPnl";
 import { FlashingNumber } from "../components/FlashingNumber";
 import { TooltipSpan } from "../components/TooltipSpan";
@@ -55,7 +55,7 @@ import { TotalPnlChart } from "../components/pulse/TotalPnlChart";
 import { NetDeltaChart, type DeltaSeries } from "../components/pulse/NetDeltaChart";
 import { EnvironmentBadges } from "../components/layout/EnvironmentBadges";
 import { useEnvironmentStatus } from "../hooks/useEnvironmentStatus";
-import { describeSignalUpgrade } from "../lib/signalsPresentation";
+import { describeSignalUpgradeCompact } from "../lib/signalsPresentation";
 
 const CHART_SAMPLE_INTERVAL_MS = 60_000;
 // 8 hours of history at one sample/minute — matches the backend's rolling
@@ -135,8 +135,8 @@ function formatOrderLegsSummary(legs: OrderLeg[], asOf: string): string {
         return `${leg.action} ${leg.quantity} @ ${leg.unitPrice.toFixed(2)}`;
       }
       const expiryIsoDate = leg.expiry ? (leg.expiry.length === 8 ? ibkrExpiryToIsoDate(leg.expiry) : leg.expiry) : null;
-      const dte = expiryIsoDate ? `${daysToExpiry(expiryIsoDate, asOf)}d ` : "";
-      return `${leg.action} ${leg.quantity} ${leg.strike}${leg.right ?? ""} ${dte}@ ${leg.unitPrice.toFixed(2)}`;
+      const contract = leg.strike !== undefined && leg.right ? formatOptionContractShort(leg.strike, leg.right, expiryIsoDate ? daysToExpiry(expiryIsoDate, asOf) : null) : "";
+      return `${leg.action} ${leg.quantity} ${contract} @ ${leg.unitPrice.toFixed(2)}`;
     })
     .join(" + ");
 }
@@ -147,10 +147,7 @@ function colorForIndex(index: number, total: number): string {
 }
 
 function signalStrikeLabel(candidate: SignalCandidate): string {
-  const right = candidate.strategyKey === "covered_call" ? "C" : "P";
-  const expiry = new Date(candidate.expiry);
-  const expiryLabel = `${String(expiry.getUTCMonth() + 1).padStart(2, "0")}/${String(expiry.getUTCDate()).padStart(2, "0")}`;
-  return `${candidate.strike}${right} ${expiryLabel}`;
+  return formatOptionContractShort(candidate.strike, candidate.strategyKey === "covered_call" ? "C" : "P", candidate.dte);
 }
 
 function formatBytes(bytesText: string | null | undefined): string {
@@ -174,9 +171,8 @@ function tradeSideAndQuantity(trade: Trade): string {
 }
 
 function tradeDetailText(trade: Trade): string {
-  const contract = trade.strikePrice ? ` ${formatNumber(trade.strikePrice, 2)}${trade.optionType === "call" ? "C" : "P"}` : "";
-  const dte = trade.expiryDate ? ` ${daysToExpiry(trade.expiryDate, trade.executedAt)}DTE` : "";
-  return `${trade.symbol}${contract}${dte} @ ${formatNumber(trade.price, 2)}`;
+  const contract = trade.strikePrice ? ` ${formatOptionContractShort(trade.strikePrice, trade.optionType === "call" ? "C" : "P", trade.expiryDate ? daysToExpiry(trade.expiryDate, trade.executedAt) : null)}` : "";
+  return `${trade.symbol}${contract} @ ${formatNumber(trade.price, 2)}`;
 }
 
 // Phone layout's Systems header carries one LED per node (rules approved
@@ -645,7 +641,7 @@ export function PulsePage() {
               color: "var(--warning)",
             };
           case "signal_upgraded":
-            return { occurredAt, text: `Signal — ${describeSignalUpgrade(notification)}`, color: "var(--success)" };
+            return { occurredAt, text: `Signal — ${describeSignalUpgradeCompact(notification)}`, color: "var(--success)" };
           case "order_status": {
             // Resolved server-side in the same response — no per-order request.
             if (!order) return null;
@@ -739,7 +735,7 @@ export function PulsePage() {
         }
         case "signal_upgraded": {
           firePulse("heroku-db", "var(--success)");
-          appendEvent(`Signal — ${describeSignalUpgrade(notification)}`, "var(--success)");
+          appendEvent(`Signal — ${describeSignalUpgradeCompact(notification)}`, "var(--success)");
           break;
         }
         case "order_status": {
