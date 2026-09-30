@@ -4,6 +4,7 @@ import { ApiError } from "../api/client";
 import { fetchSignalsRoadmap, fetchSignalsScreen, openSignalsScreenStream, type DayQuotesFrameStatus, type RoadmapItem, type SignalGrade, type SignalsScreenRow } from "../api/signals";
 import { DataTable, type DataTableColumn } from "../components/DataTable/DataTable";
 import { FlashingNumber } from "../components/FlashingNumber";
+import { FlashingText } from "../components/FlashingText";
 import { PageHeader } from "../components/layout/PageHeader";
 import { ModelCaveatBadge, RoadmapEtaText } from "../components/signals/ModelCaveatBadge";
 import { RollBadge } from "../components/signals/RollBadge";
@@ -11,7 +12,7 @@ import { TickColoredPrice } from "../components/TickColoredPrice";
 import { TooltipSpan } from "../components/TooltipSpan";
 import { useSignalsTickerModal } from "../hooks/useSignalsTickerModal";
 import { daysToExpiry, formatCurrency, formatDateTime, formatDaysToExpiry, formatPercentage, formatRelativeTime, formatSignedPercentageValue, formatSignedPnl, formatVolatilityPoints, pnlTextClass } from "../lib/formatters";
-import { describeCandidateCompact, describeDayQuotesStatus, describeNoCandidatesReason, noSignalBadgeLabel, gradeBadgeClass, gradeExplanation, gradeLabel, priceSourceLabel, quoteSourceLabel, roadmapStatusBadgeClass, roadmapStatusLabel, signalsColumnExplanation, unscoredReasonLabel, restScoresFallbackMs } from "../lib/signalsPresentation";
+import { candidateContractKey, describeCandidateCompact, describeDayQuotesStatus, describeNoCandidatesReason, noSignalBadgeLabel, gradeBadgeClass, gradeExplanation, gradeLabel, priceSourceLabel, quoteSourceLabel, roadmapStatusBadgeClass, roadmapStatusLabel, signalsColumnExplanation, unscoredReasonLabel, restScoresFallbackMs } from "../lib/signalsPresentation";
 import { useTooltip } from "../hooks/useTooltip";
 import { QuoteAgeLabel } from "../components/QuoteAgeLabel";
 
@@ -230,8 +231,34 @@ export function SignalsPage() {
         headerTitle: signalsColumnExplanation.day,
         render: (row) => <span className={`font-mono ${pnlTextClass(row.dayChangePercent)}`}>{formatSignedPercentageValue(row.dayChangePercent, 1)}</span>,
       },
-      { key: "best", header: "Top Signal", headerTitle: signalsColumnExplanation.best, render: (row) => (row.best ? <span className="text-nowrap">{describeCandidateCompact(row.best)}</span> : <UnscoredBadge row={row} />) },
-      { key: "yield", header: "Yield", align: "right", headerTitle: signalsColumnExplanation.yield, render: (row) => <span className="font-mono">{row.best ? formatPercentage(row.best.annualizedYield, 1) : "—"}</span> },
+      {
+        key: "best",
+        header: "Top Signal",
+        headerTitle: signalsColumnExplanation.best,
+        render: (row) =>
+          row.best ? (
+            <FlashingText changeKey={candidateContractKey(row.best)} className="text-nowrap">
+              {describeCandidateCompact(row.best)}
+            </FlashingText>
+          ) : (
+            <UnscoredBadge row={row} />
+          ),
+      },
+      {
+        key: "yield",
+        header: "Yield",
+        align: "right",
+        headerTitle: signalsColumnExplanation.yield,
+        // annualizedYield is a fraction shown as a percentage to 1 decimal, so 3 decimals of the fraction.
+        render: (row) =>
+          row.best ? (
+            <FlashingNumber value={row.best.annualizedYield} precision={3} className="font-mono">
+              {formatPercentage(row.best.annualizedYield, 1)}
+            </FlashingNumber>
+          ) : (
+            <span className="font-mono">—</span>
+          ),
+      },
       { key: "grade", header: "Grade", headerTitle: signalsColumnExplanation.grade, render: (row) => (row.best ? <GradeBadge grade={row.best.grade} /> : null) },
       {
         key: "netEdge",

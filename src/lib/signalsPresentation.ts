@@ -209,6 +209,11 @@ export function candidateContractRight(candidate: Pick<SignalCandidate, "strateg
   return candidate.strategyKey === "covered_call" ? "C" : "P";
 }
 
+/** A candidate's contract key, matching signalContractKey for the same contract. */
+export function candidateContractKey(candidate: Pick<SignalCandidate, "expiry" | "strike" | "strategyKey">): string {
+  return signalContractKey({ expiry: candidate.expiry, strike: candidate.strike, right: candidateContractRight(candidate) });
+}
+
 /** Expiry tab label: "Oct 16 17D". */
 export function describeChainExpiryTab(expiry: { expiry: string; dte: number }): string {
   return `${formatMonthDay(expiry.expiry)} ${expiry.dte}D`;

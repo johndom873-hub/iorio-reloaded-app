@@ -12,7 +12,7 @@ import { SignalOrderSetupForm } from "./SignalOrderSetupForm";
 import { ChainContractOrderSetupForm } from "./ChainContractOrderSetupForm";
 import { SignalsOptionChainCard, type ChainContractRef } from "./signals/SignalsOptionChainCard";
 import { formatCurrency, formatCurrencyTrimmed, formatDate, formatDateTime, formatNumber, formatPercentage, formatPercentageValue, formatSignedPercentageValue, formatSignedPnl, formatVolatilityPoints, pnlTextClass } from "../lib/formatters";
-import { candidateContractRight, describeHeldLeg, describeSupportResistanceLevel, describeNoCandidatesMessage, describeQuoteAgeRange, describeRollSignalFlag, describeSignalFlag, gradeBadgeClass, gradeExplanation, gradeLabel, heldLegUnscoredReasonLabel, netRollEdgeExplanation, quoteSourceLabel, rollFlagLetter, signalContractKey, signalFlagLetter, surfaceIvTrustClass, unscoredReasonLabel, restScoresFallbackMs } from "../lib/signalsPresentation";
+import { candidateContractKey, describeHeldLeg, describeSupportResistanceLevel, describeNoCandidatesMessage, describeQuoteAgeRange, describeRollSignalFlag, describeSignalFlag, gradeBadgeClass, gradeExplanation, gradeLabel, heldLegUnscoredReasonLabel, netRollEdgeExplanation, quoteSourceLabel, rollFlagLetter, signalContractKey, signalFlagLetter, surfaceIvTrustClass, unscoredReasonLabel, restScoresFallbackMs } from "../lib/signalsPresentation";
 import { IvHistoryChart } from "./charts/IvHistoryChart";
 import { TickerPriceChart } from "./charts/TickerPriceChart";
 import { CollapsibleCard } from "./CollapsibleCard";
@@ -63,8 +63,7 @@ const badgeFontSize = { fontSize: "0.72rem" } as const;
 const macdSignalBadgeClass: Record<MacdSignal, string> = { Bullish: "badge-change-pos", Bearish: "badge-change-neg", Neutral: "badge-change-flat" };
 const noCreditRollNotice = "No credit roll to a lower-delta contract passes the Signals filters for that leg right now. Pick any contract on the option chain to roll to it.";
 const notInSignalsUniverseNotice = "Not in the Signals universe — not on the shortlist and no open short option. Signals scores appear once it's shortlisted.";
-const candidateKey = (candidate: SignalCandidate) => signalContractKey({ expiry: candidate.expiry, strike: candidate.strike, right: candidateContractRight(candidate) });
-const rollKey = (roll: RollSignalCandidate) => `${roll.legId}|${candidateKey(roll.replacement)}`;
+const rollKey = (roll: RollSignalCandidate) => `${roll.legId}|${candidateContractKey(roll.replacement)}`;
 
 function RollGradeBadge({ roll }: { roll: RollSignalCandidate }) {
   const ref = useTooltip<HTMLSpanElement>(netRollEdgeExplanation);
@@ -543,10 +542,10 @@ export function SignalsTickerModal({ symbol, initialRollLegId = null, focusPosit
   const yieldTierByKey = useMemo(() => {
     const ranked = [...shownCandidates].sort((a, b) => a.annualizedYield - b.annualizedYield);
     const tiers = new Map<string, number>();
-    ranked.forEach((candidate, index) => tiers.set(candidateKey(candidate), Math.min(5, Math.floor((index / ranked.length) * 5) + 1)));
+    ranked.forEach((candidate, index) => tiers.set(candidateContractKey(candidate), Math.min(5, Math.floor((index / ranked.length) * 5) + 1)));
     return tiers;
   }, [shownCandidates]);
-  const selectedCandidate = useMemo(() => (selectedKey ? (signals?.candidates.find((candidate) => candidateKey(candidate) === selectedKey) ?? null) : null), [signals, selectedKey]);
+  const selectedCandidate = useMemo(() => (selectedKey ? (signals?.candidates.find((candidate) => candidateContractKey(candidate) === selectedKey) ?? null) : null), [signals, selectedKey]);
   const selectedRoll = useMemo(() => (selectedRollKey ? (signals?.rolls.find((roll) => rollKey(roll) === selectedRollKey) ?? null) : null), [signals, selectedRollKey]);
   const rollModeHeldLeg = useMemo(() => (rollModeLegId ? (signals?.heldLegs.find((leg) => leg.legId === rollModeLegId) ?? null) : null), [signals, rollModeLegId]);
   const selectedRollHeldLeg = useMemo(() => (selectedRoll ? (signals?.heldLegs.find((leg) => leg.legId === selectedRoll.legId) ?? null) : null), [signals, selectedRoll]);
@@ -554,8 +553,8 @@ export function SignalsTickerModal({ symbol, initialRollLegId = null, focusPosit
   // and held leg), so the order setup is scored live however far the chain is scrolled. Joined so the effect compares by value.
   const pinnedContractsJoined = useMemo(() => {
     const keys: string[] = [];
-    if (selectedCandidate) keys.push(candidateKey(selectedCandidate));
-    if (selectedRoll && selectedRollHeldLeg) keys.push(signalContractKey(selectedRollHeldLeg), candidateKey(selectedRoll.replacement));
+    if (selectedCandidate) keys.push(candidateContractKey(selectedCandidate));
+    if (selectedRoll && selectedRollHeldLeg) keys.push(signalContractKey(selectedRollHeldLeg), candidateContractKey(selectedRoll.replacement));
     if (chainPick && chainPick.status === "ready") {
       keys.push(chainPick.key);
       if (rollModeHeldLeg) keys.push(signalContractKey(rollModeHeldLeg));
@@ -578,7 +577,7 @@ export function SignalsTickerModal({ symbol, initialRollLegId = null, focusPosit
     () =>
       new Map(
         (signals?.candidates ?? []).map((candidate) => {
-          const key = candidateKey(candidate);
+          const key = candidateContractKey(candidate);
           const live = quotesFrame?.candidates[key];
           return [key, live ? { ...live, uncompensatedSharePercent: candidate.uncompensatedSharePercent } : candidate];
         }),
@@ -620,7 +619,7 @@ export function SignalsTickerModal({ symbol, initialRollLegId = null, focusPosit
     setSelectedRollKey(null);
     setRollSelectionReference(null);
     setRollModeLegId(null);
-    setSelectedKey(candidateKey(candidate));
+    setSelectedKey(candidateContractKey(candidate));
     setSelectionReference({ netEdge: candidate.netEdge, atIso: new Date().toISOString() });
     if (candidate.expiry !== effectiveExpiry) setSelectedExpiry(candidate.expiry);
   }
@@ -669,7 +668,7 @@ export function SignalsTickerModal({ symbol, initialRollLegId = null, focusPosit
         setChainNotice("That is the leg you already hold: pick a different strike or expiry to roll to.");
         return;
       }
-      const listedRoll = (rollsByLegId.get(rollTarget.legId) ?? []).find((roll) => candidateKey(roll.replacement) === key);
+      const listedRoll = (rollsByLegId.get(rollTarget.legId) ?? []).find((roll) => candidateContractKey(roll.replacement) === key);
       if (listedRoll) {
         selectRoll(listedRoll);
         return;
@@ -846,13 +845,13 @@ export function SignalsTickerModal({ symbol, initialRollLegId = null, focusPosit
             </TooltipSpan>
           ),
       },
-      { key: "yield", header: "Ann. yield", align: "right", render: (row) => <span className={`font-mono heat-yield-${yieldTierByKey.get(candidateKey(row)) ?? 1}`}>{formatPercentage(row.annualizedYield, 0)}</span> },
+      { key: "yield", header: "Ann. yield", align: "right", render: (row) => <span className={`font-mono heat-yield-${yieldTierByKey.get(candidateContractKey(row)) ?? 1}`}>{formatPercentage(row.annualizedYield, 0)}</span> },
       { key: "uncompensated", header: "Drift", align: "right", headerTitle: "Share of P&L variance from delta drift (UncompensatedShare)", render: (row) => <span className="font-mono text-secondary">{row.uncompensatedSharePercent === null ? "…" : `${row.uncompensatedSharePercent.toFixed(0)}%`}</span> },
       { key: "flags", header: "Flags", align: "center", render: (row) => <FlagBadges candidate={row} macroEvents={signals?.macroEvents ?? []} /> },
     ],
     [yieldTierByKey],
   );
-  const opportunityRows = useMemo(() => shownCandidates.map((candidate, index) => ({ ...(liveCandidatesByKey.get(candidateKey(candidate)) ?? candidate), rank: index + 1 })), [shownCandidates, liveCandidatesByKey]);
+  const opportunityRows = useMemo(() => shownCandidates.map((candidate, index) => ({ ...(liveCandidatesByKey.get(candidateContractKey(candidate)) ?? candidate), rank: index + 1 })), [shownCandidates, liveCandidatesByKey]);
 
   const dayQuoteAgeRange = describeQuoteAgeRange(signals?.dayQuotesAsOf);
   const liveLabel = notInSignalsUniverse
@@ -1030,11 +1029,11 @@ export function SignalsTickerModal({ symbol, initialRollLegId = null, focusPosit
                         maxVisibleRows={10}
                         columns={opportunityColumns}
                         rows={opportunityRows}
-                        rowKey={(row) => candidateKey(row)}
-                        rowAttributes={(row) => ({ "data-live-contracts": candidateKey(row) })}
+                        rowKey={(row) => candidateContractKey(row)}
+                        rowAttributes={(row) => ({ "data-live-contracts": candidateContractKey(row) })}
                         emptyMessage={hiddenAvoidCount > 0 ? `No candidate has positive net Edge right now. Tick "Show Avoid" to see the ${hiddenAvoidCount} hidden.` : signals.noCandidatesReason ? describeNoCandidatesMessage(signals.noCandidatesReason) : "No candidates match the filters."}
                         onRowClick={selectCandidate}
-                        rowClassName={(row) => [candidateKey(row) === selectedKey ? "table-active" : "", row.grade === "avoid" ? "text-secondary" : ""].filter(Boolean).join(" ") || undefined}
+                        rowClassName={(row) => [candidateContractKey(row) === selectedKey ? "table-active" : "", row.grade === "avoid" ? "text-secondary" : ""].filter(Boolean).join(" ") || undefined}
                         toolbar={
                           <div className="d-flex flex-wrap align-items-center gap-2 w-100" style={{ fontSize: "0.8rem" }}>
                             <span className="text-secondary text-uppercase fw-bold" style={{ fontSize: "0.72rem", letterSpacing: "0.06em" }}>
