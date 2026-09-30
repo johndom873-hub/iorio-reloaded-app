@@ -16,7 +16,7 @@ import { useTooltip } from "../hooks/useTooltip";
 import { QuoteAgeLabel } from "../components/QuoteAgeLabel";
 
 // Signals screen (stage 3 of the build; mockup approved 2026-09-22, v3):
-// every shortlist ticker, scored against the 9:30 ET fitted surface at live
+// every shortlist ticker, scored against the 10:00 ET fitted surface at live
 // prices. First paint from GET /signals, then the signalsScreen stream
 // replaces the rows at most once a second. A row opens the Signals modal
 // (stage 4, mounted globally), kept in the URL as ?signal=SYMBOL.
@@ -150,7 +150,7 @@ export function SignalsPage() {
     };
   }, []);
 
-  // The REST rows are scored at the 9:30 snapshot spot: shown only if no live frame has arrived after a short wait (or the stream
+  // The REST rows are scored at the 10:00 snapshot spot: shown only if no live frame has arrived after a short wait (or the stream
   // failed), so the list never opens on stale grades that the live prices then correct.
   useEffect(() => {
     if (!restRows) return;
@@ -346,7 +346,7 @@ export function SignalsPage() {
 
   return (
     <>
-      <PageHeader title="Signals" subtitle="Live opportunity scoring for your shortlist · scores use the 9:30 ET surface, live prices" />
+      <PageHeader title="Signals" subtitle="Live opportunity scoring for your shortlist · scores use the 10:00 ET surface, live prices" />
 
       <div className="d-none d-md-block">
         <DataTable

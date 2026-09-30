@@ -69,13 +69,13 @@ export function describeNoCandidatesMessage(reason: SignalsNoCandidatesReason): 
 export const priceSourceLabel: Record<SignalsPriceSource, string> = {
   live: "Live price",
   frozen: "Last known price (pre-live)",
-  snapshot: "9:30 ET snapshot price",
+  snapshot: "10:00 ET snapshot price",
 };
 
 export const quoteSourceLabel: Record<SignalQuoteSource, string> = {
   live: "Live IBKR quote",
   day: "Day Signals quote — refreshed by the intraday loop every few minutes",
-  snapshot: "9:30 ET snapshot quote — this contract is not in today's refresh pool",
+  snapshot: "10:00 ET snapshot quote — this contract is not in today's refresh pool",
 };
 
 /** A day quote's age as the Quote column shows it: "12s", "3m", "1h 05m", or "—". */
@@ -116,7 +116,7 @@ export function describeDayQuotesStatus(dayQuotes: DayQuotesFrameStatus | null, 
   if (loop.reason.startsWith("market closed")) {
     return status.newestQuotedAt ? { label: `Day quotes as of ${formatLocalTime(status.newestQuotedAt)} · market closed`, tone: "text-secondary", pulse: false } : { label: "Day quotes idle · market closed", tone: "text-secondary", pulse: false };
   }
-  if (loop.reason.startsWith("waiting for today's pool")) return { label: "Day quotes idle · waiting for the 9:30 ET capture", tone: "text-secondary", pulse: false };
+  if (loop.reason.startsWith("waiting for today's pool")) return { label: "Day quotes idle · waiting for the 10:00 ET capture", tone: "text-secondary", pulse: false };
   return { label: `Day quotes idle · ${loop.reason}`, tone: "iorio-note-amber", pulse: false };
 }
 
@@ -306,7 +306,7 @@ export const signalsColumnExplanation = {
   earnings: "Next earnings date on record.",
   notAccountedFor: "Measures the ranking does not use yet, what each is waiting on, and when it should be ready.",
   roll: "Open short legs on this ticker with a credit roll graded above Avoid; the colour is the best roll's grade. Click to review it.",
-  quotes: "What the best opportunity's numbers are based on: a live IBKR line, a Day Signals quote (age shown), or still the 9:30 ET snapshot quote.",
+  quotes: "What the best opportunity's numbers are based on: a live IBKR line, a Day Signals quote (age shown), or still the 10:00 ET snapshot quote.",
 } as const;
 
 /**
@@ -320,5 +320,5 @@ export function describeSupportResistanceLevel(side: "support" | "resistance", l
   return { label: side === "support" ? "Support" : "Resistance", detail: `${level.touches} touches, ${level.qualityPct.toFixed(1)}% quality` };
 }
 
-/** How long the Signals screens wait for their first live frame before showing the REST scores (scored at the stale 9:30 snapshot spot) instead. */
+/** How long the Signals screens wait for their first live frame before showing the REST scores (scored at the stale 10:00 snapshot spot) instead. */
 export const restScoresFallbackMs = 4_000;

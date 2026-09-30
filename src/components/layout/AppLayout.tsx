@@ -70,7 +70,7 @@ function readStoredSidebarMode(): SidebarMode {
 /**
  * "Real-time data disabled" when IBKR_MARKET_DATA_LINES_ENABLED=false refuses every market-data
  * line reservation outright (typically dev), or "Live data restricted" while a scheduled scan
- * (the 9:30 ET chain capture) holds its priority lines instead (mockup
+ * (the 10:00 ET chain capture) holds its priority lines instead (mockup
  * rev 2, 2026-09-24). The two states don't overlap in practice — a disabled environment never
  * has an active priority reservation to report — but disabled takes precedence if it ever does.
  */
@@ -88,7 +88,7 @@ function MarketDataRestrictionPill({
     disabled
       ? "IBKR_MARKET_DATA_LINES_ENABLED=false in this environment — every market-data line reservation is refused, so screens show no live prices or quotes."
       : restriction
-        ? `A scheduled scan (the 9:30 ET chain capture) holds ${restriction.priorityLines} of IBKR's market-data lines while it runs. Live prices and quotes are served with the ${90 - restriction.priorityLines} lines left, most recent requests first; anything that could not get a line shows its last received value and catches up on its own.`
+        ? `A scheduled scan (the 10:00 ET chain capture) holds ${restriction.priorityLines} of IBKR's market-data lines while it runs. Live prices and quotes are served with the ${90 - restriction.priorityLines} lines left, most recent requests first; anything that could not get a line shows its last received value and catches up on its own.`
         : undefined,
   );
   if (!disabled && !restriction) return null;

@@ -309,7 +309,7 @@ export function SignalsTickerModal({ symbol, initialRollLegId = null, focusPosit
 
   const [overview, setOverview] = useState<TickerOverview | null>(null);
   const [overviewError, setOverviewError] = useState<string | null>(null);
-  // The shared pooled live stock price (same line as every other screen); never the 9:30 capture's signals.spotPrice.
+  // The shared pooled live stock price (same line as every other screen); never the 10:00 capture's signals.spotPrice.
   const [liveSpotPrice, setLiveSpotPrice] = useState<number | null>(null);
   const [chartBars, setChartBars] = useState<PriceBar[] | null>(null);
   const [chartError, setChartError] = useState<string | null>(null);
@@ -382,7 +382,7 @@ export function SignalsTickerModal({ symbol, initialRollLegId = null, focusPosit
     };
   }, []);
 
-  // The REST scores are at the 9:30 snapshot spot: shown only if no live frame has arrived after a short wait (or the stream failed),
+  // The REST scores are at the 10:00 snapshot spot: shown only if no live frame has arrived after a short wait (or the stream failed),
   // so the list never opens on stale grades that the live price then corrects.
   const [restSignals, setRestSignals] = useState<TickerSignals | null>(null);
   useEffect(() => {
@@ -828,7 +828,7 @@ export function SignalsTickerModal({ symbol, initialRollLegId = null, focusPosit
       {
         key: "quote",
         header: "Quote",
-        headerTitle: "Where this row's bid/ask comes from: a live IBKR line (selected expiry), the Day Signals loop (age shown), or the 9:30 ET snapshot",
+        headerTitle: "Where this row's bid/ask comes from: a live IBKR line (selected expiry), the Day Signals loop (age shown), or the 10:00 ET snapshot",
         render: (row) =>
           row.quoteSource === "live" ? (
             <TooltipSpan className="d-inline-flex align-items-center gap-2" text={quoteSourceLabel.live}>
@@ -1062,7 +1062,7 @@ export function SignalsTickerModal({ symbol, initialRollLegId = null, focusPosit
                         }
                         afterTable={
                           <div className="card-footer text-secondary" style={{ fontSize: "0.75rem" }}>
-                            * quote from the 9:30 ET snapshot. Live quotes stream only for the contracts on screen; every other pooled contract shows the Day Signals loop's latest quote with its age.
+                            * quote from the 10:00 ET snapshot. Live quotes stream only for the contracts on screen; every other pooled contract shows the Day Signals loop's latest quote with its age.
                           </div>
                         }
                       />

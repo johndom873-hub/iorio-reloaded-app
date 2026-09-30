@@ -219,7 +219,7 @@ export function SignalOrderSetupForm({ symbol, signals, candidate, spotPrice, ne
           </span>
         </div>
         <div className="mt-2">
-          <Row label="Surface IV at this strike (9:30 snapshot, live spot)" value={formatPercentage(candidate.surfaceImpliedVolatility, 1)} />
+          <Row label="Surface IV at this strike (10:00 snapshot, live spot)" value={formatPercentage(candidate.surfaceImpliedVolatility, 1)} />
           <Row label={`Forecast volatility (${signals.forecast?.windowDays ?? 63}-day Yang-Zhang)`} value={formatPercentage(candidate.forecastVolatility, 1)} />
           <Row label="Friction (mid-bid range)" value={`${formatVolatilityPoints(frictionAtMid).replace("+", "")} – ${formatVolatilityPoints(frictionAtBid).replace("+", "")}`} />
         </div>

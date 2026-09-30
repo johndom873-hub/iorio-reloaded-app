@@ -16,7 +16,7 @@ export interface MacroEvent {
 }
 export type SignalsUnscoredReason = "no_snapshot" | "no_surface_fit" | "no_forecast" | "suspected_split";
 export type SignalsPriceSource = "live" | "frozen" | "snapshot";
-/** live = a pooled IBKR line (modal / screen best line), day = the Day Signals refresh loop, snapshot = the 9:30 ET capture. */
+/** live = a pooled IBKR line (modal / screen best line), day = the Day Signals refresh loop, snapshot = the 10:00 ET capture. */
 export type SignalQuoteSource = "live" | "day" | "snapshot";
 
 export interface SignalCandidate {
