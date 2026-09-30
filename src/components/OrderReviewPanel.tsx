@@ -521,7 +521,7 @@ export function OrderReviewPanel({ order: initialOrder, initialAdaptivePriority,
       {order.note && <div className="alert alert-info mb-0">{order.note}</div>}
       {order.calendarWarningEvents && order.calendarWarningEvents.length > 0 ? (
         <div className="alert alert-warning mb-0">
-          <div className="fw-semibold text-dark">
+          <div className="fw-semibold">
             ⚠ {order.calendarWarningEvents.length} economic event{order.calendarWarningEvents.length === 1 ? "" : "s"} before expiry
           </div>
           <ul className="mb-0 mt-1 ps-3">
