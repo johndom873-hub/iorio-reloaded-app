@@ -54,6 +54,8 @@ export interface SignalCandidate {
 // Roll Signals (Formula 3j, approved 2026-09-24): every open short option leg scored as a contract to keep,
 // and every (held leg, replacement) pair that passes the lower-delta and credit filters.
 export type RollSignalFlag = "near_expiry" | "assignment_risk" | "decayed";
+/** Only on a roll to a contract picked on the chain: the list never holds a roll with a warning. */
+export type RollSignalWarning = "debit" | "higher_delta";
 export type HeldLegUnscoredReason = "no_slice" | "no_quote" | "no_forecast";
 
 export interface HeldLegScore {
@@ -98,12 +100,13 @@ export interface RollSignalCandidate {
   netRollEdgeDollarsPerContract: number;
   /** × quantity. */
   netRollEdgeDollars: number;
-  /** mid(B) − mid(A), per share; always > 0 (credit rolls only). */
+  /** mid(B) − mid(A), per share; positive unless the warnings say "debit". */
   netCreditPerShare: number;
-  /** |delta(B)| − |delta(A)|; never positive (lower-delta filter). */
+  /** |delta(B)| − |delta(A)|; positive only with the "higher_delta" warning. */
   deltaChange: number;
   dollarRiskChange: number;
   flags: RollSignalFlag[];
+  warnings: RollSignalWarning[];
   grade: SignalGrade;
 }
 
@@ -287,13 +290,18 @@ export interface SignalsQuotesFrame {
   heldLegs: Record<string, HeldLegScore>;
   /** By roll key (legId|expiry|strike|right). */
   rolls: Record<string, RollSignalCandidate>;
+  /** Each pinned contract scored live exactly like GET /signals/:symbol/contract (a pinned held-leg contract has no entry: see heldLegs). */
+  pinned: Record<string, SignalContractScore>;
 }
 
-/** Opens the live-quote stream for the contracts on screen; reopen it (close + open) when that set changes. */
-export function openSignalsQuotesStream(symbol: string, contractKeys: string[], onFrame: (frame: SignalsQuotesFrame) => void, onError: () => void): () => void {
+/**
+ * Opens the live-quote stream for the contracts on screen plus the pinned ones (what an order under review depends on: the pick,
+ * and for a roll the held leg and replacement); reopen it (close + open) when either set changes.
+ */
+export function openSignalsQuotesStream(symbol: string, contractKeys: string[], pinnedKeys: string[], onFrame: (frame: SignalsQuotesFrame) => void, onError: () => void): () => void {
   return openMultiplexedStream<SignalsQuotesFrame>({
     kind: "signalsQuotes",
-    parameters: { symbol, contracts: contractKeys },
+    parameters: pinnedKeys.length > 0 ? { symbol, contracts: contractKeys, pinned: pinnedKeys } : { symbol, contracts: contractKeys },
     onData: onFrame,
     onError,
     openLegacy: () => {
@@ -410,6 +418,8 @@ export interface SignalContractContext {
 /** Scored exactly like a candidate: SignalOrderSetupForm takes it unchanged. */
 export interface ScoredSignalContract extends SignalCandidate, SignalContractContext {
   scored: true;
+  /** This contract as the replacement for each scorable open short leg of the same right. */
+  rolls: RollSignalCandidate[];
 }
 
 /** No Signals score (in the money, spans earnings, no surface for the expiry, no two-sided quote, ...): the quote alone. */

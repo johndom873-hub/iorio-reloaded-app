@@ -40,7 +40,7 @@ export function TickerPositionsCards({ symbol, data, currentPrice, focusPosition
       {openPositions.length > 0 && (
         <CollapsibleCard title={openPositions.length === 1 ? "Position" : `Positions (${openPositions.length})`} storageKey="ticker-detail-positions" forceOpenSignal={forceOpenSignal}>
           {openPositions.map((position, index) => (
-            <div key={position.id} ref={position.id === focusPositionId ? focusedPositionRef : undefined} className={index < openPositions.length - 1 ? "border-bottom pb-4 mb-4" : undefined}>
+            <div key={position.id} ref={position.id === focusPositionId ? focusedPositionRef : undefined} className={index < openPositions.length - 1 ? "border-bottom pb-3 mb-3" : undefined}>
               <PositionCard
                 position={position}
                 greeksByLegId={data.greeksByLegId}

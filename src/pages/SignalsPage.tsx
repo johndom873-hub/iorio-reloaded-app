@@ -11,7 +11,7 @@ import { TickColoredPrice } from "../components/TickColoredPrice";
 import { TooltipSpan } from "../components/TooltipSpan";
 import { useSignalsTickerModal } from "../hooks/useSignalsTickerModal";
 import { daysToExpiry, formatCurrency, formatDateTime, formatDaysToExpiry, formatPercentage, formatRelativeTime, formatSignedPercentageValue, formatSignedPnl, formatVolatilityPoints, pnlTextClass } from "../lib/formatters";
-import { describeCandidateCompact, describeDayQuotesStatus, describeNoCandidatesReason, noSignalBadgeLabel, gradeBadgeClass, gradeExplanation, gradeLabel, priceSourceLabel, quoteAgeCellLabel, quoteSourceLabel, roadmapStatusBadgeClass, roadmapStatusLabel, signalsColumnExplanation, unscoredReasonLabel } from "../lib/signalsPresentation";
+import { describeCandidateCompact, describeDayQuotesStatus, describeNoCandidatesReason, noSignalBadgeLabel, gradeBadgeClass, gradeExplanation, gradeLabel, priceSourceLabel, quoteAgeCellLabel, quoteSourceLabel, roadmapStatusBadgeClass, roadmapStatusLabel, signalsColumnExplanation, unscoredReasonLabel, restScoresFallbackMs } from "../lib/signalsPresentation";
 import { useTooltip } from "../hooks/useTooltip";
 
 // Signals screen (stage 3 of the build; mockup approved 2026-09-22, v3):
@@ -122,6 +122,7 @@ function latestSnapshotCapturedAt(rows: SignalsScreenRow[]): string | null {
 export function SignalsPage() {
   const [rows, setRows] = useState<SignalsScreenRow[]>([]);
   const [roadmap, setRoadmap] = useState<RoadmapItem[]>([]);
+  const [restRows, setRestRows] = useState<SignalsScreenRow[] | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [streamState, setStreamState] = useState<StreamState>("connecting");
@@ -135,20 +136,35 @@ export function SignalsPage() {
     Promise.all([fetchSignalsScreen(), fetchSignalsRoadmap()])
       .then(([screenRows, roadmapResponse]) => {
         if (cancelled) return;
-        // A live frame may already have replaced the rows; the REST answer must not roll them back.
-        setRows((current) => (current.length > 0 ? current : screenRows));
+        setRestRows(screenRows);
         setRoadmap(roadmapResponse.items);
       })
       .catch((err) => {
-        if (!cancelled) setError(err instanceof ApiError ? err.message : "Could not load the Signals screen.");
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
+        if (cancelled) return;
+        setError(err instanceof ApiError ? err.message : "Could not load the Signals screen.");
+        setLoading(false);
       });
     return () => {
       cancelled = true;
     };
   }, []);
+
+  // The REST rows are scored at the 9:30 snapshot spot: shown only if no live frame has arrived after a short wait (or the stream
+  // failed), so the list never opens on stale grades that the live prices then correct.
+  useEffect(() => {
+    if (!restRows) return;
+    const showRestRows = () => {
+      // A live frame may already have replaced the rows; the REST answer must not roll them back.
+      setRows((current) => (current.length > 0 ? current : restRows));
+      setLoading(false);
+    };
+    if (streamState === "failed") {
+      showRestRows();
+      return;
+    }
+    const timer = setTimeout(showRestRows, restScoresFallbackMs);
+    return () => clearTimeout(timer);
+  }, [restRows, streamState]);
 
   // Re-opened when the modal opens/closes: the modal holds its own live lines, so the screen's
   // one-per-ticker best-contract lines are released while it is open (approved 2026-09-24).
@@ -160,6 +176,7 @@ export function SignalsPage() {
         setDayQuotes(frame.dayQuotes);
         setLastFrameAt(frame.at);
         setStreamState("live");
+        setLoading(false);
       },
       () => setStreamState("failed"),
       { bestContractLines: modalSymbol === null },

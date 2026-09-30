@@ -1,11 +1,11 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { ApiError } from "../api/client";
 import { buildRollOrder, type AdaptivePriority, type OrderRequest } from "../api/positions";
-import type { HeldLegScore, RollSignalCandidate, TickerSignals } from "../api/signals";
+import type { HeldLegScore, RollSignalCandidate, TickerSignals, UnscoredSignalContract } from "../api/signals";
 import { checkSignalOrderLimits } from "../api/signalSettings";
 import { flashClassName, useFlashOnChange } from "../hooks/useFlashOnChange";
 import { formatCurrency, formatCurrencyTrimmed, formatDate, formatPercentage, formatQuotePrice, formatSignedPnl, formatVolatilityPoints } from "../lib/formatters";
-import { describeHeldLeg, describeRollSignalFlag, describeSignalFlag, gradeBadgeClass, gradeLabel, netRollEdgeExplanation, rollFlagLetter, signalFlagLetter } from "../lib/signalsPresentation";
+import { describeHeldLeg, describeRollSignalFlag, describeRollSignalWarning, describeSignalFlag, gradeBadgeClass, gradeLabel, netRollEdgeExplanation, rollFlagLetter, signalFlagLetter } from "../lib/signalsPresentation";
 import { Spinner } from "./Spinner";
 import { useTooltip } from "../hooks/useTooltip";
 
@@ -28,14 +28,18 @@ const expectedSpreadConcession: Record<AdaptivePriority, number> = { Patient: 0,
 interface RollSignalOrderSetupFormProps {
   symbol: string;
   signals: TickerSignals;
-  /** The selected roll as scored NOW (it re-renders with every live frame). */
-  roll: RollSignalCandidate;
+  /** The selected roll as scored NOW (it re-renders with every live frame); null when the picked chain contract has no Signals score. */
+  roll: RollSignalCandidate | null;
+  /** The picked chain contract's quote when it could not be scored (then `roll` is null): no net roll Edge, the order still builds. */
+  unscoredReplacement?: UnscoredSignalContract | null;
   /** The held leg the roll closes, as scored now. */
   held: HeldLegScore;
   spotPrice: number | null;
   /** The list's net roll Edge when the roll was selected -- the decay meter's reference. */
-  netRollEdgeAtSelection: number;
+  netRollEdgeAtSelection: number | null;
   selectedAtIso: string;
+  /** Why the picked chain contract is not a Signals candidate / has no score, shown above the roll signal. */
+  notice?: ReactNode;
   onCancel: () => void;
   onSubmitted: (order: OrderRequest, adaptivePriority: AdaptivePriority) => void;
 }
@@ -63,10 +67,11 @@ function ReviewOrderButton({ disabled, blockedTooltip, building, onClick }: { di
 
 const signedVolatilityAndDollars = (volatility: number, dollars: number) => `${formatVolatilityPoints(volatility)} · ${formatSignedPnl(dollars, 0)}`;
 
-export function RollSignalOrderSetupForm({ symbol, signals, roll, held, spotPrice, netRollEdgeAtSelection, selectedAtIso, onCancel, onSubmitted }: RollSignalOrderSetupFormProps) {
-  const replacement = roll.replacement;
-  const quantity = roll.quantity;
-  const isCall = roll.strategyKey === "covered_call";
+export function RollSignalOrderSetupForm({ symbol, signals, roll, unscoredReplacement = null, held, spotPrice, netRollEdgeAtSelection, selectedAtIso, notice = null, onCancel, onSubmitted }: RollSignalOrderSetupFormProps) {
+  const replacement = roll?.replacement ?? null;
+  const target = replacement ?? unscoredReplacement!;
+  const quantity = held.quantity;
+  const isCall = held.strategyKey === "covered_call";
   const right = isCall ? "Call" : "Put";
   const [adaptivePriority, setAdaptivePriority] = useState<AdaptivePriority>("Normal");
   const [building, setBuilding] = useState(false);
@@ -74,19 +79,26 @@ export function RollSignalOrderSetupForm({ symbol, signals, roll, held, spotPric
 
   const heldMid = held.mid ?? 0;
   const heldAsk = held.ask ?? heldMid;
-  const replacementMid = (replacement.bid + replacement.ask) / 2;
-  const netCreditAtMid = roll.netCreditPerShare;
-  const netCreditWorst = replacement.bid - heldAsk;
+  const replacementTwoSided = target.bid !== null && target.ask !== null;
+  const replacementMid = replacementTwoSided ? (target.bid! + target.ask!) / 2 : 0;
+  const netCreditAtMid = roll ? roll.netCreditPerShare : replacementMid - heldMid;
+  const netCreditWorst = (target.bid ?? 0) - heldAsk;
+  const isDebit = netCreditAtMid < 0;
+  const netWord = isDebit ? "debit" : "credit";
+  const netMoney = (perShare: number, decimals?: number) => formatCurrency(isDebit ? -perShare : perShare, decimals);
+  // Without a Signals score the replacement's capital base is strike×100 (put) or spot×100 (call), less the premium it brings in.
+  const replacementCapitalBase = isCall ? (spotPrice ?? 0) * 100 : target.strike * 100;
+  const replacementDollarRisk = replacement ? replacement.dollarRisk : replacementCapitalBase - replacementMid;
   const concession = expectedSpreadConcession[adaptivePriority];
   const netCreditExpected = netCreditAtMid - (netCreditAtMid - netCreditWorst) * concession;
   const holdEdgeDollars = (held.holdEdgeDollars ?? 0) * quantity;
   const closeCostDollars = (held.closeCostDollars ?? 0) * quantity;
-  const replacementEdgeDollars = replacement.edgeDollars * quantity;
-  const decay = roll.netRollEdge - netRollEdgeAtSelection;
+  const replacementEdgeDollars = (replacement?.edgeDollars ?? 0) * quantity;
+  const decay = roll && netRollEdgeAtSelection !== null ? roll.netRollEdge - netRollEdgeAtSelection : 0;
   const decayed = Math.abs(decay) >= rollDecayWarningVolatilityPoints / 100;
-  const netRollEdgeFlash = useFlashOnChange(roll.netRollEdge, 1200, 3);
+  const netRollEdgeFlash = useFlashOnChange(roll?.netRollEdge ?? 0, 1200, 3);
   const realisedOnHeldLeg = (held.entryPrice - heldMid) * 100 * quantity;
-  const capitalAtRiskAfter = (replacement.dollarRisk + replacementMid) * quantity; // strike×100 (CSP) or spot×100 (CC) per contract
+  const capitalAtRiskAfter = (replacementDollarRisk + replacementMid) * quantity; // strike×100 (CSP) or spot×100 (CC) per contract
 
   // The Signals-tab blocking limits, re-checked against the backend with the roll rule (only the
   // strike difference adds notional). Cosmetic: POST /orders/:id/confirm is the real gate.
@@ -95,42 +107,49 @@ export function RollSignalOrderSetupForm({ symbol, signals, roll, held, spotPric
   useEffect(() => {
     if (limitsDebounceRef.current !== null) window.clearTimeout(limitsDebounceRef.current);
     limitsDebounceRef.current = window.setTimeout(() => {
-      checkSignalOrderLimits({ symbol, strategyKey: roll.strategyKey, quantity, strike: replacement.strike, spotPrice, rollFromStrike: held.strike })
+      checkSignalOrderLimits({ symbol, strategyKey: held.strategyKey, quantity, strike: target.strike, spotPrice, rollFromStrike: held.strike })
         .then(setSignalLimitsResult)
         .catch(() => setSignalLimitsResult(null));
     }, signalOrderLimitsDebounceMs);
     return () => {
       if (limitsDebounceRef.current !== null) window.clearTimeout(limitsDebounceRef.current);
     };
-  }, [symbol, roll.strategyKey, replacement.strike, quantity, spotPrice, held.strike]);
+  }, [symbol, held.strategyKey, target.strike, quantity, spotPrice, held.strike]);
 
-  const blockingReasons = [...(held.unscoredReason ? ["The held leg has no live two-sided quote right now."] : []), ...(signalLimitsResult?.blocked ? signalLimitsResult.reasons : [])];
+  const blockingReasons = [
+    ...(held.unscoredReason ? ["The held leg has no live two-sided quote right now."] : []),
+    ...(replacementTwoSided ? [] : ["The new contract has no two-sided quote right now."]),
+    ...(signalLimitsResult?.blocked ? signalLimitsResult.reasons : []),
+  ];
 
   async function handleReviewOrder() {
     setBuilding(true);
     setBuildError(null);
     try {
       const builtAtIso = new Date().toISOString();
-      const order = await buildRollOrder(roll.positionId, {
-        closeLegId: roll.legId,
+      const order = await buildRollOrder(held.positionId, {
+        closeLegId: held.legId,
         closeLimitPrice: Number(heldMid.toFixed(2)),
-        newLeg: { strikePrice: replacement.strike, expiryDate: replacement.expiry, quantity, limitPrice: Number(replacementMid.toFixed(2)) },
+        newLeg: { strikePrice: target.strike, expiryDate: target.expiry, quantity, limitPrice: Number(replacementMid.toFixed(2)) },
         signalSnapshot: {
           version: 1,
           kind: "roll",
           closeLeg: held,
-          replacement,
-          roll: {
-            netRollEdge: roll.netRollEdge,
-            netRollEdgeDollarsPerContract: roll.netRollEdgeDollarsPerContract,
-            netRollEdgeDollars: roll.netRollEdgeDollars,
-            netCreditPerShare: roll.netCreditPerShare,
-            netCreditWorstPerShare: netCreditWorst,
-            deltaChange: roll.deltaChange,
-            dollarRiskChange: roll.dollarRiskChange,
-            flags: roll.flags,
-            grade: roll.grade,
-          },
+          replacement: replacement ?? { scored: false, ...unscoredReplacement },
+          roll: roll
+            ? {
+                netRollEdge: roll.netRollEdge,
+                netRollEdgeDollarsPerContract: roll.netRollEdgeDollarsPerContract,
+                netRollEdgeDollars: roll.netRollEdgeDollars,
+                netCreditPerShare: roll.netCreditPerShare,
+                netCreditWorstPerShare: netCreditWorst,
+                deltaChange: roll.deltaChange,
+                dollarRiskChange: roll.dollarRiskChange,
+                flags: roll.flags,
+                warnings: roll.warnings,
+                grade: roll.grade,
+              }
+            : null,
           ticker: {
             spotPrice,
             priceSource: signals.priceSource,
@@ -144,7 +163,7 @@ export function RollSignalOrderSetupForm({ symbol, signals, roll, held, spotPric
             gradeCounts: signals.gradeCounts,
           },
           order: { quantity, adaptivePriority, closeLimitPrice: Number(heldMid.toFixed(2)), newLegLimitPrice: Number(replacementMid.toFixed(2)), netCreditExpected, realisedOnHeldLeg },
-          timing: { selectedAtIso, builtAtIso, netRollEdgeAtSelection, netRollEdgeAtBuild: roll.netRollEdge },
+          timing: { selectedAtIso, builtAtIso, netRollEdgeAtSelection, netRollEdgeAtBuild: roll?.netRollEdge ?? null },
         },
       });
       onSubmitted(order, adaptivePriority);
@@ -155,7 +174,7 @@ export function RollSignalOrderSetupForm({ symbol, signals, roll, held, spotPric
     }
   }
 
-  const gradeForExpected = roll.netRollEdge <= 0 ? "avoid" : roll.grade;
+  const gradeForExpected = roll ? (roll.netRollEdge <= 0 ? "avoid" : roll.grade) : null;
   const legRow = (label: string, side: "buy" | "sell", contract: string, bid: number | null, ask: number | null, delta: number | null, midIv: number | null, surfaceIv: number | null) => (
     <tr>
       <td>
@@ -182,7 +201,7 @@ export function RollSignalOrderSetupForm({ symbol, signals, roll, held, spotPric
         <h4 className="mb-0" style={{ fontSize: "1.05rem" }}>
           Roll {right} · {symbol}{" "}
           <span className="text-secondary fw-normal">
-            {formatCurrencyTrimmed(held.strike)}{held.dte === null ? "" : ` · ${held.dte} DTE`} → {formatCurrencyTrimmed(replacement.strike)} · {replacement.dte} DTE
+            {formatCurrencyTrimmed(held.strike)}{held.dte === null ? "" : ` · ${held.dte} DTE`} → {formatCurrencyTrimmed(target.strike)} · {target.dte} DTE
           </span>
         </h4>
       </div>
@@ -191,10 +210,17 @@ export function RollSignalOrderSetupForm({ symbol, signals, roll, held, spotPric
           <strong>Cannot place now:</strong> {blockingReasons.join(" ")} The score is still shown.
         </div>
       )}
+      {roll && roll.warnings.length > 0 && (
+        <div className="alert alert-warning mb-0 py-2" style={{ fontSize: "0.85rem" }}>
+          <strong>Not one of the listed rolls.</strong> {roll.warnings.map((warning) => describeRollSignalWarning(warning)).join(" ")}
+        </div>
+      )}
+      {notice}
       <div className="alert alert-info mb-0 py-2" style={{ fontSize: "0.85rem" }}>
-        Rolls the whole leg: {quantity} contract{quantity === 1 ? "" : "s"} close, {quantity} open, as one IBKR combo at a net credit limit.
+        Rolls the whole leg: {quantity} contract{quantity === 1 ? "" : "s"} close, {quantity} open, as one IBKR combo at a net {netWord} limit.
       </div>
 
+      {roll && replacement && gradeForExpected ? (
       <div className="border rounded p-3">
         <div className="d-flex justify-content-between align-items-center gap-2">
           <div>
@@ -227,6 +253,14 @@ export function RollSignalOrderSetupForm({ symbol, signals, roll, held, spotPric
           </span>
         </div>
       </div>
+      ) : (
+        <div className="border rounded p-3 text-secondary" style={{ fontSize: "0.85rem" }}>
+          <div className="text-uppercase" style={{ fontSize: "0.68rem", fontWeight: 700, letterSpacing: "0.06em" }}>
+            Roll signal
+          </div>
+          No Signals score for this contract, so there is no net roll Edge. The order can still be placed at the quotes below.
+        </div>
+      )}
 
       <div className="border rounded p-3">
         <div className="text-secondary text-uppercase mb-1" style={{ fontSize: "0.68rem", fontWeight: 700, letterSpacing: "0.06em" }}>
@@ -246,19 +280,19 @@ export function RollSignalOrderSetupForm({ symbol, signals, roll, held, spotPric
             </thead>
             <tbody>
               {legRow("Buy to close", "buy", describeHeldLeg(held), held.bid, held.ask, held.delta, held.midImpliedVolatility, held.surfaceImpliedVolatility)}
-              {legRow("Sell to open", "sell", describeHeldLeg({ right: isCall ? "C" : "P", strike: replacement.strike, dte: replacement.dte }), replacement.bid, replacement.ask, replacement.delta, replacement.midImpliedVolatility, replacement.surfaceImpliedVolatility)}
+              {legRow("Sell to open", "sell", describeHeldLeg({ right: isCall ? "C" : "P", strike: target.strike, dte: target.dte }), target.bid, target.ask, target.delta, replacement?.midImpliedVolatility ?? null, replacement?.surfaceImpliedVolatility ?? null)}
             </tbody>
           </table>
         </div>
-        <Row label="Net credit at mid · worst case (buy ask, sell bid)" value={`${formatCurrency(netCreditAtMid)} · ${formatCurrency(netCreditWorst)} /sh`} />
-        <Row label="Delta" value={`${held.delta === null ? "—" : held.delta.toFixed(2)} → ${replacement.delta.toFixed(2)}`} />
-        <Row label="Capital at risk per contract" value={`${formatCurrency(held.dollarRisk, 0)} → ${formatCurrency(replacement.dollarRisk, 0)}`} />
-        <Row label="Delta drift risk (new leg)" value={replacement.uncompensatedSharePercent === null ? "…" : `${replacement.uncompensatedSharePercent.toFixed(0)}% of P&L variance`} />
-        {roll.flags.length === 0 && replacement.flags.length === 0 ? (
+        <Row label={`Net ${netWord} at mid · worst case (buy ask, sell bid)`} value={`${netMoney(netCreditAtMid)} · ${netMoney(netCreditWorst)} /sh`} tone={isDebit ? "text-danger" : undefined} />
+        <Row label="Delta" value={`${held.delta === null ? "—" : held.delta.toFixed(2)} → ${target.delta === null ? "—" : target.delta.toFixed(2)}`} />
+        <Row label="Capital at risk per contract" value={`${formatCurrency(held.dollarRisk, 0)} → ${formatCurrency(replacementDollarRisk, 0)}`} />
+        <Row label="Delta drift risk (new leg)" value={!replacement ? "—" : replacement.uncompensatedSharePercent === null ? "…" : `${replacement.uncompensatedSharePercent.toFixed(0)}% of P&L variance`} />
+        {(roll?.flags.length ?? held.flags.length) === 0 && (replacement?.flags.length ?? 0) === 0 ? (
           <Row label="Flags" value={<span className="text-secondary">none</span>} />
         ) : (
           <>
-            {roll.flags.map((flag) => (
+            {(roll?.flags ?? held.flags).map((flag) => (
               <div key={flag} className="d-flex align-items-start gap-2 py-1" style={{ fontSize: "0.8rem" }}>
                 <span className="badge bg-warning-lt" style={{ fontSize: "0.72rem", flex: "none" }}>
                   {rollFlagLetter[flag]}
@@ -266,12 +300,12 @@ export function RollSignalOrderSetupForm({ symbol, signals, roll, held, spotPric
                 <span>{describeRollSignalFlag(flag, held)}</span>
               </div>
             ))}
-            {replacement.flags.map((flag) => (
+            {(replacement ? replacement.flags : []).map((flag) => (
               <div key={flag} className="d-flex align-items-start gap-2 py-1" style={{ fontSize: "0.8rem" }}>
                 <span className="badge bg-warning-lt" style={{ fontSize: "0.72rem", flex: "none" }}>
                   {signalFlagLetter[flag]}
                 </span>
-                <span>New leg: {describeSignalFlag(flag, replacement, signals.macroEvents)}</span>
+                <span>New leg: {describeSignalFlag(flag, replacement!, signals.macroEvents)}</span>
               </div>
             ))}
           </>
@@ -297,12 +331,12 @@ export function RollSignalOrderSetupForm({ symbol, signals, roll, held, spotPric
             ))}
           </div>
         </div>
-        <Row label="Net credit limit (mid)" value={`${formatCurrency(netCreditAtMid)} /sh · ${formatCurrency(netCreditAtMid * 100 * quantity, 0)} total`} />
-        <Row label={`Expected net credit at ${adaptivePriority}`} value={`${formatCurrency(netCreditExpected)} /sh · ${formatCurrency(netCreditExpected * 100 * quantity, 0)} total`} />
+        <Row label={`Net ${netWord} limit (mid)`} value={`${netMoney(netCreditAtMid)} /sh · ${netMoney(netCreditAtMid * 100 * quantity, 0)} total`} />
+        <Row label={`Expected net ${netWord} at ${adaptivePriority}`} value={`${netMoney(netCreditExpected)} /sh · ${netMoney(netCreditExpected * 100 * quantity, 0)} total`} />
         <Row label={`Held leg: sold at ${formatCurrency(held.entryPrice)}, closing near ${formatCurrency(heldMid)}`} value={`${formatSignedPnl(realisedOnHeldLeg, 0)} realised`} tone={realisedOnHeldLeg >= 0 ? "text-success" : "text-danger"} />
         <Row label="New leg credit (mid)" value={formatSignedPnl(replacementMid * 100 * quantity, 0)} tone="text-success" />
         <Row label="Capital at risk after roll" value={formatCurrency(capitalAtRiskAfter, 0)} />
-        <Row label="Annualised yield, new leg" value={formatPercentage(replacement.annualizedYield, 0)} />
+        <Row label="Annualised yield, new leg" value={replacement ? formatPercentage(replacement.annualizedYield, 0) : "—"} />
         <div className="text-secondary" style={{ fontSize: "0.75rem" }}>
           Quantity follows the held leg. Partial rolls are not offered here.
         </div>

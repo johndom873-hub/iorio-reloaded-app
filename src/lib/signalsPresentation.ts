@@ -1,5 +1,5 @@
 import type { AppNotification } from "../api/notifications";
-import type { DayQuotesFrameStatus, HeldLegScore, HeldLegUnscoredReason, RoadmapStatus, RollSignalCandidate, RollSignalFlag, SignalCandidate, SignalFlag, SignalGrade, SignalQuoteSource, SignalsNoCandidatesReason, SignalsPriceSource, SignalsUnscoredReason, MacroEvent } from "../api/signals";
+import type { DayQuotesFrameStatus, HeldLegScore, HeldLegUnscoredReason, RoadmapStatus, RollSignalCandidate, RollSignalFlag, RollSignalWarning, SignalCandidate, SignalFlag, SignalGrade, SignalQuoteSource, SignalsNoCandidatesReason, SignalsPriceSource, SignalsUnscoredReason, MacroEvent } from "../api/signals";
 import { formatCurrencyTrimmed, formatDate, formatLocalTime, formatMonthDay, formatOptionContractShort, formatPercentageValue, formatShortAge, formatSignedPnl, formatVolatilityPoints } from "./formatters";
 
 // Labels, badge classes and short explanations for the Signals screen and
@@ -237,6 +237,15 @@ export function escapeTooltipHtml(text: string): string {
 
 export const rollFlagLetter: Record<RollSignalFlag, string> = { near_expiry: "E", assignment_risk: "A", decayed: "D" };
 
+export function describeRollSignalWarning(warning: RollSignalWarning): string {
+  switch (warning) {
+    case "debit":
+      return "This roll costs money: the new contract's mid is below what it takes to buy the held leg back. The order would pay a net debit.";
+    case "higher_delta":
+      return "The new contract has a higher |delta| than the held leg: rolling into a riskier contract.";
+  }
+}
+
 export function describeRollSignalFlag(flag: RollSignalFlag, held: Pick<HeldLegScore, "dte" | "delta" | "entryPrice" | "mid">): string {
   switch (flag) {
     case "near_expiry":
@@ -312,3 +321,6 @@ export function describeSupportResistanceLevel(side: "support" | "resistance", l
   }
   return { label: side === "support" ? "Support" : "Resistance", detail: `${level.touches} touches, ${level.qualityPct.toFixed(1)}% quality` };
 }
+
+/** How long the Signals screens wait for their first live frame before showing the REST scores (scored at the stale 9:30 snapshot spot) instead. */
+export const restScoresFallbackMs = 4_000;

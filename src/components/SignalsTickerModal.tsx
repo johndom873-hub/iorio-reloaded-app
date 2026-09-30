@@ -12,7 +12,7 @@ import { SignalOrderSetupForm } from "./SignalOrderSetupForm";
 import { ChainContractOrderSetupForm } from "./ChainContractOrderSetupForm";
 import { SignalsOptionChainCard, type ChainContractRef } from "./signals/SignalsOptionChainCard";
 import { formatCurrency, formatCurrencyTrimmed, formatDate, formatDateTime, formatNumber, formatPercentage, formatPercentageValue, formatSignedPercentageValue, formatSignedPnl, formatVolatilityPoints, pnlTextClass } from "../lib/formatters";
-import { candidateContractRight, describeHeldLeg, describeSupportResistanceLevel, describeNoCandidatesMessage, describeQuoteAgeRange, describeRollSignalFlag, describeSignalFlag, gradeBadgeClass, gradeExplanation, gradeLabel, heldLegUnscoredReasonLabel, netRollEdgeExplanation, quoteAgeCellLabel, quoteSourceLabel, rollFlagLetter, signalContractKey, signalFlagLetter, surfaceIvTrustClass, unscoredReasonLabel } from "../lib/signalsPresentation";
+import { candidateContractRight, describeHeldLeg, describeSupportResistanceLevel, describeNoCandidatesMessage, describeQuoteAgeRange, describeRollSignalFlag, describeSignalFlag, gradeBadgeClass, gradeExplanation, gradeLabel, heldLegUnscoredReasonLabel, netRollEdgeExplanation, quoteAgeCellLabel, quoteSourceLabel, rollFlagLetter, signalContractKey, signalFlagLetter, surfaceIvTrustClass, unscoredReasonLabel, restScoresFallbackMs } from "../lib/signalsPresentation";
 import { IvHistoryChart } from "./charts/IvHistoryChart";
 import { TickerPriceChart } from "./charts/TickerPriceChart";
 import { CollapsibleCard } from "./CollapsibleCard";
@@ -60,7 +60,7 @@ const dteFilters: { key: DteFilter; label: string; matches: (dte: number) => boo
 
 const badgeFontSize = { fontSize: "0.72rem" } as const;
 const macdSignalBadgeClass: Record<MacdSignal, string> = { Bullish: "badge-change-pos", Bearish: "badge-change-neg", Neutral: "badge-change-flat" };
-const noCreditRollNotice = "No credit roll to a lower-delta contract passes the Signals filters for that leg right now.";
+const noCreditRollNotice = "No credit roll to a lower-delta contract passes the Signals filters for that leg right now. Pick any contract on the option chain to roll to it.";
 const notInSignalsUniverseNotice = "Not in the Signals universe — not on the shortlist and no open short option. Signals scores appear once it's shortlisted.";
 const candidateKey = (candidate: SignalCandidate) => signalContractKey({ expiry: candidate.expiry, strike: candidate.strike, right: candidateContractRight(candidate) });
 const rollKey = (roll: RollSignalCandidate) => `${roll.legId}|${candidateKey(roll.replacement)}`;
@@ -263,7 +263,7 @@ interface ChainContractPick {
   /** The chain cell it was picked from (null when picked from elsewhere, e.g. Recovery Path): filtered gets the amber notice. */
   originCellState: SignalsChainCellState | null;
   selectedAtIso: string;
-  status: "loading" | "ready" | "error";
+  status: "ready" | "error";
   result: SignalContractScore | null;
   error: string | null;
 }
@@ -299,6 +299,9 @@ export function SignalsTickerModal({ symbol, initialRollLegId = null, focusPosit
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
   const [selectionReference, setSelectionReference] = useState<{ netEdge: number; atIso: string } | null>(null);
   const [selectedRollKey, setSelectedRollKey] = useState<string | null>(null);
+  // Roll mode: the open short leg being rolled. While set, a chain click picks that leg's replacement (the list
+  // is only the ranked shortlist), even when the list has no roll for the leg.
+  const [rollModeLegId, setRollModeLegId] = useState<string | null>(null);
   const [rollSelectionReference, setRollSelectionReference] = useState<{ netRollEdge: number; atIso: string } | null>(null);
   const [pendingRollLegId, setPendingRollLegId] = useState<string | null>(initialRollLegId);
   // Bumped on a fill so the stream reloads its inputs (a rolled leg is a new open leg the running stream never saw).
@@ -318,6 +321,8 @@ export function SignalsTickerModal({ symbol, initialRollLegId = null, focusPosit
   const [chainNotice, setChainNotice] = useState<string | null>(null);
   const [chainPick, setChainPick] = useState<ChainContractPick | null>(null);
   const chainPickRequestIdRef = useRef(0);
+  // The chain contract being scored: the order pane keeps showing what it had, dimmed under a spinner, until it arrives.
+  const [chainPickLoadingKey, setChainPickLoadingKey] = useState<string | null>(null);
   const chainCardRef = useRef<HTMLDivElement | null>(null);
   const isPhoneLayout = useMediaQuery("(max-width: 991.98px)");
 
@@ -355,6 +360,19 @@ export function SignalsTickerModal({ symbol, initialRollLegId = null, focusPosit
     };
   }, []);
 
+  // The REST scores are at the 9:30 snapshot spot: shown only if no live frame has arrived after a short wait (or the stream failed),
+  // so the list never opens on stale grades that the live price then corrects.
+  const [restSignals, setRestSignals] = useState<TickerSignals | null>(null);
+  useEffect(() => {
+    if (!restSignals) return;
+    if (streamFailed) {
+      setSignals((current) => current ?? restSignals);
+      return;
+    }
+    const timer = setTimeout(() => setSignals((current) => current ?? restSignals), restScoresFallbackMs);
+    return () => clearTimeout(timer);
+  }, [restSignals, streamFailed]);
+
   useEffect(() => {
     let cancelled = false;
     setSignalsError(null);
@@ -362,7 +380,7 @@ export function SignalsTickerModal({ symbol, initialRollLegId = null, focusPosit
       .then((result) => {
         if (cancelled) return;
         setNotInSignalsUniverse(false);
-        setSignals((current) => current ?? result); // a live frame may already have arrived
+        setRestSignals(result);
       })
       .catch((err) => {
         if (cancelled) return;
@@ -447,14 +465,6 @@ export function SignalsTickerModal({ symbol, initialRollLegId = null, focusPosit
     const timer = setTimeout(() => setSubscribedLiveContracts(visibleLiveContracts), liveContractsSettleMs);
     return () => clearTimeout(timer);
   }, [visibleLiveContracts]);
-  useEffect(() => {
-    if (notInSignalsUniverse || subscribedLiveContracts.length === 0) {
-      setQuotesFrame(null);
-      return;
-    }
-    return openSignalsQuotesStream(symbol, subscribedLiveContracts, setQuotesFrame, () => setQuotesFrame(null));
-  }, [symbol, subscribedLiveContracts, notInSignalsUniverse, streamKey]);
-
   const effectiveExpiry = selectedExpiry ?? chainDefaultExpiry ?? signals?.best?.expiry ?? null;
   // Displayed everywhere in the modal: the pooled live price, the overview's last before its first tick.
   const spotPrice = liveSpotPrice ?? overview?.pricing.last ?? null;
@@ -516,14 +526,29 @@ export function SignalsTickerModal({ symbol, initialRollLegId = null, focusPosit
   }, [shownCandidates]);
   const selectedCandidate = useMemo(() => (selectedKey ? (signals?.candidates.find((candidate) => candidateKey(candidate) === selectedKey) ?? null) : null), [signals, selectedKey]);
   const selectedRoll = useMemo(() => (selectedRollKey ? (signals?.rolls.find((roll) => rollKey(roll) === selectedRollKey) ?? null) : null), [signals, selectedRollKey]);
+  const rollModeHeldLeg = useMemo(() => (rollModeLegId ? (signals?.heldLegs.find((leg) => leg.legId === rollModeLegId) ?? null) : null), [signals, rollModeLegId]);
   const selectedRollHeldLeg = useMemo(() => (selectedRoll ? (signals?.heldLegs.find((leg) => leg.legId === selectedRoll.legId) ?? null) : null), [signals, selectedRoll]);
-  // The contract behind pendingOrder is whichever of these produced it --
-  // selectedKey/selectedRollKey (and so selectedCandidate/selectedRoll) stay
-  // set for the order's whole pending_confirmation lifetime (see
-  // selectCandidate/selectRoll above), so this is still the right quote at
-  // the instant OrderReviewPanel mounts. Seeds its Live Quote card instantly
-  // instead of a multi-second spinner for a fresh subscribe.
-  const pendingOrderQuoteSeed = selectedCandidate || selectedRoll ? signalCandidateToQuoteSeed(selectedCandidate ?? selectedRoll?.replacement ?? null) : signalContractScoreToQuoteSeed(chainPick?.result ?? null);
+  // What the order under review depends on holds its own lines on top of the on-screen ones (a pick, or a roll's replacement
+  // and held leg), so the order setup is scored live however far the chain is scrolled. Joined so the effect compares by value.
+  const pinnedContractsJoined = useMemo(() => {
+    const keys: string[] = [];
+    if (selectedCandidate) keys.push(candidateKey(selectedCandidate));
+    if (selectedRoll && selectedRollHeldLeg) keys.push(signalContractKey(selectedRollHeldLeg), candidateKey(selectedRoll.replacement));
+    if (chainPick && chainPick.status === "ready") {
+      keys.push(chainPick.key);
+      if (rollModeHeldLeg) keys.push(signalContractKey(rollModeHeldLeg));
+    }
+    return [...new Set(keys)].join(",");
+  }, [selectedCandidate, selectedRoll, selectedRollHeldLeg, chainPick, rollModeHeldLeg]);
+  useEffect(() => {
+    const pinnedKeys = pinnedContractsJoined ? pinnedContractsJoined.split(",") : [];
+    if (notInSignalsUniverse || (subscribedLiveContracts.length === 0 && pinnedKeys.length === 0)) {
+      setQuotesFrame(null);
+      return;
+    }
+    return openSignalsQuotesStream(symbol, subscribedLiveContracts, pinnedKeys, setQuotesFrame, () => setQuotesFrame(null));
+  }, [symbol, subscribedLiveContracts, pinnedContractsJoined, notInSignalsUniverse, streamKey]);
+
   // The ticker stream's candidates, with the on-screen ones replaced by their live-scored version (keeping the ticker
   // stream's Monte Carlo share, which only it computes). Order and filtering stay on the ticker stream's values so a
   // live re-grade never reshuffles the rows on screen (and with them the live set).
@@ -548,12 +573,31 @@ export function SignalsTickerModal({ symbol, initialRollLegId = null, focusPosit
     return byLeg;
   }, [signals, quotesFrame]);
 
+  // The order setup is scored live off the pinned lines (see pinnedContractsJoined): the forms take these, never the ticker
+  // stream's snapshot-priced copies. The decay meters keep their selection-time references.
+  const liveSelectedCandidate = selectedCandidate && selectedKey ? (liveCandidatesByKey.get(selectedKey) ?? selectedCandidate) : null;
+  const liveSelectedRoll = selectedRoll ? (rollsByLegId.get(selectedRoll.legId)?.find((roll) => rollKey(roll) === selectedRollKey) ?? selectedRoll) : null;
+  const liveSelectedRollHeldLeg = selectedRollHeldLeg ? (displayedHeldLegs.find((held) => held.legId === selectedRollHeldLeg.legId) ?? selectedRollHeldLeg) : null;
+  const liveRollModeHeldLeg = rollModeHeldLeg ? (displayedHeldLegs.find((held) => held.legId === rollModeHeldLeg.legId) ?? rollModeHeldLeg) : null;
+  // A chain pick keeps the form type it was fetched as (scored or not) so a live flip never remounts the form and loses typed input.
+  const livePickedScore = chainPick?.result ? (quotesFrame?.pinned[chainPick.key]?.scored === chainPick.result.scored ? quotesFrame.pinned[chainPick.key]! : chainPick.result) : null;
+
+  // The contract behind pendingOrder is whichever of these produced it --
+  // selectedKey/selectedRollKey (and so selectedCandidate/selectedRoll) stay
+  // set for the order's whole pending_confirmation lifetime (see
+  // selectCandidate/selectRoll above), so this is still the right quote at
+  // the instant OrderReviewPanel mounts. Seeds its Live Quote card instantly
+  // instead of a multi-second spinner for a fresh subscribe.
+  const pendingOrderQuoteSeed = selectedCandidate || selectedRoll ? signalCandidateToQuoteSeed(selectedCandidate ?? selectedRoll?.replacement ?? null) : signalContractScoreToQuoteSeed(livePickedScore);
+
   function selectCandidate(candidate: SignalCandidate) {
     if (pendingOrder) return; // an order under review keeps its contract until cancelled or filled
+    abandonPendingChainPick();
     setChainPick(null);
     setChainNotice(null);
     setSelectedRollKey(null);
     setRollSelectionReference(null);
+    setRollModeLegId(null);
     setSelectedKey(candidateKey(candidate));
     setSelectionReference({ netEdge: candidate.netEdge, atIso: new Date().toISOString() });
     if (candidate.expiry !== effectiveExpiry) setSelectedExpiry(candidate.expiry);
@@ -561,16 +605,25 @@ export function SignalsTickerModal({ symbol, initialRollLegId = null, focusPosit
   const selectRoll = useCallback(
     (roll: RollSignalCandidate) => {
       if (pendingOrder) return;
+      chainPickRequestIdRef.current += 1;
+      setChainPickLoadingKey(null);
       setChainPick(null);
       setSelectedKey(null);
       setSelectionReference(null);
       setSelectedRollKey(rollKey(roll));
+      setRollModeLegId(roll.legId);
       setRollSelectionReference({ netRollEdge: roll.netRollEdge, atIso: new Date().toISOString() });
     },
     [pendingOrder],
   );
+  function abandonPendingChainPick() {
+    chainPickRequestIdRef.current += 1; // a scoring response still in flight is then ignored
+    setChainPickLoadingKey(null);
+  }
   function clearSelection() {
+    abandonPendingChainPick();
     setPendingOrder(null);
+    setRollModeLegId(null);
     setChainPick(null);
     setSelectedKey(null);
     setSelectionReference(null);
@@ -579,31 +632,49 @@ export function SignalsTickerModal({ symbol, initialRollLegId = null, focusPosit
   }
   // Any chain contract: a live candidate goes straight to the Signal form; anything else is scored on demand
   // (one pooled live quote when the market is open, so this can take a few seconds).
-  function pickChainContract(contract: ChainContractRef, originCellState: SignalsChainCellState | null) {
+  function pickChainContract(contract: ChainContractRef, originCellState: SignalsChainCellState | null, forceNewTrade = false) {
+    const rollTarget = forceNewTrade ? null : rollModeHeldLeg;
     if (pendingOrder) return;
     setChainNotice(null);
     const key = signalContractKey(contract);
-    const liveCandidate = liveCandidatesByKey.get(key);
+    if (rollTarget) {
+      const heldRightWord = rollTarget.right === "C" ? "call" : "put";
+      if (contract.right !== rollTarget.right) {
+        setChainNotice(`Rolling your ${heldRightWord}: pick a ${heldRightWord} on the chain, or cancel the roll to open a new trade.`);
+        return;
+      }
+      if (contract.expiry === rollTarget.expiry && contract.strike === rollTarget.strike) {
+        setChainNotice("That is the leg you already hold: pick a different strike or expiry to roll to.");
+        return;
+      }
+      const listedRoll = (rollsByLegId.get(rollTarget.legId) ?? []).find((roll) => candidateKey(roll.replacement) === key);
+      if (listedRoll) {
+        selectRoll(listedRoll);
+        return;
+      }
+    }
+    const liveCandidate = rollTarget ? undefined : liveCandidatesByKey.get(key);
     if (liveCandidate) {
       selectCandidate(liveCandidate);
       return;
     }
-    setSelectedKey(null);
-    setSelectionReference(null);
-    setSelectedRollKey(null);
-    setRollSelectionReference(null);
     if (contract.expiry !== chain?.selectedExpiry) setSelectedExpiry(contract.expiry);
     const requestId = ++chainPickRequestIdRef.current;
-    setChainPick({ key, contract, originCellState, selectedAtIso: new Date().toISOString(), status: "loading", result: null, error: null });
+    const selectedAtIso = new Date().toISOString();
+    setChainPickLoadingKey(key);
+    const settle = (settled: Pick<ChainContractPick, "status" | "result" | "error">) => {
+      if (requestId !== chainPickRequestIdRef.current) return;
+      setSelectedKey(null);
+      setSelectionReference(null);
+      setSelectedRollKey(null);
+      setRollSelectionReference(null);
+      if (!rollTarget) setRollModeLegId(null);
+      setChainPick({ key, contract, originCellState, selectedAtIso, ...settled });
+      setChainPickLoadingKey(null);
+    };
     fetchSignalContractScore(symbol, contract, spotPriceRef.current)
-      .then((result) => {
-        if (requestId === chainPickRequestIdRef.current) setChainPick((current) => (current && current.key === key ? { ...current, status: "ready", result } : current));
-      })
-      .catch((err) => {
-        if (requestId !== chainPickRequestIdRef.current) return;
-        const message = err instanceof ApiError ? err.message : "Could not get a quote for this contract.";
-        setChainPick((current) => (current && current.key === key ? { ...current, status: "error", error: message } : current));
-      });
+      .then((result) => settle({ status: "ready", result, error: null }))
+      .catch((err) => settle({ status: "error", result: null, error: err instanceof ApiError ? err.message : "Could not get a quote for this contract." }));
   }
   const scrollChainIntoView = useCallback(() => {
     requestAnimationFrame(() => chainCardRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }));
@@ -614,7 +685,10 @@ export function SignalsTickerModal({ symbol, initialRollLegId = null, focusPosit
     if (!pendingRollLegId || !signals) return;
     const best = signals.rolls.find((roll) => roll.legId === pendingRollLegId); // rolls arrive best-first
     if (best) selectRoll(best);
-    else if (signals.heldLegs.some((leg) => leg.legId === pendingRollLegId)) setRollNotice(noCreditRollNotice);
+    else if (signals.heldLegs.some((leg) => leg.legId === pendingRollLegId)) {
+      setRollNotice(noCreditRollNotice);
+      setRollModeLegId(pendingRollLegId);
+    }
     setPendingRollLegId(null);
   }, [pendingRollLegId, signals, selectRoll]);
 
@@ -657,7 +731,10 @@ export function SignalsTickerModal({ symbol, initialRollLegId = null, focusPosit
         setRollNotice(null);
         selectRoll(best);
         scrollOrderSetupIntoView();
-      } else setRollNotice(noCreditRollNotice);
+      } else {
+        setRollNotice(noCreditRollNotice);
+        setRollModeLegId(legId);
+      }
     },
     [signals, notInSignalsUniverse, selectRoll, scrollOrderSetupIntoView],
   );
@@ -783,12 +860,13 @@ export function SignalsTickerModal({ symbol, initialRollLegId = null, focusPosit
           return;
         }
         setRollNotice(null);
+        setRollModeLegId(null);
         setChainPhoneSide("C");
         // Recovery Path's Sell This: that exact contract, scored on demand when it is not a candidate.
         if (prefill) {
           const contract: ChainContractRef = { expiry: prefill.expiry, strike: prefill.strike, right: "C" };
           const originCell = chain?.selectedExpiry === prefill.expiry ? chain.strikes.find((row) => row.strike === prefill.strike)?.call : undefined;
-          pickChainContract(contract, originCell?.state ?? null);
+          pickChainContract(contract, originCell?.state ?? null, true);
           scrollOrderSetupIntoView();
           return;
         }
@@ -965,6 +1043,16 @@ export function SignalsTickerModal({ symbol, initialRollLegId = null, focusPosit
                     )}
 
                     <div ref={chainCardRef} style={{ scrollMarginTop: "1rem" }}>
+                      {rollModeHeldLeg && (
+                        <div className="alert bg-primary text-white border-0 py-2 mt-3 mb-0 d-flex flex-wrap align-items-center gap-2" style={{ fontSize: "0.9rem" }}>
+                          <span className="fw-semibold">
+                            Rolling your {describeHeldLeg(rollModeHeldLeg)}: click any {rollModeHeldLeg.right === "C" ? "call" : "put"} on the chain to roll to it, or pick one of the ranked rolls under Your positions.
+                          </span>
+                          <button type="button" className="btn btn-light ms-auto" disabled={pendingOrder !== null} onClick={clearSelection}>
+                            Cancel roll
+                          </button>
+                        </div>
+                      )}
                       {chainNotice && (
                         <div className="alert alert-info py-2 mt-3 mb-0" style={{ fontSize: "0.85rem" }}>
                           {chainNotice}
@@ -977,7 +1065,7 @@ export function SignalsTickerModal({ symbol, initialRollLegId = null, focusPosit
                         spotPrice={spotPrice}
                         liveCandidatesByKey={liveCandidatesByKey}
                         liveChainCells={quotesFrame?.cells ?? {}}
-                        selectedContractKey={selectedKey ?? chainPick?.key ?? null}
+                        selectedContractKey={chainPickLoadingKey ?? selectedKey ?? chainPick?.key ?? null}
                         pickingDisabled={pendingOrder !== null}
                         phoneSide={chainPhoneSide}
                         onPhoneSideChange={setChainPhoneSide}
@@ -994,8 +1082,18 @@ export function SignalsTickerModal({ symbol, initialRollLegId = null, focusPosit
                   </div>
 
                   <div style={{ flex: "1 1 32%", minWidth: "19rem" }}>
-                    <div ref={orderSetupRef} className="card">
-                      <div className="card-body">
+                    <div ref={orderSetupRef} className="card position-relative">
+                      {chainPickLoadingKey !== null && (
+                        <div className="position-absolute top-0 start-0 w-100 h-100" style={{ zIndex: 2, pointerEvents: "none" }}>
+                          <div className="d-flex justify-content-center" style={{ position: "sticky", top: "35vh" }}>
+                            <div className="d-inline-flex align-items-center gap-2 rounded px-3 py-2 bg-body border shadow-sm" style={{ fontSize: "0.85rem" }}>
+                              <Spinner size="sm" label="Getting a live quote" />
+                              Getting a live quote…
+                            </div>
+                          </div>
+                        </div>
+                      )}
+                      <div className="card-body" aria-busy={chainPickLoadingKey !== null} style={chainPickLoadingKey !== null ? { opacity: 0.4, pointerEvents: "none", userSelect: "none" } : undefined}>
                         {pendingOrder ? (
                           <OrderReviewPanel
                             order={pendingOrder.order}
@@ -1011,23 +1109,23 @@ export function SignalsTickerModal({ symbol, initialRollLegId = null, focusPosit
                               onPositionsChanged?.();
                             }}
                           />
-                        ) : signals && selectedRoll && selectedRollHeldLeg && rollSelectionReference ? (
+                        ) : signals && liveSelectedRoll && liveSelectedRollHeldLeg && rollSelectionReference ? (
                           <RollSignalOrderSetupForm
                             symbol={symbol}
                             signals={signals}
-                            roll={selectedRoll}
-                            held={selectedRollHeldLeg}
+                            roll={liveSelectedRoll}
+                            held={liveSelectedRollHeldLeg}
                             spotPrice={spotPriceForOrders}
                             netRollEdgeAtSelection={rollSelectionReference.netRollEdge}
                             selectedAtIso={rollSelectionReference.atIso}
                             onCancel={clearSelection}
                             onSubmitted={(order, adaptivePriority) => setPendingOrder({ order, adaptivePriority })}
                           />
-                        ) : signals && selectedCandidate && selectionReference ? (
+                        ) : signals && liveSelectedCandidate && selectionReference ? (
                           <SignalOrderSetupForm
                             symbol={symbol}
                             signals={signals}
-                            candidate={selectedCandidate}
+                            candidate={liveSelectedCandidate}
                             spotPrice={spotPriceForOrders}
                             netEdgeAtSelection={selectionReference.netEdge}
                             selectedAtIso={selectionReference.atIso}
@@ -1035,12 +1133,7 @@ export function SignalsTickerModal({ symbol, initialRollLegId = null, focusPosit
                             onSubmitted={(order, adaptivePriority) => setPendingOrder({ order, adaptivePriority })}
                           />
                         ) : chainPick ? (
-                          chainPick.status === "loading" ? (
-                            <div className="d-flex align-items-center gap-2 text-secondary py-3" style={{ fontSize: "0.85rem" }}>
-                              <Spinner size="sm" />
-                              Getting a live quote…
-                            </div>
-                          ) : chainPick.status === "error" || !chainPick.result ? (
+                          chainPick.status === "error" || !chainPick.result ? (
                             <div className="d-flex flex-column gap-2">
                               <div className="alert alert-danger mb-0">{chainPick.error ?? "Could not get a quote for this contract."}</div>
                               <div>
@@ -1049,14 +1142,59 @@ export function SignalsTickerModal({ symbol, initialRollLegId = null, focusPosit
                                 </button>
                               </div>
                             </div>
-                          ) : chainPick.result.scored && signals ? (
+                          ) : liveRollModeHeldLeg && signals && livePickedScore ? (
+                            livePickedScore.scored ? (
+                              (() => {
+                                const pickedRoll = livePickedScore.rolls.find((roll) => roll.legId === liveRollModeHeldLeg.legId) ?? null;
+                                return pickedRoll ? (
+                                  <RollSignalOrderSetupForm
+                                    key={chainPick.key}
+                                    symbol={symbol}
+                                    signals={signals}
+                                    roll={pickedRoll}
+                                    held={liveRollModeHeldLeg}
+                                    spotPrice={spotPriceForOrders}
+                                    netRollEdgeAtSelection={(chainPick.result.scored ? chainPick.result.rolls.find((roll) => roll.legId === liveRollModeHeldLeg.legId)?.netRollEdge : undefined) ?? pickedRoll.netRollEdge}
+                                    selectedAtIso={chainPick.selectedAtIso}
+                                    notice={chainPick.result.notCandidateReason ? chainPickNotice(chainPick, chainPick.result.notCandidateReason) : null}
+                                    onCancel={clearSelection}
+                                    onSubmitted={(order, adaptivePriority) => setPendingOrder({ order, adaptivePriority })}
+                                  />
+                                ) : (
+                                  <div className="d-flex flex-column gap-2">
+                                    <div className="alert alert-warning mb-0">The held leg has no live two-sided quote right now, so this roll cannot be priced. Try again in a moment.</div>
+                                    <div>
+                                      <button type="button" className="btn btn-outline-secondary" onClick={clearSelection}>
+                                        Cancel roll
+                                      </button>
+                                    </div>
+                                  </div>
+                                );
+                              })()
+                            ) : (
+                              <RollSignalOrderSetupForm
+                                key={chainPick.key}
+                                symbol={symbol}
+                                signals={signals}
+                                roll={null}
+                                unscoredReplacement={livePickedScore}
+                                held={liveRollModeHeldLeg}
+                                spotPrice={spotPriceForOrders}
+                                netRollEdgeAtSelection={null}
+                                selectedAtIso={chainPick.selectedAtIso}
+                                notice={chainPick.result.notCandidateReason ? chainPickNotice(chainPick, chainPick.result.notCandidateReason) : null}
+                                onCancel={clearSelection}
+                                onSubmitted={(order, adaptivePriority) => setPendingOrder({ order, adaptivePriority })}
+                              />
+                            )
+                          ) : livePickedScore?.scored && signals ? (
                             <SignalOrderSetupForm
                               key={chainPick.key}
                               symbol={symbol}
                               signals={signals}
-                              candidate={chainPick.result}
+                              candidate={livePickedScore}
                               spotPrice={spotPriceForOrders}
-                              netEdgeAtSelection={chainPick.result.netEdge}
+                              netEdgeAtSelection={chainPick.result.scored ? chainPick.result.netEdge : livePickedScore.netEdge}
                               selectedAtIso={chainPick.selectedAtIso}
                               notice={chainPick.result.notCandidateReason ? chainPickNotice(chainPick, chainPick.result.notCandidateReason) : null}
                               onCancel={clearSelection}
@@ -1066,7 +1204,7 @@ export function SignalsTickerModal({ symbol, initialRollLegId = null, focusPosit
                             <ChainContractOrderSetupForm
                               key={chainPick.key}
                               symbol={symbol}
-                              contract={chainPick.result}
+                              contract={livePickedScore!}
                               freeShares={signals?.freeShares ?? null}
                               spotPrice={spotPriceForOrders}
                               notice={chainPick.result.notCandidateReason ? chainPickNotice(chainPick, chainPick.result.notCandidateReason) : null}

@@ -26,15 +26,26 @@ export interface PayoffResult {
 }
 
 const chartPointCount = 60;
-const chartRangeFraction = 0.25;
+// The chart shows the break-even ±15% (Marcelo, 2026-09-30), widened just enough to keep the current price on it.
+const chartRangeFraction = 0.15;
+const currentPriceMarginFraction = 0.02;
 
 // Expiration-only "hockey stick" math, approved 2026-08-19 — see PROGRESS.md
 // and the Positions screen plan. Uses each leg's actual multiplier rather
 // than assuming 100, since the schema explicitly supports non-standard
 // multipliers (post-split/special-dividend adjusted contracts).
-function buildChartPoints(centerPrice: number, payoffAt: (price: number) => number): PayoffPoint[] {
-  const low = centerPrice * (1 - chartRangeFraction);
-  const high = centerPrice * (1 + chartRangeFraction);
+export function computeChartPriceRange(breakeven: number, currentPrice: number | null): { low: number; high: number } {
+  let low = breakeven * (1 - chartRangeFraction);
+  let high = breakeven * (1 + chartRangeFraction);
+  if (currentPrice !== null && currentPrice > 0) {
+    low = Math.min(low, currentPrice * (1 - currentPriceMarginFraction));
+    high = Math.max(high, currentPrice * (1 + currentPriceMarginFraction));
+  }
+  return { low, high };
+}
+
+function buildChartPoints(breakeven: number, currentPrice: number | null, payoffAt: (price: number) => number): PayoffPoint[] {
+  const { low, high } = computeChartPriceRange(breakeven, currentPrice);
   const step = (high - low) / (chartPointCount - 1);
   return Array.from({ length: chartPointCount }, (_, i) => {
     const price = low + step * i;
@@ -42,7 +53,7 @@ function buildChartPoints(centerPrice: number, payoffAt: (price: number) => numb
   });
 }
 
-export function computeCoveredCallPayoff(legs: PayoffLegInput[]): PayoffResult | null {
+export function computeCoveredCallPayoff(legs: PayoffLegInput[], currentPrice: number | null = null): PayoffResult | null {
   const stockLeg = legs.find((leg) => leg.legType === "stock");
   const callLeg = legs.find((leg) => leg.legType === "option" && leg.optionType === "call");
   if (!stockLeg || !callLeg || callLeg.strikePrice === null) return null;
@@ -65,11 +76,11 @@ export function computeCoveredCallPayoff(legs: PayoffLegInput[]): PayoffResult |
     maxGain: (strike - stockEntryPrice + callPremium) * shareCount,
     maxLoss: (stockEntryPrice - callPremium) * shareCount,
     breakeven: stockEntryPrice - callPremium,
-    points: buildChartPoints(stockEntryPrice, payoffAt),
+    points: buildChartPoints(stockEntryPrice - callPremium, currentPrice, payoffAt),
   };
 }
 
-export function computeCashSecuredPutPayoff(legs: PayoffLegInput[]): PayoffResult | null {
+export function computeCashSecuredPutPayoff(legs: PayoffLegInput[], currentPrice: number | null = null): PayoffResult | null {
   const putLeg = legs.find((leg) => leg.legType === "option" && leg.optionType === "put");
   if (!putLeg || putLeg.strikePrice === null) return null;
 
@@ -87,13 +98,13 @@ export function computeCashSecuredPutPayoff(legs: PayoffLegInput[]): PayoffResul
     maxGain: putPremium * shareCount,
     maxLoss: (strike - putPremium) * shareCount,
     breakeven: strike - putPremium,
-    points: buildChartPoints(strike, payoffAt),
+    points: buildChartPoints(strike - putPremium, currentPrice, payoffAt),
   };
 }
 
-export function computePayoff(strategyKey: StrategyKey, legs: PayoffLegInput[]): PayoffResult | null {
-  if (strategyKey === "covered_call") return computeCoveredCallPayoff(legs);
-  return computeCashSecuredPutPayoff(legs);
+export function computePayoff(strategyKey: StrategyKey, legs: PayoffLegInput[], currentPrice: number | null = null): PayoffResult | null {
+  if (strategyKey === "covered_call") return computeCoveredCallPayoff(legs, currentPrice);
+  return computeCashSecuredPutPayoff(legs, currentPrice);
 }
 
 // Adapts an unconfirmed OrderRequest's legs (role/action/unitPrice/strike,

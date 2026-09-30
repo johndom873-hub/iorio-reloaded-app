@@ -1,8 +1,9 @@
-import { Fragment, useEffect, useRef } from "react";
+import { Fragment, useEffect, useRef, type ReactNode } from "react";
 import type { SignalCandidate, SignalGrade, SignalsChain, SignalsChainCell } from "../../api/signals";
 import { flashClassName, useFlashOnChange } from "../../hooks/useFlashOnChange";
 import { useMediaQuery } from "../../hooks/useMediaQuery";
-import { formatCurrency, formatCurrencyTrimmed, formatQuotePrice } from "../../lib/formatters";
+import { formatCurrency, formatCurrencyTrimmed, formatPercentage, formatQuotePrice } from "../../lib/formatters";
+import { computeAnnualizedYield } from "../../lib/payoff";
 import { chainCellStateExplanation, describeChainExpiryTab, escapeTooltipHtml, gradeBadgeClass, gradeLabel, isChainContractInTheMoney, signalContractKey } from "../../lib/signalsPresentation";
 import { DottedLabelTooltip } from "../HelpTooltip";
 import { Spinner } from "../Spinner";
@@ -46,6 +47,35 @@ function displayedCell(cell: SignalsChainCell, liveCandidate: SignalCandidate | 
   return { bid: cell.bid, ask: cell.ask, delta: cell.delta, grade: cell.grade };
 }
 
+type ChainColumn = "bid" | "ask" | "delta" | "yield" | "grade";
+
+// Calls mirror the puts around the strike column (Marcelo, 2026-09-30): grade, yield, Δ, bid, ask | strike | bid, ask, Δ, yield, grade.
+// A phone shows one side with the strike leading, so it always uses the puts order.
+const putsColumnOrder: ChainColumn[] = ["bid", "ask", "delta", "yield", "grade"];
+const callsColumnOrder: ChainColumn[] = ["grade", "yield", "delta", "bid", "ask"];
+
+function chainColumnOrder(right: "C" | "P", hasLeadingStrike: boolean): ChainColumn[] {
+  return right === "C" && !hasLeadingStrike ? callsColumnOrder : putsColumnOrder;
+}
+
+const chainColumnLabels: Record<ChainColumn, ReactNode> = {
+  bid: <span>Bid</span>,
+  ask: <span>Ask</span>,
+  delta: <span>Δ</span>,
+  yield: <DottedLabelTooltip label="Yield" tooltipHtml="Annualised yield at the mid price: (mid ÷ strike for a put, ÷ spot for a call) × 365 ÷ days to expiry." focusable={false} />,
+  grade: <span>Grade</span>,
+};
+
+function ChainColumnLabels({ right, hasLeadingStrike }: { right: "C" | "P"; hasLeadingStrike: boolean }) {
+  return (
+    <>
+      {chainColumnOrder(right, hasLeadingStrike).map((column) => (
+        <Fragment key={column}>{chainColumnLabels[column]}</Fragment>
+      ))}
+    </>
+  );
+}
+
 function formatChainDelta(delta: number | null): string {
   return delta === null ? "—" : `${delta > 0 ? "+" : ""}${delta.toFixed(2)}`;
 }
@@ -57,13 +87,32 @@ function describeCellForScreenReader(contract: ChainContractRef, cell: SignalsCh
   return `${contractLabel}, not in today's capture or refresh`;
 }
 
-function ChainCellButton({ contract, cell, liveCandidate, selected, disabled, showStrike, onPick }: { contract: ChainContractRef; cell: SignalsChainCell; liveCandidate: SignalCandidate | undefined; selected: boolean; disabled: boolean; showStrike: boolean; onPick: () => void }) {
+function ChainCellButton({ contract, cell, liveCandidate, dte, spotPrice, selected, disabled, showStrike, onPick }: { contract: ChainContractRef; cell: SignalsChainCell; liveCandidate: SignalCandidate | undefined; dte: number | null; spotPrice: number | null; selected: boolean; disabled: boolean; showStrike: boolean; onPick: () => void }) {
   const shown = displayedCell(cell, liveCandidate);
   // Cells update between fetches (live frames); compared at the displayed 2 decimals.
   const bidFlash = useFlashOnChange(cell.state !== "not_captured" ? shown.bid : null, 1200, 2);
   const askFlash = useFlashOnChange(cell.state !== "not_captured" ? shown.ask : null, 1200, 2);
   const deltaFlash = useFlashOnChange(cell.state !== "not_captured" ? shown.delta : null, 1200, 2);
+  // Annualised yield at the mid (approved formula, lib/payoff); a call needs the spot for its capital base.
+  const yieldFraction = shown.bid !== null && shown.ask !== null && dte !== null ? computeAnnualizedYield(contract.right === "C" ? "covered_call" : "cash_secured_put", { premium: (shown.bid + shown.ask) / 2, dte, strike: contract.strike, spotPrice: spotPrice ?? 0 }) : null;
+  const yieldFlash = useFlashOnChange(cell.state !== "not_captured" && yieldFraction !== null ? yieldFraction * 100 : null, 1200, 0);
   const notCaptured = cell.state === "not_captured";
+  const columnCells: Record<ChainColumn, ReactNode> = {
+    bid: <span className={`font-mono ${flashClassName(bidFlash)}`}>{formatQuotePrice(shown.bid)}</span>,
+    ask: <span className={`font-mono ${flashClassName(askFlash)}`}>{formatQuotePrice(shown.ask)}</span>,
+    delta: <span className={`font-mono ${flashClassName(deltaFlash)}`}>{formatChainDelta(shown.delta)}</span>,
+    yield: <span className={`font-mono signals-chain-yield ${flashClassName(yieldFlash)}`}>{formatPercentage(yieldFraction, 0)}</span>,
+    grade: (
+      <span className="d-flex justify-content-end">
+        {cell.state === "candidate" && shown.grade && (
+          <span className={`badge ${gradeBadgeClass[shown.grade]}`} style={{ fontSize: "0.72rem" }}>
+            {gradeLabel[shown.grade]}
+          </span>
+        )}
+        {cell.state === "filtered" && <DottedLabelTooltip label="Filtered" tooltipHtml={escapeTooltipHtml(cell.reason ?? "Not a Signals candidate")} className="text-secondary signals-chain-filtered-label" focusable={false} />}
+      </span>
+    ),
+  };
   return (
     <button
       type="button"
@@ -74,17 +123,9 @@ function ChainCellButton({ contract, cell, liveCandidate, selected, disabled, sh
       onClick={onPick}
     >
       {showStrike && <span className="font-mono fw-bold text-start text-body">{formatCurrencyTrimmed(contract.strike).replace("$", "")}</span>}
-      <span className={`font-mono ${flashClassName(bidFlash)}`}>{formatQuotePrice(shown.bid)}</span>
-      <span className={`font-mono ${flashClassName(askFlash)}`}>{formatQuotePrice(shown.ask)}</span>
-      <span className={`font-mono ${flashClassName(deltaFlash)}`}>{formatChainDelta(shown.delta)}</span>
-      <span className="d-flex justify-content-end">
-        {cell.state === "candidate" && shown.grade && (
-          <span className={`badge ${gradeBadgeClass[shown.grade]}`} style={{ fontSize: "0.72rem" }}>
-            {gradeLabel[shown.grade]}
-          </span>
-        )}
-        {cell.state === "filtered" && <DottedLabelTooltip label="Filtered" tooltipHtml={escapeTooltipHtml(cell.reason ?? "Not a Signals candidate")} className="text-secondary signals-chain-filtered-label" focusable={false} />}
-      </span>
+      {chainColumnOrder(contract.right, showStrike).map((column) => (
+        <Fragment key={column}>{columnCells[column]}</Fragment>
+      ))}
     </button>
   );
 }
@@ -103,15 +144,6 @@ function SpotMarkerRow({ spotPrice, columnCount, markerRef }: { spotPrice: numbe
   );
 }
 
-const columnLabels = (
-  <>
-    <span>Bid</span>
-    <span>Ask</span>
-    <span>Δ</span>
-    <span>Grade</span>
-  </>
-);
-
 export function SignalsOptionChainCard({ chain, loading, error, spotPrice, liveCandidatesByKey, liveChainCells, selectedContractKey, pickingDisabled, phoneSide, onPhoneSideChange, onSelectExpiry, onPickContract }: SignalsOptionChainCardProps) {
   const isPhoneLayout = useMediaQuery(phoneLayoutQuery);
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
@@ -122,6 +154,7 @@ export function SignalsOptionChainCard({ chain, loading, error, spotPrice, liveC
   };
 
   const selectedExpiry = chain?.selectedExpiry ?? null;
+  const selectedExpiryDte = chain?.expiries.find((expiry) => expiry.expiry === selectedExpiry)?.dte ?? null;
   const allRows = chain?.strikes ?? [];
   // A phone shows one side at a time, so its in-the-money strikes are dropped as rows; the desktop keeps the shared strike column and blanks the cell.
   // The contract under an open order review stays visible even if the spot has since carried it in the money.
@@ -169,6 +202,8 @@ export function SignalsOptionChainCard({ chain, loading, error, spotPrice, liveC
         contract={contract}
         cell={shownCell}
         liveCandidate={shownCell.state === "candidate" && !liveChainCells[key] ? liveCandidatesByKey.get(key) : undefined}
+        dte={selectedExpiryDte}
+        spotPrice={spotPrice}
         selected={key === selectedContractKey}
         disabled={pickingDisabled}
         showStrike={showStrike}
@@ -244,7 +279,7 @@ export function SignalsOptionChainCard({ chain, loading, error, spotPrice, liveC
                   <th className="p-0">
                     <div className="signals-chain-column-labels has-strike">
                       <span className="text-start">Strike</span>
-                      {columnLabels}
+                      <ChainColumnLabels right="P" hasLeadingStrike />
                     </div>
                   </th>
                 </tr>
@@ -267,12 +302,16 @@ export function SignalsOptionChainCard({ chain, loading, error, spotPrice, liveC
                 <tr>
                   <th className="p-0">
                     <div className="text-center pt-1">Calls</div>
-                    <div className="signals-chain-column-labels">{columnLabels}</div>
+                    <div className="signals-chain-column-labels">
+                      <ChainColumnLabels right="C" hasLeadingStrike={false} />
+                    </div>
                   </th>
                   <th className="text-center align-bottom signals-chain-strike-column">Strike</th>
                   <th className="p-0">
                     <div className="text-center pt-1">Puts</div>
-                    <div className="signals-chain-column-labels">{columnLabels}</div>
+                    <div className="signals-chain-column-labels">
+                      <ChainColumnLabels right="P" hasLeadingStrike={false} />
+                    </div>
                   </th>
                 </tr>
               </thead>

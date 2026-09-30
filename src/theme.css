@@ -40,6 +40,45 @@
   --iorio-topbar-height: 4rem;
 }
 
+/* Standard outline buttons (Marcelo, 2026-09-30): every .btn-outline-* rests as an outline on the page
+   background, with the label in the theme's text colour (white on dark, black on light), and fills solid
+   with a white label on hover, focus and when active/checked. Warning is the one exception: white on the
+   orange fill is only ~3:1, so its hover label is dark. */
+:root {
+  --iorio-outline-button-text: #000;
+}
+:root[data-bs-theme="dark"] {
+  --iorio-outline-button-text: #fff;
+}
+.btn-outline-primary,
+.btn-outline-secondary,
+.btn-outline-danger,
+.btn-outline-warning {
+  --tblr-btn-bg: transparent;
+  --tblr-btn-color: var(--iorio-outline-button-text);
+  --tblr-btn-hover-color: #fff;
+  --tblr-btn-active-color: #fff;
+  --tblr-btn-disabled-color: var(--iorio-outline-button-text);
+}
+/* Secondary fills the same grey in both themes (Tabler's dark-mode secondary is a light grey that fails with a white label). */
+.btn-outline-secondary {
+  --tblr-btn-hover-bg: #6b7280;
+  --tblr-btn-hover-border-color: #6b7280;
+  --tblr-btn-active-bg: #6b7280;
+  --tblr-btn-active-border-color: #6b7280;
+}
+/* Dark mode: the resting outline uses the lighter accents (the fill on hover stays the standard solid colour) so the border reads on the dark surface. */
+:root[data-bs-theme="dark"] .btn-outline-primary {
+  --tblr-btn-border-color: #0ea5e9;
+}
+:root[data-bs-theme="dark"] .btn-outline-danger {
+  --tblr-btn-border-color: #e64343;
+}
+.btn-outline-warning {
+  --tblr-btn-hover-color: #000;
+  --tblr-btn-active-color: #000;
+}
+
 :root[data-bs-theme="dark"] {
   /* Deliberately NOT the same #0f141d as .iorio-sidebar/.iorio-topbar —
      Tabler's own gray-800 token, distinct enough from the navy chrome
@@ -689,7 +728,9 @@
    WCAG contrast: success #2fb344 = 2.74:1, warning #f59f00 = 2.13:1, both
    fail the 4.5:1 minimum for small text). Danger #d63939 already passes
    (4.66:1) and is left as-is. These darker same-hue shades pass comfortably
-   (green 5.40:1, amber 5.87:1) while still reading clearly as green/amber.
+   (green 5.40:1). Amber fills (warning badges, Weak grade) stay Tabler's true amber #f59f00 with a black
+   label (9.84:1) in both themes: a white label would need a brown-looking fill (Marcelo, 2026-09-30).
+   Amber used as text (.iorio-note-amber, prep warning) has to be darker on white (#ad5b00, 5.0:1).
    Covers both the solid and -lt (light tint) variants, since -lt badges
    with dark text have the opposite problem in dark mode: illegibly low
    contrast against the dark background. */
@@ -715,8 +756,8 @@
 .badge.bg-warning-lt,
 .badge.bg-yellow,
 .badge.bg-yellow-lt {
-  background-color: #8c5a00 !important;
-  color: #fff !important;
+  background-color: #f59f00 !important;
+  color: #000 !important;
 }
 
 /* Reuses the brand blue's already-verified accessible shade (#0369A1,
@@ -746,9 +787,9 @@
 
 /* Price/change badges (e.g. Trade Blotter P&L) — global UI/UX standard.
    Reuses the same darkened green already used for bg-success above
-   (5.40:1 contrast, verified). Negative uses a muted red rather than the
-   brighter alert-style bg-danger red, to read as a value rather than an
-   error state; #8c3a3a is dark enough to comfortably pass 4.5:1 with white,
+   (5.40:1 contrast, verified). Negative is a true red (#c62828; the earlier
+   muted #8c3a3a read as brown, Marcelo 2026-09-30), still darker than the
+   alert-style bg-danger red; it is dark enough to comfortably pass 4.5:1 with white,
    same reasoning as the darkened warning amber above. */
 .badge-change-pos {
   background-color: #1e7a33;
@@ -757,7 +798,7 @@
 }
 
 .badge-change-neg {
-  background-color: #8c3a3a;
+  background-color: #c62828;
   color: #fff;
   font-weight: 700;
 }
@@ -784,8 +825,8 @@
 }
 
 .badge-grade-weak {
-  background-color: #a35f00;
-  color: #fff;
+  background-color: #f59f00;
+  color: #000;
 }
 
 .badge-grade-avoid {
@@ -1026,7 +1067,7 @@
   --prep-success: #2fb344;
   --prep-success-lt: #e6f6e9;
   --prep-danger: #d63939;
-  --prep-warning: #b45309;
+  --prep-warning: #ad5b00;
   --prep-warning-lt: #fdf1e2;
   --prep-skip: #8a94a3;
   --prep-track: #e3e7eb;
@@ -1088,10 +1129,10 @@
 .badge.ticker-prep-badge.is-history-missing:disabled { opacity: 0.5; cursor: not-allowed; }
 
 /* Amber "not enforced yet" note under a settings field. Tabler's text-warning
-   (#f59f00) is 2.13:1 on white; the darkened amber used for the warning badges
-   passes at 5.87:1, and dark mode needs a lighter shade for the card surface. */
+   (#f59f00) is 2.13:1 on white; the darker amber below passes at 5.0:1, and dark
+   mode needs a lighter shade for the card surface. */
 .iorio-note-amber {
-  color: #a35f00;
+  color: #ad5b00;
 }
 :root[data-bs-theme="dark"] .iorio-note-amber {
   color: #f5b458;
@@ -1163,7 +1204,7 @@
 .signals-chain-column-labels,
 .signals-chain-cell {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(5, minmax(0, 1fr));
   gap: 0.25rem;
   align-items: center;
   padding: 0.25rem 0.5rem;
@@ -1171,7 +1212,7 @@
 }
 .signals-chain-column-labels.has-strike,
 .signals-chain-cell.has-strike {
-  grid-template-columns: 4rem repeat(4, minmax(0, 1fr));
+  grid-template-columns: 4rem repeat(5, minmax(0, 1fr));
 }
 .signals-chain-cell {
   width: 100%;
@@ -1184,6 +1225,12 @@
 }
 .signals-chain-cell.has-strike {
   min-height: 2.75rem;
+}
+.signals-chain-yield {
+  color: #1e7a33;
+}
+:root[data-bs-theme="dark"] .signals-chain-yield {
+  color: #47c270;
 }
 .signals-chain-cell.text-secondary {
   color: var(--tblr-secondary-color) !important;
@@ -1229,4 +1276,41 @@
 /* Branded 404 (NotFoundPage): Tabler's .empty, centred in the page body's visible height. */
 .iorio-not-found {
   min-height: 60vh;
+}
+
+/* Position card: the legs table sits left of the payoff chart (40%) on wide screens, stacked on narrow ones. */
+.position-payoff-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 1rem;
+  align-items: start;
+}
+@media (min-width: 992px) {
+  .position-payoff-layout {
+    grid-template-columns: minmax(0, 1fr) 40%;
+  }
+}
+.position-payoff-chart {
+  min-width: 0;
+  /* The chart is pulled up 30px inside its box (see PositionCard), which would leave that much blank space under it. */
+  margin-bottom: -30px;
+}
+
+/* Labels in a position card's stats row (Max Gain, EXP $, Opened, ...): lighter than text-muted on the dark surface, where muted was hard to read. */
+.position-stat-label {
+  color: var(--tblr-secondary-color);
+}
+:root[data-bs-theme="dark"] .position-stat-label {
+  color: #c2cbd8;
+}
+
+/* Middle-dot separator between the items of a position card's stats row (Max Gain · Max Loss · ...). */
+.position-stat + .position-stat::before {
+  content: "\00b7";
+  margin-right: 0.5rem;
+  color: var(--tblr-secondary-color);
+  font-weight: 700;
+}
+.position-payoff-chart .apexcharts-svg {
+  overflow: visible;
 }
