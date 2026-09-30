@@ -353,6 +353,17 @@ export function formatShortAge(dateInput: string | Date | null | undefined, now:
   return `${hours}h ${String(diffMinutes % 60).padStart(2, "0")}m`;
 }
 
+/** Like formatShortAge but counts seconds under a minute: "12s", "3m", "1h 05m"; null when unknown, invalid or in the future. */
+export function formatShortAgeWithSeconds(dateInput: string | Date | null | undefined, now: Date = new Date()): string | null {
+  if (!dateInput) return null;
+  const date = typeof dateInput === "string" ? new Date(dateInput) : dateInput;
+  if (Number.isNaN(date.getTime())) return null;
+  const diffMs = now.getTime() - date.getTime();
+  if (diffMs < 0) return null;
+  if (diffMs < 60_000) return `${Math.floor(diffMs / 1000)}s`;
+  return formatShortAge(date, now);
+}
+
 export function formatDuration(
   startedAt: string | Date | null | undefined,
   finishedAt: string | Date | null | undefined,

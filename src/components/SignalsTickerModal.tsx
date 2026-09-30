@@ -12,7 +12,7 @@ import { SignalOrderSetupForm } from "./SignalOrderSetupForm";
 import { ChainContractOrderSetupForm } from "./ChainContractOrderSetupForm";
 import { SignalsOptionChainCard, type ChainContractRef } from "./signals/SignalsOptionChainCard";
 import { formatCurrency, formatCurrencyTrimmed, formatDate, formatDateTime, formatNumber, formatPercentage, formatPercentageValue, formatSignedPercentageValue, formatSignedPnl, formatVolatilityPoints, pnlTextClass } from "../lib/formatters";
-import { candidateContractRight, describeHeldLeg, describeSupportResistanceLevel, describeNoCandidatesMessage, describeQuoteAgeRange, describeRollSignalFlag, describeSignalFlag, gradeBadgeClass, gradeExplanation, gradeLabel, heldLegUnscoredReasonLabel, netRollEdgeExplanation, quoteAgeCellLabel, quoteSourceLabel, rollFlagLetter, signalContractKey, signalFlagLetter, surfaceIvTrustClass, unscoredReasonLabel, restScoresFallbackMs } from "../lib/signalsPresentation";
+import { candidateContractRight, describeHeldLeg, describeSupportResistanceLevel, describeNoCandidatesMessage, describeQuoteAgeRange, describeRollSignalFlag, describeSignalFlag, gradeBadgeClass, gradeExplanation, gradeLabel, heldLegUnscoredReasonLabel, netRollEdgeExplanation, quoteSourceLabel, rollFlagLetter, signalContractKey, signalFlagLetter, surfaceIvTrustClass, unscoredReasonLabel, restScoresFallbackMs } from "../lib/signalsPresentation";
 import { IvHistoryChart } from "./charts/IvHistoryChart";
 import { TickerPriceChart } from "./charts/TickerPriceChart";
 import { CollapsibleCard } from "./CollapsibleCard";
@@ -24,6 +24,7 @@ import { StrategyBadge } from "./StrategyBadge";
 import { TickerHeaderStrip } from "./TickerHeaderStrip";
 import { TickerPositionsCards } from "./TickerPositionsCards";
 import { TooltipSpan } from "./TooltipSpan";
+import { QuoteAgeLabel } from "./QuoteAgeLabel";
 import { useTooltip } from "../hooks/useTooltip";
 import { useMediaQuery } from "../hooks/useMediaQuery";
 
@@ -837,7 +838,7 @@ export function SignalsTickerModal({ symbol, initialRollLegId = null, focusPosit
           ) : row.quoteSource === "day" ? (
             <TooltipSpan className="d-inline-flex align-items-center gap-2 font-mono" text={`${quoteSourceLabel.day}${row.quotedAt ? ` · received ${formatDateTime(row.quotedAt)}` : ""}`}>
               <span className="iorio-still-dot" />
-              {quoteAgeCellLabel(row.quotedAt)}
+              <QuoteAgeLabel quotedAt={row.quotedAt} />
             </TooltipSpan>
           ) : (
             <TooltipSpan className="font-mono text-secondary" text={signals?.snapshotCapturedAt ? `${formatDateTime(signals.snapshotCapturedAt)} snapshot quote — this contract is not in today's refresh pool` : quoteSourceLabel.snapshot}>

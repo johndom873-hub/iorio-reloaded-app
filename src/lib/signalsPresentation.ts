@@ -1,6 +1,6 @@
 import type { AppNotification } from "../api/notifications";
 import type { DayQuotesFrameStatus, HeldLegScore, HeldLegUnscoredReason, RoadmapStatus, RollSignalCandidate, RollSignalFlag, RollSignalWarning, SignalCandidate, SignalFlag, SignalGrade, SignalQuoteSource, SignalsNoCandidatesReason, SignalsPriceSource, SignalsUnscoredReason, MacroEvent } from "../api/signals";
-import { formatCurrencyTrimmed, formatDate, formatLocalTime, formatMonthDay, formatOptionContractShort, formatPercentageValue, formatShortAge, formatSignedPnl, formatVolatilityPoints } from "./formatters";
+import { formatCurrencyTrimmed, formatDate, formatLocalTime, formatMonthDay, formatOptionContractShort, formatPercentageValue, formatShortAge, formatShortAgeWithSeconds, formatSignedPnl, formatVolatilityPoints } from "./formatters";
 
 // Labels, badge classes and short explanations for the Signals screen and
 // modal (mockup approved 2026-09-22). Every label a user can see has a plain
@@ -78,11 +78,9 @@ export const quoteSourceLabel: Record<SignalQuoteSource, string> = {
   snapshot: "9:30 ET snapshot quote — this contract is not in today's refresh pool",
 };
 
-/** A day quote's age as the Quote column shows it, standalone and capitalised: "Now", "3m", "1h 05m", or "—". */
+/** A day quote's age as the Quote column shows it: "12s", "3m", "1h 05m", or "—". */
 export function quoteAgeCellLabel(quotedAt: string | null | undefined, now: Date = new Date()): string {
-  const age = formatShortAge(quotedAt, now);
-  if (age === null) return "—";
-  return age === "now" ? "Now" : age;
+  return formatShortAgeWithSeconds(quotedAt, now) ?? "—";
 }
 
 /** Age range text for a set of day quotes, read mid-sentence: "1m–6m old", "under a minute to 2m old", "under a minute old", or null. */

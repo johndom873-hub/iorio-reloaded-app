@@ -11,8 +11,9 @@ import { TickColoredPrice } from "../components/TickColoredPrice";
 import { TooltipSpan } from "../components/TooltipSpan";
 import { useSignalsTickerModal } from "../hooks/useSignalsTickerModal";
 import { daysToExpiry, formatCurrency, formatDateTime, formatDaysToExpiry, formatPercentage, formatRelativeTime, formatSignedPercentageValue, formatSignedPnl, formatVolatilityPoints, pnlTextClass } from "../lib/formatters";
-import { describeCandidateCompact, describeDayQuotesStatus, describeNoCandidatesReason, noSignalBadgeLabel, gradeBadgeClass, gradeExplanation, gradeLabel, priceSourceLabel, quoteAgeCellLabel, quoteSourceLabel, roadmapStatusBadgeClass, roadmapStatusLabel, signalsColumnExplanation, unscoredReasonLabel, restScoresFallbackMs } from "../lib/signalsPresentation";
+import { describeCandidateCompact, describeDayQuotesStatus, describeNoCandidatesReason, noSignalBadgeLabel, gradeBadgeClass, gradeExplanation, gradeLabel, priceSourceLabel, quoteSourceLabel, roadmapStatusBadgeClass, roadmapStatusLabel, signalsColumnExplanation, unscoredReasonLabel, restScoresFallbackMs } from "../lib/signalsPresentation";
 import { useTooltip } from "../hooks/useTooltip";
+import { QuoteAgeLabel } from "../components/QuoteAgeLabel";
 
 // Signals screen (stage 3 of the build; mockup approved 2026-09-22, v3):
 // every shortlist ticker, scored against the 9:30 ET fitted surface at live
@@ -76,7 +77,7 @@ function QuoteSourceCell({ row }: { row: SignalsScreenRow }) {
     return (
       <TooltipSpan className="d-inline-flex align-items-center gap-2 font-mono" text={`${quoteSourceLabel.day}${best.quotedAt ? ` · received ${formatDateTime(best.quotedAt)}` : ""}`}>
         <span className="iorio-still-dot" />
-        {quoteAgeCellLabel(best.quotedAt)}
+        <QuoteAgeLabel quotedAt={best.quotedAt} />
       </TooltipSpan>
     );
   }
