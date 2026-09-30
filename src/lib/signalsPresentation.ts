@@ -258,7 +258,7 @@ export function describeRollSignalFlag(flag: RollSignalFlag, held: Pick<HeldLegS
 }
 
 export const heldLegUnscoredReasonLabel: Record<HeldLegUnscoredReason, string> = {
-  no_slice: "no fitted surface for this expiry (over 90 days out, or expiring today)",
+  no_slice: "no usable fitted surface for this expiry (over 90 days out, expiring today, or its fit was rejected)",
   no_quote: "no two-sided quote for this contract yet",
   no_forecast: "no volatility forecast for this ticker",
 };

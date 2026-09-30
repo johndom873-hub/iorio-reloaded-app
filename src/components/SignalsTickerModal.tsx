@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import { fetchNextTickerCalendarEvents, type NextTickerCalendarEvents } from "../api/calendarEvents";
 import { ApiError } from "../api/client";
-import { fetchSignalContractScore, fetchSignalsChain, fetchTickerSignals, openSignalsQuotesStream, openSignalsTickerStream, type HeldLegScore, type MacroEvent, type RollSignalCandidate, type SignalCandidate, type SignalContractScore, type SignalsChain, type SignalsChainCellState, type SignalsQuotesFrame, type SignalStrategyKey, type TickerSignals } from "../api/signals";
+import { fetchSignalContractScore, fetchSignalsChain, fetchTickerSignals, openSignalsQuotesStream, openSignalsTickerStream, type HeldLegScore, type MacroEvent, type RollSignalCandidate, type ScoredSignalContract, type SignalCandidate, type SignalContractScore, type SignalsChain, type SignalsChainCellState, type SignalsQuotesFrame, type SignalStrategyKey, type TickerSignals, type UnscoredSignalContract } from "../api/signals";
 import { useVisibleLiveContracts } from "../hooks/useVisibleLiveContracts";
 import { openTickerDetailStream, type MacdSignal, type PriceBar, type TickerOverview, type TickerTechnicals } from "../api/tickerDetail";
 import { useTickerPositions } from "../hooks/useTickerPositions";
@@ -254,6 +254,27 @@ function signalContractScoreToQuoteSeed(contract: SignalContractScore | null): O
   if (!contract) return null;
   if (contract.scored) return signalCandidateToQuoteSeed(contract);
   return { bid: contract.bid, ask: contract.ask, impliedVolatility: null, delta: contract.delta, theta: null, vega: null };
+}
+
+/** A scored contract reduced to its quote: the roll form's replacement when the HELD leg is the unscored one (no net roll Edge, the order still builds). */
+function scoredContractAsQuoteOnly(contract: ScoredSignalContract): UnscoredSignalContract {
+  return {
+    scored: false,
+    right: contract.right,
+    isCandidate: contract.isCandidate,
+    notCandidateReason: contract.notCandidateReason,
+    spotPrice: contract.spotPrice,
+    priceSource: contract.priceSource,
+    strategyKey: contract.strategyKey,
+    expiry: contract.expiry,
+    strike: contract.strike,
+    dte: contract.dte,
+    bid: contract.bid,
+    ask: contract.ask,
+    delta: contract.delta,
+    quoteSource: contract.quoteSource,
+    quotedAt: contract.quotedAt,
+  };
 }
 
 /** A chain contract picked outside the candidates list, scored on demand by GET /signals/:symbol/contract. */
@@ -1165,14 +1186,20 @@ export function SignalsTickerModal({ symbol, initialRollLegId = null, focusPosit
                                     onSubmitted={(order, adaptivePriority) => setPendingOrder({ order, adaptivePriority })}
                                   />
                                 ) : (
-                                  <div className="d-flex flex-column gap-2">
-                                    <div className="alert alert-warning mb-0">The held leg has no live two-sided quote right now, so this roll cannot be priced. Try again in a moment.</div>
-                                    <div>
-                                      <button type="button" className="btn btn-outline-secondary" onClick={clearSelection}>
-                                        Cancel roll
-                                      </button>
-                                    </div>
-                                  </div>
+                                  <RollSignalOrderSetupForm
+                                    key={chainPick.key}
+                                    symbol={symbol}
+                                    signals={signals}
+                                    roll={null}
+                                    unscoredReplacement={scoredContractAsQuoteOnly(livePickedScore)}
+                                    held={liveRollModeHeldLeg}
+                                    spotPrice={spotPriceForOrders}
+                                    netRollEdgeAtSelection={null}
+                                    selectedAtIso={chainPick.selectedAtIso}
+                                    notice={chainPick.result.notCandidateReason ? chainPickNotice(chainPick, chainPick.result.notCandidateReason) : null}
+                                    onCancel={clearSelection}
+                                    onSubmitted={(order, adaptivePriority) => setPendingOrder({ order, adaptivePriority })}
+                                  />
                                 );
                               })()
                             ) : (

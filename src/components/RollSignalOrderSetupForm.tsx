@@ -5,7 +5,7 @@ import type { HeldLegScore, RollSignalCandidate, TickerSignals, UnscoredSignalCo
 import { checkSignalOrderLimits } from "../api/signalSettings";
 import { flashClassName, useFlashOnChange } from "../hooks/useFlashOnChange";
 import { formatCurrency, formatCurrencyTrimmed, formatDate, formatPercentage, formatQuotePrice, formatSignedPnl, formatVolatilityPoints } from "../lib/formatters";
-import { describeHeldLeg, describeRollSignalFlag, describeRollSignalWarning, describeSignalFlag, gradeBadgeClass, gradeLabel, netRollEdgeExplanation, rollFlagLetter, signalFlagLetter } from "../lib/signalsPresentation";
+import { describeHeldLeg, describeRollSignalFlag, describeRollSignalWarning, describeSignalFlag, gradeBadgeClass, gradeLabel, heldLegUnscoredReasonLabel, netRollEdgeExplanation, rollFlagLetter, signalFlagLetter } from "../lib/signalsPresentation";
 import { Spinner } from "./Spinner";
 import { useTooltip } from "../hooks/useTooltip";
 
@@ -117,7 +117,7 @@ export function RollSignalOrderSetupForm({ symbol, signals, roll, unscoredReplac
   }, [symbol, held.strategyKey, target.strike, quantity, spotPrice, held.strike]);
 
   const blockingReasons = [
-    ...(held.unscoredReason ? ["The held leg has no live two-sided quote right now."] : []),
+    ...(held.mid === null ? ["The held leg has no live two-sided quote right now."] : []),
     ...(replacementTwoSided ? [] : ["The new contract has no two-sided quote right now."]),
     ...(signalLimitsResult?.blocked ? signalLimitsResult.reasons : []),
   ];
@@ -258,7 +258,10 @@ export function RollSignalOrderSetupForm({ symbol, signals, roll, unscoredReplac
           <div className="text-uppercase" style={{ fontSize: "0.68rem", fontWeight: 700, letterSpacing: "0.06em" }}>
             Roll signal
           </div>
-          No Signals score for this contract, so there is no net roll Edge. The order can still be placed at the quotes below.
+          {held.unscoredReason
+            ? `No Signals score for the leg you hold: ${heldLegUnscoredReasonLabel[held.unscoredReason]}. So there is no net roll Edge.`
+            : "No Signals score for this contract, so there is no net roll Edge."}{" "}
+          The order can still be placed at the quotes below.
         </div>
       )}
 
