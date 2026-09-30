@@ -950,7 +950,11 @@ export function SignalsTickerModal({ symbol, initialRollLegId = null, focusPosit
                     valueClassName={signals.atmImpliedVolatility !== null && signals.forecast ? pnlTextClass(signals.atmImpliedVolatility - signals.forecast.volatility) : ""}
                   />
                   <SignalMetric label={`Intraday IV shift${effectiveExpiry ? ` (${formatDate(effectiveExpiry)})` : ""}`} value={ivShiftValue} />
-                  <SignalMetric label="Momentum 12-1" value={signals.momentum === null ? "n/a" : formatSignedPercentageValue(signals.momentum * 100, 0)} />
+                  <SignalMetric
+                    label="Momentum 12-1"
+                    value={signals.momentum === null ? "n/a" : formatSignedPercentageValue(signals.momentum * 100, 0)}
+                    valueClassName={pnlTextClass(signals.momentum)}
+                  />
                   <SignalMetric label="Skew (30d)" value={signals.skew ? formatVolatilityPoints(signals.skew.skew) : "—"} />
                   <SignalMetric label="Vol flag" value={signals.elevatedVolatility ? `${signals.elevatedVolatility.elevated ? "Elevated" : "Normal"} (${signals.elevatedVolatility.ratio.toFixed(2)} vs ${signals.elevatedVolatility.threshold.toFixed(2)})` : "n/a"} />
                   <SignalMetric label="Shares free" value={formatNumber(signals.freeShares, 0)} />
