@@ -2,9 +2,8 @@ import { useEffect, useState, type RefObject } from "react";
 
 // Live IBKR lines only for prices actually on screen (Marcelo 2026-09-29): every element that shows a live
 // option price carries `data-live-contracts="key,key"` (keys expiry|strike|right). This hook watches every such
-// element under `rootRef` and returns the contracts of the visible ones. An element inside a scrolling list also
-// carries `data-live-group` and `data-live-index`: the rows one before the first visible and one after the last
-// visible of each group are added too, so a small scroll never shows an empty price. "Visible" is the browser's
+// element under `rootRef` and returns the contracts of the visible ones — at least half shown, no extra rows
+// either side (Marcelo 2026-09-30: the half-row rule already covers a small scroll). "Visible" is the browser's
 // own intersection test against the viewport, which already accounts for clipping by scroll containers (a row
 // scrolled out of its table, or a table scrolled out of the modal, is not visible).
 
@@ -15,25 +14,10 @@ function contractsOf(element: Element): string[] {
   return (element.getAttribute("data-live-contracts") ?? "").split(",").filter(Boolean);
 }
 
-/** Pure: the contracts of the visible elements plus, per group, the neighbouring row on each side. Sorted, no duplicates. */
+/** Pure: the contracts of the visible elements. Sorted, no duplicates. */
 export function collectVisibleLiveContracts(elements: Element[], isVisible: (element: Element) => boolean): string[] {
   const keys = new Set<string>();
-  const visibleIndexesByGroup = new Map<string, number[]>();
-  const elementsByGroupIndex = new Map<string, Element>();
-  for (const element of elements) {
-    const group = element.getAttribute("data-live-group");
-    const index = Number(element.getAttribute("data-live-index"));
-    if (group !== null && Number.isInteger(index)) elementsByGroupIndex.set(`${group}#${index}`, element);
-    if (!isVisible(element)) continue;
-    for (const key of contractsOf(element)) keys.add(key);
-    if (group !== null && Number.isInteger(index)) visibleIndexesByGroup.set(group, [...(visibleIndexesByGroup.get(group) ?? []), index]);
-  }
-  for (const [group, indexes] of visibleIndexesByGroup) {
-    for (const neighbour of [Math.min(...indexes) - 1, Math.max(...indexes) + 1]) {
-      const element = elementsByGroupIndex.get(`${group}#${neighbour}`);
-      if (element) for (const key of contractsOf(element)) keys.add(key);
-    }
-  }
+  for (const element of elements) if (isVisible(element)) for (const key of contractsOf(element)) keys.add(key);
   return [...keys].sort();
 }
 
@@ -83,7 +67,7 @@ export function useVisibleLiveContracts(rootRef: RefObject<HTMLElement | null>):
       schedulePublish();
     };
     const mutationObserver = new MutationObserver(syncObserved);
-    mutationObserver.observe(root, { childList: true, subtree: true, attributes: true, attributeFilter: ["data-live-contracts", "data-live-index"] });
+    mutationObserver.observe(root, { childList: true, subtree: true, attributes: true, attributeFilter: ["data-live-contracts"] });
     syncObserved();
 
     return () => {

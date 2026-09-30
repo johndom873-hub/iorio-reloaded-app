@@ -19,10 +19,10 @@ export type MultiplexedStreamKind = "greeks" | "pnl" | "exposure" | "pricePerfor
 // locked) for hiddenTabPauseGraceMs they are unsubscribed, and re-sent — under a fresh id, since the server
 // ignores a subscribe that follows its own unsubscribe — the moment the tab is shown again. Every one of them
 // is a snapshot stream, so its first frame back is full current state. Notifications (which carry presence)
-// and the Pulse topology stream hold no lines and stay connected. The grace keeps a quick tab switch from
-// re-subscribing everything.
+// and the Pulse topology stream hold no lines and stay connected. With the server pool's own 2 s unsubscribe
+// grace, a switch back within ~4 s never touches IBKR.
 const lineHoldingKinds: ReadonlySet<MultiplexedStreamKind> = new Set(["greeks", "pnl", "exposure", "pricePerformancePrices", "stockPrices", "signalsScreen", "signalsTicker", "signalsQuotes"]);
-export const hiddenTabPauseGraceMs = 10_000;
+export const hiddenTabPauseGraceMs = 2_000;
 let areLineHoldingStreamsPaused = false;
 let hiddenTabPauseTimer: ReturnType<typeof setTimeout> | null = null;
 

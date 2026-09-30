@@ -147,13 +147,13 @@ function HeldLegRolls({ held, rolls, showAvoid, selectedRollKey, disabled, onSel
               </tr>
             </thead>
             <tbody>
-              {shown.map((roll, index) => {
+              {shown.map((roll) => {
                 const key = rollKey(roll);
                 const isCall = roll.strategyKey === "covered_call";
                 // A roll's price needs both legs: closing the held one and opening the replacement.
                 const liveKeys = `${heldKey},${signalContractKey({ expiry: roll.replacement.expiry, strike: roll.replacement.strike, right: isCall ? "C" : "P" })}`;
                 return (
-                  <tr key={key} data-live-contracts={liveKeys} data-live-group={`rolls:${held.legId}`} data-live-index={String(index)} className={[selectedRollKey === key ? "table-active" : "", roll.grade === "avoid" ? "text-secondary" : ""].filter(Boolean).join(" ") || undefined} style={{ cursor: disabled ? undefined : "pointer" }} onClick={disabled ? undefined : () => onSelect(roll)}>
+                  <tr key={key} data-live-contracts={liveKeys} className={[selectedRollKey === key ? "table-active" : "", roll.grade === "avoid" ? "text-secondary" : ""].filter(Boolean).join(" ") || undefined} style={{ cursor: disabled ? undefined : "pointer" }} onClick={disabled ? undefined : () => onSelect(roll)}>
                     <td>
                       <input type="radio" className="form-check-input" checked={selectedRollKey === key} readOnly aria-label={`Select roll to ${describeHeldLeg({ right: isCall ? "C" : "P", strike: roll.replacement.strike, dte: roll.replacement.dte })}`} />
                     </td>
@@ -439,7 +439,7 @@ export function SignalsTickerModal({ symbol, initialRollLegId = null, focusPosit
     );
   }, [symbol, streamKey, notInSignalsUniverse]);
 
-  // Live option quotes only for what is on screen (visible rows plus one each side, useVisibleLiveContracts): the set is
+  // Live option quotes only for what is on screen (useVisibleLiveContracts): the set is
   // settled for 300 ms before the stream is reopened, so scrolling does not churn IBKR subscriptions.
   const visibleLiveContracts = useVisibleLiveContracts(modalContentRef);
   const [subscribedLiveContracts, setSubscribedLiveContracts] = useState<string[]>([]);
@@ -923,11 +923,11 @@ export function SignalsTickerModal({ symbol, initialRollLegId = null, focusPosit
                       <DataTable
                         tableId="signals-opportunities"
                         dense
-                        maxVisibleRows={15}
+                        maxVisibleRows={10}
                         columns={opportunityColumns}
                         rows={opportunityRows}
                         rowKey={(row) => candidateKey(row)}
-                        rowAttributes={(row, index) => ({ "data-live-contracts": candidateKey(row), "data-live-group": "opportunities", "data-live-index": String(index) })}
+                        rowAttributes={(row) => ({ "data-live-contracts": candidateKey(row) })}
                         emptyMessage={hiddenAvoidCount > 0 ? `No candidate has positive net Edge right now. Tick "Show Avoid" to see the ${hiddenAvoidCount} hidden.` : signals.noCandidatesReason ? describeNoCandidatesMessage(signals.noCandidatesReason) : "No candidates match the filters."}
                         onRowClick={selectCandidate}
                         rowClassName={(row) => [candidateKey(row) === selectedKey ? "table-active" : "", row.grade === "avoid" ? "text-secondary" : ""].filter(Boolean).join(" ") || undefined}
@@ -958,7 +958,7 @@ export function SignalsTickerModal({ symbol, initialRollLegId = null, focusPosit
                         }
                         afterTable={
                           <div className="card-footer text-secondary" style={{ fontSize: "0.75rem" }}>
-                            * quote from the 9:30 ET snapshot. Live quotes stream only for the contracts on screen (visible rows plus one each side); every other pooled contract shows the Day Signals loop's latest quote with its age.
+                            * quote from the 9:30 ET snapshot. Live quotes stream only for the contracts on screen; every other pooled contract shows the Day Signals loop's latest quote with its age.
                           </div>
                         }
                       />
