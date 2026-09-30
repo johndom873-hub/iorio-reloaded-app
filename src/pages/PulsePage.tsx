@@ -661,8 +661,6 @@ export function PulsePage() {
             return { occurredAt, text: `Position opened — ${notification.symbol}`, color: "var(--success)" };
           case "position_closed":
             return { occurredAt, text: `Position closed — ${notification.symbol}`, color: "var(--success)" };
-          case "genosuke_reply":
-            return { occurredAt, text: `Genosuke replied: ${notification.preview}`, color: "var(--text-secondary)" };
           default:
             return null;
         }
@@ -773,7 +771,6 @@ export function PulsePage() {
         }
         case "genosuke_reply": {
           firePulse("heroku-genosuke", "var(--text-secondary)");
-          appendEvent(`Genosuke replied: ${notification.preview}`, "var(--text-secondary)");
           setTelegramFlash(true);
           window.setTimeout(() => setTelegramFlash(false), 900);
           break;
