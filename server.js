@@ -2,6 +2,7 @@ import "dotenv/config";
 import express from "express";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { announceStartToApi } from "./announceStartToApi.js";
 
 function requireEnvironmentVariable(variableName) {
   const value = process.env[variableName];
@@ -34,4 +35,5 @@ app.use((_request, response) => {
 const port = Number(requireEnvironmentVariable("PORT"));
 app.listen(port, () => {
   console.log(`Iorio Reloaded frontend listening on port ${port}`);
+  void announceStartToApi();
 });
