@@ -25,6 +25,7 @@ const lineHoldingKinds: ReadonlySet<MultiplexedStreamKind> = new Set(["greeks", 
 export const hiddenTabPauseGraceMs = 2_000;
 let areLineHoldingStreamsPaused = false;
 let hiddenTabPauseTimer: ReturnType<typeof setTimeout> | null = null;
+let isHiddenTabPauseDisabled = false;
 
 function isPausedByHiddenTab(subscription: Subscription): boolean {
   return areLineHoldingStreamsPaused && lineHoldingKinds.has(subscription.kind);
@@ -250,10 +251,31 @@ function resumeLineHoldingStreams() {
 
 function onTabVisibilityChange() {
   if (document.visibilityState === "hidden") {
+    if (isHiddenTabPauseDisabled) return;
     if (hiddenTabPauseTimer === null && !areLineHoldingStreamsPaused) hiddenTabPauseTimer = setTimeout(pauseLineHoldingStreams, hiddenTabPauseGraceMs);
   } else {
     resumeLineHoldingStreams();
   }
+}
+
+/**
+ * Pulse's "keep live in background" switch: while disabled-pause is on, a hidden tab keeps its line-holding
+ * streams (the pause above never starts, and one already started is undone). Turning it off while the tab is
+ * hidden starts the normal grace timer. Per tab, not persisted here — the caller owns the setting.
+ */
+export function setHiddenTabPauseDisabled(isDisabled: boolean) {
+  if (isHiddenTabPauseDisabled === isDisabled) return;
+  isHiddenTabPauseDisabled = isDisabled;
+  if (isDisabled) {
+    resumeLineHoldingStreams();
+  } else {
+    onTabVisibilityChange();
+  }
+}
+
+/** True when the tab is in front, or is hidden but allowed to stay live — for polls that otherwise skip hidden tabs. */
+export function isTabLive(): boolean {
+  return document.visibilityState === "visible" || isHiddenTabPauseDisabled;
 }
 
 if (typeof document !== "undefined") {

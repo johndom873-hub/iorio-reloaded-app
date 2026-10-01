@@ -58,6 +58,9 @@ import { useEnvironmentStatus } from "../hooks/useEnvironmentStatus";
 import { describeAssignmentRisk, describeSignalUpgradeCompact } from "../lib/signalsPresentation";
 import { openPositionsSignature } from "../lib/positionsSignature";
 import { usePollWhileVisible } from "../hooks/usePollWhileVisible";
+import { useKeepLiveInBackground } from "../hooks/useKeepLiveInBackground";
+import { KeepLiveSwitch } from "../components/pulse/KeepLiveSwitch";
+import { isTabLive } from "../api/streamMultiplexer";
 
 const CHART_SAMPLE_INTERVAL_MS = 60_000;
 // 8 hours of history at one sample/minute — matches the backend's rolling
@@ -368,7 +371,7 @@ function useMarketStatus() {
     }
     poll();
     const interval = window.setInterval(() => {
-      if (document.visibilityState === "visible") poll();
+      if (isTabLive()) poll();
     }, MARKET_STATUS_POLL_INTERVAL_MS);
     const handleVisibilityChange = () => {
       if (document.visibilityState === "visible") poll();
@@ -418,6 +421,7 @@ export function PulsePage() {
   const environmentStatus = useEnvironmentStatus();
   // Phone layout at and below the width where the desktop header already wraps (see PulsePage.css).
   const isPhoneLayout = useMediaQuery("(max-width: 700px)");
+  const { isKeepingLive, setIsKeepingLive } = useKeepLiveInBackground();
 
   const [clock, setClock] = useState(() => new Date().toLocaleTimeString("en-US", { hour12: false }));
   useEffect(() => {
@@ -457,7 +461,7 @@ export function PulsePage() {
     const refreshAvailableCash = () => fetchAvailableCash().then(setAvailableCash).catch(() => {});
     refreshAvailableCash();
     const interval = window.setInterval(() => {
-      if (document.visibilityState === "visible") refreshAvailableCash();
+      if (isTabLive()) refreshAvailableCash();
     }, ACCOUNT_POLL_INTERVAL_MS);
     const handleVisibilityChange = () => {
       if (document.visibilityState === "visible") refreshAvailableCash();
@@ -592,7 +596,7 @@ export function PulsePage() {
     }
     poll();
     const interval = window.setInterval(() => {
-      if (document.visibilityState === "visible") poll();
+      if (isTabLive()) poll();
     }, HEALTH_POLL_INTERVAL_MS);
     const handleVisibilityChange = () => {
       if (document.visibilityState === "visible") poll();
@@ -1359,6 +1363,7 @@ export function PulsePage() {
       <div className="iorio-pulse-page pulse-phone">
         <PulsePhoneLayout
           clock={clock}
+          keepLiveSwitch={<KeepLiveSwitch isKeepingLive={isKeepingLive} onChange={setIsKeepingLive} label="Live in bg" />}
           environmentStatus={environmentStatus}
           attentionPill={<AttentionPill reasons={attentionReasons} />}
           marketLine={
@@ -1448,6 +1453,7 @@ export function PulsePage() {
           <EnvironmentBadges status={environmentStatus} />
         </div>
         <div className="pulse-header-right">
+          <KeepLiveSwitch isKeepingLive={isKeepingLive} onChange={setIsKeepingLive} label="Keep live in background" />
           <AttentionPill reasons={attentionReasons} />
           <div className="clock">{clock}</div>
         </div>

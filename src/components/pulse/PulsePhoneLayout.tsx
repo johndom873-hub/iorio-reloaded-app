@@ -19,6 +19,7 @@ export interface PhoneSystemLed {
 
 export interface PulsePhoneLayoutProps {
   clock: string;
+  keepLiveSwitch: ReactNode;
   environmentStatus: EnvironmentStatus;
   attentionPill: ReactNode;
   marketLine: ReactNode;
@@ -50,6 +51,7 @@ function AllocationLegendItem({ color, label, percent }: { color: string; label:
  */
 export function PulsePhoneLayout({
   clock,
+  keepLiveSwitch,
   environmentStatus,
   attentionPill,
   marketLine,
@@ -87,7 +89,10 @@ export function PulsePhoneLayout({
         </div>
         <div className="phone-header-row2">
           <EnvironmentBadges status={environmentStatus} />
+        </div>
+        <div className="phone-header-row3">
           {marketLine}
+          {keepLiveSwitch}
         </div>
       </header>
 
