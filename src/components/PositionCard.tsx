@@ -140,7 +140,7 @@ export function PositionCard({
       );
     }
     const pnl = isOption ? positionPremiumPnl(position, unrealizedPnlByPositionId) : positionStockPnl(position, unrealizedPnlByPositionId);
-    const meaning = isOption ? "Premium collected vs. current buy-back cost of the option contract" : "Stock price movement vs. entry price";
+    const meaning = isOption ? "Premium collected vs. current buy-back cost of the option contract" : "Stock P&L: price movement of the shares held vs. entry, plus any shares already sold (realized, net of closing commissions)";
     if (pnl === "loading" || pnl === null) {
       return (
         <TooltipSpan className="text-muted" text={pnl === null ? "No live price or recent snapshot available" : "Loading"}>

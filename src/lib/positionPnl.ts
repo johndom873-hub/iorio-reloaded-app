@@ -127,10 +127,18 @@ export function positionPnlAsOfDate(position: Position, unrealizedByPositionId: 
   return unrealizedByPositionId[position.id]?.asOfDate ?? null;
 }
 
+// P&L % divides by the capital the position's whole P&L was earned on (approved 2026-10-01): the shares still
+// held plus those already sold in closed slices, not just Exp $ (the capital exposed now). `?? capitalAtRisk`
+// covers the minutes between this app deploying and the API that sends capitalDeployed.
+export function positionPnlPercentBase(position: Position): number | null {
+  const base = position.capitalDeployed ?? position.capitalAtRisk;
+  return base === null ? null : Number(base);
+}
+
 export function positionTotalPnlPercent(position: Position, pnl: number | null): number | null {
-  const capitalAtRisk = position.capitalAtRisk === null ? null : Number(position.capitalAtRisk);
-  if (pnl === null || capitalAtRisk === null || capitalAtRisk === 0) return null;
-  return (pnl / capitalAtRisk) * 100;
+  const base = positionPnlPercentBase(position);
+  if (pnl === null || base === null || base === 0) return null;
+  return (pnl / base) * 100;
 }
 
 // The expiry driving this position: the nearest expiry among its still-open
@@ -158,14 +166,14 @@ export interface PositionTotals {
   stockPnl: number;
   exposureDollars: number;
   exposurePercent: number | null;
-  /** Total P&L $ / total Exp $ over the positions that have both. */
+  /** Total P&L $ / the sum of the rows' P&L % bases (Exp $, plus shares already sold) over the positions that have both. */
   pnlPercent: number | null;
   /** Positions left out of the P&L sums because no live price or snapshot exists. */
   positionsWithoutPnl: number;
 }
 
 // Approved 2026-09-19: totals are straight sums of the row figures; total
-// P&L % is total P&L $ / total Exp $ (never an average of row percentages);
+// P&L % is total P&L $ / total of the rows' P&L % base (never an average of row percentages);
 // total EXP % is the straight sum of the rows' EXP % (each is exposure /
 // total account value, so the sum equals total exposure / account value).
 export function computePositionTotals(
@@ -183,7 +191,7 @@ export function computePositionTotals(
     pnlPercent: null,
     positionsWithoutPnl: 0,
   };
-  let pnlRowsExposure = 0;
+  let pnlRowsBase = 0;
   for (const position of positions) {
     const exposure = position.capitalAtRisk === null ? null : Number(position.capitalAtRisk);
     if (exposure !== null) totals.exposureDollars += exposure;
@@ -197,7 +205,8 @@ export function computePositionTotals(
       continue;
     }
     totals.totalPnl += pnl;
-    if (exposure !== null) pnlRowsExposure += exposure;
+    const pnlPercentBase = positionPnlPercentBase(position);
+    if (pnlPercentBase !== null) pnlRowsBase += pnlPercentBase;
     const premium = positionPremiumPnl(position, unrealizedByPositionId);
     if (typeof premium === "number" && !positionIsStockOnly(position)) totals.premiumPnl += premium;
     if (positionHasStockLeg(position)) {
@@ -205,7 +214,7 @@ export function computePositionTotals(
       if (typeof stock === "number") totals.stockPnl += stock;
     }
   }
-  if (pnlRowsExposure > 0) totals.pnlPercent = (totals.totalPnl / pnlRowsExposure) * 100;
+  if (pnlRowsBase > 0) totals.pnlPercent = (totals.totalPnl / pnlRowsBase) * 100;
   if (totalAccountValue !== null && totalAccountValue > 0) totals.exposurePercent = (totals.exposureDollars / totalAccountValue) * 100;
   return totals;
 }
