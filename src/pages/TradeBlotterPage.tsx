@@ -2,10 +2,9 @@ import { useCallback, useEffect, useState } from "react";
 import { PageHeader } from "../components/layout/PageHeader";
 import { DataTable, type DataTableColumn } from "../components/DataTable/DataTable";
 import { Pagination } from "../components/Pagination";
-import { Spinner } from "../components/Spinner";
-import { ConfirmModal } from "../components/ConfirmModal";
 import { ApiError } from "../api/client";
-import { cancelOrder, type PositionStrategyKey } from "../api/positions";
+import type { PositionStrategyKey } from "../api/positions";
+import { useOrderCancellation } from "../hooks/useOrderCancellation";
 import { fetchTradeBlotter, type PendingOrder, type Trade } from "../api/tradeBlotter";
 import { StrategyBadge } from "../components/StrategyBadge";
 import { TooltipSpan } from "../components/TooltipSpan";
@@ -18,10 +17,9 @@ import {
   formatRelativeDate,
   orderRequestStatusBadgeClass,
   orderRequestStatusLabel,
+  orderRequestTypeBadgeClass,
+  orderRequestTypeLabel,
 } from "../lib/formatters";
-
-// Kept in sync with positions.ts's /orders/:id/cancel eligibility.
-const cancellableStatuses = new Set(["pending_confirmation", "confirmed", "submitted", "partially_filled"]);
 
 const rowsPerPage = 50;
 
@@ -56,8 +54,6 @@ export function TradeBlotterPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const { open: openTickerModal } = useSignalsTickerModal();
-  const [cancellingId, setCancellingId] = useState<string | null>(null);
-  const [cancelConfirm, setCancelConfirm] = useState<{ orderId: string; symbol: string; liveAtIbkr: boolean } | null>(null);
 
   const loadTrades = useCallback(async () => {
     try {
@@ -100,28 +96,7 @@ export function TradeBlotterPage() {
     loadTrades().finally(() => setLoading(false));
   }, [loadTrades]);
 
-  // Never gated on age. A "pending_confirmation"/"confirmed" order was never
-  // sent to IBKR, so there's nothing external to worry about cancelling
-  // regardless of how old it is. A "submitted"/"partially_filled" order is
-  // live at IBKR — cancelling it is only a request (see the confirm modal's
-  // liveAtIbkr message) — but there's still no reason to block the attempt
-  // based on age. The full timestamp + relative-time label below is what
-  // keeps this safe: Juan/Marcelo can see at a glance whether an order was
-  // just built moments ago (don't touch it) or has genuinely been sitting
-  // untouched, rather than the button carrying any built-in delay.
-  async function handleCancel(orderId: string) {
-    setCancellingId(orderId);
-    try {
-      setError(null);
-      await cancelOrder(orderId);
-      await loadTrades();
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Failed to cancel order.");
-    } finally {
-      setCancellingId(null);
-      setCancelConfirm(null);
-    }
-  }
+  const { renderCancelButton, cancelModal } = useOrderCancellation(loadTrades, setError);
 
   const columns: DataTableColumn<BlotterRow>[] = [
     {
@@ -159,11 +134,9 @@ export function TradeBlotterPage() {
       key: "action",
       header: "Action",
       render: (row) => {
-        const isClose = row.kind === "trade" ? row.isClosingTrade : row.requestType === "close_position";
-        const isRoll = row.kind === "order" && row.requestType === "roll_leg";
-        const label = isRoll ? "Roll" : isClose ? "Close" : "Open";
-        const actionBadgeClass = isRoll ? "bg-yellow-lt" : isClose ? "bg-secondary-lt" : "bg-azure-lt";
-        return <span className={`badge ${actionBadgeClass} text-dark`}>{label}</span>;
+        // A trade only knows whether it closed a leg; an order knows its type (open / roll / close).
+        const requestType = row.kind === "trade" ? (row.isClosingTrade ? "close_position" : "open_position") : row.requestType;
+        return <span className={`badge ${orderRequestTypeBadgeClass(requestType)}`}>{orderRequestTypeLabel(requestType)}</span>;
       },
     },
     {
@@ -251,33 +224,11 @@ export function TradeBlotterPage() {
       header: "",
       align: "right",
       render: (row) => {
-        // Mirrors positions.ts's /orders/:id/cancel eligibility exactly:
-        // pending_confirmation/confirmed haven't reached IBKR yet (pure
-        // local cancel), submitted/partially_filled are live at IBKR
-        // (cancel is a request the worker forwards via ib.cancelOrder()).
-        // Every other status is terminal — cancel_requested is excluded on
-        // purpose so the button disappears the instant a cancel is in
-        // flight, instead of allowing a second request.
-        if (row.kind !== "order" || !cancellableStatuses.has(row.status)) return null;
-        // row.id is "<order_requests.id>:<legOrdinality>" here — a multi-leg
-        // order expands to one blotter row per leg, all sharing one real
-        // order id (see tradeBlotter.ts's WITH ORDINALITY comment). Cancel
-        // always targets the whole order, so every leg-row's button does the
-        // same thing regardless of which leg it's attached to.
-        const orderId = row.id.split(":")[0]!;
-        return (
-          <button
-            type="button"
-            className="btn btn-sm btn-outline-danger d-inline-flex align-items-center gap-1"
-            disabled={cancellingId === orderId}
-            onClick={() =>
-              setCancelConfirm({ orderId, symbol: row.symbol, liveAtIbkr: row.status === "submitted" || row.status === "partially_filled" })
-            }
-          >
-            {cancellingId === orderId && <Spinner size="sm" />}
-            Cancel
-          </button>
-        );
+        if (row.kind !== "order") return null;
+        // row.id is "<order_requests.id>:<legOrdinality>" here — a multi-leg order expands to one blotter row per leg,
+        // all sharing one real order id (see tradeBlotter.ts's WITH ORDINALITY comment). Cancel always targets the
+        // whole order, so every leg-row's button does the same thing regardless of which leg it's attached to.
+        return renderCancelButton({ orderId: row.id.split(":")[0]!, symbol: row.symbol, status: row.status });
       },
     },
   ];
@@ -344,27 +295,7 @@ export function TradeBlotterPage() {
       <Pagination page={currentPage} pageSize={rowsPerPage} totalRows={rows.length} onPageChange={setPage} />
 
 
-      {cancelConfirm && (
-        <ConfirmModal
-          title="Cancel Order"
-          message={
-            cancelConfirm.liveAtIbkr ? (
-              <>
-                This <strong>{cancelConfirm.symbol}</strong> order is already at IBKR. Cancelling sends a cancel request — IBKR could still fill
-                it before the request is processed. This can't be undone.
-              </>
-            ) : (
-              <>
-                Cancel the pending <strong>{cancelConfirm.symbol}</strong> order? This can't be undone.
-              </>
-            )
-          }
-          confirmLabel="Cancel Order"
-          confirming={cancellingId === cancelConfirm.orderId}
-          onConfirm={() => handleCancel(cancelConfirm.orderId)}
-          onCancel={() => setCancelConfirm(null)}
-        />
-      )}
+      {cancelModal}
     </>
   );
 }

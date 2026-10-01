@@ -131,6 +131,7 @@ export type OrderRequestStatus =
   | "filled"
   | "partially_filled"
   | "cancelled"
+  | "cancelled_partially_filled"
   | "rejected"
   | "error";
 
@@ -217,6 +218,44 @@ export function confirmOrder(orderId: string, adaptivePriority?: AdaptivePriorit
     method: "POST",
     body: adaptivePriority ? JSON.stringify({ adaptivePriority }) : undefined,
   });
+}
+
+export interface TodaysOrderLeg {
+  role: "stock" | "option";
+  action: "BUY" | "SELL";
+  quantity: number;
+  unitPrice: number;
+  strike: number | null;
+  /** YYYYMMDD. */
+  expiry: string | null;
+  right: "C" | "P" | null;
+  filledQuantity: number;
+  averageFillPrice: number | null;
+}
+
+/** One order on the Positions page's Today's Orders card: every order whose last status update is today (US/Eastern), plus any still-active one from earlier. */
+export interface TodaysOrder {
+  id: string;
+  requestType: string;
+  status: OrderRequestStatus;
+  symbol: string;
+  strategyKey: PositionStrategyKey;
+  createdAt: string;
+  updatedAt: string;
+  requestedByDisplayName: string | null;
+  cancelledByDisplayName: string | null;
+  errorMessage: string | null;
+  ibkrOrderId: number | null;
+  ibkrPermId: number | null;
+  adaptivePriority: AdaptivePriority | null;
+  /** Per-share net of the legs' limit prices: positive is a net debit, negative a net credit. */
+  netLimitPrice: number;
+  commission: number | null;
+  legs: TodaysOrderLeg[];
+}
+
+export function fetchTodaysOrders(): Promise<TodaysOrder[]> {
+  return apiRequest<TodaysOrder[]>("/positions/orders/today");
 }
 
 export function cancelOrder(orderId: string): Promise<OrderRequest> {

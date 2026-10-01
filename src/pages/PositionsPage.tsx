@@ -6,6 +6,8 @@ import { FlashingNumber } from "../components/FlashingNumber";
 import { ClosePositionModal } from "../components/ClosePositionModal";
 import { RollBadge } from "../components/signals/RollBadge";
 import { CycleScoreboard } from "../components/CycleScoreboard";
+import { TodaysOrdersCard } from "../components/TodaysOrdersCard";
+import { NewPositionTag } from "../components/NewPositionTag";
 import { ApiError } from "../api/client";
 import {
   fetchCycleMarks,
@@ -38,6 +40,7 @@ import {
   positionExpiryDate,
   positionHasStockLeg,
   positionPnlAsOfDate,
+  positionHasLegEnteredTodayEastern,
   positionIsStockOnly,
   positionPremiumPnl,
   positionStockPnl,
@@ -279,6 +282,7 @@ export function PositionsPage() {
           onClick={() => openTickerModalAtPosition({ symbol: row.symbol, focusPositionId: row.id })}
         >
           {row.symbol}
+          {positionHasLegEnteredTodayEastern(row) && <NewPositionTag />}
         </button>
       ),
     },
@@ -553,6 +557,8 @@ export function PositionsPage() {
         footerCells={footerCells}
         emptyMessage="No open positions yet."
       />
+
+      <TodaysOrdersCard />
 
       <CycleScoreboard />
 

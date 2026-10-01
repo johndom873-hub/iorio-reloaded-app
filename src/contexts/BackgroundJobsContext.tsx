@@ -44,7 +44,7 @@ export interface AssignmentRiskJob extends BackgroundJobBase {
 
 export type BackgroundJob = OrderJob | PositionClosedJob | SignalUpgradedJob | AssignmentRiskJob;
 
-const terminalOrderStatuses = new Set(["filled", "partially_filled", "cancelled", "rejected", "error"]);
+const terminalOrderStatuses = new Set(["filled", "partially_filled", "cancelled", "cancelled_partially_filled", "rejected", "error"]);
 
 function orderJobLabel(order: OrderRequest): string {
   const action = order.requestType.startsWith("open_") ? "Open" : order.requestType.startsWith("roll") ? "Roll" : "Close";
@@ -72,6 +72,8 @@ function orderStatusMessage(order: OrderRequest): string {
       return "Partially filled";
     case "cancelled":
       return "Cancelled";
+    case "cancelled_partially_filled":
+      return "Cancelled after partly filling";
     case "rejected":
       return order.errorMessage ?? "Rejected by IBKR";
     case "error":

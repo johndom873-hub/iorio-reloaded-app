@@ -1314,3 +1314,25 @@
 .position-payoff-chart .apexcharts-svg {
   overflow: visible;
 }
+
+/* "new" tag after the ticker of a position opened or rolled today (ET). Pink: not one of the strategy colours
+   (blue/purple/orange) or the P&L green/red next to it. White on #be185d is 6.0:1; dark mode flips to a light
+   pink with dark text (#500724 on #f9a8d4 is 9.6:1). */
+.iorio-new-tag {
+  display: inline-block;
+  vertical-align: super;
+  margin-left: 0.2rem;
+  padding: 0 0.3rem;
+  border-radius: 0.2rem;
+  background-color: #be185d;
+  color: #fff;
+  font-size: 0.6rem;
+  font-weight: 700;
+  line-height: 1.4;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+:root[data-bs-theme="dark"] .iorio-new-tag {
+  background-color: #f9a8d4;
+  color: #500724;
+}

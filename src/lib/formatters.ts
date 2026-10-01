@@ -22,6 +22,8 @@ export function orderRequestStatusLabel(status: OrderRequestStatus): string {
       return "Partially filled";
     case "cancelled":
       return "Cancelled";
+    case "cancelled_partially_filled":
+      return "Cancelled after partly filling";
     case "rejected":
       return "Rejected by IBKR";
     case "error":
@@ -32,6 +34,20 @@ export function orderRequestStatusLabel(status: OrderRequestStatus): string {
 export function orderRequestStatusBadgeClass(status: OrderRequestStatus): string {
   if (status === "filled") return "bg-success-lt";
   if (status === "rejected" || status === "error" || status === "cancelled") return "bg-danger-lt";
+  if (status === "cancelled_partially_filled") return "bg-warning-lt";
+  return "bg-azure-lt";
+}
+
+/** "Open" / "Roll" / "Close" for an order_requests.request_type (open_covered_call, open_cash_secured_put, roll_leg, close_position). */
+export function orderRequestTypeLabel(requestType: string): string {
+  if (requestType === "roll_leg") return "Roll";
+  if (requestType === "close_position") return "Close";
+  return "Open";
+}
+
+export function orderRequestTypeBadgeClass(requestType: string): string {
+  if (requestType === "roll_leg") return "bg-yellow-lt";
+  if (requestType === "close_position") return "bg-secondary-lt";
   return "bg-azure-lt";
 }
 
@@ -155,12 +171,17 @@ export function daysToExpiry(expiryIsoDate: string, asOf: string | Date = new Da
 // WITA, UTC+8, sees "expired" for a same-US-trading-day expiry well before
 // the market has even closed).
 export function todayInEasternIso(): string {
+  return easternIsoDate(new Date());
+}
+
+/** The US/Eastern calendar date ("YYYY-MM-DD") an instant falls on, regardless of the viewer's timezone. */
+export function easternIsoDate(dateInput: string | Date): string {
   return new Intl.DateTimeFormat("en-CA", {
     timeZone: "America/New_York",
     year: "numeric",
     month: "2-digit",
     day: "2-digit",
-  }).format(new Date());
+  }).format(typeof dateInput === "string" ? new Date(dateInput) : dateInput);
 }
 
 /** Clock time in US/Eastern (market time) regardless of the viewer's timezone, e.g. "09:31 ET". */
@@ -192,6 +213,24 @@ export function formatExpiryWithDte(expiryIsoDate: string | null | undefined, as
 /** "114P 3DTE" / "202.5C 3DTE" — the compact contract label shared by Pulse's Trades and Latest Events and the Signals Top Signal column. */
 export function formatOptionContractShort(strike: number | string, right: "C" | "P", dte: number | null): string {
   return `${formatNumber(strike, 2)}${right}${dte === null ? "" : ` ${dte}DTE`}`;
+}
+
+/** One order leg as a short line: "Buy 100 sh @ 52.30" / "Sell 1x 55C Oct 17 @ 1.20" (expiry as IBKR's YYYYMMDD). */
+export function formatOrderLegDescription(leg: {
+  role: "stock" | "option";
+  action: string;
+  quantity: number;
+  unitPrice: number;
+  strike: number | null;
+  expiry: string | null;
+  right: "C" | "P" | null;
+}): string {
+  const action = leg.action === "BUY" ? "Buy" : "Sell";
+  const price = formatCurrency(leg.unitPrice);
+  if (leg.role === "stock") return `${action} ${formatNumber(leg.quantity)} sh @ ${price}`;
+  const strike = leg.strike === null ? "—" : formatCurrencyTrimmed(leg.strike);
+  const expiry = leg.expiry && leg.expiry.length === 8 ? ` ${formatMonthDay(ibkrExpiryToIsoDate(leg.expiry))}` : "";
+  return `${action} ${formatNumber(leg.quantity)}x ${strike}${leg.right ?? ""}${expiry} @ ${price}`;
 }
 
 // Pairs with daysToExpiry for the "(in X days)" label shown next to an
@@ -337,6 +376,21 @@ export function formatRelativeTime(dateInput: string | Date | null | undefined):
 
   const diffHours = Math.round(diffMinutes / 60);
   return `${diffHours}h ago`;
+}
+
+/** "12s ago", "5m ago", "3h ago", "2d ago" -- the age of a timestamp, counting seconds under a minute. Pass `now` from a ticking clock to keep it current; "—" when unknown or invalid. */
+export function formatRelativeAge(dateInput: string | Date | null | undefined, now: Date = new Date()): string {
+  if (!dateInput) return "—";
+  const date = typeof dateInput === "string" ? new Date(dateInput) : dateInput;
+  if (Number.isNaN(date.getTime())) return "—";
+  // A client clock slightly behind the server's would otherwise show a negative age for a brand-new timestamp.
+  const ageSeconds = Math.max(0, Math.floor((now.getTime() - date.getTime()) / 1000));
+  if (ageSeconds < 60) return `${ageSeconds}s ago`;
+  const ageMinutes = Math.floor(ageSeconds / 60);
+  if (ageMinutes < 60) return `${ageMinutes}m ago`;
+  const ageHours = Math.floor(ageMinutes / 60);
+  if (ageHours < 24) return `${ageHours}h ago`;
+  return `${Math.floor(ageHours / 24)}d ago`;
 }
 
 /** Compact age for a value shown next to a quote: "now", "3m", "1h 05m"; null when unknown, invalid or in the future. */

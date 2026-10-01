@@ -43,7 +43,7 @@ interface OrderReviewPanelProps {
   onCancelled: () => void;
   /** Every change to the order (confirmed, submitted, filled...), so the caller's copy never goes stale. */
   onOrderChange?: (order: OrderRequest) => void;
-  /** Fires once the order reaches a terminal, successful state (filled/partially_filled). */
+  /** Fires once the order reaches a terminal state with fills (filled/partially_filled/cancelled_partially_filled). */
   onFilled: () => void;
   /**
    * Real live underlying price, when the caller already has one streaming
@@ -72,7 +72,7 @@ interface OrderReviewPanelProps {
   initialQuote?: OrderReviewQuoteSeed | null;
 }
 
-const terminalStatuses = new Set(["filled", "partially_filled", "cancelled", "rejected", "error"]);
+const terminalStatuses = new Set(["filled", "partially_filled", "cancelled", "cancelled_partially_filled", "rejected", "error"]);
 
 function legDescription(leg: OrderRequest["payload"]["legs"][number]): string {
   if (leg.role === "stock") return `${leg.action} ${leg.quantity} sh @ ${formatCurrency(leg.unitPrice)}`;
@@ -98,6 +98,8 @@ function statusLabel(status: OrderRequest["status"]): string {
       return "Partially filled";
     case "cancelled":
       return "Cancelled";
+    case "cancelled_partially_filled":
+      return "Cancelled after partly filling";
     case "rejected":
       return "Rejected by IBKR";
     case "error":
@@ -155,7 +157,7 @@ export function OrderReviewPanel({ order: initialOrder, initialAdaptivePriority,
   // shared job's order flips to a filled state, guarded so a re-render at an
   // already-terminal status doesn't call onFilled twice.
   useEffect(() => {
-    if ((order.status === "filled" || order.status === "partially_filled") && !notifiedFilledRef.current) {
+    if ((order.status === "filled" || order.status === "partially_filled" || order.status === "cancelled_partially_filled") && !notifiedFilledRef.current) {
       notifiedFilledRef.current = true;
       onFilled();
     }
@@ -592,7 +594,7 @@ export function OrderReviewPanel({ order: initialOrder, initialAdaptivePriority,
           <Spinner size="sm" label="Waiting for IBKR to confirm the cancellation" />
         </button>
       )}
-      {isTerminal && order.status !== "filled" && order.status !== "partially_filled" && (
+      {isTerminal && order.status !== "filled" && order.status !== "partially_filled" && order.status !== "cancelled_partially_filled" && (
         <button type="button" className="btn btn-outline-secondary" onClick={onCancelled}>
           Close
         </button>

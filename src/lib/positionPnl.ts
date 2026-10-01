@@ -1,4 +1,5 @@
 import type { Position, PositionStrategyKey, UnrealizedPnlResult } from "../api/positions";
+import { easternIsoDate, todayInEasternIso } from "./formatters";
 
 // A position synced straight from IBKR that doesn't cleanly pair into a
 // known strategy shape shows up as "unstructured" (needs review) rather
@@ -217,4 +218,10 @@ export function computePositionTotals(
   if (pnlRowsBase > 0) totals.pnlPercent = (totals.totalPnl / pnlRowsBase) * 100;
   if (totalAccountValue !== null && totalAccountValue > 0) totals.exposurePercent = (totals.exposureDollars / totalAccountValue) * 100;
   return totals;
+}
+
+/** True when any leg of the position (open or already closed) was entered on today's US/Eastern date: a position opened today, or one rolled (or added to) today. */
+export function positionHasLegEnteredTodayEastern(position: Position): boolean {
+  const today = todayInEasternIso();
+  return position.legs.some((leg) => easternIsoDate(leg.entryAt) === today);
 }
