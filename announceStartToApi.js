@@ -1,5 +1,7 @@
 // Tells the API this frontend release has started, so the API can send the Telegram notice (deployed / config
 // change / restart) the same way it does for itself: the app has no database or Telegram credentials of its own.
+// It calls the API app's Heroku address (DEPLOY_NOTICE_API_URL), not the public domain: Cloudflare in front of the
+// public domain answers 403 to requests from Heroku's network, and this server-to-server call must not depend on it.
 // Never throws and never delays serving: it runs in the background after the server is listening. The API may be
 // restarting at this very moment (both apps promoted together), so a failed attempt is retried for a few minutes.
 
@@ -18,9 +20,9 @@ export async function announceStartToApi({ environment = process.env, fetchImple
     log.warn("DEPLOY_NOTICE_SECRET is not set: this start is not announced on Telegram.");
     return false;
   }
-  const apiBaseUrl = environment.VITE_API_BASE_URL;
+  const apiBaseUrl = environment.DEPLOY_NOTICE_API_URL;
   if (!apiBaseUrl) {
-    log.warn("VITE_API_BASE_URL is not set: this start is not announced on Telegram.");
+    log.warn("DEPLOY_NOTICE_API_URL is not set: this start is not announced on Telegram.");
     return false;
   }
   const url = `${apiBaseUrl.replace(/\/+$/, "")}/deploy-notices`;
@@ -38,7 +40,8 @@ export async function announceStartToApi({ environment = process.env, fetchImple
         log.log("Start announced to the API.");
         return true;
       }
-      log.warn(`Start notice rejected by the API (HTTP ${response.status}).`);
+      const rejectionBody = (await response.text().catch(() => "")).slice(0, 120).replace(/\s+/g, " ");
+      log.warn(`Start notice rejected (HTTP ${response.status}, server: ${response.headers.get("server") ?? "unknown"}): ${rejectionBody}`);
       if (permanentFailureStatuses.has(response.status)) return false;
     } catch (error) {
       log.warn(`Start notice could not reach the API: ${error instanceof Error ? error.message : error}`);
