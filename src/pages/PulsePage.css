@@ -668,6 +668,10 @@
   background: var(--tblr-purple);
   color: #fff;
 }
+.iorio-pulse-page .strat-badge.hedge {
+  background: var(--iorio-hedge);
+  color: #fff;
+}
 .iorio-pulse-page .strat-badge.ns {
   background: var(--tblr-orange);
   color: var(--tblr-orange-fg, #fff);

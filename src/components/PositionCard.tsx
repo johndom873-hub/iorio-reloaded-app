@@ -120,7 +120,8 @@ export function PositionCard({
   }, [position.status, displayedLegs]);
 
   const payoff = useMemo(
-    () => (position.strategyKey !== "unstructured" ? computePayoff(position.strategyKey, displayedLegs, currentPrice) : null),
+    // Hedges and unstructured positions have no strategy payoff diagram.
+    () => (position.strategyKey === "covered_call" || position.strategyKey === "cash_secured_put" ? computePayoff(position.strategyKey, displayedLegs, currentPrice) : null),
     [position, displayedLegs, currentPrice],
   );
 

@@ -40,6 +40,7 @@ export interface PnlHistoryPoint {
   coveredCalls: number;
   cashSecuredPuts: number;
   unstructured: number;
+  hedge: number;
   residual: number | null;
 }
 
@@ -51,6 +52,7 @@ export interface Portfolio {
   coveredCalls: number;
   cashSecuredPuts: number;
   unstructured: number;
+  hedge: number;
   availableCash: number | null;
 }
 
@@ -69,6 +71,7 @@ export interface PeriodPnlByStrategy {
   coveredCalls: StrategyPeriodPnlRow;
   cashSecuredPuts: StrategyPeriodPnlRow;
   unstructured: StrategyPeriodPnlRow;
+  hedge: StrategyPeriodPnlRow;
   residual: StrategyPeriodPnlRow;
   total: StrategyPeriodPnlRow;
 }

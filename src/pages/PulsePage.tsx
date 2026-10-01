@@ -109,7 +109,7 @@ function strategyAbbrev(strategyKey: string): "CC" | "CSP" {
   return strategyKey === "covered_call" ? "CC" : "CSP";
 }
 
-const strategyBadgeModifier: Record<string, string> = { covered_call: "cc", cash_secured_put: "csp", unstructured: "ns" };
+const strategyBadgeModifier: Record<string, string> = { covered_call: "cc", cash_secured_put: "csp", hedge: "hedge", unstructured: "ns" };
 
 // Latest Events' own terse status wording (distinct from
 // orderRequestStatusLabel's fuller labels used in OrderReviewPanel/Trade
@@ -493,10 +493,11 @@ export function PulsePage() {
   const ccPct = strategyPct("covered_call");
   const cspPct = strategyPct("cash_secured_put");
   const unstructuredPct = strategyPct("unstructured");
+  const hedgePct = strategyPct("hedge");
   // Remainder rather than the server's "unallocated" row, which is computed
   // against the account value at stream open and would drift from the live
   // denominator used above.
-  const cashPct = Math.max(0, 100 - ccPct - cspPct - unstructuredPct);
+  const cashPct = Math.max(0, 100 - ccPct - cspPct - unstructuredPct - hedgePct);
 
   // --- Positions: same fetch + live SSE idiom as PositionsPage.tsx. ---
   const [positions, setPositions] = useState<Position[]>([]);
@@ -1374,7 +1375,7 @@ export function PulsePage() {
             </span>
           }
           kpiTiles={kpiValueTiles}
-          allocation={{ ccPct, cspPct, unstructuredPct, cashPct }}
+          allocation={{ ccPct, cspPct, unstructuredPct, hedgePct, cashPct }}
           charts={{ pnlSeries, pnlChart: pnlChartPanel, deltaChart: deltaChartPanel }}
           positions={{
             count: positions.length,
@@ -1471,6 +1472,7 @@ export function PulsePage() {
               style={{ width: `${unstructuredPct}%`, background: "var(--tblr-orange)" }}
               data-label={`No strategy — ${unstructuredPct.toFixed(0)}%`}
             />
+            <span className="alloc-seg" style={{ width: `${hedgePct}%`, background: "var(--iorio-hedge)" }} data-label={`Hedge — ${hedgePct.toFixed(0)}%`} />
             <span className="alloc-seg" style={{ width: `${cashPct}%`, background: "var(--border-strong)" }} data-label={`Cash — ${cashPct.toFixed(0)}%`} />
           </div>
         </div>

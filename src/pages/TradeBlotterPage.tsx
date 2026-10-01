@@ -27,6 +27,7 @@ const strategyOptions: { key: PositionStrategyKey | "all"; label: string }[] = [
   { key: "all", label: "All" },
   { key: "covered_call", label: "Covered Calls" },
   { key: "cash_secured_put", label: "Cash-Secured Puts" },
+  { key: "hedge", label: "Hedges" },
   { key: "unstructured", label: "Other" },
 ];
 

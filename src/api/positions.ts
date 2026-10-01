@@ -29,7 +29,9 @@ export interface PositionLeg {
 // surfaced as "unstructured" rather than hidden — see worker.ts's
 // reconcilePositionsFromIbkr and PROGRESS.md's "IBKR is the source of
 // truth" decision, 2026-08-24.
-export type PositionStrategyKey = StrategyKey | "unstructured";
+//
+// "hedge" is a long option bought outside the app (e.g. the long TLT call that hedges the cash-secured puts).
+export type PositionStrategyKey = StrategyKey | "unstructured" | "hedge";
 
 export interface Position {
   id: string;
@@ -540,7 +542,7 @@ function openLegacyUnrealizedPnlStream(
 }
 
 // Wheel cycles (approved 2026-09-19, see cycles.ts in the API repo).
-export type CycleBucketKey = "csp" | "unstructured" | "cc";
+export type CycleBucketKey = "csp" | "unstructured" | "cc" | "hedge";
 
 export interface CycleBucketResult {
   premium: number;

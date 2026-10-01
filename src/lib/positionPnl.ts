@@ -8,6 +8,7 @@ import { easternIsoDate, todayInEasternIso } from "./formatters";
 export function strategyLabel(strategyKey: PositionStrategyKey): string {
   if (strategyKey === "covered_call") return "Covered Call";
   if (strategyKey === "cash_secured_put") return "Cash-Secured Put";
+  if (strategyKey === "hedge") return "Hedge";
   return "Needs Review";
 }
 
@@ -16,6 +17,7 @@ export function strategyLabel(strategyKey: PositionStrategyKey): string {
 export function strategyAbbrev(strategyKey: PositionStrategyKey): string {
   if (strategyKey === "covered_call") return "CC";
   if (strategyKey === "cash_secured_put") return "CSP";
+  if (strategyKey === "hedge") return "HDG";
   return "N/S";
 }
 
@@ -23,17 +25,19 @@ export function strategyAbbrev(strategyKey: PositionStrategyKey): string {
 export function strategyTooltip(strategyKey: PositionStrategyKey): string {
   if (strategyKey === "covered_call") return "Covered Call";
   if (strategyKey === "cash_secured_put") return "Cash-Secured Put";
+  if (strategyKey === "hedge") return "Hedge — a long option held to offset the risk of the other positions";
   return "No strategy (N/S) — a position that doesn't pair into a covered call or cash-secured put; needs review";
 }
 
 // THE strategy palette (the Strategy scoreboard's, standardized 2026-09-20):
-// CC blue, CSP purple, N/S orange — solid Tabler colours. Every place a
+// CC blue, CSP purple, N/S orange, hedge dark cyan (--iorio-hedge, theme.css) — solid colours. Every place a
 // strategy is shown as a coloured badge, chart series or bar segment uses
 // these so a colour always means the same strategy; see StrategyBadge.tsx
 // and strategyColors.ts.
 export function strategyBadgeClass(strategyKey: PositionStrategyKey): string {
   if (strategyKey === "covered_call") return "bg-blue text-white";
   if (strategyKey === "cash_secured_put") return "bg-purple text-white";
+  if (strategyKey === "hedge") return "bg-hedge";
   return "bg-orange text-orange-fg";
 }
 

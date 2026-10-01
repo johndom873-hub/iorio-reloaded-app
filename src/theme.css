@@ -40,6 +40,16 @@
   --iorio-topbar-height: 4rem;
 }
 
+/* Hedge strategy colour: dark cyan, white text >5:1 in both themes. Kept off teal (the cycle card's Stock badge),
+   pink (its Option badge), green (positive P&L) and grey (the Cash segment of the allocation bar). */
+:root {
+  --iorio-hedge: #0e7490;
+}
+.badge.bg-hedge {
+  background-color: var(--iorio-hedge) !important;
+  color: #fff !important;
+}
+
 /* Standard outline buttons (Marcelo, 2026-09-30): every .btn-outline-* rests as an outline on the page
    background, with the label in the theme's text colour (white on dark, black on light), and fills solid
    with a white label on hover, focus and when active/checked. Warning is the one exception: white on the
