@@ -9,6 +9,7 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
+    "heroku-postbuild": "npm audit --audit-level=high --omit=dev && npm run build",
     "start": "node server.js",
     "lint": "oxlint",
     "preview": "vite preview"
