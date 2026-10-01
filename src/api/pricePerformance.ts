@@ -50,13 +50,6 @@ export interface PricePerformanceMeta {
   expectedSessionDate: string;
   isDataCurrent: boolean;
   behindSymbols: string[];
-  refreshableSymbols: string[];
-  refresh: {
-    isRunning: boolean;
-    lastFinishedAt: string | null;
-    cooldownRemainingSeconds: number;
-    refreshableSymbolCount: number;
-  };
 }
 
 export interface PricePerformanceData {
@@ -70,20 +63,6 @@ export interface PricePerformanceData {
 // on every page load.)
 export function fetchPricePerformance(): Promise<PricePerformanceData> {
   return apiRequest<PricePerformanceData>("/price-performance");
-}
-
-export type PriceDataRefreshResult =
-  | { status: "started"; symbolCount: number }
-  | { status: "upToDate" }
-  | { status: "alreadyRunning" }
-  | { status: "cooldown"; retryAfterSeconds: number };
-
-// The explicit "Refresh daily data" button — the only thing on this page that
-// can make the server read from IBKR, and only for tickers whose latest
-// completed bar is out of date. Returns at once; the server works in the
-// background and announces completion with a job_completed notification.
-export function requestPriceDataRefresh(): Promise<PriceDataRefreshResult> {
-  return apiRequest<PriceDataRefreshResult>("/price-performance/refresh", { method: "POST" });
 }
 
 /** Live price per symbol; null = no quote for that ticker right now. */

@@ -11,11 +11,15 @@ export interface ShortlistRow {
   /** 'preparing' while the new-ticker backfill is running, else null. */
   backfillStatus?: "preparing" | null;
   backfillProgressPercent?: number | null;
-  /** True when there is under ~5 years of daily history and no preparation run has completed the history step. */
-  historyIncomplete?: boolean;
   /** ISO date of the earliest stored daily bar, if any. */
-  historyStartDate?: string | null;
-  /** True when the latest full-pipeline run ended 'partial' (some step failed) -- offers a full retry, not just Backfill Price History. */
+  historyStartDate: string | null;
+  /** ISO date of the newest stored daily bar, if any. */
+  latestDailyBarDate: string | null;
+  /** The newest session a completed bar can exist for; a newest bar older than this is stale. */
+  lastCompletedSessionDate: string;
+  /** What Populate Daily Bars would do: the full five years, only the missing sessions, or nothing. Decided by the server. */
+  dailyBarsPlan: DailyBarsPlan;
+  /** True when the latest full-pipeline run ended 'partial' (some step failed) -- offers a full retry, not just Populate Daily Bars. */
   backfillNeedsRetry?: boolean;
   /** Open positions on this ticker. Remove is disabled (and the API refuses with 409) while above zero. */
   openPositionCount: number;
@@ -35,6 +39,8 @@ export interface ShortlistRow {
   /** One entry per expiry stored in option_chain_expiry_strikes, each with its strike count. */
   optionChainExpiries: OptionChainExpiryStrikeCount[];
 }
+
+export type DailyBarsPlan = "full" | "topUp" | "none";
 
 export interface OptionChainExpiryStrikeCount {
   expiry: string;
@@ -102,38 +108,37 @@ export function retryTickerBackfill(tickerId: string): Promise<TickerBackfillRun
   return apiRequest<TickerBackfillRun>(`/shortlist/${tickerId}/backfill`, { method: "POST" });
 }
 
-export interface BackfillEarningsResult {
+export interface PopulateEarningsResult {
   written: number;
   skippedEtf: boolean;
   error: string | null;
 }
 
-/** Actions menu's "Backfill Earnings" — same historical-earnings capture (API Ninjas) the new-ticker pipeline runs automatically, re-triggered for an already-shortlisted ticker. */
-export function backfillTickerEarnings(tickerId: string): Promise<BackfillEarningsResult> {
-  return apiRequest<BackfillEarningsResult>(`/shortlist/${tickerId}/backfill-earnings`, { method: "POST" });
+/** Actions menu's "Populate Earnings" — same historical-earnings capture (API Ninjas) the new-ticker pipeline runs automatically, re-triggered for an already-shortlisted ticker. */
+export function populateTickerEarnings(tickerId: string): Promise<PopulateEarningsResult> {
+  return apiRequest<PopulateEarningsResult>(`/shortlist/${tickerId}/populate-earnings`, { method: "POST" });
 }
 
-export interface BackfillPriceHistoryResult {
-  barCount: number;
-  ivPointCount: number;
-  firstTradingDate: string | null;
-  lastTradingDate: string | null;
-  suspectedSplitDates: string[];
-  invalidBarDates: string[];
+export interface PopulateDailyBarsResult {
+  /** What the server decided to do; "none" means the stored bars were already complete and current. */
+  plan: DailyBarsPlan;
+  barCount?: number;
+  firstTradingDate?: string | null;
+  lastTradingDate?: string | null;
 }
 
-/** Actions menu's "Backfill Price History" — scoped to just the 5Y history step, not the full new-ticker pipeline (which also re-fetches the calendar and warms option-chain strikes; see routes/shortlist.ts). */
-export function backfillTickerPriceHistory(tickerId: string): Promise<BackfillPriceHistoryResult> {
-  return apiStreamedRequest<BackfillPriceHistoryResult>(`/shortlist/${tickerId}/backfill-price-history`, { method: "POST" });
+/** Actions menu's "Populate Daily Bars" — the server inspects the stored bars and fetches the full 5Y history or only the missing sessions; scoped to daily bars, not the full new-ticker pipeline (see routes/shortlist.ts in the API repo). */
+export function populateTickerDailyBars(tickerId: string): Promise<PopulateDailyBarsResult> {
+  return apiStreamedRequest<PopulateDailyBarsResult>(`/shortlist/${tickerId}/populate-daily-bars`, { method: "POST" });
 }
 
-export interface RefreshOptionChainResult {
+export interface PopulateOptionChainResult {
   optionChainExpiries: OptionChainExpiryStrikeCount[];
 }
 
-/** Actions menu's "Refresh Option Chain" — re-runs refreshStoredOptionChain for just this ticker (expiries + per-expiry strikes), same fetch the nightly capture does. */
-export function refreshTickerOptionChain(tickerId: string): Promise<RefreshOptionChainResult> {
-  return apiStreamedRequest<RefreshOptionChainResult>(`/shortlist/${tickerId}/refresh-option-chain`, { method: "POST" });
+/** Actions menu's "Populate Option Chain" — re-runs refreshStoredOptionChain for just this ticker (expiries + per-expiry strikes), same fetch the nightly capture does. */
+export function populateTickerOptionChain(tickerId: string): Promise<PopulateOptionChainResult> {
+  return apiStreamedRequest<PopulateOptionChainResult>(`/shortlist/${tickerId}/populate-option-chain`, { method: "POST" });
 }
 
 const backfillStreamReconnectDelayMs = 2_000;

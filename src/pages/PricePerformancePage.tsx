@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { IconAlertTriangle, IconRefresh } from "@tabler/icons-react";
+import { IconAlertTriangle } from "@tabler/icons-react";
 import { PageHeader } from "../components/layout/PageHeader";
 import { DataTable, type DataTableColumn } from "../components/DataTable/DataTable";
 import { Spinner } from "../components/Spinner";
@@ -10,7 +10,6 @@ import { useSharedEnvironmentStatus } from "../hooks/useEnvironmentStatus";
 import {
   fetchPricePerformance,
   openPricePerformanceStream,
-  requestPriceDataRefresh,
   type MacdSignal,
   type MaTrend,
   type PricePerformanceData,
@@ -91,10 +90,9 @@ function MaTrendBadge({ trend }: { trend: MaTrend | null }) {
 // How long to wait for the first live price before saying so, instead of an
 // endless spinner (market closed, IBKR slow or unreachable).
 const LIVE_PRICE_WAIT_MS = 8_000;
-// While a refresh is running, re-check this often in addition to the
-// job_completed notification (which is what normally ends it instantly).
-const REFRESH_POLL_MS = 3_000;
-const REFRESH_JOB_NAMES = new Set(["price_bars_refresh", "daily_market_data_capture"]);
+
+// The nightly capture finishing is what makes the stored data change: reload when it does.
+const DATA_JOB_NAMES = new Set(["daily_market_data_capture"]);
 
 type LiveConnection = "connecting" | "live" | "unavailable";
 
@@ -107,11 +105,6 @@ function changeFor(row: PricePerformanceRow, livePrice: number | null | undefine
 
 export function PricePerformancePage() {
   const [data, setData] = useState<PricePerformanceData | null>(null);
-  // The server reports the refresh cooldown as "N seconds left" at the moment
-  // it answered; the page turns that into an end time and ticks against it, so
-  // the button re-enables by itself instead of waiting for the next reload.
-  const [cooldownEndsAtMs, setCooldownEndsAtMs] = useState(0);
-  const [clockMs, setClockMs] = useState(() => Date.now());
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const { open: openTickerModal } = useSignalsTickerModal();
@@ -121,15 +114,11 @@ export function PricePerformancePage() {
   const environmentStatus = useSharedEnvironmentStatus();
   const [liveConnection, setLiveConnection] = useState<LiveConnection>("connecting");
   const [liveWaitExpired, setLiveWaitExpired] = useState(false);
-  const [isRequestingRefresh, setIsRequestingRefresh] = useState(false);
-  const [refreshMessage, setRefreshMessage] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     try {
       setError(null);
       const loaded = await fetchPricePerformance();
-      setClockMs(Date.now());
-      setCooldownEndsAtMs(Date.now() + loaded.meta.refresh.cooldownRemainingSeconds * 1000);
       setData(loaded);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Failed to load price performance.");
@@ -168,58 +157,15 @@ export function PricePerformancePage() {
     };
   }, [symbolsKey]);
 
-  // The nightly capture or a manual refresh finished: reload the stored data.
+  // The nightly capture finished: reload the stored data.
   useEffect(() => {
     return openNotificationStream((notification) => {
-      if (notification.type === "job_completed" && REFRESH_JOB_NAMES.has(notification.jobName)) {
-        if (notification.status === "failure") setRefreshMessage("The refresh finished with errors — some symbols could not be updated (see System Health for the job's details).");
-        void load();
-      }
+      if (notification.type === "job_completed" && DATA_JOB_NAMES.has(notification.jobName)) void load();
     });
   }, [load]);
 
-  useEffect(() => {
-    if (cooldownEndsAtMs <= Date.now()) return;
-    const timer = window.setInterval(() => {
-      setClockMs(Date.now());
-      if (Date.now() >= cooldownEndsAtMs) window.clearInterval(timer);
-    }, 1_000);
-    return () => window.clearInterval(timer);
-  }, [cooldownEndsAtMs]);
-
-  const isRefreshRunning = data?.meta.refresh.isRunning ?? false;
-  useEffect(() => {
-    if (!isRefreshRunning) return;
-    const timer = window.setInterval(() => void load(), REFRESH_POLL_MS);
-    return () => window.clearInterval(timer);
-  }, [isRefreshRunning, load]);
-
-  async function handleRefreshClick() {
-    setIsRequestingRefresh(true);
-    setRefreshMessage(null);
-    try {
-      const result = await requestPriceDataRefresh();
-      if (result.status === "cooldown") setRefreshMessage(`Just refreshed — try again in ${result.retryAfterSeconds}s.`);
-      if (result.status === "upToDate") setRefreshMessage("Daily data is already current.");
-      await load();
-    } catch (err) {
-      setRefreshMessage(err instanceof ApiError ? err.message : "Could not start the refresh.");
-    } finally {
-      setIsRequestingRefresh(false);
-    }
-  }
-
   const rows = data?.tickers ?? [];
   const meta = data?.meta ?? null;
-  const refreshableCount = meta?.refresh.refreshableSymbolCount ?? 0;
-  const refreshCooldown = Math.max(0, Math.ceil((cooldownEndsAtMs - clockMs) / 1000));
-  const refreshBusy = isRefreshRunning || isRequestingRefresh;
-  const refreshDisabled = refreshBusy || refreshableCount === 0 || refreshCooldown > 0;
-  const refreshTitle = refreshableCount === 0
-    ? "Every ticker already has the latest completed session — nothing to fetch."
-    : refreshCooldown > 0
-      ? `Refreshed moments ago — available again in ${refreshCooldown}s.`
-      : `Fetch the missing daily bars for ${refreshableCount} ticker${refreshableCount === 1 ? "" : "s"} from IBKR.`;
 
   // The stream stays open while IBKR refuses data, so "live" alone would claim prices are streaming when they are frozen.
   const feedRefusal = environmentStatus?.details?.marketDataFeedRefusal ?? null;
@@ -409,23 +355,6 @@ export function PricePerformancePage() {
       <PageHeader
         title="Price Performance"
         subtitle="Recent price moves across every shortlisted ticker"
-        actions={
-          <TooltipSpan text={refreshTitle} style={{ display: "inline-block" }}>
-            <button type="button" className="btn btn-outline-primary" disabled={refreshDisabled} onClick={() => void handleRefreshClick()}>
-              {refreshBusy ? (
-                <>
-                  <Spinner size="sm" className="me-2" />
-                  Refreshing…
-                </>
-              ) : (
-                <>
-                  <IconRefresh size={18} className="me-2" />
-                  Refresh daily data
-                </>
-              )}
-            </button>
-          </TooltipSpan>
-        }
       />
 
       {error && <div className="alert alert-danger">{error}</div>}
@@ -435,7 +364,7 @@ export function PricePerformancePage() {
           {/* One element: .alert is a flex container, so loose text and <strong> would become separately spaced flex items. */}
           <div>
             Daily data is out of date for {meta.behindSymbols.length} ticker{meta.behindSymbols.length === 1 ? "" : "s"} ({meta.behindSymbols.join(", ")}) —
-            the nightly capture may have missed them. Use <strong>Refresh daily data</strong> to fetch what is missing.
+            the nightly capture may have missed them. Use <strong>Actions → Populate Daily Bars</strong> on the Shortlist screen to fetch what is missing.
           </div>
         </div>
       )}
@@ -446,7 +375,6 @@ export function PricePerformancePage() {
           <span className={`badge ${liveStatus.className}`} style={{ fontSize: "0.72rem" }} role="status">
             {liveStatus.label}
           </span>
-          {refreshMessage && <span>{refreshMessage}</span>}
         </div>
       )}
 
