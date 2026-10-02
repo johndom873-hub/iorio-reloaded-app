@@ -1349,7 +1349,15 @@
 
 /* Dashboard Performance grid: year labels stay visible while the 13 columns scroll sideways on a phone. */
 .performance-grid {
-  min-width: 52rem;
+  table-layout: fixed;
+  /* Year-label column + 12 months + Year column; 5rem fits "+10.30%" in the mono font. */
+  min-width: calc(4.5rem + 13 * 5rem);
+}
+.performance-grid th:first-child {
+  width: 4.5rem;
+}
+.performance-grid th:not(:first-child) {
+  width: calc((100% - 4.5rem) / 13);
 }
 .performance-grid th,
 .performance-grid td {
@@ -1370,6 +1378,8 @@
 .performance-grid tbody th:first-child {
   background-color: var(--tblr-bg-surface);
 }
-.performance-grid .performance-grid-year-column {
+.performance-grid .performance-grid-year-column,
+.performance-grid th:nth-child(2),
+.performance-grid td:nth-child(2) {
   border-left: 1px solid var(--tblr-border-color);
 }
