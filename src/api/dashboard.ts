@@ -136,3 +136,32 @@ export interface AvailableCash {
 export function fetchAvailableCash(): Promise<AvailableCash> {
   return apiRequest<AvailableCash>("/dashboard/available-cash");
 }
+
+export interface PerformancePeriod {
+  percent: number;
+  profitDollars: number;
+}
+
+export interface PerformanceMonth extends PerformancePeriod {
+  year: number;
+  month: number;
+}
+
+export interface PerformanceYear extends PerformancePeriod {
+  year: number;
+}
+
+export interface PerformanceSummary {
+  trackingSince: string | null;
+  asOf: string | null;
+  trackingSpanDays: number | null;
+  monthToDate: PerformancePeriod | null;
+  months: PerformanceMonth[];
+  years: PerformanceYear[];
+  sinceInceptionPercent: number | null;
+  compoundAnnualGrowthRatePercent: number | null;
+}
+
+export function fetchPerformance(): Promise<PerformanceSummary> {
+  return apiRequest<PerformanceSummary>("/dashboard/performance");
+}

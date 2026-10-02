@@ -14,10 +14,12 @@ import {
   fetchAvailableCash,
   fetchDashboardEvents,
   fetchDashboardSummary,
+  fetchPerformance,
   fetchPeriodPnlByStrategy,
   fetchPnlHistory,
   type AvailableCash,
   type DashboardSummary,
+  type PerformanceSummary,
   type PeriodPnlByStrategy,
   type PnlHistoryPoint,
   type PositionEvent,
@@ -41,6 +43,7 @@ import {
 import { portfolioFromExposure } from "../lib/portfolioFromExposure";
 import { useRefreshAfterSignalsTickerModal, useSignalsTickerModal } from "../hooks/useSignalsTickerModal";
 import { TooltipSpan } from "../components/TooltipSpan";
+import { PerformanceCard } from "../components/PerformanceCard";
 
 const strategyLabels: Record<string, string> = {
   covered_call: "Covered Calls",
@@ -227,11 +230,13 @@ interface TopStatProps {
   // Small secondary figure next to the value (a % of account, etc.), coloured independently of the value.
   delta?: string | null;
   deltaClassName?: string;
+  // Equal-width columns from lg up (five cards); the phone default is two per row.
+  columnClassName?: string;
 }
 
-function TopStat({ label, value, loading, valueClassName, tooltip, delta, deltaClassName }: TopStatProps) {
+function TopStat({ label, value, loading, valueClassName, tooltip, delta, deltaClassName, columnClassName = "col-6 col-lg" }: TopStatProps) {
   return (
-    <div className="col-6 col-lg-3">
+    <div className={columnClassName}>
       <div className="card h-100">
         <div className="card-body">
           {/* HelpTooltip's own hit-target padding (4px) is taller than a
@@ -465,6 +470,9 @@ export function DashboardPage() {
   const [summary, setSummary] = useState<DashboardSummary | null>(null);
   const [summaryLoading, setSummaryLoading] = useState(true);
   const [summaryError, setSummaryError] = useState<string | null>(null);
+  const [performance, setPerformance] = useState<PerformanceSummary | null>(null);
+  const [performanceLoading, setPerformanceLoading] = useState(true);
+  const [performanceError, setPerformanceError] = useState<string | null>(null);
 
   const [history, setHistory] = useState<PnlHistoryPoint[]>([]);
   const [historyLoading, setHistoryLoading] = useState(true);
@@ -514,6 +522,13 @@ export function DashboardPage() {
       .then(setSummary)
       .catch((err) => setSummaryError(err instanceof ApiError ? err.message : "Failed to load dashboard summary."))
       .finally(() => setSummaryLoading(false));
+  }, []);
+
+  useEffect(() => {
+    fetchPerformance()
+      .then(setPerformance)
+      .catch((err) => setPerformanceError(err instanceof ApiError ? err.message : "Failed to load performance."))
+      .finally(() => setPerformanceLoading(false));
   }, []);
 
   const loadExposure = useCallback(() => {
@@ -649,6 +664,7 @@ export function DashboardPage() {
 
       {summaryError && <div className="alert alert-danger">{summaryError}</div>}
       {cashError && <div className="alert alert-danger">{cashError}</div>}
+      {performanceError && <div className="alert alert-danger">{performanceError}</div>}
 
       <div className="row g-3 mb-3">
         <TopStat
@@ -681,7 +697,19 @@ export function DashboardPage() {
           delta={formatSignedPercentageValue(totalUnrealizedPnlPercent, 2)}
           deltaClassName={pnlTextClass(totalUnrealizedPnlPercent)}
         />
+        <TopStat
+          label="MTD Performance"
+          columnClassName="col-12 col-lg"
+          loading={performanceLoading}
+          value={formatSignedPercentageValue(performance?.monthToDate?.percent ?? null, 2)}
+          valueClassName={pnlTextClass(performance?.monthToDate?.percent ?? null)}
+          delta={performance?.monthToDate ? formatSignedPnl(performance.monthToDate.profitDollars, 0) : null}
+          deltaClassName={pnlTextClass(performance?.monthToDate?.profitDollars ?? null)}
+          tooltip="Return since the last month-end snapshot, with deposits, withdrawals and transfers between your accounts removed. The latest day's deposits and withdrawals can take until the next night to be reflected."
+        />
       </div>
+
+      <PerformanceCard performance={performance} loading={performanceLoading} />
 
       <CollapsibleCard title="Allocation" storageKey="portfolio" className="mb-3">
         {portfolioError && <div className="alert alert-danger mb-0">{portfolioError}</div>}

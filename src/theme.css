@@ -1346,3 +1346,30 @@
   background-color: #f9a8d4;
   color: #500724;
 }
+
+/* Dashboard Performance grid: year labels stay visible while the 13 columns scroll sideways on a phone. */
+.performance-grid {
+  min-width: 52rem;
+}
+.performance-grid th,
+.performance-grid td {
+  white-space: nowrap;
+  padding-left: 0.6rem;
+  padding-right: 0.6rem;
+}
+.performance-grid thead th {
+  background-color: var(--tblr-bg-surface-secondary);
+}
+.performance-grid th:first-child,
+.performance-grid td:first-child {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+}
+.performance-grid tbody td:first-child,
+.performance-grid tbody th:first-child {
+  background-color: var(--tblr-bg-surface);
+}
+.performance-grid .performance-grid-year-column {
+  border-left: 1px solid var(--tblr-border-color);
+}
