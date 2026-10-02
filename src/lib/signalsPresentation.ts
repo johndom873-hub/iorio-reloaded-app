@@ -78,6 +78,17 @@ export const quoteSourceLabel: Record<SignalQuoteSource, string> = {
   snapshot: "10:00 ET snapshot quote — this contract is not in today's refresh pool",
 };
 
+const nonLiveQuoteSourceWord: Record<Exclude<SignalQuoteSource, "live">, string> = { day: "day", snapshot: "10:00 ET snapshot" };
+
+/**
+ * Why an order may not be built from this quote, or null when it is live (or there is no quote at all, which the forms
+ * report on their own). Trades are only ever priced from live quotes, never from a day or snapshot quote that may be hours old.
+ */
+export function describeNonLiveQuoteBlock(subject: string, quoteSource: SignalQuoteSource | null): string | null {
+  if (quoteSource === null || quoteSource === "live") return null;
+  return `${subject} is priced from a ${nonLiveQuoteSourceWord[quoteSource]} quote, not a live one.`;
+}
+
 /** A day quote's age as the Quote column shows it: "12s", "3m", "1h 05m", or "—". */
 export function quoteAgeCellLabel(quotedAt: string | null | undefined, now: Date = new Date()): string {
   return formatShortAgeWithSeconds(quotedAt, now) ?? "—";

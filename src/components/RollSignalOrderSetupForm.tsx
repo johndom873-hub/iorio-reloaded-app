@@ -5,7 +5,7 @@ import type { HeldLegScore, RollSignalCandidate, TickerSignals, UnscoredSignalCo
 import { checkSignalOrderLimits } from "../api/signalSettings";
 import { flashClassName, useFlashOnChange } from "../hooks/useFlashOnChange";
 import { formatCurrency, formatCurrencyTrimmed, formatDate, formatPercentage, formatQuotePrice, formatSignedPnl, formatVolatilityPoints } from "../lib/formatters";
-import { describeHeldLeg, describeRollSignalFlag, describeRollSignalWarning, describeSignalFlag, gradeBadgeClass, gradeLabel, heldLegUnscoredReasonLabel, netRollEdgeExplanation, rollFlagLetter, signalFlagLetter } from "../lib/signalsPresentation";
+import { describeHeldLeg, describeNonLiveQuoteBlock, describeRollSignalFlag, describeRollSignalWarning, describeSignalFlag, gradeBadgeClass, gradeLabel, heldLegUnscoredReasonLabel, netRollEdgeExplanation, rollFlagLetter, signalFlagLetter } from "../lib/signalsPresentation";
 import { Spinner } from "./Spinner";
 import { useTooltip } from "../hooks/useTooltip";
 
@@ -107,18 +107,21 @@ export function RollSignalOrderSetupForm({ symbol, signals, roll, unscoredReplac
   useEffect(() => {
     if (limitsDebounceRef.current !== null) window.clearTimeout(limitsDebounceRef.current);
     limitsDebounceRef.current = window.setTimeout(() => {
-      checkSignalOrderLimits({ symbol, strategyKey: held.strategyKey, quantity, strike: target.strike, spotPrice, rollFromStrike: held.strike })
+      // No spot price: a roll's notional never uses it (only the strike difference counts), and passing it re-ran the check on every price tick.
+      checkSignalOrderLimits({ symbol, strategyKey: held.strategyKey, quantity, strike: target.strike, rollFromStrike: held.strike })
         .then(setSignalLimitsResult)
         .catch(() => setSignalLimitsResult(null));
     }, signalOrderLimitsDebounceMs);
     return () => {
       if (limitsDebounceRef.current !== null) window.clearTimeout(limitsDebounceRef.current);
     };
-  }, [symbol, held.strategyKey, target.strike, quantity, spotPrice, held.strike]);
+  }, [symbol, held.strategyKey, target.strike, quantity, held.strike]);
 
+  const quotesAreLive = held.quoteSource === "live" && target.quoteSource === "live";
   const blockingReasons = [
     ...(held.mid === null ? ["The held leg has no live two-sided quote right now."] : []),
     ...(replacementTwoSided ? [] : ["The new contract has no two-sided quote right now."]),
+    ...[describeNonLiveQuoteBlock("The leg you hold", held.quoteSource), describeNonLiveQuoteBlock("The new contract", target.quoteSource)].filter((reason): reason is string => reason !== null),
     ...(signalLimitsResult?.blocked ? signalLimitsResult.reasons : []),
   ];
 
@@ -249,7 +252,7 @@ export function RollSignalOrderSetupForm({ symbol, signals, roll, unscoredReplac
             : `Net roll Edge is steady since you selected this roll (${formatVolatilityPoints(decay)}).`}
           <span className="ms-auto d-inline-flex align-items-center gap-1 text-secondary">
             <span className="iorio-pulse-dot" />
-            live
+            {quotesAreLive ? "live" : "waiting for live quotes"}
           </span>
         </div>
       </div>

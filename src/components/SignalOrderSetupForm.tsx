@@ -6,7 +6,7 @@ import { checkSignalOrderLimits } from "../api/signalSettings";
 import { flashClassName, useFlashOnChange } from "../hooks/useFlashOnChange";
 import { computePayoff } from "../lib/payoff";
 import { formatCurrency, formatDate, formatPercentage, formatSignedPercentageValue, formatSignedPnl, formatVolatilityPoints } from "../lib/formatters";
-import { describeCandidate, describeSignalFlag, gradeBadgeClass, gradeLabel, signalFlagLetter } from "../lib/signalsPresentation";
+import { describeCandidate, describeNonLiveQuoteBlock, describeSignalFlag, gradeBadgeClass, gradeLabel, signalFlagLetter } from "../lib/signalsPresentation";
 import { Spinner } from "./Spinner";
 import { useTooltip } from "../hooks/useTooltip";
 
@@ -123,16 +123,18 @@ export function SignalOrderSetupForm({ symbol, signals, candidate, spotPrice, ne
   useEffect(() => {
     if (limitsDebounceRef.current !== null) window.clearTimeout(limitsDebounceRef.current);
     limitsDebounceRef.current = window.setTimeout(() => {
-      checkSignalOrderLimits({ symbol, strategyKey: candidate.strategyKey, quantity, strike: candidate.strike, spotPrice })
+      // Spot only matters to a covered call's share shortfall; a put's check ignores it and would otherwise re-run on every price tick.
+      checkSignalOrderLimits({ symbol, strategyKey: candidate.strategyKey, quantity, strike: candidate.strike, spotPrice: isCall ? spotPrice : null })
         .then(setSignalLimitsResult)
         .catch(() => setSignalLimitsResult(null));
     }, signalOrderLimitsDebounceMs);
     return () => {
       if (limitsDebounceRef.current !== null) window.clearTimeout(limitsDebounceRef.current);
     };
-  }, [symbol, candidate.strategyKey, candidate.strike, quantity, spotPrice]);
+  }, [symbol, candidate.strategyKey, candidate.strike, quantity, spotPrice, isCall]);
 
   const blockingReasons = [
+    ...[describeNonLiveQuoteBlock("This contract", candidate.quoteSource)].filter((reason): reason is string => reason !== null),
     ...(insufficientCashFlagged ? ["Not enough free cash to secure this put."] : []),
     ...(signalLimitsResult?.blocked ? signalLimitsResult.reasons : []),
   ];

@@ -5,7 +5,7 @@ import type { SignalQuoteSource, SignalStrategyKey } from "../api/signals";
 import { checkSignalOrderLimits } from "../api/signalSettings";
 import { computeAnnualizedYield, computePayoff } from "../lib/payoff";
 import { formatCurrency, formatDateTime, formatPercentage, formatQuotePrice, formatSignedPnl } from "../lib/formatters";
-import { describeCandidate, quoteSourceLabel } from "../lib/signalsPresentation";
+import { describeCandidate, describeNonLiveQuoteBlock, quoteSourceLabel } from "../lib/signalsPresentation";
 import { useTooltip } from "../hooks/useTooltip";
 import { FillPriorityPicker } from "./FillPriorityPicker";
 import { Spinner } from "./Spinner";
@@ -101,16 +101,17 @@ export function ChainContractOrderSetupForm({ symbol, contract, freeShares, spot
   useEffect(() => {
     if (limitsDebounceRef.current !== null) window.clearTimeout(limitsDebounceRef.current);
     limitsDebounceRef.current = window.setTimeout(() => {
-      checkSignalOrderLimits({ symbol, strategyKey: contract.strategyKey, quantity, strike: contract.strike, spotPrice })
+      checkSignalOrderLimits({ symbol, strategyKey: contract.strategyKey, quantity, strike: contract.strike, spotPrice: isCall ? spotPrice : null })
         .then(setOrderLimitsResult)
         .catch(() => setOrderLimitsResult(null));
     }, orderLimitsDebounceMs);
     return () => {
       if (limitsDebounceRef.current !== null) window.clearTimeout(limitsDebounceRef.current);
     };
-  }, [symbol, contract.strategyKey, contract.strike, quantity, spotPrice]);
+  }, [symbol, contract.strategyKey, contract.strike, quantity, spotPrice, isCall]);
 
-  const blockingReasons = orderLimitsResult?.blocked ? orderLimitsResult.reasons : [];
+  const nonLiveQuoteBlock = describeNonLiveQuoteBlock("This contract", contract.quoteSource);
+  const blockingReasons = [...(nonLiveQuoteBlock ? [nonLiveQuoteBlock] : []), ...(orderLimitsResult?.blocked ? orderLimitsResult.reasons : [])];
   const reviewBlockedMessage = !hasTwoSidedQuote
     ? "No bid and ask for this contract right now (market closed, or not in today's capture). An order needs a live quote — try again while the market is open."
     : !limitPriceValid
