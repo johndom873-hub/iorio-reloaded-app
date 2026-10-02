@@ -295,13 +295,22 @@ export function PositionsPage() {
     {
       key: "price",
       header: "Price",
-      headerTitle: "Current stock price",
+      headerTitle: "Current stock price. Greyed out when the market is closed: the last daily close (hover for its date)",
       align: "right",
       render: (row) => {
         const { price, failed } = resolvePrice(row);
         if (price === null) {
-          if (failed) return <span className="text-muted">—</span>;
-          return <Spinner size="sm" label="Loading price" />;
+          if (!failed) return <Spinner size="sm" label="Loading price" />;
+          // No live price (market closed): show the last daily close, greyed (text-secondary: text-muted fails AA in dark), the same stored mark Cycle P&L falls back to.
+          const storedMarks = cycleMarksBySymbol?.[row.symbol];
+          if (storedMarks && storedMarks.markPrice !== null) {
+            return (
+              <TooltipSpan className="text-secondary" text={storedMarks.markDate ? `As of ${formatDate(storedMarks.markDate)} close` : "Last close"}>
+                {formatCurrency(storedMarks.markPrice, 2)}
+              </TooltipSpan>
+            );
+          }
+          return <span className="text-muted">—</span>;
         }
         return <FlashingNumber value={price} precision={2}>{formatCurrency(price, 2)}</FlashingNumber>;
       },
