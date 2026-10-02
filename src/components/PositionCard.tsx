@@ -121,7 +121,7 @@ export function PositionCard({
 
   const payoff = useMemo(
     // Hedges and unstructured positions have no strategy payoff diagram.
-    () => (position.strategyKey === "covered_call" || position.strategyKey === "cash_secured_put" ? computePayoff(position.strategyKey, displayedLegs, currentPrice) : null),
+    () => (position.strategyKey === "covered_call" || position.strategyKey === "cash_secured_put" ? computePayoff(position.strategyKey, displayedLegs, currentPrice, position.breakEven ?? null) : null),
     [position, displayedLegs, currentPrice],
   );
 
@@ -215,7 +215,14 @@ export function PositionCard({
         <TooltipSpan className="small position-stat" text="Worst case at expiration: the stock (or the assigned shares) going to zero">
           <span className="position-stat-label">Max Loss:</span> <span className="text-danger">{formatSignedPnl(-payoff.maxLoss, 0)}</span>
         </TooltipSpan>
-        <TooltipSpan className="small position-stat" text="Stock price at expiration where the position neither gains nor loses">
+        <TooltipSpan
+          className="small position-stat"
+          text={
+            position.strategyKey === "covered_call" && position.breakEven != null
+              ? "Stock price at expiration where the position neither gains nor loses: the cycle break-even, with premium from earlier calls or an assigned put already netted out"
+              : "Stock price at expiration where the position neither gains nor loses"
+          }
+        >
           <span className="position-stat-label">Breakeven:</span> {formatCurrency(payoff.breakeven)}
         </TooltipSpan>
         </div>

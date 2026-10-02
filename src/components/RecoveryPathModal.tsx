@@ -95,9 +95,9 @@ export function RecoveryPathModal({ positionId, symbol, onClose, onSellCandidate
                     </div>
                     <div className="col-6 col-md-3">
                       <div className="text-secondary" style={{ fontSize: "0.8rem" }}>
-                        Entry price
+                        {result.costBasisSource === "cycle_break_even" ? "Break-even" : "Entry price"}
                       </div>
-                      <div className="font-mono">{formatCurrency(result.entryPrice)}</div>
+                      <div className="font-mono">{formatCurrency(result.costBasisPerShare)}</div>
                     </div>
                     <div className="col-6 col-md-3">
                       <div className="text-secondary" style={{ fontSize: "0.8rem" }}>

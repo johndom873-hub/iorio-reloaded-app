@@ -100,6 +100,9 @@ export interface RecoveryPath {
   symbol: string;
   shares: number;
   entryPrice: number;
+  /** What the loss is measured from: the cycle break-even per share (premium already collected is netted out), or the average entry price when that is unavailable. */
+  costBasisPerShare: number;
+  costBasisSource: "cycle_break_even" | "entry_price";
   currentPrice: number;
   unrealizedLoss: number;
   contractsAvailable: number;
