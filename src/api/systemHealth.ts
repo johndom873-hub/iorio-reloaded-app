@@ -60,18 +60,10 @@ export interface DbHealth {
   responseTime: { averageMs: number | null; slowestMs: number | null };
 }
 
-export function fetchDbHealth(): Promise<DbHealth> {
-  return apiRequest<DbHealth>("/system-health/db");
-}
-
 export interface GenosukeHealth {
   messagesToday: string;
   activeSessions: string;
   llm: { model: string | null; callsPerMinute: number; avgLatencyMs: number | null };
-}
-
-export function fetchGenosukeHealth(): Promise<GenosukeHealth> {
-  return apiRequest<GenosukeHealth>("/system-health/genosuke");
 }
 
 export interface WebDynoHealth {
@@ -79,10 +71,6 @@ export interface WebDynoHealth {
   uptimeSeconds: number;
   processStartedAt: string;
   notificationStreamConnections: number;
-}
-
-export function fetchWebDynoHealth(): Promise<WebDynoHealth> {
-  return apiRequest<WebDynoHealth>("/system-health/web-dyno");
 }
 
 export interface GatewayHealth {
@@ -98,6 +86,15 @@ export interface GatewayHealth {
   marketDataLines?: { inUse: number; budget: number; byUse: { label: string; lines: number }[] };
 }
 
-export function fetchGatewayHealth(): Promise<GatewayHealth> {
-  return apiRequest<GatewayHealth>("/system-health/gateway");
+/** The Pulse page's five readings in one request; a reading the server failed to load is null. */
+export interface SystemHealthSummary {
+  db: DbHealth | null;
+  genosuke: GenosukeHealth | null;
+  webDyno: WebDynoHealth | null;
+  gateway: GatewayHealth | null;
+  presence: { users: PresenceUser[] } | null;
+}
+
+export function fetchSystemHealthSummary(): Promise<SystemHealthSummary> {
+  return apiRequest<SystemHealthSummary>("/system-health/summary");
 }

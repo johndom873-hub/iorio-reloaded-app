@@ -288,8 +288,22 @@ function enqueueControl(task: () => Promise<void>) {
   controlQueue = controlQueue.then(task).catch(() => {});
 }
 
+// A tab that was frozen or whose machine slept can come back with a connection the server dropped long ago
+// before EventSource has reported it. A subscribe sent on that id is answered 404 — a wasted request that
+// then triggers the reconnect anyway — so a connection that has been silent for longer than 1.5 heartbeats
+// (the server sends one every 20 s) is replaced first.
+const silentConnectionLimitBeforeSubscribeMs = 30_000;
+
+function isConnectionProbablyDead(): boolean {
+  return source === null || source.readyState !== EventSource.OPEN || Date.now() - lastActivityAtMs > silentConnectionLimitBeforeSubscribeMs;
+}
+
 function sendSubscribe(subscription: Subscription) {
   if (subscription.isSentToServer || connectionId === null || isPausedByHiddenTab(subscription)) return;
+  if (isConnectionProbablyDead()) {
+    handleConnectionLost();
+    return;
+  }
   subscription.isSentToServer = true;
   const connectionIdAtCall = connectionId;
   const generationAtCall = connectionGeneration;

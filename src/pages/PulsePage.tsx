@@ -27,10 +27,7 @@ import { fetchTradeBlotter, type Trade } from "../api/tradeBlotter";
 import { openNotificationStream, fetchRecentNotifications, type AppNotification } from "../api/notifications";
 import {
   fetchPresence,
-  fetchDbHealth,
-  fetchGenosukeHealth,
-  fetchWebDynoHealth,
-  fetchGatewayHealth,
+  fetchSystemHealthSummary,
   fetchMarketStatus,
   type PresenceUser,
   type DbHealth,
@@ -584,14 +581,15 @@ export function PulsePage() {
   useEffect(() => {
     let cancelled = false;
     function poll() {
-      Promise.all([fetchDbHealth(), fetchGenosukeHealth(), fetchWebDynoHealth(), fetchGatewayHealth(), fetchPresence()])
-        .then(([db, genosuke, webDyno, gateway, presence]) => {
+      fetchSystemHealthSummary()
+        .then(({ db, genosuke, webDyno, gateway, presence }) => {
           if (cancelled) return;
-          setDbHealth(db);
-          setGenosukeHealth(genosuke);
-          setWebDynoHealth(webDyno);
-          setGatewayHealth(gateway);
-          setPresenceUsers(presence.users);
+          // A reading the server could not load comes back null: keep the last good one on screen.
+          if (db) setDbHealth(db);
+          if (genosuke) setGenosukeHealth(genosuke);
+          if (webDyno) setWebDynoHealth(webDyno);
+          if (gateway) setGatewayHealth(gateway);
+          if (presence) setPresenceUsers(presence.users);
         })
         .catch(() => {});
     }
