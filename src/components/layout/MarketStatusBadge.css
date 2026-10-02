@@ -1,0 +1,98 @@
+/* Market status badge (Market Open / Pre-Market / After-Hours / Market Closed). Approved mockup (2026-10-02).
+   Lives on the always-navy top bar, so fixed colours read the same in both themes. Outlined and tinted
+   rather than solid so it can't be mistaken for an environment chip; open/pre-market follow Pulse's
+   green/amber, closed is slate (not Pulse's red) so it never reads as an alarm next to LIVE. */
+.mk-badge {
+  --mk-color: #aab4c5;
+  --mk-border: rgba(148, 163, 184, 0.42);
+  --mk-fill: rgba(148, 163, 184, 0.09);
+  display: inline-flex;
+  align-items: stretch;
+  border: 1px solid var(--mk-border);
+  border-radius: 4px;
+  background: var(--mk-fill);
+  font-size: 0.72rem;
+  line-height: 1.2;
+  white-space: nowrap;
+  overflow: hidden;
+  cursor: default;
+}
+.mk-badge:focus-visible {
+  outline: 2px solid #0ea5e9;
+  outline-offset: 2px;
+}
+.mk-badge-state {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.3rem 0.6rem;
+  color: var(--mk-color);
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.mk-badge-time {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.3rem 0.65rem;
+  border-left: 1px solid var(--mk-border);
+  color: #8e9bb0;
+  font-weight: 500;
+  letter-spacing: 0.01em;
+  font-variant-numeric: tabular-nums;
+}
+.mk-badge-time b {
+  color: #e8edf5;
+  font-weight: 600;
+}
+.mk-badge-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--mk-color);
+  box-shadow: 0 0 7px 1px var(--mk-color);
+  flex: none;
+}
+.mk-badge-open {
+  --mk-color: #4cd380;
+  --mk-border: rgba(76, 211, 128, 0.45);
+  --mk-fill: rgba(76, 211, 128, 0.1);
+}
+.mk-badge-open .mk-badge-dot {
+  animation: mk-badge-beat 2s ease-in-out infinite;
+}
+.mk-badge-pre-market {
+  --mk-color: #f5b458;
+  --mk-border: rgba(245, 180, 88, 0.45);
+  --mk-fill: rgba(245, 180, 88, 0.09);
+}
+.mk-badge-after-hours {
+  --mk-color: #93a4ff;
+  --mk-border: rgba(147, 164, 255, 0.45);
+  --mk-fill: rgba(147, 164, 255, 0.09);
+}
+.mk-badge-pre-market .mk-badge-dot,
+.mk-badge-after-hours .mk-badge-dot {
+  animation: mk-badge-beat 3s ease-in-out infinite;
+}
+.mk-badge-closed .mk-badge-dot {
+  box-shadow: none;
+  opacity: 0.8;
+}
+@keyframes mk-badge-beat {
+  0%,
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.4;
+    transform: scale(0.72);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .mk-badge-dot {
+    animation: none !important;
+  }
+}

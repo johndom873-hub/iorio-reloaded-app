@@ -28,13 +28,11 @@ import { openNotificationStream, fetchRecentNotifications, type AppNotification 
 import {
   fetchPresence,
   fetchSystemHealthSummary,
-  fetchMarketStatus,
   type PresenceUser,
   type DbHealth,
   type GenosukeHealth,
   type WebDynoHealth,
   type GatewayHealth,
-  type MarketStatus,
   type MarketSessionState,
 } from "../api/systemHealth";
 import { daysToExpiry, todayInEasternIso, formatSignedPnl, formatSignedPercentageValue, formatCompactDollars, formatDateTime, formatFeedTime, formatNumber, formatPercentageValue, formatRelativeDate, formatOptionContractShort, ibkrExpiryToIsoDate } from "../lib/formatters";
@@ -55,6 +53,7 @@ import { useEnvironmentStatus } from "../hooks/useEnvironmentStatus";
 import { describeAssignmentRisk, describeSignalUpgradeCompact } from "../lib/signalsPresentation";
 import { openPositionsSignature } from "../lib/positionsSignature";
 import { usePollWhileVisible } from "../hooks/usePollWhileVisible";
+import { useMarketStatus } from "../hooks/useMarketStatus";
 import { useKeepLiveInBackground } from "../hooks/useKeepLiveInBackground";
 import { KeepLiveSwitch } from "../components/pulse/KeepLiveSwitch";
 import { isTabLive } from "../api/streamMultiplexer";
@@ -346,41 +345,6 @@ function marketStatusStyle(state: MarketSessionState | undefined): { badgeLabel:
     default:
       return { badgeLabel: "CLOSED", ledClass: "led-warn", textClass: "mk-status-closed" };
   }
-}
-
-const MARKET_STATUS_POLL_INTERVAL_MS = 60_000;
-
-// Server-computed from the real exchanges the book actually trades on
-// (tickers.primary_exchange) plus market_calendar's holiday coverage — see
-// src/lib/marketSessionStatus.ts in the API repo. Polled rather than
-// computed client-side since it depends on that DB state, not just the
-// current time.
-function useMarketStatus() {
-  const [status, setStatus] = useState<MarketStatus | null>(null);
-  useEffect(() => {
-    let cancelled = false;
-    function poll() {
-      fetchMarketStatus()
-        .then((result) => {
-          if (!cancelled) setStatus(result);
-        })
-        .catch(() => {});
-    }
-    poll();
-    const interval = window.setInterval(() => {
-      if (isTabLive()) poll();
-    }, MARKET_STATUS_POLL_INTERVAL_MS);
-    const handleVisibilityChange = () => {
-      if (document.visibilityState === "visible") poll();
-    };
-    document.addEventListener("visibilitychange", handleVisibilityChange);
-    return () => {
-      cancelled = true;
-      window.clearInterval(interval);
-      document.removeEventListener("visibilitychange", handleVisibilityChange);
-    };
-  }, []);
-  return status;
 }
 
 interface EventItem {

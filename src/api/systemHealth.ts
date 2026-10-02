@@ -45,6 +45,8 @@ export interface MarketStatus {
   exchanges: string[];
   state: MarketSessionState;
   label: string;
+  /** ISO instant the countdown in `label` runs to; the top-bar badge ticks it down between polls. */
+  nextChangeAt: string;
 }
 
 export function fetchMarketStatus(): Promise<MarketStatus> {

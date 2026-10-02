@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import { Link, NavLink, Outlet } from "react-router-dom";
 import { EnvironmentBadges } from "./EnvironmentBadges";
+import { MarketStatusBadge } from "./MarketStatusBadge";
+import { useMarketStatus } from "../../hooks/useMarketStatus";
 import { EnvironmentStatusContext, useEnvironmentStatus } from "../../hooks/useEnvironmentStatus";
 import type { MarketDataFeedRefusal } from "../../api/environment";
 import { formatEasternTime } from "../../lib/formatters";
@@ -95,7 +97,7 @@ function MarketDataRestrictionPill({
   return (
     <span ref={ref} className={`iorio-topbar-status${compact ? " iorio-topbar-status-compact" : ""}`} tabIndex={0} role="status">
       <IconClock size={compact ? 14 : 16} aria-hidden="true" />
-      {disabled ? "Real-time data disabled" : "Live data restricted"}
+      <span className="iorio-topbar-restriction-text">{disabled ? "Real-time data disabled" : "Live data restricted"}</span>
     </span>
   );
 }
@@ -134,6 +136,7 @@ function BrandMark() {
 export function AppLayout() {
   const { logout } = useAuth();
   const environmentStatus = useEnvironmentStatus();
+  const marketStatus = useMarketStatus();
   const { theme, toggleTheme } = useTheme();
   const navTitleRefs = useRef<(HTMLSpanElement | null)[]>([]);
   const [sidebarMode, setSidebarMode] = useState<SidebarMode>(readStoredSidebarMode);
@@ -219,12 +222,15 @@ export function AppLayout() {
               <span className="iorio-pulse-dot" aria-hidden="true" />
               IORIO Pulse
             </Link>
-            <MarketDataFeedRefusalPill refusal={environmentStatus.details?.marketDataFeedRefusal} compact />
-            <MarketDataRestrictionPill
-              restriction={environmentStatus.details?.marketDataRestriction}
-              linesEnabled={environmentStatus.details?.marketDataLinesEnabled ?? true}
-              compact
-            />
+            <div className="w-100 d-flex align-items-center gap-2 flex-wrap">
+              <MarketStatusBadge status={marketStatus} />
+              <MarketDataFeedRefusalPill refusal={environmentStatus.details?.marketDataFeedRefusal} compact />
+              <MarketDataRestrictionPill
+                restriction={environmentStatus.details?.marketDataRestriction}
+                linesEnabled={environmentStatus.details?.marketDataLinesEnabled ?? true}
+                compact
+              />
+            </div>
           </div>
           <div className="collapse navbar-collapse" id="sidebar-menu">
             <ul
@@ -277,6 +283,7 @@ export function AppLayout() {
           </h1>
           <EnvironmentBadges status={environmentStatus} />
           <div className="iorio-topbar-center">
+            <MarketStatusBadge status={marketStatus} />
             <MarketDataFeedRefusalPill refusal={environmentStatus.details?.marketDataFeedRefusal} />
             <MarketDataRestrictionPill
               restriction={environmentStatus.details?.marketDataRestriction}

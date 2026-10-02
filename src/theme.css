@@ -319,6 +319,22 @@
   border-color: rgba(255, 138, 138, 0.5);
   background: rgba(255, 138, 138, 0.1);
 }
+/* 992-1199px: the market badge and this pill compete for the centre slot, so the pill shrinks to its
+   icon (as the "Trading blocked" chip does); the full wording stays in its tooltip. */
+@media (min-width: 992px) and (max-width: 1199.98px) {
+  .iorio-topbar-center .iorio-topbar-status:not(.iorio-topbar-status-danger) {
+    gap: 0;
+    padding-inline: 0.5rem;
+  }
+  .iorio-topbar-center .iorio-topbar-restriction-text {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+  }
+}
 .iorio-topbar-status-compact {
   padding: 0.15rem 0.55rem;
   font-size: 0.72rem;
