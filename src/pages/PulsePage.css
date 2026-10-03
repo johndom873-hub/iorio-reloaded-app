@@ -1564,7 +1564,7 @@
   font-size: 0.75rem;
 }
 
-/* Charts: 140px P&L, 120px Net Delta, each with its own axis row */
+/* Charts: 140px P&L, 120px P(Δ), each with its own axis row */
 .iorio-pulse-page.pulse-phone .phone-charts {
   display: flex;
   flex-direction: column;

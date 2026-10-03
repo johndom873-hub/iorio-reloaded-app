@@ -29,12 +29,12 @@ import {
   formatCurrencyTrimmed,
   formatDate,
   formatDaysToExpiry,
-  formatNumber,
   formatPercentageValue,
   formatSignedPnl,
   pnlTextClass,
 } from "../lib/formatters";
 import { liveCyclePnl } from "../lib/cycleLivePnl";
+import { SUCCESS_PROBABILITY_HEADER, SUCCESS_PROBABILITY_HEADER_TITLE, formatSuccessProbability, successProbabilityFromDelta } from "../lib/successProbability";
 import { useRefreshAfterSignalsTickerModal, useSignalsTickerModal } from "../hooks/useSignalsTickerModal";
 import {
   positionExpiryDate,
@@ -210,24 +210,20 @@ export function PositionsPage() {
     return { state: "ready", value: liveCyclePnl(marks, price, liveUnrealizedPremiumByPositionId), storedAsOf: price === null ? marks.markDate : null };
   }
 
-  function renderNetDelta(row: Position) {
+  function renderSuccessProbabilityByDelta(row: Position) {
     const optionLeg = row.legs.find((leg) => leg.legType === "option" && !leg.exitAt);
     if (!optionLeg) return <span className="text-muted">—</span>;
+    if (optionLeg.side !== "short") return <TooltipSpan className="text-muted" text="Only a short option has a chance of success">—</TooltipSpan>;
     const greeks = greeksByLegId[optionLeg.id];
     if (!greeks) {
       if (greeksFetchFailed) return <TooltipSpan className="text-muted" text="Failed to load">—</TooltipSpan>;
-      return <Spinner size="sm" label="Loading delta" />;
+      return <Spinner size="sm" label="Loading P(Δ)" />;
     }
-    const value = greeks.delta;
+    const value = successProbabilityFromDelta(optionLeg, greeks.delta);
     if (value === null) return <TooltipSpan className="text-muted" text="No delta available">—</TooltipSpan>;
     return (
-      <FlashingNumber
-        value={value}
-        precision={2}
-        className={pnlTextClass(value)}
-        title={greeks.asOfDate ? `As of ${formatDate(greeks.asOfDate)} close` : undefined}
-      >
-        {formatNumber(value, 2)}
+      <FlashingNumber value={value} precision={2} title={greeks.asOfDate ? `As of ${formatDate(greeks.asOfDate)} close` : undefined}>
+        {formatSuccessProbability(value)}
       </FlashingNumber>
     );
   }
@@ -492,11 +488,11 @@ export function PositionsPage() {
       },
     },
     {
-      key: "netDelta",
-      header: "Net Δ",
-      headerTitle: "The short option leg's delta, signed as reported (negative for a short call, positive for a short put)",
+      key: "successProbabilityByDelta",
+      header: SUCCESS_PROBABILITY_HEADER,
+      headerTitle: SUCCESS_PROBABILITY_HEADER_TITLE,
       align: "right",
-      render: (row) => renderNetDelta(row),
+      render: (row) => renderSuccessProbabilityByDelta(row),
     },
     {
       key: "actions",

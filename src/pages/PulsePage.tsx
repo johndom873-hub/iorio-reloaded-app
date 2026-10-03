@@ -17,6 +17,7 @@ import {
   fetchOrder,
   fetchPulseChartHistory,
   type Position,
+  type PositionLeg,
   type UnrealizedPnlResult,
   type Greeks,
   type OrderLeg,
@@ -36,6 +37,7 @@ import {
   type MarketSessionState,
 } from "../api/systemHealth";
 import { daysToExpiry, todayInEasternIso, formatSignedPnl, formatSignedPercentageValue, formatCompactDollars, formatDateTime, formatFeedTime, formatNumber, formatPercentageValue, formatRelativeDate, formatOptionContractShort, ibkrExpiryToIsoDate } from "../lib/formatters";
+import { formatSuccessProbability, successProbabilityFromDelta, SUCCESS_PROBABILITY_HEADER } from "../lib/successProbability";
 import { positionExpiryDate, strategyAbbrev as positionStrategyAbbrev, strategyTooltip } from "../lib/positionPnl";
 import { FlashingNumber } from "../components/FlashingNumber";
 import { TooltipSpan } from "../components/TooltipSpan";
@@ -47,7 +49,7 @@ import { useMediaQuery } from "../hooks/useMediaQuery";
 import { ResizableRail } from "../components/pulse/ResizableRail";
 import { ResizableColumns } from "../components/pulse/ResizableColumns";
 import { TotalPnlChart } from "../components/pulse/TotalPnlChart";
-import { NetDeltaChart, type DeltaSeries } from "../components/pulse/NetDeltaChart";
+import { SuccessProbabilityChart, type SuccessProbabilitySeries } from "../components/pulse/SuccessProbabilityChart";
 import { EnvironmentBadges } from "../components/layout/EnvironmentBadges";
 import { useEnvironmentStatus } from "../hooks/useEnvironmentStatus";
 import { describeAssignmentRisk, describeSignalUpgradeCompact } from "../lib/signalsPresentation";
@@ -68,11 +70,9 @@ const ACCOUNT_POLL_INTERVAL_MS = 60_000;
 const TRADES_LIMIT = 30;
 const POSITIONS_POLL_INTERVAL_MS = 60_000;
 const EVENTS_LIMIT = 30;
-// Reference line on the Net Delta chart, carried over unchanged from the
-// earlier profit-probability plot (set 2026-09-19, kept as-is 2026-09-24
-// when the chart switched to plotting |delta|). A constant, not a setting,
+// Reference line on the P(Δ) chart: below it, success is less likely than not. A constant, not a setting,
 // since nothing else consumes it.
-const NET_DELTA_REFERENCE_LINE = 0.5;
+const SUCCESS_PROBABILITY_REFERENCE_LINE = 0.5;
 // How long a topology line stays lit: the dot's travel time, which is also how
 // long the line glows (set to 300 ms 2026-09-19; was 1100 ms). The extra
 // grace lets the last animation frame land before the dot is removed.
@@ -765,6 +765,8 @@ export function PulsePage() {
   // Keyed by position id, not symbol — a rolled position can leave two
   // distinct open positions sharing one ticker (confirmed in dev data: two
   // separate SPCX positions), which would otherwise collide.
+  // Raw signed leg delta as stored; converted to P(Δ) when the chart series are built, since the stored history
+  // can arrive before the positions list that says whether each leg is a call or a put.
   const [deltaSeriesByPositionId, setDeltaSeriesByPositionId] = useState<Record<string, number[]>>({});
   const latestDataRef = useRef({ unrealizedPnlByPositionId, greeksByLegId, positions });
   useEffect(() => {
@@ -783,7 +785,7 @@ export function PulsePage() {
           if (Object.keys(prev).length > 0) return prev;
           const next: Record<string, number[]> = {};
           for (const [positionId, samples] of Object.entries(history.deltaSamplesByPositionId)) {
-            next[positionId] = samples.slice(-CHART_MAX_SAMPLES).map((sample) => Math.abs(sample.delta));
+            next[positionId] = samples.slice(-CHART_MAX_SAMPLES).map((sample) => sample.delta);
           }
           return next;
         });
@@ -806,7 +808,7 @@ export function PulsePage() {
           if (!optionLeg) continue;
           const delta = greeksMap[optionLeg.id]?.delta;
           if (delta === null || delta === undefined) continue;
-          next[position.id] = [...(next[position.id] ?? []), Math.abs(delta)].slice(-CHART_MAX_SAMPLES);
+          next[position.id] = [...(next[position.id] ?? []), delta].slice(-CHART_MAX_SAMPLES);
         }
         return next;
       });
@@ -814,14 +816,18 @@ export function PulsePage() {
     return () => window.clearInterval(interval);
   }, []);
 
-  const deltaSeriesForChart: DeltaSeries[] = positions
+  const successProbabilitySeriesForChart: SuccessProbabilitySeries[] = positions
     .filter((position) => position.strategyKey === "covered_call" || position.strategyKey === "cash_secured_put")
     .filter((position) => (deltaSeriesByPositionId[position.id]?.length ?? 0) >= 2)
-    .map((position, index, arr) => ({
+    .map((position) => ({ position, optionLeg: position.legs.find((leg) => leg.legType === "option") }))
+    .filter((entry): entry is { position: Position; optionLeg: PositionLeg } => entry.optionLeg !== undefined)
+    .map(({ position, optionLeg }, index, arr) => ({
       id: position.id,
       symbol: position.symbol,
       color: colorForIndex(index, arr.length),
-      values: deltaSeriesByPositionId[position.id]!,
+      values: deltaSeriesByPositionId[position.id]!
+        .map((delta) => successProbabilityFromDelta(optionLeg, delta))
+        .filter((probability): probability is number => probability !== null),
     }));
 
   // Real, computed status — not decorative. "Degraded" whenever the Gateway
@@ -900,7 +906,7 @@ export function PulsePage() {
       <span style={{ textAlign: "right" }}>DTE</span>
       <span style={{ textAlign: "right" }}>Exp $</span>
       <span style={{ textAlign: "right" }}>Exp %</span>
-      <span style={{ textAlign: "right" }}>|Δ|</span>
+      <span style={{ textAlign: "right" }}>{SUCCESS_PROBABILITY_HEADER}</span>
       <span style={{ textAlign: "right" }}>P&amp;L</span>
     </div>
   );
@@ -912,8 +918,7 @@ export function PulsePage() {
     const expPct = capitalAtRisk !== null && netLiquidationValue ? (capitalAtRisk / netLiquidationValue) * 100 : null;
     const pnl = unrealizedPnlByPositionId[position.id]?.unrealizedPnl ?? null;
     const optionLeg = position.legs.find((leg) => leg.legType === "option");
-    const legDelta = optionLeg ? greeksByLegId[optionLeg.id]?.delta ?? null : null;
-    const absDelta = legDelta !== null ? Math.abs(legDelta) : null;
+    const successProbability = optionLeg ? successProbabilityFromDelta(optionLeg, greeksByLegId[optionLeg.id]?.delta) : null;
     return (
       <div className="pos-row" key={position.id}>
         <span className="pos-sym">{position.symbol}</span>
@@ -927,8 +932,8 @@ export function PulsePage() {
         <FlashingNumber value={expPct} precision={1} className="pos-pct">
           {expPct !== null ? `${expPct.toFixed(1)}%` : "—"}
         </FlashingNumber>
-        <FlashingNumber value={absDelta} precision={2} className="pos-pct">
-          {absDelta !== null ? absDelta.toFixed(2) : "—"}
+        <FlashingNumber value={successProbability} precision={2} className="pos-pct">
+          {formatSuccessProbability(successProbability)}
         </FlashingNumber>
         <FlashingNumber value={pnl} className={`pos-pnl ${pnl !== null && pnl < 0 ? "neg" : "pos"}`}>
           {formatSignedPnl(pnl, 0)}
@@ -1296,10 +1301,10 @@ export function PulsePage() {
   const deltaChartPanel = (
     <div className="chart-panel">
       <div className="chart-panel-title">
-        <span>Net Delta · live</span>
-        <span className="cur-val">threshold {NET_DELTA_REFERENCE_LINE.toFixed(2)}</span>
+        <span>{SUCCESS_PROBABILITY_HEADER} · live</span>
+        <span className="cur-val">threshold {SUCCESS_PROBABILITY_REFERENCE_LINE.toFixed(2)}</span>
       </div>
-      <NetDeltaChart seriesByPosition={deltaSeriesForChart} referenceLine={NET_DELTA_REFERENCE_LINE} timestamps={pnlTimestamps} />
+      <SuccessProbabilityChart seriesByPosition={successProbabilitySeriesForChart} referenceLine={SUCCESS_PROBABILITY_REFERENCE_LINE} timestamps={pnlTimestamps} />
     </div>
   );
 

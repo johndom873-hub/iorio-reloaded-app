@@ -2,13 +2,12 @@ import { useRef, useState } from "react";
 import { ChartTimeAxis } from "./ChartTimeAxis";
 
 // Pure/presentational — PulsePage owns the rolling-sample logic (sampling
-// the live greeks stream's delta per position, filtered to CC/CSP only
-// before it reaches this component, and taking |delta| so a short leg's
-// negative delta plots the same as a long one's positive delta — approved
-// 2026-09-24, replacing the earlier N(d2) profit-probability plot). The
-// reference line is a minimum: a position sitting below it is unlikely to
-// end in profit under the old semantics; kept as-is per 2026-09-24 sign-off.
-export interface DeltaSeries {
+// the live greeks stream's delta per position, filtered to CC/CSP only, and
+// converting it to P(Δ) via lib/successProbability.ts before it reaches this
+// component). Every series runs 0..1 with 1 = success, so higher is better for
+// both strategies. The reference line is a minimum: a position sitting below
+// it is more likely to end badly than well.
+export interface SuccessProbabilitySeries {
   /** Position id, not symbol — a rolled position can leave two open positions sharing one ticker, so symbol alone isn't a safe React key. */
   id: string;
   symbol: string;
@@ -16,8 +15,8 @@ export interface DeltaSeries {
   values: number[];
 }
 
-interface NetDeltaChartProps {
-  seriesByPosition: DeltaSeries[];
+interface SuccessProbabilityChartProps {
+  seriesByPosition: SuccessProbabilitySeries[];
   referenceLine: number;
   /**
    * Same sample clock PulsePage uses for every series (one push per
@@ -31,7 +30,7 @@ interface NetDeltaChartProps {
   yAxisMax?: number;
 }
 
-export function NetDeltaChart({ seriesByPosition, referenceLine, timestamps, yAxisMax = 1 }: NetDeltaChartProps) {
+export function SuccessProbabilityChart({ seriesByPosition, referenceLine, timestamps, yAxisMax = 1 }: SuccessProbabilityChartProps) {
   const wrapRef = useRef<HTMLDivElement>(null);
   const [hoverFraction, setHoverFraction] = useState<number | null>(null);
 
