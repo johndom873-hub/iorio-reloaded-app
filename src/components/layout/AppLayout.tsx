@@ -106,7 +106,7 @@ function MarketDataRestrictionPill({
 function MarketDataFeedRefusalPill({ refusal, compact = false }: { refusal: MarketDataFeedRefusal | null | undefined; compact?: boolean }) {
   const ref = useTooltip<HTMLSpanElement>(
     refusal
-      ? `Since ${formatEasternTime(refusal.since)}, IBKR has refused market data (error 10197). Usually the Gateway's session went stale after IBKR briefly dropped its connection; the health check restarts the Gateway automatically within about 10 minutes. If it persists, someone may be logged into the live IBKR account elsewhere. Prices on screen are the last ones received.`
+      ? `Since ${formatEasternTime(refusal.since)}, IBKR has refused market data (error 10197). Usually the Gateway's session went stale after IBKR briefly dropped its connection; the health check restarts the Gateway automatically within about 10 minutes. If it persists, someone may be logged into the live IBKR account elsewhere. This indicator re-checks IBKR every minute and disappears by itself once data flows again. Prices on screen are the last ones received.`
       : undefined,
   );
   if (!refusal) return null;
