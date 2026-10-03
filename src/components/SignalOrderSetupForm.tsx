@@ -3,7 +3,7 @@ import { ApiError } from "../api/client";
 import { buildOpenOrder, type AdaptivePriority, type OrderRequest } from "../api/positions";
 import type { SignalCandidate, TickerSignals } from "../api/signals";
 import { checkSignalOrderLimits } from "../api/signalSettings";
-import { flashClassName, useFlashOnChange } from "../hooks/useFlashOnChange";
+import { FLASH_DURATION_MS, flashClassName, useFlashOnChange } from "../hooks/useFlashOnChange";
 import { computePayoff } from "../lib/payoff";
 import { formatCurrency, formatDate, formatPercentage, formatSignedPercentageValue, formatSignedPnl, formatVolatilityPoints } from "../lib/formatters";
 import { describeCandidate, describeNonLiveQuoteBlock, describeSignalFlag, gradeBadgeClass, gradeLabel, signalFlagLetter } from "../lib/signalsPresentation";
@@ -96,7 +96,7 @@ export function SignalOrderSetupForm({ symbol, signals, candidate, spotPrice, ne
   const riskAdjustedRatioExpected = edgeDollarsExpected / dollarRiskExpected;
   const decay = candidate.netEdge - netEdgeAtSelection;
   const decayed = Math.abs(decay) >= decayWarningVolatilityPoints / 100;
-  const netEdgeFlash = useFlashOnChange(candidate.netEdge, 1200, 3);
+  const netEdgeFlash = useFlashOnChange(candidate.netEdge, FLASH_DURATION_MS, 3);
 
   // A covered call always sends both legs (buy the shares, sell the call) in one order, so having
   // no free shares yet is the normal case, not a blocker -- only a cash-secured put needs the cash upfront.

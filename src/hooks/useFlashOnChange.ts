@@ -1,5 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
+/** Length of one flash. Must match the animation duration of .flash-changed in theme.css. */
+export const FLASH_DURATION_MS = 1500;
+
 /**
  * Tracks a numeric value across renders and returns true for one animation
  * cycle whenever it changes, false otherwise. Pair with the .flash-changed
@@ -14,10 +17,10 @@ import { useCallback, useEffect, useRef, useState } from "react";
  * user can't actually see in the rendered (rounded) number. Match this to
  * the precision the value is displayed at.
  */
-export function useFlashOnChange(value: number | null | undefined, durationMs = 1200, precision?: number): boolean {
+export function useFlashOnChange(value: number | null | undefined, durationMs = FLASH_DURATION_MS, precision?: number): boolean {
   const comparableValue = value != null && precision != null ? Number(value.toFixed(precision)) : value;
   const previousValueRef = useRef(comparableValue);
-  const { flashing, triggerFlash } = useRestartableFlash(durationMs);
+  const { flashing, triggerFlash } = useFlashCycle(durationMs);
 
   useEffect(() => {
     const previousValue = previousValueRef.current;
@@ -34,9 +37,9 @@ export function useFlashOnChange(value: number | null | undefined, durationMs = 
  * currently shows): true for one animation cycle whenever `key` changes to a different non-null key.
  * A null on either side (nothing shown yet, or nothing to show) does not flash.
  */
-export function useFlashOnKeyChange(key: string | null | undefined, durationMs = 1200): boolean {
+export function useFlashOnKeyChange(key: string | null | undefined, durationMs = FLASH_DURATION_MS): boolean {
   const previousKeyRef = useRef(key);
-  const { flashing, triggerFlash } = useRestartableFlash(durationMs);
+  const { flashing, triggerFlash } = useFlashCycle(durationMs);
 
   useEffect(() => {
     const previousKey = previousKeyRef.current;
@@ -49,57 +52,36 @@ export function useFlashOnKeyChange(key: string | null | undefined, durationMs =
 }
 
 /**
- * Flash state that replays its CSS animation on every trigger, including one
- * that lands while a previous flash is still showing. Just setting the flag
- * true again is a no-op when it's already true, so the class never leaves the
- * element and the animation never restarts -- a value ticking faster than
- * `durationMs` would flash once and then stay visually silent. Instead the
- * flag is dropped, and raised again two animation frames later so the browser
- * has painted the class-less element in between. The timers live in refs and
- * are only cleared on unmount (not by the caller's effect re-running), so a
- * trigger that is ignored by the caller can't cancel a running flash's timer
- * and leave the flag stuck on.
+ * Flash state for one fixed-length cycle (`durationMs`). A trigger that lands while a flash is
+ * already showing is ignored: it neither restarts the animation nor extends the window, so a
+ * value ticking every few milliseconds flashes once per cycle instead of strobing. The next
+ * change after the cycle ends starts a new one. The timer lives in a ref and is only cleared on
+ * unmount, so a re-rendering caller can't cancel it and leave the flag stuck on.
  */
-export function useRestartableFlash(durationMs: number): { flashing: boolean; triggerFlash: () => void } {
+export function useFlashCycle(durationMs: number): { flashing: boolean; triggerFlash: () => void } {
   const [flashing, setFlashing] = useState(false);
   const isFlashingRef = useRef(false);
   const clearTimeoutIdRef = useRef<number | null>(null);
-  const restartFrameIdRef = useRef<number | null>(null);
 
-  const cancelPending = useCallback(() => {
-    if (clearTimeoutIdRef.current !== null) window.clearTimeout(clearTimeoutIdRef.current);
-    if (restartFrameIdRef.current !== null) window.cancelAnimationFrame(restartFrameIdRef.current);
-    clearTimeoutIdRef.current = null;
-    restartFrameIdRef.current = null;
-  }, []);
-
-  const raiseFlag = useCallback(() => {
+  const triggerFlash = useCallback(() => {
+    if (isFlashingRef.current) return;
     isFlashingRef.current = true;
     setFlashing(true);
     clearTimeoutIdRef.current = window.setTimeout(() => {
+      clearTimeoutIdRef.current = null;
       isFlashingRef.current = false;
       setFlashing(false);
     }, durationMs);
   }, [durationMs]);
 
-  const triggerFlash = useCallback(() => {
-    const wasFlashing = isFlashingRef.current;
-    cancelPending();
-    if (!wasFlashing) {
-      raiseFlag();
-      return;
-    }
-    isFlashingRef.current = false;
-    setFlashing(false);
-    restartFrameIdRef.current = window.requestAnimationFrame(() => {
-      restartFrameIdRef.current = window.requestAnimationFrame(() => {
-        restartFrameIdRef.current = null;
-        raiseFlag();
-      });
-    });
-  }, [cancelPending, raiseFlag]);
-
-  useEffect(() => cancelPending, [cancelPending]);
+  useEffect(
+    () => () => {
+      if (clearTimeoutIdRef.current !== null) window.clearTimeout(clearTimeoutIdRef.current);
+      clearTimeoutIdRef.current = null;
+      isFlashingRef.current = false;
+    },
+    [],
+  );
 
   return { flashing, triggerFlash };
 }

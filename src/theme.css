@@ -905,7 +905,7 @@
 }
 
 .flash-changed {
-  animation: flash-bg-changed 1200ms ease-out;
+  animation: flash-bg-changed 1500ms ease-out; /* keep equal to FLASH_DURATION_MS in useFlashOnChange.ts */
 }
 
 /* Signals modal: a small inset + rounded corners instead of true

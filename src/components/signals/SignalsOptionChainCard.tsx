@@ -1,6 +1,6 @@
 import { Fragment, useEffect, useRef, type ReactNode } from "react";
 import type { SignalCandidate, SignalGrade, SignalsChain, SignalsChainCell } from "../../api/signals";
-import { flashClassName, useFlashOnChange } from "../../hooks/useFlashOnChange";
+import { FLASH_DURATION_MS, flashClassName, useFlashOnChange } from "../../hooks/useFlashOnChange";
 import { useMediaQuery } from "../../hooks/useMediaQuery";
 import { formatCurrency, formatCurrencyTrimmed, formatPercentage, formatQuotePrice } from "../../lib/formatters";
 import { computeAnnualizedYield } from "../../lib/payoff";
@@ -90,12 +90,12 @@ function describeCellForScreenReader(contract: ChainContractRef, cell: SignalsCh
 function ChainCellButton({ contract, cell, liveCandidate, dte, spotPrice, selected, disabled, showStrike, onPick }: { contract: ChainContractRef; cell: SignalsChainCell; liveCandidate: SignalCandidate | undefined; dte: number | null; spotPrice: number | null; selected: boolean; disabled: boolean; showStrike: boolean; onPick: () => void }) {
   const shown = displayedCell(cell, liveCandidate);
   // Cells update between fetches (live frames); compared at the displayed 2 decimals.
-  const bidFlash = useFlashOnChange(cell.state !== "not_captured" ? shown.bid : null, 1200, 2);
-  const askFlash = useFlashOnChange(cell.state !== "not_captured" ? shown.ask : null, 1200, 2);
-  const deltaFlash = useFlashOnChange(cell.state !== "not_captured" ? shown.delta : null, 1200, 2);
+  const bidFlash = useFlashOnChange(cell.state !== "not_captured" ? shown.bid : null, FLASH_DURATION_MS, 2);
+  const askFlash = useFlashOnChange(cell.state !== "not_captured" ? shown.ask : null, FLASH_DURATION_MS, 2);
+  const deltaFlash = useFlashOnChange(cell.state !== "not_captured" ? shown.delta : null, FLASH_DURATION_MS, 2);
   // Annualised yield at the mid (approved formula, lib/payoff); a call needs the spot for its capital base.
   const yieldFraction = shown.bid !== null && shown.ask !== null && dte !== null ? computeAnnualizedYield(contract.right === "C" ? "covered_call" : "cash_secured_put", { premium: (shown.bid + shown.ask) / 2, dte, strike: contract.strike, spotPrice: spotPrice ?? 0 }) : null;
-  const yieldFlash = useFlashOnChange(cell.state !== "not_captured" && yieldFraction !== null ? yieldFraction * 100 : null, 1200, 0);
+  const yieldFlash = useFlashOnChange(cell.state !== "not_captured" && yieldFraction !== null ? yieldFraction * 100 : null, FLASH_DURATION_MS, 0);
   const notCaptured = cell.state === "not_captured";
   const columnCells: Record<ChainColumn, ReactNode> = {
     bid: <span className={`font-mono ${flashClassName(bidFlash)}`}>{formatQuotePrice(shown.bid)}</span>,

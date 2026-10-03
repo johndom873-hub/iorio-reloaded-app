@@ -3,7 +3,7 @@ import { ApiError } from "../api/client";
 import { buildRollOrder, type AdaptivePriority, type OrderRequest } from "../api/positions";
 import type { HeldLegScore, RollSignalCandidate, TickerSignals, UnscoredSignalContract } from "../api/signals";
 import { checkSignalOrderLimits } from "../api/signalSettings";
-import { flashClassName, useFlashOnChange } from "../hooks/useFlashOnChange";
+import { FLASH_DURATION_MS, flashClassName, useFlashOnChange } from "../hooks/useFlashOnChange";
 import { formatCurrency, formatCurrencyTrimmed, formatDate, formatPercentage, formatQuotePrice, formatSignedPnl, formatVolatilityPoints } from "../lib/formatters";
 import { describeHeldLeg, describeNonLiveQuoteBlock, describeRollSignalFlag, describeRollSignalWarning, describeSignalFlag, gradeBadgeClass, gradeLabel, heldLegUnscoredReasonLabel, netRollEdgeExplanation, rollFlagLetter, signalFlagLetter } from "../lib/signalsPresentation";
 import { Spinner } from "./Spinner";
@@ -96,7 +96,7 @@ export function RollSignalOrderSetupForm({ symbol, signals, roll, unscoredReplac
   const replacementEdgeDollars = (replacement?.edgeDollars ?? 0) * quantity;
   const decay = roll && netRollEdgeAtSelection !== null ? roll.netRollEdge - netRollEdgeAtSelection : 0;
   const decayed = Math.abs(decay) >= rollDecayWarningVolatilityPoints / 100;
-  const netRollEdgeFlash = useFlashOnChange(roll?.netRollEdge ?? 0, 1200, 3);
+  const netRollEdgeFlash = useFlashOnChange(roll?.netRollEdge ?? 0, FLASH_DURATION_MS, 3);
   const realisedOnHeldLeg = (held.entryPrice - heldMid) * 100 * quantity;
   const capitalAtRiskAfter = (replacementDollarRisk + replacementMid) * quantity; // strike×100 (CSP) or spot×100 (CC) per contract
 

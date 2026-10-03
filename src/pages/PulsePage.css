@@ -379,7 +379,7 @@
   white-space: nowrap;
 }
 .iorio-pulse-page .flash-changed {
-  animation: pulse-flash 1200ms ease-out;
+  animation: pulse-flash 1500ms ease-out; /* keep equal to FLASH_DURATION_MS in useFlashOnChange.ts */
 }
 @keyframes pulse-flash {
   0%,

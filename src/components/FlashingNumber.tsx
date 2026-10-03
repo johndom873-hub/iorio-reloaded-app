@@ -1,5 +1,5 @@
 import type { CSSProperties, ReactNode } from "react";
-import { flashClassName, useFlashOnChange } from "../hooks/useFlashOnChange";
+import { FLASH_DURATION_MS, flashClassName, useFlashOnChange } from "../hooks/useFlashOnChange";
 import { useTooltip } from "../hooks/useTooltip";
 
 interface FlashingNumberProps {
@@ -20,7 +20,7 @@ interface FlashingNumberProps {
 // component instance per cell rather than calling the hook directly, which
 // would violate the Rules of Hooks once called from inside a loop over rows.
 export function FlashingNumber({ value, precision, className, title, style, children }: FlashingNumberProps) {
-  const flashing = useFlashOnChange(value, 1200, precision);
+  const flashing = useFlashOnChange(value, FLASH_DURATION_MS, precision);
   const tooltipRef = useTooltip<HTMLSpanElement>(title);
   return (
     <span ref={tooltipRef} className={[className, flashClassName(flashing)].filter(Boolean).join(" ")} style={style}>
