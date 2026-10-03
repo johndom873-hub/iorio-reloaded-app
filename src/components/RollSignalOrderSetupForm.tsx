@@ -7,6 +7,9 @@ import { FLASH_DURATION_MS, flashClassName, useFlashOnChange } from "../hooks/us
 import { formatCurrency, formatCurrencyTrimmed, formatDate, formatPercentage, formatQuotePrice, formatSignedPnl, formatVolatilityPoints } from "../lib/formatters";
 import { describeHeldLeg, describeNonLiveQuoteBlock, describeRollSignalFlag, describeRollSignalWarning, describeSignalFlag, gradeBadgeClass, gradeLabel, heldLegUnscoredReasonLabel, netRollEdgeExplanation, rollFlagLetter, signalFlagLetter } from "../lib/signalsPresentation";
 import { Spinner } from "./Spinner";
+import { OrderCommissionRows } from "./OrderCommissionRows";
+import { toIbkrExpiry, useOrderCommissionPreview } from "../hooks/useOrderCommissionPreview";
+import type { CommissionPreviewLeg } from "../api/signalSettings";
 import { useTooltip } from "../hooks/useTooltip";
 
 // Roll Signals order setup (mockup rev 4 approved 2026-09-24). Same split as
@@ -99,6 +102,20 @@ export function RollSignalOrderSetupForm({ symbol, signals, roll, unscoredReplac
   const netRollEdgeFlash = useFlashOnChange(roll?.netRollEdge ?? 0, FLASH_DURATION_MS, 3);
   const realisedOnHeldLeg = (held.entryPrice - heldMid) * 100 * quantity;
   const capitalAtRiskAfter = (replacementDollarRisk + replacementMid) * quantity; // strike×100 (CSP) or spot×100 (CC) per contract
+
+  // One IBKR what-if for the whole two-leg combo (re-asked only when the legs change, never on a price tick); the
+  // expected premium is the expected net credit, so a roll whose credit barely covers the commission warns.
+  const heldLimitForPreview = Number(heldMid.toFixed(2));
+  const replacementLimitForPreview = Number(replacementMid.toFixed(2));
+  const rollRight = isCall ? ("C" as const) : ("P" as const);
+  const commissionPreviewLegs: CommissionPreviewLeg[] | null =
+    heldLimitForPreview > 0 && replacementLimitForPreview > 0
+      ? [
+          { role: "option", action: "BUY", symbol, quantity, unitPrice: heldLimitForPreview, strike: held.strike, expiry: toIbkrExpiry(held.expiry), right: rollRight },
+          { role: "option", action: "SELL", symbol, quantity, unitPrice: replacementLimitForPreview, strike: target.strike, expiry: toIbkrExpiry(target.expiry), right: rollRight },
+        ]
+      : null;
+  const commissionPreview = useOrderCommissionPreview(commissionPreviewLegs);
 
   // The Signals-tab blocking limits, re-checked against the backend with the roll rule (only the
   // strike difference adds notional). Cosmetic: POST /orders/:id/confirm is the real gate.
@@ -343,6 +360,7 @@ export function RollSignalOrderSetupForm({ symbol, signals, roll, unscoredReplac
         <Row label="New leg credit (mid)" value={formatSignedPnl(replacementMid * 100 * quantity, 0)} tone="text-success" />
         <Row label="Capital at risk after roll" value={formatCurrency(capitalAtRiskAfter, 0)} />
         <Row label="Annualised yield, new leg" value={replacement ? formatPercentage(replacement.annualizedYield, 0) : "—"} />
+        <OrderCommissionRows {...commissionPreview} expectedPremiumDollars={netCreditExpected * 100 * quantity} />
         <div className="text-secondary" style={{ fontSize: "0.75rem" }}>
           Quantity follows the held leg. Partial rolls are not offered here.
         </div>

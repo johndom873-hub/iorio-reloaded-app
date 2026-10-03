@@ -8,6 +8,7 @@ export interface SignalSettings {
   maxPositionPctOfPortfolio: string;
   maxConcentrationPerTickerPct: string;
   minCashReservePct: string;
+  commissionWarnSharePctOfPremium: string;
   updatedAt: string;
   updatedByDisplayName: string | null;
 }
@@ -23,6 +24,7 @@ function mapSettingsRow(row: Record<string, unknown>): SignalSettings {
     maxPositionPctOfPortfolio: row.max_position_pct_of_portfolio as string,
     maxConcentrationPerTickerPct: row.max_concentration_per_ticker_pct as string,
     minCashReservePct: row.min_cash_reserve_pct as string,
+    commissionWarnSharePctOfPremium: row.commission_warn_share_of_premium_pct as string,
     updatedAt: row.updated_at as string,
     updatedByDisplayName: (row.updated_by_display_name as string | null) ?? null,
   };
@@ -40,6 +42,7 @@ export interface SignalSettingsInput {
   maxPositionPctOfPortfolio: number;
   maxConcentrationPerTickerPct: number;
   minCashReservePct: number;
+  commissionWarnSharePctOfPremium: number;
 }
 
 export interface SignalOrderLimitsCheckParams {
@@ -83,7 +86,39 @@ export async function updateSignalSettings(input: SignalSettingsInput): Promise<
       max_position_pct_of_portfolio: input.maxPositionPctOfPortfolio,
       max_concentration_per_ticker_pct: input.maxConcentrationPerTickerPct,
       min_cash_reserve_pct: input.minCashReservePct,
+      commission_warn_share_of_premium_pct: input.commissionWarnSharePctOfPremium,
     }),
   });
   return mapSettingsRow(row);
+}
+
+/** One leg of the order whose commission is previewed. Expiry is IBKR's YYYYMMDD; unitPrice is the leg's limit price per share. */
+export interface CommissionPreviewLeg {
+  role: "stock" | "option";
+  action: "BUY" | "SELL";
+  symbol: string;
+  quantity: number;
+  unitPrice: number;
+  strike?: number;
+  expiry?: string;
+  right?: "C" | "P";
+}
+
+export interface OrderCommissionPreview {
+  /** The figure the totals and the warning use: IBKR's maximum for the order (worst case), or the estimate. */
+  commissionDollars: number;
+  /** IBKR's minimum for the order; null for an estimate. */
+  commissionMinDollars: number | null;
+  /** "ibkr_what_if" is IBKR's min-max range for this order; "estimate" is the trailing-fills estimate used when IBKR could not answer. */
+  source: "ibkr_what_if" | "estimate";
+  estimateReason: string | null;
+  /** The estimate prices the option legs only. */
+  estimateExcludesStockLeg: boolean;
+  warnThresholdPct: number;
+}
+
+// Commission for an order about to be set up (approved 2026-10-02): one IBKR what-if per call, so callers
+// fire it once per setup form and again only when the order's size changes -- never per Signals row.
+export async function previewOrderCommission(legs: CommissionPreviewLeg[]): Promise<OrderCommissionPreview> {
+  return apiRequest<OrderCommissionPreview>("/signal-settings/commission-preview", { method: "POST", body: JSON.stringify({ legs }) });
 }

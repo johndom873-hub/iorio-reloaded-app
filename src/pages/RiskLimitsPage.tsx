@@ -110,6 +110,7 @@ interface SignalSettingsFormState {
   maxPositionPctOfPortfolio: string;
   maxConcentrationPerTickerPct: string;
   minCashReservePct: string;
+  commissionWarnSharePctOfPremium: string;
 }
 
 function toSignalFormState(settings: SignalSettings): SignalSettingsFormState {
@@ -120,6 +121,7 @@ function toSignalFormState(settings: SignalSettings): SignalSettingsFormState {
     maxPositionPctOfPortfolio: String(Math.round(Number(settings.maxPositionPctOfPortfolio))),
     maxConcentrationPerTickerPct: String(Math.round(Number(settings.maxConcentrationPerTickerPct))),
     minCashReservePct: String(Math.round(Number(settings.minCashReservePct))),
+    commissionWarnSharePctOfPremium: String(Number(settings.commissionWarnSharePctOfPremium)),
   };
 }
 
@@ -131,6 +133,7 @@ function toSignalUpdateInput(form: SignalSettingsFormState): SignalSettingsInput
     maxPositionPctOfPortfolio: Number(form.maxPositionPctOfPortfolio),
     maxConcentrationPerTickerPct: Number(form.maxConcentrationPerTickerPct),
     minCashReservePct: Number(form.minCashReservePct),
+    commissionWarnSharePctOfPremium: Number(form.commissionWarnSharePctOfPremium),
   };
 }
 
@@ -619,6 +622,13 @@ export function RiskLimitsPage() {
                     step="1"
                     help="Target floor on how much of the portfolio should stay as uncommitted cash. Independent from the Recovery Path tab's own setting of the same name."
                     onChange={(value) => updateSignalField("minCashReservePct", value)}
+                  />
+                  <NumberField
+                    label="Commission warning %"
+                    value={signalFormState.commissionWarnSharePctOfPremium}
+                    step="0.5"
+                    help="Order setup warns when the order's commission is above this % of its premium. A warning only: it never blocks Review Order."
+                    onChange={(value) => updateSignalField("commissionWarnSharePctOfPremium", value)}
                   />
                 </div>
 

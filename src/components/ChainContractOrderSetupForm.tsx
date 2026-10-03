@@ -9,6 +9,9 @@ import { describeCandidate, describeNonLiveQuoteBlock, quoteSourceLabel } from "
 import { useTooltip } from "../hooks/useTooltip";
 import { FillPriorityPicker } from "./FillPriorityPicker";
 import { Spinner } from "./Spinner";
+import { OrderCommissionRows } from "./OrderCommissionRows";
+import { toIbkrExpiry, useOrderCommissionPreview } from "../hooks/useOrderCommissionPreview";
+import type { CommissionPreviewLeg } from "../api/signalSettings";
 
 // Order setup for a chain contract Signals could not score (in the money, spans earnings, no surface for the
 // expiry, no two-sided quote, ...): the quote and the plain payoff, no Signals card. Builds through the same
@@ -94,6 +97,18 @@ export function ChainContractOrderSetupForm({ symbol, contract, freeShares, spot
           ...(isCall ? [{ legType: "stock" as const, optionType: null, entryPrice: String(spotPrice), strikePrice: null, quantity: quantity * 100, multiplier: 1 }] : []),
           { legType: "option", optionType: isCall ? "call" : "put", entryPrice: String(limitPrice), strikePrice: String(contract.strike), quantity, multiplier: 100 },
         ]);
+
+  // Same one-what-if-per-form commission preview as SignalOrderSetupForm; a covered call short of shares buys the rest in the same combo.
+  const buyWriteShares = isCall && freeShares !== null ? Math.max(0, quantity * 100 - freeShares) : 0;
+  const limitPriceForPreview = limitPriceValid ? Number(limitPrice.toFixed(2)) : 0;
+  const commissionPreviewLegs: CommissionPreviewLeg[] | null =
+    limitPriceForPreview > 0 && (buyWriteShares === 0 || (spotPrice !== null && spotPrice > 0))
+      ? [
+          ...(buyWriteShares > 0 ? [{ role: "stock" as const, action: "BUY" as const, symbol, quantity: buyWriteShares, unitPrice: spotPrice! }] : []),
+          { role: "option" as const, action: "SELL" as const, symbol, quantity, unitPrice: limitPriceForPreview, strike: contract.strike, expiry: toIbkrExpiry(contract.expiry), right: isCall ? ("C" as const) : ("P" as const) },
+        ]
+      : null;
+  const commissionPreview = useOrderCommissionPreview(commissionPreviewLegs);
 
   // Same debounced order-limits check as SignalOrderSetupForm (cosmetic: confirm re-checks server-side, so a failed check fails open).
   const [orderLimitsResult, setOrderLimitsResult] = useState<{ blocked: boolean; reasons: string[] } | null>(null);
@@ -200,6 +215,7 @@ export function ChainContractOrderSetupForm({ symbol, contract, freeShares, spot
         </div>
         <Row label="Premium (total)" value={formatCurrency(premiumTotal, 0)} tone="text-success" />
         <Row label="Annualised yield" value={formatPercentage(annualizedYield, 0)} />
+        <OrderCommissionRows {...commissionPreview} expectedPremiumDollars={premiumTotal ?? 0} />
         {payoff ? (
           <>
             <Row label="Max gain (at limit)" value={formatSignedPnl(payoff.maxGain, 0)} tone="text-success" />

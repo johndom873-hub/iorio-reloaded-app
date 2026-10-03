@@ -8,6 +8,9 @@ import { computePayoff } from "../lib/payoff";
 import { formatCurrency, formatDate, formatPercentage, formatSignedPercentageValue, formatSignedPnl, formatVolatilityPoints } from "../lib/formatters";
 import { describeCandidate, describeNonLiveQuoteBlock, describeSignalFlag, gradeBadgeClass, gradeLabel, signalFlagLetter } from "../lib/signalsPresentation";
 import { Spinner } from "./Spinner";
+import { OrderCommissionRows } from "./OrderCommissionRows";
+import { toIbkrExpiry, useOrderCommissionPreview } from "../hooks/useOrderCommissionPreview";
+import type { CommissionPreviewLeg } from "../api/signalSettings";
 import { useTooltip } from "../hooks/useTooltip";
 
 // Signals order setup (stage 5, approved 2026-09-22). This is only the "form" half -- it builds the order
@@ -94,6 +97,16 @@ export function SignalOrderSetupForm({ symbol, signals, candidate, spotPrice, ne
   const capitalAtRiskPerContract = isCall ? (spotPrice ?? 0) * 100 : candidate.strike * 100;
   const dollarRiskExpected = capitalAtRiskPerContract - premiumExpected;
   const riskAdjustedRatioExpected = edgeDollarsExpected / dollarRiskExpected;
+  // One IBKR what-if per form (re-asked only when the contracts change, never on a price tick); the expected premium follows the live quote.
+  const limitPriceForPreview = Number(mid.toFixed(2));
+  const commissionPreviewLegs: CommissionPreviewLeg[] | null =
+    limitPriceForPreview > 0 && (!isBuyWrite || (spotPrice !== null && spotPrice > 0))
+      ? [
+          ...(isBuyWrite ? [{ role: "stock" as const, action: "BUY" as const, symbol, quantity: quantity * 100 - signals.freeShares, unitPrice: spotPrice! }] : []),
+          { role: "option" as const, action: "SELL" as const, symbol, quantity, unitPrice: limitPriceForPreview, strike: candidate.strike, expiry: toIbkrExpiry(candidate.expiry), right: isCall ? ("C" as const) : ("P" as const) },
+        ]
+      : null;
+  const commissionPreview = useOrderCommissionPreview(commissionPreviewLegs);
   const decay = candidate.netEdge - netEdgeAtSelection;
   const decayed = Math.abs(decay) >= decayWarningVolatilityPoints / 100;
   const netEdgeFlash = useFlashOnChange(candidate.netEdge, FLASH_DURATION_MS, 3);
@@ -283,6 +296,7 @@ export function SignalOrderSetupForm({ symbol, signals, candidate, spotPrice, ne
         )}
         <Row label="Capital at risk" value={formatCurrency(capitalAtRisk, 0)} />
         <Row label="Annualised yield" value={formatPercentage(candidate.annualizedYield, 0)} />
+        <OrderCommissionRows {...commissionPreview} expectedPremiumDollars={premiumExpected * 100 * quantity} />
         {isCall && (
           <div className="text-secondary font-mono" style={{ fontSize: "0.75rem" }}>
             = {quantity * 100} shares required · you hold {signals.freeShares} free share{signals.freeShares === 1 ? "" : "s"} of {symbol}
