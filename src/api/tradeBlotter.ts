@@ -8,6 +8,8 @@ export interface Trade {
   side: "buy" | "sell";
   quantity: number;
   price: string;
+  // price * quantity * multiplier: the premium transacted for an option, the share value for stock.
+  value: string;
   commission: string | null;
   executedAt: string;
   isClosingTrade: boolean;
@@ -44,6 +46,7 @@ export interface PendingOrder {
   action: "BUY" | "SELL";
   quantity: number;
   unitPrice: number;
+  value: number;
   strike: number | null;
   expiry: string | null; // YYYY-MM-DD
   optionType: "C" | "P" | null;

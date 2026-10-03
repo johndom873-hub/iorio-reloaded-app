@@ -159,6 +159,19 @@ export function TradeBlotterPage() {
       },
     },
     {
+      key: "value",
+      header: "Value",
+      align: "right",
+      render: (row) => formatCurrency(row.value == null || row.value === "" ? null : Number(row.value)),
+    },
+    {
+      // Only a real fill has a commission; a not-yet-filled order has none yet. NULL on a fill means IBKR never reported one.
+      key: "commission",
+      header: "Commission",
+      align: "right",
+      render: (row) => (row.kind === "trade" && row.commission !== null ? formatCurrency(Number(row.commission)) : "—"),
+    },
+    {
       key: "requestedBy",
       header: "Requested by",
       // A filled Trade shows a requester only if it was placed through the
