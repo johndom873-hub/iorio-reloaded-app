@@ -84,10 +84,11 @@ function describeCellForScreenReader(contract: ChainContractRef, cell: SignalsCh
   const contractLabel = `${contract.right === "C" ? "Call" : "Put"} ${formatCurrencyTrimmed(contract.strike)}`;
   if (cell.state === "candidate") return `${contractLabel}, Signals candidate${grade ? `, graded ${gradeLabel[grade]}` : ""}`;
   if (cell.state === "filtered") return `${contractLabel}, filtered: ${cell.reason ?? "not a Signals candidate"}`;
+  if (cell.state === "unscored") return `${contractLabel}, not graded: ${cell.reason ?? "this ticker has no score"}`;
   return `${contractLabel}, not in today's capture or refresh`;
 }
 
-function ChainCellButton({ contract, cell, liveCandidate, dte, spotPrice, selected, disabled, showStrike, onPick }: { contract: ChainContractRef; cell: SignalsChainCell; liveCandidate: SignalCandidate | undefined; dte: number | null; spotPrice: number | null; selected: boolean; disabled: boolean; showStrike: boolean; onPick: () => void }) {
+function ChainCellButton({ contract, cell, liveCandidate, dte, spotPrice, selected, disabled, showStrike, unscoredLabel, onPick }: { contract: ChainContractRef; cell: SignalsChainCell; liveCandidate: SignalCandidate | undefined; dte: number | null; spotPrice: number | null; selected: boolean; disabled: boolean; showStrike: boolean; unscoredLabel: string; onPick: () => void }) {
   const shown = displayedCell(cell, liveCandidate);
   // Cells update between fetches (live frames); compared at the displayed 2 decimals.
   const bidFlash = useFlashOnChange(cell.state !== "not_captured" ? shown.bid : null, FLASH_DURATION_MS, 2);
@@ -109,6 +110,7 @@ function ChainCellButton({ contract, cell, liveCandidate, dte, spotPrice, select
             {gradeLabel[shown.grade]}
           </span>
         )}
+        {cell.state === "unscored" && <DottedLabelTooltip label={unscoredLabel} tooltipHtml={escapeTooltipHtml(cell.reason ?? "This ticker has no score")} className="text-secondary signals-chain-filtered-label" focusable={false} />}
         {cell.state === "filtered" && <DottedLabelTooltip label="Filtered" tooltipHtml={escapeTooltipHtml(cell.reason ?? "Not a Signals candidate")} className="text-secondary signals-chain-filtered-label" focusable={false} />}
       </span>
     ),
@@ -192,6 +194,8 @@ export function SignalsOptionChainCard({ chain, loading, error, spotPrice, liveC
     return keys.length > 0 ? { "data-live-contracts": keys.join(",") } : {};
   };
 
+  // A ticker still being analysed reads "Analysing" on its cells, the same word as its row and banner; any other reason reads "Unscored".
+  const unscoredLabel = chain?.unscoredReason === "analysing" ? "Analysing" : "Unscored";
   const cellFor = (strike: number, right: "C" | "P", cell: SignalsChainCell, showStrike: boolean) => {
     const contract: ChainContractRef = { expiry: selectedExpiry ?? "", strike, right };
     const key = signalContractKey(contract);
@@ -207,6 +211,7 @@ export function SignalsOptionChainCard({ chain, loading, error, spotPrice, liveC
         selected={key === selectedContractKey}
         disabled={pickingDisabled}
         showStrike={showStrike}
+        unscoredLabel={unscoredLabel}
         onPick={() => onPickContract(contract, shownCell)}
       />
     );
@@ -341,10 +346,17 @@ export function SignalsOptionChainCard({ chain, loading, error, spotPrice, liveC
             </span>
             {chainCellStateExplanation.candidate}
           </span>
-          <span className="d-inline-flex align-items-center gap-2">
-            <span className="dotted-underline-label signals-chain-filtered-label">Filtered</span>
-            {chainCellStateExplanation.filtered}
-          </span>
+          {chain.unscoredReason ? (
+            <span className="d-inline-flex align-items-center gap-2">
+              <span className="dotted-underline-label signals-chain-filtered-label">{unscoredLabel}</span>
+              {chainCellStateExplanation.unscored}
+            </span>
+          ) : (
+            <span className="d-inline-flex align-items-center gap-2">
+              <span className="dotted-underline-label signals-chain-filtered-label">Filtered</span>
+              {chainCellStateExplanation.filtered}
+            </span>
+          )}
           <span className="d-inline-flex align-items-center gap-2">
             <span className="font-mono">—</span>
             {chainCellStateExplanation.notCaptured}

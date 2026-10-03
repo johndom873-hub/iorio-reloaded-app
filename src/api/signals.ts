@@ -14,7 +14,22 @@ export interface MacroEvent {
   dateIso: string;
   title: string;
 }
-export type SignalsUnscoredReason = "no_snapshot" | "no_surface_fit" | "no_forecast" | "suspected_split";
+/** "analysing": today's snapshot is saved but its surface fit has not finished yet (pending, not a problem). */
+export type SignalsUnscoredReason = "no_snapshot" | "analysing" | "no_surface_fit" | "no_forecast" | "suspected_split";
+
+/** The facts behind an unscored reason (null for no_snapshot). */
+export type SignalsUnscoredDetail =
+  | { kind: "analysing"; snapshotCapturedAt: string }
+  | {
+      kind: "fit";
+      /** Expiries the fit produced a slice for, by fit status (ok, poor_fit, insufficient_points, ...). */
+      sliceStatusCounts: Record<string, number>;
+      expiryCount: number;
+      /** Why the fit produced nothing: a skip reason (no_spot_price, no_risk_free_rate, no_quotes) or "error: <message>"; null when it ran and no slice was usable. */
+      fitIssue: string | null;
+    }
+  | { kind: "forecast"; dailyBarCount: number; barsNeeded: number }
+  | { kind: "split"; splitDateIso: string };
 export type SignalsPriceSource = "live" | "frozen" | "snapshot";
 /** live = a pooled IBKR line (modal / screen best line), day = the Day Signals refresh loop, snapshot = the 10:00 ET capture. */
 export type SignalQuoteSource = "live" | "day" | "snapshot";
@@ -172,6 +187,7 @@ export interface TickerSignals {
   ivShiftByExpiry: Record<string, { shiftVolatilityPoints: number; quoteCount: number }>;
   quoteSourceCounts: Record<SignalQuoteSource, number>;
   unscoredReason: SignalsUnscoredReason | null;
+  unscoredDetail: SignalsUnscoredDetail | null;
   /** Set when the ticker was scored but no candidate survived. */
   noCandidatesReason: SignalsNoCandidatesReason | null;
 }
@@ -362,8 +378,8 @@ export function openSignalsScreenStream(onFrame: (frame: SignalsScreenFrame) => 
 
 // ---- Full option chain in the Signals modal (backend: lib/signalsChain.ts) ----
 
-/** candidate = one of the modal's graded candidates; filtered = quoted but left out by Signals (reason says why); not_captured = never quoted today. */
-export type SignalsChainCellState = "candidate" | "filtered" | "not_captured";
+/** candidate = one of the modal's graded candidates; filtered = quoted but left out by Signals (reason says why); unscored = the ticker has no score (or is still being analysed), so nothing is graded; not_captured = never quoted today. */
+export type SignalsChainCellState = "candidate" | "filtered" | "unscored" | "not_captured";
 
 export interface SignalsChainCell {
   state: SignalsChainCellState;

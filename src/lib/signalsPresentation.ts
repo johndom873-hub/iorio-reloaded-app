@@ -1,6 +1,6 @@
 import type { AppNotification } from "../api/notifications";
-import type { DayQuotesFrameStatus, HeldLegScore, HeldLegUnscoredReason, RoadmapStatus, RollSignalCandidate, RollSignalFlag, RollSignalWarning, SignalCandidate, SignalFlag, SignalGrade, SignalQuoteSource, SignalsNoCandidatesReason, SignalsPriceSource, SignalsUnscoredReason, MacroEvent } from "../api/signals";
-import { formatCurrencyTrimmed, formatDate, formatLocalTime, formatMonthDay, formatOptionContractShort, formatPercentageValue, formatShortAge, formatShortAgeWithSeconds, formatSignedPnl, formatVolatilityPoints } from "./formatters";
+import type { DayQuotesFrameStatus, HeldLegScore, HeldLegUnscoredReason, RoadmapStatus, RollSignalCandidate, RollSignalFlag, RollSignalWarning, SignalCandidate, SignalFlag, SignalGrade, SignalQuoteSource, SignalsNoCandidatesReason, SignalsPriceSource, SignalsUnscoredDetail, SignalsUnscoredReason, MacroEvent } from "../api/signals";
+import { formatCurrencyTrimmed, formatDate, formatEasternTime, formatLocalTime, formatMonthDay, formatOptionContractShort, formatPercentageValue, formatShortAge, formatShortAgeWithSeconds, formatSignedPnl, formatVolatilityPoints } from "./formatters";
 
 // Labels, badge classes and short explanations for the Signals screen and
 // modal (mockup approved 2026-09-22). Every label a user can see has a plain
@@ -16,14 +16,66 @@ export const gradeExplanation = "Grades are fixed net Edge cut points: Strong = 
 
 export const unscoredReasonLabel: Record<SignalsUnscoredReason, string> = {
   no_snapshot: "No chain snapshot yet",
+  analysing: "Snapshot saved, surface fit pending",
   no_surface_fit: "No fitted surface",
   no_forecast: "No volatility forecast (price history too short)",
   suspected_split: "No volatility forecast (suspected stock split in the price history)",
 };
 
-/** Badge text for a ticker with no top signal: "Filtered" when the Signals tab filters removed every contract. */
-export function noSignalBadgeLabel(noCandidatesReason: SignalsNoCandidatesReason | null): string {
-  return noCandidatesReason?.kind === "filtered" ? "Filtered" : "Unscored";
+const fitStatusLabel: Record<string, string> = {
+  poor_fit: "poor fit",
+  insufficient_points: "too few quotes",
+  fit_failed: "fit failed",
+  butterfly_arbitrage: "arbitrage",
+};
+
+const fitIssueLabel: Record<string, string> = {
+  no_spot_price: "no spot price in the snapshot",
+  no_risk_free_rate: "no risk-free rate stored",
+  no_quotes: "the snapshot holds no quotes",
+};
+
+/** The one-line "what is wrong" for an unscored ticker, from the API's reason and detail (approved mockup 2026-10-03). */
+export function describeUnscoredReason(reason: SignalsUnscoredReason, detail: SignalsUnscoredDetail | null): string {
+  if (reason === "analysing" && detail?.kind === "analysing") return `Snapshot ${formatEasternTime(detail.snapshotCapturedAt)} saved, surface fit pending`;
+  if (reason === "no_snapshot") return "No snapshot yet: scored once the next 10:00 ET capture has run for this ticker";
+  if (reason === "no_surface_fit" && detail?.kind === "fit") {
+    if (detail.fitIssue) {
+      return `No fitted surface: ${detail.fitIssue.startsWith("error: ") ? `the fit failed (${detail.fitIssue.slice("error: ".length)})` : (fitIssueLabel[detail.fitIssue] ?? detail.fitIssue)}`;
+    }
+    if (detail.expiryCount === 0) return "No fitted surface: the fit produced no expiries";
+    const parts = Object.entries(detail.sliceStatusCounts)
+      .filter(([status]) => status !== "ok")
+      .map(([status, count]) => `${count} ${fitStatusLabel[status] ?? status}`);
+    return `No fitted surface: ${detail.sliceStatusCounts.ok ?? 0} of ${detail.expiryCount} expiries fitted${parts.length > 0 ? ` (${parts.join(", ")})` : ""}`;
+  }
+  if (reason === "no_forecast" && detail?.kind === "forecast") {
+    return detail.dailyBarCount < detail.barsNeeded ? `No volatility forecast: ${detail.dailyBarCount} daily bars, needs ${detail.barsNeeded}` : "No volatility forecast: the price history could not produce one";
+  }
+  if (reason === "suspected_split" && detail?.kind === "split") return `No volatility forecast: suspected stock split on ${formatMonthDay(detail.splitDateIso)} in the price history`;
+  return unscoredReasonLabel[reason];
+}
+
+export interface NoSignalBadge {
+  label: string;
+  /** Bootstrap badge colour class (theme.css overrides the -lt variants to solid fills with accessible text). */
+  className: string;
+  /** Shows the standard spinner inside the badge (a pending state, not a problem). */
+  spinning: boolean;
+  /** Why, as one line shown under the badge; empty when there is nothing to add. */
+  reason: string;
+}
+
+/**
+ * The badge and reason for a ticker with no top signal (approved mockup 2026-10-03): "Analysing" while the snapshot's fit is
+ * pending, "Unscored" (red) when it could not be scored, and for a scored ticker with nothing to show, "Filtered" when the
+ * Signals settings removed every contract and "No candidates" when nothing got as far as those settings.
+ */
+export function describeNoSignalBadge(row: { unscoredReason: SignalsUnscoredReason | null; unscoredDetail: SignalsUnscoredDetail | null; noCandidatesReason: SignalsNoCandidatesReason | null }): NoSignalBadge {
+  if (row.unscoredReason === "analysing") return { label: "Analysing", className: "bg-azure-lt", spinning: true, reason: describeUnscoredReason("analysing", row.unscoredDetail) };
+  if (row.unscoredReason) return { label: "Unscored", className: "bg-danger-lt", spinning: false, reason: describeUnscoredReason(row.unscoredReason, row.unscoredDetail) };
+  const noCandidates = row.noCandidatesReason;
+  return { label: noCandidates?.kind === "filtered" ? "Filtered" : "No candidates", className: "bg-secondary-lt", spinning: false, reason: noCandidates ? describeNoCandidatesReason(noCandidates) : "" };
 }
 
 function pluralize(count: number, singular: string, plural: string): string {
@@ -239,6 +291,7 @@ export function isChainContractInTheMoney(right: "C" | "P", strike: number, spot
 export const chainCellStateExplanation = {
   candidate: "Signals candidate",
   filtered: "quoted, but left out by your Signals settings (hover for why)",
+  unscored: "this ticker has no score yet, so no contract is graded (hover for why)",
   notCaptured: "not in today's capture or refresh — quoted live when picked",
 } as const;
 

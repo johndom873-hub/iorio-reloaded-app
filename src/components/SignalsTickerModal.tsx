@@ -12,7 +12,7 @@ import { SignalOrderSetupForm } from "./SignalOrderSetupForm";
 import { ChainContractOrderSetupForm } from "./ChainContractOrderSetupForm";
 import { SignalsOptionChainCard, type ChainContractRef } from "./signals/SignalsOptionChainCard";
 import { formatCurrency, formatCurrencyTrimmed, formatDate, formatDateTime, formatNumber, formatPercentage, formatPercentageValue, formatSignedPercentageValue, formatSignedPnl, formatVolatilityPoints, pnlTextClass } from "../lib/formatters";
-import { candidateContractKey, describeHeldLeg, describeSupportResistanceLevel, describeNoCandidatesMessage, describeQuoteAgeRange, describeRollSignalFlag, describeSignalFlag, gradeBadgeClass, gradeExplanation, gradeLabel, heldLegUnscoredReasonLabel, netRollEdgeExplanation, quoteSourceLabel, rollFlagLetter, signalContractKey, signalFlagLetter, surfaceIvTrustClass, unscoredReasonLabel, restScoresFallbackMs } from "../lib/signalsPresentation";
+import { candidateContractKey, describeHeldLeg, describeSupportResistanceLevel, describeNoCandidatesMessage, describeQuoteAgeRange, describeRollSignalFlag, describeSignalFlag, gradeBadgeClass, gradeExplanation, gradeLabel, heldLegUnscoredReasonLabel, netRollEdgeExplanation, quoteSourceLabel, rollFlagLetter, signalContractKey, signalFlagLetter, surfaceIvTrustClass, describeNoSignalBadge, restScoresFallbackMs } from "../lib/signalsPresentation";
 import { IvHistoryChart } from "./charts/IvHistoryChart";
 import { TickerPriceChart } from "./charts/TickerPriceChart";
 import { CollapsibleCard } from "./CollapsibleCard";
@@ -281,7 +281,7 @@ function scoredContractAsQuoteOnly(contract: ScoredSignalContract): UnscoredSign
 interface ChainContractPick {
   key: string;
   contract: ChainContractRef;
-  /** The chain cell it was picked from (null when picked from elsewhere, e.g. Recovery Path): filtered gets the amber notice. */
+  /** The chain cell it was picked from (null when picked from elsewhere, e.g. Recovery Path): filtered and unscored get the amber notice. */
   originCellState: SignalsChainCellState | null;
   selectedAtIso: string;
   status: "ready" | "error";
@@ -290,13 +290,14 @@ interface ChainContractPick {
 }
 
 const chainPickNotice = (pick: ChainContractPick, reason: string) => (
-  <div className={`signals-chain-notice ${pick.originCellState === "filtered" ? "iorio-note-amber" : "text-secondary"}`}>
+  <div className={`signals-chain-notice ${pick.originCellState === "filtered" || pick.originCellState === "unscored" ? "iorio-note-amber" : "text-secondary"}`}>
     {reason}. Your order limits still apply.
   </div>
 );
 
 export function SignalsTickerModal({ symbol, initialRollLegId = null, focusPositionId = null, onPositionsChanged, onClose }: SignalsTickerModalProps) {
   const [signals, setSignals] = useState<TickerSignals | null>(null);
+  const noSignalBadge = useMemo(() => (signals ? describeNoSignalBadge(signals) : null), [signals]);
   const [signalsError, setSignalsError] = useState<string | null>(null);
   // GET /signals/:symbol answers 404 for a ticker neither shortlisted nor carrying an open short option leg.
   const [notInSignalsUniverse, setNotInSignalsUniverse] = useState(false);
@@ -991,13 +992,14 @@ export function SignalsTickerModal({ symbol, initialRollLegId = null, focusPosit
                   {rollNotice}
                 </div>
               )}
-              {signals && signals.unscoredReason && (
+              {signals && signals.unscoredReason && noSignalBadge && (
                 <>
-                  <div className="alert alert-secondary">
-                    <span className="badge bg-secondary-lt me-2" style={badgeFontSize}>
-                      Unscored
+                  <div className={`alert ${signals.unscoredReason === "analysing" ? "alert-info" : "alert-secondary"} d-flex align-items-center gap-2`}>
+                    <span className={`badge ${noSignalBadge.className} d-inline-flex align-items-center gap-1`} style={badgeFontSize}>
+                      {noSignalBadge.spinning && <Spinner size="sm" className="iorio-badge-spinner" />}
+                      {noSignalBadge.label}
                     </span>
-                    {unscoredReasonLabel[signals.unscoredReason]}
+                    <span>{noSignalBadge.reason}</span>
                   </div>
                 </>
               )}

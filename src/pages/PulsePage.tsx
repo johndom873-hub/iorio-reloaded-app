@@ -52,7 +52,7 @@ import { TotalPnlChart } from "../components/pulse/TotalPnlChart";
 import { SuccessProbabilityChart, type SuccessProbabilitySeries } from "../components/pulse/SuccessProbabilityChart";
 import { EnvironmentBadges } from "../components/layout/EnvironmentBadges";
 import { useEnvironmentStatus } from "../hooks/useEnvironmentStatus";
-import { describeAssignmentRisk, describeSignalUpgradeCompact } from "../lib/signalsPresentation";
+import { describeAssignmentRisk, describeSignalUpgradeCompact, describeUnscoredReason } from "../lib/signalsPresentation";
 import { openPositionsSignature } from "../lib/positionsSignature";
 import { usePollWhileVisible } from "../hooks/usePollWhileVisible";
 import { useMarketStatus } from "../hooks/useMarketStatus";
@@ -521,6 +521,10 @@ export function PulsePage() {
     .flatMap((row) => (row.best && row.best.edgeDollars > 0 ? [{ symbol: row.symbol, candidate: row.best }] : []))
     .sort((a, b) => b.candidate.edgeDollars - a.candidate.edgeDollars);
   const scoredTickerCount = signalRows.filter((row) => row.unscoredReason === null).length;
+  // Why the other tickers are not counted (Analysing / Unscored with the reason), for the panel's count tooltip.
+  const unscoredTickersTooltip = signalRows
+    .flatMap((row) => (row.unscoredReason ? [`${row.symbol}: ${describeUnscoredReason(row.unscoredReason, row.unscoredDetail)}`] : []))
+    .join(" · ");
 
   // --- Trades: fetch generously and let the panel's own overflow:hidden
   // clip whatever doesn't fit — no scroll, per the panel design. ---
@@ -1458,9 +1462,9 @@ export function PulsePage() {
           <div className="panel">
             <div className="panel-title">
               Top Signals <span className="panel-subtitle">by Edge $</span>
-              <span className="count">
+              <TooltipSpan className="count" text={unscoredTickersTooltip ? `${scoredTickerCount} of ${signalRows.length} tickers scored. ${unscoredTickersTooltip}` : `All ${signalRows.length} tickers scored`}>
                 {topSignals.length} of {scoredTickerCount}
-              </span>
+              </TooltipSpan>
             </div>
             {signalsHead}
             {topSignals.length === 0 && signalsEmpty}

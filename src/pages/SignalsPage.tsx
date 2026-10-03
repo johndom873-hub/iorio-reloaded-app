@@ -8,11 +8,12 @@ import { FlashingText } from "../components/FlashingText";
 import { PageHeader } from "../components/layout/PageHeader";
 import { ModelCaveatBadge, RoadmapEtaText } from "../components/signals/ModelCaveatBadge";
 import { RollBadge } from "../components/signals/RollBadge";
+import { Spinner } from "../components/Spinner";
 import { TickColoredPrice } from "../components/TickColoredPrice";
 import { TooltipSpan } from "../components/TooltipSpan";
 import { useSignalsTickerModal } from "../hooks/useSignalsTickerModal";
-import { daysToExpiry, formatCurrency, formatDateTime, formatDaysToExpiry, formatPercentage, formatRelativeTime, formatSignedPercentageValue, formatSignedPnl, formatVolatilityPoints, pnlTextClass } from "../lib/formatters";
-import { candidateContractKey, describeCandidateCompact, describeDayQuotesStatus, describeNoCandidatesReason, noSignalBadgeLabel, gradeBadgeClass, gradeExplanation, gradeLabel, priceSourceLabel, quoteSourceLabel, roadmapStatusBadgeClass, roadmapStatusLabel, signalsColumnExplanation, unscoredReasonLabel, restScoresFallbackMs } from "../lib/signalsPresentation";
+import { daysToExpiry, formatCurrency, formatDateTime, formatDaysToExpiry, formatPercentage, formatRelativeTime, formatSignedPercentageValue, formatSnapshotStamp, formatSignedPnl, formatVolatilityPoints, pnlTextClass } from "../lib/formatters";
+import { candidateContractKey, describeCandidateCompact, describeDayQuotesStatus, describeNoSignalBadge, type NoSignalBadge, gradeBadgeClass, gradeExplanation, gradeLabel, priceSourceLabel, quoteSourceLabel, roadmapStatusBadgeClass, roadmapStatusLabel, signalsColumnExplanation, restScoresFallbackMs } from "../lib/signalsPresentation";
 import { useTooltip } from "../hooks/useTooltip";
 import { QuoteAgeLabel } from "../components/QuoteAgeLabel";
 
@@ -35,15 +36,22 @@ function GradeBadge({ grade }: { grade: SignalGrade }) {
   );
 }
 
-/** No top signal: "Unscored" with its reason, or a scored ticker with no candidates ("Filtered" / "Unscored") explained in a tooltip. */
+/** No top signal: the badge (Analysing / Unscored / No candidates / Filtered) with the reason always shown under it (approved mockup 2026-10-03). */
 function UnscoredBadge({ row }: { row: SignalsScreenRow }) {
-  const tooltipRef = useTooltip<HTMLSpanElement>(row.noCandidatesReason ? describeNoCandidatesReason(row.noCandidatesReason) : null);
+  const badge = describeNoSignalBadge(row);
   return (
-    <span className="text-secondary">
-      <span ref={tooltipRef} className="badge bg-secondary-lt me-1" style={badgeFontSize} tabIndex={row.noCandidatesReason ? 0 : undefined}>
-        {noSignalBadgeLabel(row.noCandidatesReason)}
-      </span>
-      {row.unscoredReason ? unscoredReasonLabel[row.unscoredReason] : ""}
+    <div className="d-flex flex-column align-items-start gap-1">
+      <NoSignalBadgeLabel badge={badge} />
+      {badge.reason && <span className="text-secondary signals-no-signal-reason">{badge.reason}</span>}
+    </div>
+  );
+}
+
+function NoSignalBadgeLabel({ badge }: { badge: NoSignalBadge }) {
+  return (
+    <span className={`badge ${badge.className} d-inline-flex align-items-center gap-1`} style={badgeFontSize}>
+      {badge.spinning && <Spinner size="sm" className="iorio-badge-spinner" />}
+      {badge.label}
     </span>
   );
 }
@@ -296,6 +304,12 @@ export function SignalsPage() {
       },
       { key: "forecast", header: "FV", align: "right", headerTitle: signalsColumnExplanation.forecast, render: (row) => <span className="font-mono">{formatPercentage(row.forecast?.volatility, 1)}</span> },
       {
+        key: "snapshot",
+        header: "Snapshot",
+        headerTitle: "When the option-chain snapshot behind this row's score was captured: a clock time (ET) for today's, a date for an earlier one.",
+        render: (row) => <span className={`font-mono text-nowrap ${row.snapshotCapturedAt && formatSnapshotStamp(row.snapshotCapturedAt).includes("ET") ? "" : "text-secondary"}`}>{formatSnapshotStamp(row.snapshotCapturedAt)}</span>,
+      },
+      {
         key: "momentum",
         header: "Mom.",
         align: "right",
@@ -381,6 +395,7 @@ export function SignalsPage() {
           columns={columns}
           rows={rows}
           rowKey={(row) => row.tickerId}
+          rowClassName={(row) => (row.unscoredReason === "analysing" ? "signals-row-analysing" : row.unscoredReason ? "signals-row-unscored" : undefined)}
           loading={loading && rows.length === 0}
           emptyMessage="No tickers on the shortlist."
           toolbar={toolbar}
@@ -410,7 +425,7 @@ export function SignalsPage() {
                       {formatSignedPercentageValue(row.dayChangePercent, 1)}
                     </span>
                   </span>
-                  {row.best ? <GradeBadge grade={row.best.grade} /> : <span className="badge bg-secondary-lt" style={badgeFontSize}>{noSignalBadgeLabel(row.noCandidatesReason)}</span>}
+                  {row.best ? <GradeBadge grade={row.best.grade} /> : <NoSignalBadgeLabel badge={describeNoSignalBadge(row)} />}
                 </div>
                 <div className="d-flex justify-content-between gap-2 text-secondary" style={{ fontSize: "0.8rem" }}>
                   {row.best ? (
@@ -421,7 +436,7 @@ export function SignalsPage() {
                       <span className="font-mono">{formatSignedPnl(row.best.edgeDollars, 0)}</span>
                     </>
                   ) : (
-                    <span>{row.unscoredReason ? unscoredReasonLabel[row.unscoredReason] : row.noCandidatesReason ? describeNoCandidatesReason(row.noCandidatesReason) : ""}</span>
+                    <span>{describeNoSignalBadge(row).reason}</span>
                   )}
                 </div>
                 <div className="d-flex justify-content-between align-items-center gap-2 text-secondary" style={{ fontSize: "0.8rem" }}>

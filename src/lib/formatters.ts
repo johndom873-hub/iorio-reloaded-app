@@ -190,6 +190,13 @@ export function formatEasternTime(isoTimestamp: string): string {
   return `${time} ET`;
 }
 
+/** When a snapshot was captured, as short as the day allows: the Eastern clock time ("10:03 ET") if it was today, else the Eastern date ("Sep 30"). */
+export function formatSnapshotStamp(isoTimestamp: string | null | undefined): string {
+  if (!isoTimestamp) return "—";
+  const capturedDate = easternIsoDate(isoTimestamp);
+  return capturedDate === todayInEasternIso() ? formatEasternTime(isoTimestamp) : formatMonthDay(capturedDate);
+}
+
 // Platform-wide convention (approved 2026-08-28): every plain expiry date
 // shown anywhere always carries its DTE alongside it, so "when does this
 // expire" and "how soon" are never split across a hover/lookup. Takes an
