@@ -11,7 +11,8 @@ import { Spinner } from "../Spinner";
 const POLL_INTERVAL_MS = 5 * 60 * 1000;
 
 function extractBundleSrc(html: string): string | null {
-  const match = html.match(/<script[^>]+src="([^"]+\.js)"/);
+  // Only the hashed Vite entry under /assets/ -- the un-hashed /config.js script ahead of it never changes between deploys.
+  const match = html.match(/<script[^>]+src="(\/assets\/[^"]+\.js)"/);
   return match ? match[1] : null;
 }
 
