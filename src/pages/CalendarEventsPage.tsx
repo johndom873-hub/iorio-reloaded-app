@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { PageHeader } from "../components/layout/PageHeader";
 import { DataTable, type DataTableColumn } from "../components/DataTable/DataTable";
-import { TickerDetailModal } from "../components/TickerDetailModal";
 import { ApiError } from "../api/client";
 import {
   fetchCalendarEvents,
@@ -9,7 +8,7 @@ import {
   type TickerCalendarEvent,
 } from "../api/calendarEvents";
 import { daysToExpiry, formatCurrency, formatDate, formatDaysToExpiry, formatNumber, todayInEasternIso } from "../lib/formatters";
-import { useTickerDetailSymbol } from "../hooks/useTickerDetailSymbol";
+import { useSignalsTickerModal } from "../hooks/useSignalsTickerModal";
 
 function DateWithCountdown({ isoDate }: { isoDate: string }) {
   return (
@@ -54,7 +53,7 @@ export function CalendarEventsPage() {
   const [economicEvents, setEconomicEvents] = useState<EconomicCalendarEvent[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [detailSymbol, setDetailSymbol] = useTickerDetailSymbol();
+  const { open: openTickerModal } = useSignalsTickerModal();
 
   const loadEvents = useCallback(async () => {
     try {
@@ -85,7 +84,7 @@ export function CalendarEventsPage() {
         <button
           type="button"
           className="btn btn-link p-0 text-decoration-none fw-bold"
-          onClick={() => setDetailSymbol(row.symbol)}
+          onClick={() => openTickerModal(row.symbol)}
         >
           {row.symbol}
         </button>
@@ -179,7 +178,6 @@ export function CalendarEventsPage() {
         emptyMessage="No upcoming economic events."
       />
 
-      {detailSymbol && <TickerDetailModal symbol={detailSymbol} onClose={() => setDetailSymbol(null)} />}
     </>
   );
 }

@@ -1,6 +1,6 @@
 import type { AppNotification } from "../api/notifications";
-import type { DayQuotesFrameStatus, HeldLegScore, HeldLegUnscoredReason, RoadmapStatus, RollSignalCandidate, RollSignalFlag, SignalCandidate, SignalFlag, SignalGrade, SignalQuoteSource, SignalsPriceSource, SignalsUnscoredReason, MacroEvent } from "../api/signals";
-import { formatCurrencyTrimmed, formatDate, formatLocalTime, formatShortAge, formatSignedPnl, formatVolatilityPoints } from "./formatters";
+import type { DayQuotesFrameStatus, HeldLegScore, HeldLegUnscoredReason, RoadmapStatus, RollSignalCandidate, RollSignalFlag, RollSignalWarning, SignalCandidate, SignalFlag, SignalGrade, SignalQuoteSource, SignalsNoCandidatesReason, SignalsPriceSource, SignalsUnscoredDetail, SignalsUnscoredReason, MacroEvent } from "../api/signals";
+import { formatCurrencyTrimmed, formatDate, formatEasternTime, formatLocalTime, formatMonthDay, formatOptionContractShort, formatPercentageValue, formatShortAge, formatShortAgeWithSeconds, formatSignedPnl, formatVolatilityPoints } from "./formatters";
 
 // Labels, badge classes and short explanations for the Signals screen and
 // modal (mockup approved 2026-09-22). Every label a user can see has a plain
@@ -16,11 +16,110 @@ export const gradeExplanation = "Grades are fixed net Edge cut points: Strong = 
 
 export const unscoredReasonLabel: Record<SignalsUnscoredReason, string> = {
   no_snapshot: "No chain snapshot yet",
+  analysing: "Snapshot saved, surface fit pending",
   no_surface_fit: "No fitted surface",
   no_forecast: "No volatility forecast (price history too short)",
   suspected_split: "No volatility forecast (suspected stock split in the price history)",
-  stale_surface: "Surface too old to score (more than one session old)",
 };
+
+const fitStatusLabel: Record<string, string> = {
+  poor_fit: "poor fit",
+  insufficient_points: "too few quotes",
+  fit_failed: "fit failed",
+  butterfly_arbitrage: "arbitrage",
+};
+
+const fitIssueLabel: Record<string, string> = {
+  no_spot_price: "no spot price in the snapshot",
+  no_risk_free_rate: "no risk-free rate stored",
+  no_quotes: "the snapshot holds no quotes",
+};
+
+/** The one-line "what is wrong" for an unscored ticker, from the API's reason and detail (approved mockup 2026-10-03). */
+export function describeUnscoredReason(reason: SignalsUnscoredReason, detail: SignalsUnscoredDetail | null): string {
+  if (reason === "analysing" && detail?.kind === "analysing") return `Snapshot ${formatEasternTime(detail.snapshotCapturedAt)} saved, surface fit pending`;
+  if (reason === "no_snapshot") return "No snapshot yet: scored once the next 10:00 ET capture has run for this ticker";
+  if (reason === "no_surface_fit" && detail?.kind === "fit") {
+    if (detail.fitIssue) {
+      return `No fitted surface: ${detail.fitIssue.startsWith("error: ") ? `the fit failed (${detail.fitIssue.slice("error: ".length)})` : (fitIssueLabel[detail.fitIssue] ?? detail.fitIssue)}`;
+    }
+    if (detail.expiryCount === 0) return "No fitted surface: the fit produced no expiries";
+    const parts = Object.entries(detail.sliceStatusCounts)
+      .filter(([status]) => status !== "ok")
+      .map(([status, count]) => `${count} ${fitStatusLabel[status] ?? status}`);
+    return `No fitted surface: ${detail.sliceStatusCounts.ok ?? 0} of ${detail.expiryCount} expiries fitted${parts.length > 0 ? ` (${parts.join(", ")})` : ""}`;
+  }
+  if (reason === "no_forecast" && detail?.kind === "forecast") {
+    return detail.dailyBarCount < detail.barsNeeded ? `No volatility forecast: ${detail.dailyBarCount} daily bars, needs ${detail.barsNeeded}` : "No volatility forecast: the price history could not produce one";
+  }
+  if (reason === "suspected_split" && detail?.kind === "split") return `No volatility forecast: suspected stock split on ${formatMonthDay(detail.splitDateIso)} in the price history`;
+  return unscoredReasonLabel[reason];
+}
+
+export interface NoSignalBadge {
+  label: string;
+  /** Bootstrap badge colour class (theme.css overrides the -lt variants to solid fills with accessible text). */
+  className: string;
+  /** Shows the standard spinner inside the badge (a pending state, not a problem). */
+  spinning: boolean;
+  /** Why, as one line shown under the badge; empty when there is nothing to add. */
+  reason: string;
+}
+
+/**
+ * The badge and reason for a ticker with no top signal (approved mockup 2026-10-03): "Analysing" while the snapshot's fit is
+ * pending, "Unscored" (red) when it could not be scored, and for a scored ticker with nothing to show, "Filtered" when the
+ * Signals settings removed every contract and "No candidates" when nothing got as far as those settings.
+ */
+export function describeNoSignalBadge(row: { unscoredReason: SignalsUnscoredReason | null; unscoredDetail: SignalsUnscoredDetail | null; noCandidatesReason: SignalsNoCandidatesReason | null }): NoSignalBadge {
+  if (row.unscoredReason === "analysing") return { label: "Analysing", className: "bg-azure-lt", spinning: true, reason: describeUnscoredReason("analysing", row.unscoredDetail) };
+  if (row.unscoredReason) return { label: "Unscored", className: "bg-danger-lt", spinning: false, reason: describeUnscoredReason(row.unscoredReason, row.unscoredDetail) };
+  const noCandidates = row.noCandidatesReason;
+  return { label: noCandidates?.kind === "filtered" ? "Filtered" : "No candidates", className: "bg-secondary-lt", spinning: false, reason: noCandidates ? describeNoCandidatesReason(noCandidates) : "" };
+}
+
+function pluralize(count: number, singular: string, plural: string): string {
+  return `${count} ${count === 1 ? singular : plural}`;
+}
+
+function describeExpiryGroup(expiriesIso: string[]): string {
+  const first = formatMonthDay(expiriesIso[0]!);
+  const range = expiriesIso.length === 1 ? first : `${first} – ${formatMonthDay(expiriesIso[expiriesIso.length - 1]!)}`;
+  return `${pluralize(expiriesIso.length, "expiry", "expiries")} (${range})`;
+}
+
+/**
+ * Why a scored ticker shows no candidates, as one line for the tooltip and modal. Filtered (approved 2026-09-28):
+ * best yield vs the minimum, plus the below-min and above-max delta counts if any. Nothing scorable: which expiries dropped and why.
+ */
+export function describeNoCandidatesReason(reason: SignalsNoCandidatesReason): string {
+  if (reason.kind === "filtered") {
+    const parts: string[] = [];
+    if (reason.belowMinYieldCount > 0 && reason.bestAnnualizedYieldPct !== null) {
+      parts.push(`Best annualised yield ${formatPercentageValue(reason.bestAnnualizedYieldPct, 1)} vs the ${formatPercentageValue(reason.minAnnualizedYieldPct, 0)} minimum`);
+    }
+    if (reason.belowMinDeltaCount > 0) {
+      parts.push(`${pluralize(reason.belowMinDeltaCount, "contract", "contracts")} below the ${reason.deltaTargetMin.toFixed(2)} min delta`);
+    }
+    if (reason.aboveMaxDeltaCount > 0) {
+      parts.push(`${pluralize(reason.aboveMaxDeltaCount, "contract", "contracts")} above the ${reason.deltaTargetMax.toFixed(2)} max delta`);
+    }
+    return parts.join(" · ");
+  }
+  const parts: string[] = [];
+  if (reason.surfaceFitRejectedExpiries.length > 0) parts.push(`${describeExpiryGroup(reason.surfaceFitRejectedExpiries)}: surface fit rejected`);
+  if (reason.spansEarningsExpiries.length > 0) {
+    const earnings = reason.earningsDateIso ? ` on ${formatMonthDay(reason.earningsDateIso)}` : "";
+    parts.push(`${describeExpiryGroup(reason.spansEarningsExpiries)}: span earnings${earnings}`);
+  }
+  return parts.length > 0 ? parts.join(" · ") : "No contract had a usable quote to score";
+}
+
+/** The modal's empty-table message for a scored ticker with no candidates. */
+export function describeNoCandidatesMessage(reason: SignalsNoCandidatesReason): string {
+  const headline = reason.kind === "filtered" ? "Every contract is filtered out by the Signals settings." : "No contract could be scored.";
+  return `${headline} ${describeNoCandidatesReason(reason)}.`;
+}
 
 export const priceSourceLabel: Record<SignalsPriceSource, string> = {
   live: "Live price",
@@ -34,13 +133,30 @@ export const quoteSourceLabel: Record<SignalQuoteSource, string> = {
   snapshot: "10:00 ET snapshot quote — this contract is not in today's refresh pool",
 };
 
-/** Age range text for a set of day quotes: "1m–6m old", "now–2m old", or null. */
+const nonLiveQuoteSourceWord: Record<Exclude<SignalQuoteSource, "live">, string> = { day: "day", snapshot: "10:00 ET snapshot" };
+
+/**
+ * Why an order may not be built from this quote, or null when it is live (or there is no quote at all, which the forms
+ * report on their own). Trades are only ever priced from live quotes, never from a day or snapshot quote that may be hours old.
+ */
+export function describeNonLiveQuoteBlock(subject: string, quoteSource: SignalQuoteSource | null): string | null {
+  if (quoteSource === null || quoteSource === "live") return null;
+  return `${subject} is priced from a ${nonLiveQuoteSourceWord[quoteSource]} quote, not a live one.`;
+}
+
+/** A day quote's age as the Quote column shows it: "12s", "3m", "1h 05m", or "—". */
+export function quoteAgeCellLabel(quotedAt: string | null | undefined, now: Date = new Date()): string {
+  return formatShortAgeWithSeconds(quotedAt, now) ?? "—";
+}
+
+/** Age range text for a set of day quotes, read mid-sentence: "1m–6m old", "under a minute to 2m old", "under a minute old", or null. */
 export function describeQuoteAgeRange(asOf: { oldest: string; newest: string } | null | undefined, now: Date = new Date()): string | null {
   if (!asOf) return null;
   const newest = formatShortAge(asOf.newest, now);
   const oldest = formatShortAge(asOf.oldest, now);
   if (!newest || !oldest) return null;
-  return newest === oldest ? `${newest} old` : `${newest}–${oldest} old`;
+  if (newest === oldest) return newest === "now" ? "under a minute old" : `${newest} old`;
+  return newest === "now" ? `under a minute to ${oldest} old` : `${newest}–${oldest} old`;
 }
 
 // Day quotes older than this while the loop claims to be running mean the loop is not actually refreshing.
@@ -70,12 +186,20 @@ export function describeDayQuotesStatus(dayQuotes: DayQuotesFrameStatus | null, 
   return { label: `Day quotes idle · ${loop.reason}`, tone: "iorio-note-amber", pulse: false };
 }
 
-/** "AAOI Put $95 · Oct 17 upgraded Weak → Good (+6.3vp, +$142)" — Pulse's Latest Events and the in-app toast. */
+function signalUpgradeContract(notification: Extract<AppNotification, { type: "signal_upgraded" }>): string {
+  return formatOptionContractShort(notification.strike, notification.strategyKey === "covered_call" ? "C" : "P", notification.dte);
+}
+
+/** "AAOI 95P 4DTE upgraded Weak → Good (+6.3vp, +$142)" — the in-app toast. */
 export function describeSignalUpgrade(notification: Extract<AppNotification, { type: "signal_upgraded" }>): string {
-  const contract = `${notification.strategyKey === "covered_call" ? "Call" : "Put"} ${formatCurrencyTrimmed(notification.strike)} · ${formatDate(notification.expiry)}`;
   const previous = gradeLabel[notification.previousGrade as SignalGrade] ?? notification.previousGrade;
   const next = gradeLabel[notification.grade as SignalGrade] ?? notification.grade;
-  return `${notification.symbol} ${contract} upgraded ${previous} → ${next} (${formatVolatilityPoints(notification.netEdge)}, ${formatSignedPnl(notification.edgeDollars, 0)})`;
+  return `${notification.symbol} ${signalUpgradeContract(notification)} upgraded ${previous} → ${next} (${formatVolatilityPoints(notification.netEdge)}, ${formatSignedPnl(notification.edgeDollars, 0)})`;
+}
+
+/** "AAOI 95P 4DTE → Good" — Pulse's Latest Events, whose rows have room for little more than the contract. */
+export function describeSignalUpgradeCompact(notification: Extract<AppNotification, { type: "signal_upgraded" }>): string {
+  return `${notification.symbol} ${signalUpgradeContract(notification)} → ${gradeLabel[notification.grade as SignalGrade] ?? notification.grade}`;
 }
 
 export const roadmapStatusLabel: Record<RoadmapStatus, string> = {
@@ -131,19 +255,66 @@ export function surfaceIvTrustClass(surfaceIv: number, midIv: number | null): st
 }
 
 /** "Put $106 · Oct 23, 2026" */
-export function describeCandidate(candidate: SignalCandidate): string {
+export function describeCandidate(candidate: Pick<SignalCandidate, "strategyKey" | "strike" | "expiry">): string {
   return `${candidate.strategyKey === "covered_call" ? "Call" : "Put"} ${formatCurrencyTrimmed(candidate.strike)} · ${formatDate(candidate.expiry)}`;
 }
 
-/** "C110 · 12 DTE" — compact form for the Signals screen's Top Signal column. */
+/** "110C 12DTE" — compact form for the Signals screen's Top Signal column. */
 export function describeCandidateCompact(candidate: SignalCandidate): string {
-  const right = candidate.strategyKey === "covered_call" ? "C" : "P";
-  return `${right}${formatCurrencyTrimmed(candidate.strike).replace("$", "")} · ${candidate.dte} DTE`;
+  return formatOptionContractShort(candidate.strike, candidate.strategyKey === "covered_call" ? "C" : "P", candidate.dte);
+}
+
+// --- Full option chain in the Signals modal -------------------------------------------------------
+
+/** "2026-10-16|110|C": one contract across the chain, the candidates list and the order pane. */
+export function signalContractKey(contract: { expiry: string; strike: number; right: "C" | "P" }): string {
+  return `${contract.expiry}|${contract.strike}|${contract.right}`;
+}
+
+export function candidateContractRight(candidate: Pick<SignalCandidate, "strategyKey">): "C" | "P" {
+  return candidate.strategyKey === "covered_call" ? "C" : "P";
+}
+
+/** A candidate's contract key, matching signalContractKey for the same contract. */
+export function candidateContractKey(candidate: Pick<SignalCandidate, "expiry" | "strike" | "strategyKey">): string {
+  return signalContractKey({ expiry: candidate.expiry, strike: candidate.strike, right: candidateContractRight(candidate) });
+}
+
+/** Expiry tab label: "Oct 16 17D". */
+export function describeChainExpiryTab(expiry: { expiry: string; dte: number }): string {
+  return `${formatMonthDay(expiry.expiry)} ${expiry.dte}D`;
+}
+
+/** In the money at the live spot: a call struck below it, a put struck above it. Signals only sells out-of-the-money contracts, so the chain does not show these. */
+export function isChainContractInTheMoney(right: "C" | "P", strike: number, spotPrice: number | null): boolean {
+  if (spotPrice === null) return false;
+  return right === "C" ? strike < spotPrice : strike > spotPrice;
+}
+
+export const chainCellStateExplanation = {
+  candidate: "Signals candidate",
+  filtered: "quoted, but left out by your Signals settings (hover for why)",
+  unscored: "this ticker has no score yet, so no contract is graded (hover for why)",
+  notCaptured: "not in today's capture or refresh — quoted live when picked",
+} as const;
+
+/** Escapes server text for a Bootstrap html tooltip (DottedLabelTooltip). */
+export function escapeTooltipHtml(text: string): string {
+  return text.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;");
 }
 
 // --- Roll Signals (Formula 3j, approved 2026-09-24) ---------------------------------------------
 
 export const rollFlagLetter: Record<RollSignalFlag, string> = { near_expiry: "E", assignment_risk: "A", decayed: "D" };
+
+export function describeRollSignalWarning(warning: RollSignalWarning): string {
+  switch (warning) {
+    case "debit":
+      return "This roll costs money: the new contract's mid is below what it takes to buy the held leg back. The order would pay a net debit.";
+    case "higher_delta":
+      return "The new contract has a higher |delta| than the held leg: rolling into a riskier contract.";
+  }
+}
 
 export function describeRollSignalFlag(flag: RollSignalFlag, held: Pick<HeldLegScore, "dte" | "delta" | "entryPrice" | "mid">): string {
   switch (flag) {
@@ -157,7 +328,7 @@ export function describeRollSignalFlag(flag: RollSignalFlag, held: Pick<HeldLegS
 }
 
 export const heldLegUnscoredReasonLabel: Record<HeldLegUnscoredReason, string> = {
-  no_slice: "no fitted surface for this expiry (over 90 days out, or expiring today)",
+  no_slice: "no usable fitted surface for this expiry (over 90 days out, expiring today, or its fit was rejected)",
   no_quote: "no two-sided quote for this contract yet",
   no_forecast: "no volatility forecast for this ticker",
 };
@@ -174,12 +345,21 @@ export function describeRoll(roll: RollSignalCandidate, held: Pick<HeldLegScore,
   return `${describeHeldLeg(held)} → ${describeHeldLeg({ right: roll.replacement.strategyKey === "covered_call" ? "C" : "P", strike: roll.replacement.strike, dte: roll.replacement.dte })}`;
 }
 
-/** "COIN Put $177.50 → Put $170 · Oct 17 upgraded Weak → Good (+5.6vp, +$262)" — the in-app toast and Pulse's Latest Events. */
+/** "COIN 177.5P 4DTE → 170P 18DTE roll upgraded Weak → Good (+5.6vp, +$262)" — the in-app toast. */
 export function describeRollSignalUpgrade(notification: Extract<AppNotification, { type: "roll_signal_upgraded" }>): string {
-  const right = notification.strategyKey === "covered_call" ? "Call" : "Put";
+  const right = notification.strategyKey === "covered_call" ? "C" : "P";
   const previous = gradeLabel[notification.previousGrade as SignalGrade] ?? notification.previousGrade;
   const next = gradeLabel[notification.grade as SignalGrade] ?? notification.grade;
-  return `${notification.symbol} ${right} ${formatCurrencyTrimmed(notification.heldStrike)} → ${right} ${formatCurrencyTrimmed(notification.strike)} · ${formatDate(notification.expiry)} roll upgraded ${previous} → ${next} (${formatVolatilityPoints(notification.netRollEdge)}, ${formatSignedPnl(notification.netRollEdgeDollars, 0)})`;
+  // heldDte is absent from payloads sent by an api deploy older than this app's.
+  const held = formatOptionContractShort(notification.heldStrike, right, notification.heldDte ?? null);
+  const replacement = formatOptionContractShort(notification.strike, right, notification.dte);
+  return `${notification.symbol} ${held} → ${replacement} roll upgraded ${previous} → ${next} (${formatVolatilityPoints(notification.netRollEdge)}, ${formatSignedPnl(notification.netRollEdgeDollars, 0)})`;
+}
+
+/** "HOOD 120P 3DTE, Δ −0.53" — the assignment-risk toast and Pulse's Latest Events. */
+export function describeAssignmentRisk(notification: Extract<AppNotification, { type: "assignment_risk" }>): string {
+  const signedDelta = `${notification.delta < 0 ? "−" : ""}${Math.abs(notification.delta).toFixed(2)}`;
+  return `${notification.symbol} ${formatOptionContractShort(notification.strike, notification.right, notification.dte)}, Δ ${signedDelta}`;
 }
 
 /** Column explanations, shown as header tooltips and in the mobile cards. */
@@ -189,7 +369,7 @@ export const signalsColumnExplanation = {
   best: "The candidate contract with the highest Edge $ across every expiry and strike on the out-of-the-money side.",
   yield: "Annualised yield of the Top Signal contract: mid premium / capital at risk, annualised to a 365-day year.",
   grade: gradeExplanation,
-  netEdge: "Net Edge = implied volatility at the strike (fitted surface) minus the forecast volatility minus friction (half-spread and commission), in volatility points.",
+  netEdge: "Net Edge = implied volatility at the strike (fitted surface) minus the forecast volatility minus friction (the Risk & Limits spread cost share of the half-spread, plus commission), in volatility points.",
   edgeDollars: "Net Edge x vega x 100: the excess premium in dollars per contract.",
   atmIv: "At-the-money implied volatility from the fitted surface, expiry nearest 30 days. Coloured green when it's above FV (forecast), red when below.",
   forecast: "Forecast realized volatility: trailing 63-day Yang-Zhang (21-day when 63 is unavailable).",
@@ -200,3 +380,17 @@ export const signalsColumnExplanation = {
   roll: "Open short legs on this ticker with a credit roll graded above Avoid; the colour is the best roll's grade. Click to review it.",
   quotes: "What the best opportunity's numbers are based on: a live IBKR line, a Day Signals quote (age shown), or still the 10:00 ET snapshot quote.",
 } as const;
+
+/**
+ * Support/resistance line for the Technicals card. With no qualifying zone the backend falls back to the
+ * lowest low / highest high of its hourly window (touches 0, quality 0) — named as that, not as a zero-quality level.
+ */
+export function describeSupportResistanceLevel(side: "support" | "resistance", level: { touches: number; qualityPct: number }): { label: string; detail: string } {
+  if (level.touches === 0) {
+    return side === "support" ? { label: "Recent low", detail: "no clear support level" } : { label: "Recent high", detail: "no clear resistance level" };
+  }
+  return { label: side === "support" ? "Support" : "Resistance", detail: `${level.touches} touches, ${level.qualityPct.toFixed(1)}% quality` };
+}
+
+/** How long the Signals screens wait for their first live frame before showing the REST scores (scored at the stale 10:00 snapshot spot) instead. */
+export const restScoresFallbackMs = 4_000;

@@ -12,10 +12,10 @@ import { DottedLabelTooltip } from "../HelpTooltip";
 import { ApiError } from "../../api/client";
 import {
   addToShortlist,
-  backfillTickerEarnings,
-  backfillTickerPriceHistory,
+  populateTickerEarnings,
+  populateTickerDailyBars,
   fetchShortlist,
-  refreshTickerOptionChain,
+  populateTickerOptionChain,
   removeFromShortlist,
   retryTickerBackfill,
   searchTickers,
@@ -24,7 +24,7 @@ import {
   type TickerBackfillRun,
   type TickerSearchResult,
 } from "../../api/shortlist";
-import { daysToExpiry, formatBarsAsYears, formatDaysToExpiry, ibkrExpiryToIsoDate, formatDate } from "../../lib/formatters";
+import { daysToExpiry, formatBarsAsYears, formatDaysToExpiry, ibkrExpiryToIsoDate, formatDate, pluralize } from "../../lib/formatters";
 
 const searchDebounceMs = 400;
 
@@ -125,7 +125,7 @@ function OptionChainExpiriesCell({ expiries }: { expiries: ShortlistRow["optionC
   if (expiries.length === 0) {
     return (
       <span className="d-inline-flex align-items-center gap-1">
-        <WarningTriangle reason="No option-chain expiries captured yet — waits for tonight's nightly capture, or Actions → Refresh Option Chain." />
+        <WarningTriangle reason="No option-chain expiries captured yet — waits for tonight's nightly capture, or Actions → Populate Option Chain." />
         0
       </span>
     );
@@ -135,10 +135,10 @@ function OptionChainExpiriesCell({ expiries }: { expiries: ShortlistRow["optionC
 }
 
 interface ShortlistTabProps {
-  onOpenTickerDetail: (symbol: string) => void;
+  onOpenTickerModal: (symbol: string) => void;
 }
 
-export function ShortlistTab({ onOpenTickerDetail }: ShortlistTabProps) {
+export function ShortlistTab({ onOpenTickerModal }: ShortlistTabProps) {
   const [rows, setRows] = useState<ShortlistRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -151,12 +151,12 @@ export function ShortlistTab({ onOpenTickerDetail }: ShortlistTabProps) {
   const [removeConfirmRow, setRemoveConfirmRow] = useState<ShortlistRow | null>(null);
   const searchDebounceRef = useRef<number | null>(null);
   const [startingBackfillTickerId, setStartingBackfillTickerId] = useState<string | null>(null);
-  const [backfillingEarningsTickerId, setBackfillingEarningsTickerId] = useState<string | null>(null);
-  const [backfillingPriceHistoryTickerId, setBackfillingPriceHistoryTickerId] = useState<string | null>(null);
-  const [refreshingOptionChainTickerId, setRefreshingOptionChainTickerId] = useState<string | null>(null);
-  const [confirmEarningsRow, setConfirmEarningsRow] = useState<ShortlistRow | null>(null);
-  const [confirmPriceHistoryRow, setConfirmPriceHistoryRow] = useState<ShortlistRow | null>(null);
-  const [confirmRefreshOptionChainRow, setConfirmRefreshOptionChainRow] = useState<ShortlistRow | null>(null);
+  const [populatingEarningsTickerId, setPopulatingEarningsTickerId] = useState<string | null>(null);
+  const [populatingDailyBarsTickerId, setPopulatingDailyBarsTickerId] = useState<string | null>(null);
+  const [populatingOptionChainTickerId, setPopulatingOptionChainTickerId] = useState<string | null>(null);
+  const [confirmPopulateEarningsRow, setConfirmPopulateEarningsRow] = useState<ShortlistRow | null>(null);
+  const [confirmPopulateDailyBarsRow, setConfirmPopulateDailyBarsRow] = useState<ShortlistRow | null>(null);
+  const [confirmPopulateOptionChainRow, setConfirmPopulateOptionChainRow] = useState<ShortlistRow | null>(null);
   const [prepTicker, setPrepTicker] = useState<{ tickerId: string; symbol: string; companyName: string | null } | null>(null);
   const [surfaceModalSymbol, setSurfaceModalSymbol] = useState<string | null>(null);
 
@@ -238,55 +238,54 @@ export function ShortlistTab({ onOpenTickerDetail }: ShortlistTabProps) {
     }
   }
 
-  async function handleBackfillEarnings(row: ShortlistRow) {
-    setConfirmEarningsRow(null);
-    setBackfillingEarningsTickerId(row.tickerId);
+  async function handlePopulateEarnings(row: ShortlistRow) {
+    setConfirmPopulateEarningsRow(null);
+    setPopulatingEarningsTickerId(row.tickerId);
     try {
       setError(null);
-      const result = await backfillTickerEarnings(row.tickerId);
-      if (result.error) setError(`Failed to backfill earnings for ${row.symbol}: ${result.error}`);
+      const result = await populateTickerEarnings(row.tickerId);
+      if (result.error) setError(`Failed to populate earnings for ${row.symbol}: ${result.error}`);
       await loadRows();
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : `Failed to backfill earnings for ${row.symbol}.`);
+      setError(err instanceof ApiError ? err.message : `Failed to populate earnings for ${row.symbol}.`);
     } finally {
-      setBackfillingEarningsTickerId(null);
+      setPopulatingEarningsTickerId(null);
     }
   }
 
-  // Scoped to just the price-history step (see routes/shortlist.ts) -- unlike handleStartBackfill below,
-  // this does not touch the calendar or option-chain strikes, and doesn't open the 4-step prep modal: it's
-  // a single fast action, not the full new-ticker pipeline (found live 2026-09-23: clicking this used to
-  // silently trigger all 4 steps, including a chain-strike warmup that can run for many minutes on a
-  // dense ETF like QQQ).
-  async function handleBackfillPriceHistory(row: ShortlistRow) {
-    setConfirmPriceHistoryRow(null);
-    setBackfillingPriceHistoryTickerId(row.tickerId);
+  // The server decides from what is stored whether this fetches the full history, only the missing
+  // sessions, or nothing (see routes/shortlist.ts). Scoped to daily bars -- unlike handleStartBackfill below,
+  // it does not touch the calendar or option-chain strikes, and doesn't open the 4-step prep modal: it's a
+  // single fast action, not the full new-ticker pipeline.
+  async function handlePopulateDailyBars(row: ShortlistRow) {
+    setConfirmPopulateDailyBarsRow(null);
+    setPopulatingDailyBarsTickerId(row.tickerId);
     try {
       setError(null);
-      await backfillTickerPriceHistory(row.tickerId);
+      await populateTickerDailyBars(row.tickerId);
       await loadRows();
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : `Failed to backfill price history for ${row.symbol}.`);
+      setError(err instanceof ApiError ? err.message : `Failed to populate daily bars for ${row.symbol}.`);
     } finally {
-      setBackfillingPriceHistoryTickerId(null);
+      setPopulatingDailyBarsTickerId(null);
     }
   }
 
   // Re-runs refreshStoredOptionChain for just this ticker (expiries + per-expiry strikes) -- same
   // fetch the nightly capture does, without touching history/earnings/calendar. Hits IBKR and can
   // take a while (one wildcard per expiry, sequential), so it's confirmed and single-in-flight like
-  // Backfill Price History above.
-  async function handleRefreshOptionChain(row: ShortlistRow) {
-    setConfirmRefreshOptionChainRow(null);
-    setRefreshingOptionChainTickerId(row.tickerId);
+  // Populate Daily Bars above.
+  async function handlePopulateOptionChain(row: ShortlistRow) {
+    setConfirmPopulateOptionChainRow(null);
+    setPopulatingOptionChainTickerId(row.tickerId);
     try {
       setError(null);
-      await refreshTickerOptionChain(row.tickerId);
+      await populateTickerOptionChain(row.tickerId);
       await loadRows();
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : `Failed to refresh the option chain for ${row.symbol}.`);
+      setError(err instanceof ApiError ? err.message : `Failed to populate the option chain for ${row.symbol}.`);
     } finally {
-      setRefreshingOptionChainTickerId(null);
+      setPopulatingOptionChainTickerId(null);
     }
   }
 
@@ -340,7 +339,7 @@ export function ShortlistTab({ onOpenTickerDetail }: ShortlistTabProps) {
         <button
           type="button"
           className="btn btn-link p-0 text-decoration-none fw-bold"
-          onClick={() => onOpenTickerDetail(row.symbol)}
+          onClick={() => onOpenTickerModal(row.symbol)}
         >
           {row.symbol}
         </button>
@@ -366,7 +365,7 @@ export function ShortlistTab({ onOpenTickerDetail }: ShortlistTabProps) {
     {
       key: "dailyBars",
       header: "Daily Bars",
-      headerTitle: "Daily price/IV history — momentum needs 253 bars, the own-volatility threshold needs 377",
+      headerTitle: "Daily price/IV history — momentum needs 253 bars, the own-volatility threshold needs 377; warns when the latest bar is behind the last completed session",
       align: "right",
       render: (row) => {
         const reasons: string[] = [];
@@ -378,19 +377,20 @@ export function ShortlistTab({ onOpenTickerDetail }: ShortlistTabProps) {
         } else if (row.dailyBarCount < tradingDaysForOwnVolatilityThreshold) {
           reasons.push(`Only ${row.dailyBarCount} daily bars — the own-volatility threshold needs ${tradingDaysForOwnVolatilityThreshold}, so it stays on the fixed 1.3x default until then.`);
         }
-        // row.historyIncomplete means IBKR actually has more to give and we haven't fetched it yet --
-        // only then is "Backfill Price History" a real fix. A short history can also just mean the ticker
-        // hasn't been trading long enough for more to exist yet (e.g. a recently-launched ETF); pointing
-        // at an action that would fetch nothing new was a real bug here (Marcelo caught it on DRAM, only
-        // 0.5y old and correctly already fully backfilled -- 2026-09-23).
+        if (row.latestDailyBarDate !== null && row.latestDailyBarDate < row.lastCompletedSessionDate) {
+          reasons.push(`Latest bar is ${row.latestDailyBarDate}, expected ${row.lastCompletedSessionDate}.`);
+        }
+        // dailyBarsPlan "none" means there is nothing more to fetch: a short history can also just mean the ticker
+        // hasn't been trading long enough for more to exist yet (e.g. a recently-launched ETF), so the warning
+        // must not point at an action that would fetch nothing new.
         const reason =
           reasons.length === 0
             ? null
-            : row.historyIncomplete
-              ? `${reasons.join(" ")} Fix: Actions → Backfill Price History.`
-              : `${reasons.join(" ")} Already fully backfilled — history starts ${row.historyStartDate ?? "unknown"}, that's everything IBKR has; nothing to do but wait for more trading days.`;
-        if (backfillingPriceHistoryTickerId === row.tickerId) {
-          return <Spinner size="sm" label={`Backfilling price history for ${row.symbol}`} />;
+            : row.dailyBarsPlan !== "none"
+              ? `${reasons.join(" ")} Fix: Actions → Populate Daily Bars.`
+              : `${reasons.join(" ")} Already fully populated — history starts ${row.historyStartDate ?? "unknown"}, that's everything IBKR has; nothing to do but wait for more trading days.`;
+        if (populatingDailyBarsTickerId === row.tickerId) {
+          return <Spinner size="sm" label={`Populating daily bars for ${row.symbol}`} />;
         }
         return (
           <span className="d-inline-flex align-items-center gap-1">
@@ -407,8 +407,8 @@ export function ShortlistTab({ onOpenTickerDetail }: ShortlistTabProps) {
       align: "right",
       render: (row) => {
         if (row.isEtf) return <span className="text-muted small">N/A — ETF</span>;
-        if (backfillingEarningsTickerId === row.tickerId) {
-          return <Spinner size="sm" label={`Backfilling earnings for ${row.symbol}`} />;
+        if (populatingEarningsTickerId === row.tickerId) {
+          return <Spinner size="sm" label={`Populating earnings for ${row.symbol}`} />;
         }
         const thin = row.earningsCount < quartersForEarningsAdjustment;
         const nextInDays = row.nextEarningsDateIso ? formatDaysToExpiry(daysToExpiry(row.nextEarningsDateIso)) : null;
@@ -458,8 +458,8 @@ export function ShortlistTab({ onOpenTickerDetail }: ShortlistTabProps) {
       headerTitle: "Expiries with strikes captured (option_chain_expiry_strikes) — hover for per-expiry strike counts",
       align: "right",
       render: (row) =>
-        refreshingOptionChainTickerId === row.tickerId ? (
-          <Spinner size="sm" label={`Refreshing option chain for ${row.symbol}`} />
+        populatingOptionChainTickerId === row.tickerId ? (
+          <Spinner size="sm" label={`Populating option chain for ${row.symbol}`} />
         ) : (
           <OptionChainExpiriesCell expiries={row.optionChainExpiries} />
         ),
@@ -506,31 +506,31 @@ export function ShortlistTab({ onOpenTickerDetail }: ShortlistTabProps) {
       render: (row) => {
         const items: ActionsMenuItem[] = [
           {
-            key: "backfill-earnings",
-            label: "Backfill Earnings",
-            onClick: () => setConfirmEarningsRow(row),
-            loading: backfillingEarningsTickerId === row.tickerId,
+            key: "populate-earnings",
+            label: "Populate Earnings",
+            onClick: () => setConfirmPopulateEarningsRow(row),
+            loading: populatingEarningsTickerId === row.tickerId,
             disabled: row.isEtf || row.earningsCount >= quartersForEarningsAdjustment,
             disabledReason: row.isEtf ? "ETFs don't report earnings" : `${row.earningsCount} on record, already sufficient`,
           },
           {
-            key: "backfill-price-history",
-            label: "Backfill Price History",
-            onClick: () => setConfirmPriceHistoryRow(row),
-            loading: backfillingPriceHistoryTickerId === row.tickerId,
-            disabled: !row.historyIncomplete || backfillingPriceHistoryTickerId !== null,
+            key: "populate-daily-bars",
+            label: "Populate Daily Bars",
+            onClick: () => setConfirmPopulateDailyBarsRow(row),
+            loading: populatingDailyBarsTickerId === row.tickerId,
+            disabled: row.dailyBarsPlan === "none" || populatingDailyBarsTickerId !== null,
             disabledReason:
-              backfillingPriceHistoryTickerId !== null
-                ? "Another price-history backfill is already running. One at a time."
-                : `Already backfilled — history starts ${row.historyStartDate ?? "unknown"}, that's everything IBKR has`,
+              populatingDailyBarsTickerId !== null
+                ? "Another daily-bars population is already running. One at a time."
+                : `Daily bars are complete and current through ${row.latestDailyBarDate ?? "unknown"}`,
           },
           {
-            key: "refresh-option-chain",
-            label: "Refresh Option Chain",
-            onClick: () => setConfirmRefreshOptionChainRow(row),
-            loading: refreshingOptionChainTickerId === row.tickerId,
-            disabled: refreshingOptionChainTickerId !== null,
-            disabledReason: "Another option-chain refresh is already running. One at a time.",
+            key: "populate-option-chain",
+            label: "Populate Option Chain",
+            onClick: () => setConfirmPopulateOptionChainRow(row),
+            loading: populatingOptionChainTickerId === row.tickerId,
+            disabled: populatingOptionChainTickerId !== null,
+            disabledReason: "Another option-chain population is already running. One at a time.",
           },
           {
             key: "retry-full-setup",
@@ -549,6 +549,8 @@ export function ShortlistTab({ onOpenTickerDetail }: ShortlistTabProps) {
             onClick: () => setRemoveConfirmRow(row),
             loading: removingId === row.id,
             danger: true,
+            disabled: row.openPositionCount > 0,
+            disabledReason: `${pluralize(row.openPositionCount, "open position")} on this ticker. Close ${row.openPositionCount === 1 ? "it" : "them"} before removing.`,
           },
         ];
         return (
@@ -648,7 +650,7 @@ export function ShortlistTab({ onOpenTickerDetail }: ShortlistTabProps) {
       {removeConfirmRow && (
         <ConfirmModal
           title="Remove from Shortlist"
-          message={<>Remove <strong>{removeConfirmRow.symbol}</strong> from the shortlist? It will stop being scanned for trade alerts.</>}
+          message={<>Remove <strong>{removeConfirmRow.symbol}</strong> from the shortlist? It will no longer be scored on the Signals screen unless it has an open short option.</>}
           confirmLabel="Remove"
           confirming={removingId === removeConfirmRow.id}
           onConfirm={() => handleRemove(removeConfirmRow.id)}
@@ -656,48 +658,54 @@ export function ShortlistTab({ onOpenTickerDetail }: ShortlistTabProps) {
         />
       )}
 
-      {confirmEarningsRow && (
+      {confirmPopulateEarningsRow && (
         <ConfirmModal
-          title="Backfill Earnings"
+          title="Populate Earnings"
           message={
             <>
-              Fetch historical earnings dates for <strong>{confirmEarningsRow.symbol}</strong> from API Ninjas and add them to the record?
+              Fetch historical earnings dates for <strong>{confirmPopulateEarningsRow.symbol}</strong> from API Ninjas and add them to the record?
             </>
           }
-          confirmLabel="Backfill"
+          confirmLabel="Populate"
           danger={false}
-          onConfirm={() => handleBackfillEarnings(confirmEarningsRow)}
-          onCancel={() => setConfirmEarningsRow(null)}
+          onConfirm={() => handlePopulateEarnings(confirmPopulateEarningsRow)}
+          onCancel={() => setConfirmPopulateEarningsRow(null)}
         />
       )}
 
-      {confirmPriceHistoryRow && (
+      {confirmPopulateDailyBarsRow && (
         <ConfirmModal
-          title="Backfill Price History"
+          title="Populate Daily Bars"
           message={
-            <>
-              Re-fetch five years of daily price history for <strong>{confirmPriceHistoryRow.symbol}</strong> from IBKR?
-            </>
+            confirmPopulateDailyBarsRow.dailyBarsPlan === "full" ? (
+              <>
+                Fetch five years of daily price and IV history for <strong>{confirmPopulateDailyBarsRow.symbol}</strong> from IBKR?
+              </>
+            ) : (
+              <>
+                Fetch the missing daily bars for <strong>{confirmPopulateDailyBarsRow.symbol}</strong> from IBKR? Latest on record: {confirmPopulateDailyBarsRow.latestDailyBarDate}.
+              </>
+            )
           }
-          confirmLabel="Backfill"
+          confirmLabel="Populate"
           danger={false}
-          onConfirm={() => handleBackfillPriceHistory(confirmPriceHistoryRow)}
-          onCancel={() => setConfirmPriceHistoryRow(null)}
+          onConfirm={() => handlePopulateDailyBars(confirmPopulateDailyBarsRow)}
+          onCancel={() => setConfirmPopulateDailyBarsRow(null)}
         />
       )}
 
-      {confirmRefreshOptionChainRow && (
+      {confirmPopulateOptionChainRow && (
         <ConfirmModal
-          title="Refresh Option Chain"
+          title="Populate Option Chain"
           message={
             <>
-              Re-fetch expiries and strikes for <strong>{confirmRefreshOptionChainRow.symbol}</strong> from IBKR?
+              Re-fetch expiries and strikes for <strong>{confirmPopulateOptionChainRow.symbol}</strong> from IBKR?
             </>
           }
-          confirmLabel="Refresh"
+          confirmLabel="Populate"
           danger={false}
-          onConfirm={() => handleRefreshOptionChain(confirmRefreshOptionChainRow)}
-          onCancel={() => setConfirmRefreshOptionChainRow(null)}
+          onConfirm={() => handlePopulateOptionChain(confirmPopulateOptionChainRow)}
+          onCancel={() => setConfirmPopulateOptionChainRow(null)}
         />
       )}
 

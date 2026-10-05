@@ -1,17 +1,21 @@
-import { useEffect, useMemo, useState, type ReactNode, useCallback } from "react";
+import { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import { fetchNextTickerCalendarEvents, type NextTickerCalendarEvents } from "../api/calendarEvents";
 import { ApiError } from "../api/client";
-import { fetchTickerSignals, openSignalsTickerStream, type HeldLegScore, type MacroEvent, type RollSignalCandidate, type SignalCandidate, type SignalStrategyKey, type TickerSignals } from "../api/signals";
-import { openTickerDetailStream, type PriceBar, type TickerOverview, type TickerTechnicals } from "../api/tickerDetail";
+import { fetchSignalContractScore, fetchSignalsChain, fetchTickerSignals, openSignalsQuotesStream, openSignalsTickerStream, type HeldLegScore, type MacroEvent, type RollSignalCandidate, type ScoredSignalContract, type SignalCandidate, type SignalContractScore, type SignalsChain, type SignalsChainCellState, type SignalsQuotesFrame, type SignalStrategyKey, type TickerSignals, type UnscoredSignalContract } from "../api/signals";
+import { useVisibleLiveContracts } from "../hooks/useVisibleLiveContracts";
+import { openTickerDetailStream, type MacdSignal, type PriceBar, type TickerOverview, type TickerTechnicals } from "../api/tickerDetail";
 import { useTickerPositions } from "../hooks/useTickerPositions";
 import { cancelUnconfirmedOrder, type AdaptivePriority, type OrderRequest } from "../api/positions";
 import { OrderReviewPanel, type OrderReviewQuoteSeed } from "./OrderReviewPanel";
 import { RollSignalOrderSetupForm } from "./RollSignalOrderSetupForm";
 import { SignalOrderSetupForm } from "./SignalOrderSetupForm";
-import { formatCompactNumber, formatCurrency, formatCurrencyTrimmed, formatDate, formatDateTime, formatNumber, formatPercentage, formatPercentageValue, formatQuotePrice, formatShortAge, formatSignedPercentageValue, formatSignedPnl, formatVolatilityPoints, pnlTextClass } from "../lib/formatters";
-import { describeHeldLeg, describeQuoteAgeRange, describeRollSignalFlag, describeSignalFlag, gradeBadgeClass, gradeExplanation, gradeLabel, heldLegUnscoredReasonLabel, netRollEdgeExplanation, quoteSourceLabel, rollFlagLetter, signalFlagLetter, surfaceIvTrustClass, unscoredReasonLabel } from "../lib/signalsPresentation";
+import { ChainContractOrderSetupForm } from "./ChainContractOrderSetupForm";
+import { SignalsOptionChainCard, type ChainContractRef } from "./signals/SignalsOptionChainCard";
+import { formatCompactNumber, formatCurrency, formatCurrencyTrimmed, formatDate, formatDateTime, formatNumber, formatPercentage, formatPercentageValue, formatSignedPercentageValue, formatSignedPnl, formatVolatilityPoints, pnlTextClass } from "../lib/formatters";
+import { candidateContractKey, describeHeldLeg, describeSupportResistanceLevel, describeNoCandidatesMessage, describeQuoteAgeRange, describeRollSignalFlag, describeSignalFlag, gradeBadgeClass, gradeExplanation, gradeLabel, heldLegUnscoredReasonLabel, netRollEdgeExplanation, quoteSourceLabel, rollFlagLetter, signalContractKey, signalFlagLetter, surfaceIvTrustClass, describeNoSignalBadge, restScoresFallbackMs } from "../lib/signalsPresentation";
 import { IvHistoryChart } from "./charts/IvHistoryChart";
 import { TickerPriceChart } from "./charts/TickerPriceChart";
+import { CollapsibleCard } from "./CollapsibleCard";
 import { DataTable, type DataTableColumn } from "./DataTable/DataTable";
 import { FlashingNumber } from "./FlashingNumber";
 import { ModelCaveatBadge } from "./signals/ModelCaveatBadge";
@@ -20,20 +24,29 @@ import { StrategyBadge } from "./StrategyBadge";
 import { TickerHeaderStrip } from "./TickerHeaderStrip";
 import { TickerPositionsCards } from "./TickerPositionsCards";
 import { TooltipSpan } from "./TooltipSpan";
+import { QuoteAgeLabel } from "./QuoteAgeLabel";
 import { useTooltip } from "../hooks/useTooltip";
+import { useMediaQuery } from "../hooks/useMediaQuery";
 
-// Signals modal (stage 4; mockup approved 2026-09-22, v3). Same header,
-// Positions and Wheel-cycle cards as Ticker Detail, then the live graded
-// opportunity list, the selected expiry's chain (calls left / puts right, OTM
-// side only), the order-setup slot (stage 5) and the charts at the bottom.
+// Signals modal (stage 4; mockup approved 2026-09-22, v3): the one ticker
+// modal, opened from every ticker link (mounted once by
+// SignalsTickerModalProvider). Header strip, the live graded opportunity list,
+// the full option chain of one expiry (any call or put can be picked), the
+// order-setup slot (stage 5), the Positions and Wheel-cycle cards, technicals
+// and the charts at the bottom.
 // Data: GET /signals/:symbol for the first paint, the signalsTicker stream for
-// live re-scoring, and the ticker-detail stream restricted to
-// overview/chart/technicals so it never opens the ~96-line option chain.
+// live re-scoring, and the ticker-detail stream (overview, pooled spot price,
+// chart, technicals). A ticker outside the Signals universe (404) still gets
+// the header, positions, technicals and charts.
 
 interface SignalsTickerModalProps {
   symbol: string;
   /** Roll Signals: pre-select the best roll of this open short leg on open (the screen's roll badge, a Telegram link). */
   initialRollLegId?: string | null;
+  /** Scrolls this position's card into view on open, forcing the Positions card open. */
+  focusPositionId?: string | null;
+  /** After an order fills or a position is closed/edited inside the modal, so pages showing positions can reload. */
+  onPositionsChanged?: () => void;
   onClose: () => void;
 }
 
@@ -47,8 +60,10 @@ const dteFilters: { key: DteFilter; label: string; matches: (dte: number) => boo
 ];
 
 const badgeFontSize = { fontSize: "0.72rem" } as const;
-const candidateKey = (candidate: SignalCandidate) => `${candidate.expiry}|${candidate.strike}|${candidate.strategyKey === "covered_call" ? "C" : "P"}`;
-const rollKey = (roll: RollSignalCandidate) => `${roll.legId}|${candidateKey(roll.replacement)}`;
+const macdSignalBadgeClass: Record<MacdSignal, string> = { Bullish: "badge-change-pos", Bearish: "badge-change-neg", Neutral: "badge-change-flat" };
+const noCreditRollNotice = "No credit roll to a lower-delta contract passes the Signals filters for that leg right now. Pick any contract on the option chain to roll to it.";
+const notInSignalsUniverseNotice = "Not in the Signals universe — not on the shortlist and no open short option. Signals scores appear once it's shortlisted.";
+const rollKey = (roll: RollSignalCandidate) => `${roll.legId}|${candidateContractKey(roll.replacement)}`;
 
 function RollGradeBadge({ roll }: { roll: RollSignalCandidate }) {
   const ref = useTooltip<HTMLSpanElement>(netRollEdgeExplanation);
@@ -76,12 +91,15 @@ function RollFlagBadges({ roll, held }: { roll: RollSignalCandidate; held: HeldL
  * "Your positions" (Roll Signals, mockup rev 4 approved 2026-09-24): one block per open short leg with
  * what holding it still offers and its ranked credit rolls; selecting a roll fills the order pane.
  */
+const liveContractsSettleMs = 300;
+
 function HeldLegRolls({ held, rolls, showAvoid, selectedRollKey, disabled, onSelect }: { held: HeldLegScore; rolls: RollSignalCandidate[]; showAvoid: boolean; selectedRollKey: string | null; disabled: boolean; onSelect: (roll: RollSignalCandidate) => void }) {
   const shown = showAvoid ? rolls : rolls.filter((roll) => roll.grade !== "avoid");
   const hiddenAvoid = rolls.length - shown.length;
+  const heldKey = signalContractKey({ expiry: held.expiry, strike: held.strike, right: held.right });
   return (
     <div className="border rounded mb-2">
-      <div className="d-flex flex-wrap justify-content-between align-items-center gap-2 px-2 py-1 border-bottom bg-secondary-lt" style={{ fontSize: "0.8rem" }}>
+      <div className="d-flex flex-wrap justify-content-between align-items-center gap-2 px-2 py-1 border-bottom bg-secondary-lt" style={{ fontSize: "0.8rem" }} data-live-contracts={heldKey}>
         <span>
           Short <strong>{describeHeldLeg(held)}</strong> · {held.quantity} contract{held.quantity === 1 ? "" : "s"} · sold at {formatCurrency(held.entryPrice)}
         </span>
@@ -132,8 +150,10 @@ function HeldLegRolls({ held, rolls, showAvoid, selectedRollKey, disabled, onSel
               {shown.map((roll) => {
                 const key = rollKey(roll);
                 const isCall = roll.strategyKey === "covered_call";
+                // A roll's price needs both legs: closing the held one and opening the replacement.
+                const liveKeys = `${heldKey},${signalContractKey({ expiry: roll.replacement.expiry, strike: roll.replacement.strike, right: isCall ? "C" : "P" })}`;
                 return (
-                  <tr key={key} className={[selectedRollKey === key ? "table-active" : "", roll.grade === "avoid" ? "text-secondary" : ""].filter(Boolean).join(" ") || undefined} style={{ cursor: disabled ? undefined : "pointer" }} onClick={disabled ? undefined : () => onSelect(roll)}>
+                  <tr key={key} data-live-contracts={liveKeys} className={[selectedRollKey === key ? "table-active" : "", roll.grade === "avoid" ? "text-secondary" : ""].filter(Boolean).join(" ") || undefined} style={{ cursor: disabled ? undefined : "pointer" }} onClick={disabled ? undefined : () => onSelect(roll)}>
                     <td>
                       <input type="radio" className="form-check-input" checked={selectedRollKey === key} readOnly aria-label={`Select roll to ${describeHeldLeg({ right: isCall ? "C" : "P", strike: roll.replacement.strike, dte: roll.replacement.dte })}`} />
                     </td>
@@ -211,104 +231,6 @@ function SegmentedButtons<TKey extends string>({ value, options, onChange }: { v
   );
 }
 
-function ExpiryChainGrid({ candidates, expiry, spotPrice, selectedKey, onSelect }: { candidates: SignalCandidate[]; expiry: string; spotPrice: number | null; selectedKey: string | null; onSelect: (candidate: SignalCandidate) => void }) {
-  const rows = useMemo(() => {
-    const byStrike = new Map<number, { call?: SignalCandidate; put?: SignalCandidate }>();
-    for (const candidate of candidates) {
-      if (candidate.expiry !== expiry) continue;
-      const entry = byStrike.get(candidate.strike) ?? {};
-      if (candidate.strategyKey === "covered_call") entry.call = candidate;
-      else entry.put = candidate;
-      byStrike.set(candidate.strike, entry);
-    }
-    return [...byStrike.entries()].sort((a, b) => a[0] - b[0]);
-  }, [candidates, expiry]);
-  const spotMarkerIndex = spotPrice === null ? -1 : rows.findIndex(([strike]) => strike >= spotPrice);
-
-  const sideCells = (candidate: SignalCandidate | undefined) =>
-    candidate ? (
-      <>
-        <td className="text-end font-mono">{formatQuotePrice(candidate.bid)}</td>
-        <td className="text-end font-mono">{formatQuotePrice(candidate.ask)}</td>
-        <td className="text-end font-mono">{formatSignedDelta(candidate.delta)}</td>
-        <td className="text-end">
-          <GradeBadge candidate={candidate} />
-        </td>
-      </>
-    ) : (
-      <>
-        <td />
-        <td />
-        <td />
-        <td />
-      </>
-    );
-
-  return (
-    <div className="table-responsive">
-      <table className="table table-sm table-hover table-vcenter card-table" style={{ fontSize: "0.8rem" }}>
-        <thead className="table-light">
-          <tr>
-            <th colSpan={4} className="text-center">
-              Calls
-            </th>
-            <th className="text-center">Strike</th>
-            <th colSpan={4} className="text-center">
-              Puts
-            </th>
-          </tr>
-          <tr>
-            <th className="text-end">Bid</th>
-            <th className="text-end">Ask</th>
-            <th className="text-end">Δ</th>
-            <th className="text-end">Grade</th>
-            <th className="text-center">·</th>
-            <th className="text-end">Bid</th>
-            <th className="text-end">Ask</th>
-            <th className="text-end">Δ</th>
-            <th className="text-end">Grade</th>
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map(([strike, entry], index) => {
-            const candidate = entry.call ?? entry.put;
-            const key = candidate ? candidateKey(candidate) : String(strike);
-            return (
-              <FragmentRow key={key} showSpotMarkerBefore={index === spotMarkerIndex} spotPrice={spotPrice}>
-                <tr className={selectedKey === key ? "table-active" : undefined} style={{ cursor: candidate ? "pointer" : undefined }} onClick={candidate ? () => onSelect(candidate) : undefined}>
-                  {sideCells(entry.call)}
-                  <td className="text-center fw-bold font-mono">{formatCurrencyTrimmed(strike)}</td>
-                  {sideCells(entry.put)}
-                </tr>
-              </FragmentRow>
-            );
-          })}
-          {spotMarkerIndex === -1 && spotPrice !== null && rows.length > 0 && <SpotMarkerRow spotPrice={spotPrice} />}
-        </tbody>
-      </table>
-    </div>
-  );
-}
-
-function SpotMarkerRow({ spotPrice }: { spotPrice: number }) {
-  return (
-    <tr>
-      <td colSpan={9} className="text-center fw-semibold bg-info-lt" style={{ fontSize: "0.72rem" }}>
-        ▼ Spot {formatCurrency(spotPrice)} ▼
-      </td>
-    </tr>
-  );
-}
-
-function FragmentRow({ showSpotMarkerBefore, spotPrice, children }: { showSpotMarkerBefore: boolean; spotPrice: number | null; children: ReactNode }) {
-  return (
-    <>
-      {showSpotMarkerBefore && spotPrice !== null && <SpotMarkerRow spotPrice={spotPrice} />}
-      {children}
-    </>
-  );
-}
-
 function formatSignedDelta(delta: number): string {
   return `${delta > 0 ? "+" : ""}${delta.toFixed(2)}`;
 }
@@ -328,24 +250,80 @@ function signalCandidateToQuoteSeed(candidate: SignalCandidate | null): OrderRev
   };
 }
 
-export function SignalsTickerModal({ symbol, initialRollLegId = null, onClose }: SignalsTickerModalProps) {
+function signalContractScoreToQuoteSeed(contract: SignalContractScore | null): OrderReviewQuoteSeed | null {
+  if (!contract) return null;
+  if (contract.scored) return signalCandidateToQuoteSeed(contract);
+  return { bid: contract.bid, ask: contract.ask, impliedVolatility: null, delta: contract.delta, theta: null, vega: null };
+}
+
+/** A scored contract reduced to its quote: the roll form's replacement when the HELD leg is the unscored one (no net roll Edge, the order still builds). */
+function scoredContractAsQuoteOnly(contract: ScoredSignalContract): UnscoredSignalContract {
+  return {
+    scored: false,
+    right: contract.right,
+    isCandidate: contract.isCandidate,
+    notCandidateReason: contract.notCandidateReason,
+    spotPrice: contract.spotPrice,
+    priceSource: contract.priceSource,
+    strategyKey: contract.strategyKey,
+    expiry: contract.expiry,
+    strike: contract.strike,
+    dte: contract.dte,
+    bid: contract.bid,
+    ask: contract.ask,
+    delta: contract.delta,
+    quoteSource: contract.quoteSource,
+    quotedAt: contract.quotedAt,
+  };
+}
+
+/** A chain contract picked outside the candidates list, scored on demand by GET /signals/:symbol/contract. */
+interface ChainContractPick {
+  key: string;
+  contract: ChainContractRef;
+  /** The chain cell it was picked from (null when picked from elsewhere, e.g. Recovery Path): filtered and unscored get the amber notice. */
+  originCellState: SignalsChainCellState | null;
+  selectedAtIso: string;
+  status: "ready" | "error";
+  result: SignalContractScore | null;
+  error: string | null;
+}
+
+const chainPickNotice = (pick: ChainContractPick, reason: string) => (
+  <div className={`signals-chain-notice ${pick.originCellState === "filtered" || pick.originCellState === "unscored" ? "iorio-note-amber" : "text-secondary"}`}>
+    {reason}. Your order limits still apply.
+  </div>
+);
+
+export function SignalsTickerModal({ symbol, initialRollLegId = null, focusPositionId = null, onPositionsChanged, onClose }: SignalsTickerModalProps) {
   const [signals, setSignals] = useState<TickerSignals | null>(null);
+  const noSignalBadge = useMemo(() => (signals ? describeNoSignalBadge(signals) : null), [signals]);
   const [signalsError, setSignalsError] = useState<string | null>(null);
-  const [liveQuoteContractCount, setLiveQuoteContractCount] = useState<number | null>(null);
+  // GET /signals/:symbol answers 404 for a ticker neither shortlisted nor carrying an open short option leg.
+  const [notInSignalsUniverse, setNotInSignalsUniverse] = useState(false);
+  const [signalsReloadKey, setSignalsReloadKey] = useState(0);
   const [uncompensatedAsOf, setUncompensatedAsOf] = useState<{ spotPrice: number; at: string } | null>(null);
+  const [quotesFrame, setQuotesFrame] = useState<SignalsQuotesFrame | null>(null);
+  const modalContentRef = useRef<HTMLDivElement | null>(null);
   const [streamFailed, setStreamFailed] = useState(false);
 
   const [overview, setOverview] = useState<TickerOverview | null>(null);
   const [overviewError, setOverviewError] = useState<string | null>(null);
+  // The shared pooled live stock price (same line as every other screen); never the 10:00 capture's signals.spotPrice.
+  const [liveSpotPrice, setLiveSpotPrice] = useState<number | null>(null);
   const [chartBars, setChartBars] = useState<PriceBar[] | null>(null);
   const [chartError, setChartError] = useState<string | null>(null);
   const [technicals, setTechnicals] = useState<TickerTechnicals | null>(null);
+  const [technicalsError, setTechnicalsError] = useState<string | null>(null);
   const [nextCalendarEvents, setNextCalendarEvents] = useState<NextTickerCalendarEvents | null>(null);
 
   const [selectedExpiry, setSelectedExpiry] = useState<string | null>(null);
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
   const [selectionReference, setSelectionReference] = useState<{ netEdge: number; atIso: string } | null>(null);
   const [selectedRollKey, setSelectedRollKey] = useState<string | null>(null);
+  // Roll mode: the open short leg being rolled. While set, a chain click picks that leg's replacement (the list
+  // is only the ranked shortlist), even when the list has no roll for the leg.
+  const [rollModeLegId, setRollModeLegId] = useState<string | null>(null);
   const [rollSelectionReference, setRollSelectionReference] = useState<{ netRollEdge: number; atIso: string } | null>(null);
   const [pendingRollLegId, setPendingRollLegId] = useState<string | null>(initialRollLegId);
   // Bumped on a fill so the stream reloads its inputs (a rolled leg is a new open leg the running stream never saw).
@@ -356,7 +334,29 @@ export function SignalsTickerModal({ symbol, initialRollLegId = null, onClose }:
   const [showAvoid, setShowAvoid] = useState(false);
   const [rollNotice, setRollNotice] = useState<string | null>(null);
 
+  const [chain, setChain] = useState<SignalsChain | null>(null);
+  const [chainLoading, setChainLoading] = useState(false);
+  const [chainError, setChainError] = useState<string | null>(null);
+  // The chain's expiry until the user picks one: the best candidate's, captured once the first scores are in (undefined = not yet).
+  const [chainDefaultExpiry, setChainDefaultExpiry] = useState<string | null | undefined>(undefined);
+  const [chainPhoneSide, setChainPhoneSide] = useState<"C" | "P">("C");
+  const [chainNotice, setChainNotice] = useState<string | null>(null);
+  const [chainPick, setChainPick] = useState<ChainContractPick | null>(null);
+  const chainPickRequestIdRef = useRef(0);
+  // The chain contract being scored: the order pane keeps showing what it had, dimmed under a spinner, until it arrives.
+  const [chainPickLoadingKey, setChainPickLoadingKey] = useState<string | null>(null);
+  const chainCardRef = useRef<HTMLDivElement | null>(null);
+  const isPhoneLayout = useMediaQuery("(max-width: 991.98px)");
+
   const tickerPositions = useTickerPositions(symbol);
+  const focusedPositionRef = useRef<HTMLDivElement | null>(null);
+  // The Roll / Sell Call buttons sit on the position cards below the order setup: bring the result into view.
+  const rollNoticeRef = useRef<HTMLDivElement | null>(null);
+  const orderSetupRef = useRef<HTMLDivElement | null>(null);
+  const scrollOrderSetupIntoView = useCallback((block: ScrollLogicalPosition = "nearest") => {
+    requestAnimationFrame(() => orderSetupRef.current?.scrollIntoView({ behavior: "smooth", block }));
+  }, []);
+  const [positionsForceOpenSignal, setPositionsForceOpenSignal] = useState(0);
 
   // Informational modal, no action required — closable via ESC or backdrop click.
   // Closing with an order still under review cancels it (best effort).
@@ -382,20 +382,40 @@ export function SignalsTickerModal({ symbol, initialRollLegId = null, onClose }:
     };
   }, []);
 
+  // The REST scores are at the 10:00 snapshot spot: shown only if no live frame has arrived after a short wait (or the stream failed),
+  // so the list never opens on stale grades that the live price then corrects.
+  const [restSignals, setRestSignals] = useState<TickerSignals | null>(null);
+  useEffect(() => {
+    if (!restSignals) return;
+    if (streamFailed) {
+      setSignals((current) => current ?? restSignals);
+      return;
+    }
+    const timer = setTimeout(() => setSignals((current) => current ?? restSignals), restScoresFallbackMs);
+    return () => clearTimeout(timer);
+  }, [restSignals, streamFailed]);
+
   useEffect(() => {
     let cancelled = false;
-    setSignals(null);
     setSignalsError(null);
-    setSelectedExpiry(null);
-    setSelectedKey(null);
     fetchTickerSignals(symbol)
       .then((result) => {
         if (cancelled) return;
-        setSignals((current) => current ?? result); // a live frame may already have arrived
+        setNotInSignalsUniverse(false);
+        setRestSignals(result);
       })
       .catch((err) => {
-        if (!cancelled) setSignalsError(err instanceof ApiError ? err.message : "Could not load the signals for this ticker.");
+        if (cancelled) return;
+        if (err instanceof ApiError && err.status === 404) setNotInSignalsUniverse(true);
+        else setSignalsError(err instanceof ApiError ? err.message : "Could not load the signals for this ticker.");
       });
+    return () => {
+      cancelled = true;
+    };
+  }, [symbol, signalsReloadKey]);
+
+  useEffect(() => {
+    let cancelled = false;
     fetchNextTickerCalendarEvents(symbol)
       .then((result) => {
         if (!cancelled) setNextCalendarEvents(result);
@@ -408,19 +428,17 @@ export function SignalsTickerModal({ symbol, initialRollLegId = null, onClose }:
     };
   }, [symbol]);
 
-  // Header pricing, chart and technicals — never the option chain (~96 IBKR lines) nor a second spot line.
+  // Header pricing (overview + the pooled spot line), chart and technicals.
   useEffect(() => {
-    setOverview(null);
-    setOverviewError(null);
-    setChartBars(null);
-    setChartError(null);
-    setTechnicals(null);
     return openTickerDetailStream(
       symbol,
       (event) => {
         switch (event.type) {
           case "overview":
             setOverview(event.data);
+            break;
+          case "spot":
+            setLiveSpotPrice(event.data.last);
             break;
           case "chart":
             setChartBars(event.data);
@@ -430,7 +448,8 @@ export function SignalsTickerModal({ symbol, initialRollLegId = null, onClose }:
             break;
           case "error":
             if (event.section === "overview") setOverviewError(event.message);
-            if (event.section === "chart") setChartError(event.message);
+            else if (event.section === "chart") setChartError(event.message);
+            else if (event.section === "technicals") setTechnicalsError(event.message);
             break;
           case "streamError":
             setOverviewError(event.message);
@@ -439,28 +458,71 @@ export function SignalsTickerModal({ symbol, initialRollLegId = null, onClose }:
             break;
         }
       },
-      { sections: ["overview", "chart", "technicals"] },
+      { sections: ["overview", "spot", "chart", "technicals"] },
     );
   }, [symbol]);
 
   // Live re-scoring; re-opened when the user picks another expiry (the live quote set follows it).
+  // Not opened for a ticker outside the Signals universe (it would only answer 404).
   useEffect(() => {
     setStreamFailed(false);
+    if (notInSignalsUniverse) return;
     return openSignalsTickerStream(
       symbol,
-      selectedExpiry,
+      null,
       (frame) => {
         setSignals(frame.signals);
-        setLiveQuoteContractCount(frame.liveQuoteContracts.length);
         setUncompensatedAsOf(frame.uncompensatedAsOf);
         setStreamFailed(false);
       },
       () => setStreamFailed(true),
     );
-  }, [symbol, selectedExpiry, streamKey]);
+  }, [symbol, streamKey, notInSignalsUniverse]);
 
-  const effectiveExpiry = selectedExpiry ?? signals?.best?.expiry ?? null;
-  const spotPrice = signals?.spotPrice ?? overview?.pricing.last ?? null;
+  // Live option quotes only for what is on screen (useVisibleLiveContracts): the set is
+  // settled for 300 ms before the stream is reopened, so scrolling does not churn IBKR subscriptions.
+  const visibleLiveContracts = useVisibleLiveContracts(modalContentRef);
+  const [subscribedLiveContracts, setSubscribedLiveContracts] = useState<string[]>([]);
+  useEffect(() => {
+    const timer = setTimeout(() => setSubscribedLiveContracts(visibleLiveContracts), liveContractsSettleMs);
+    return () => clearTimeout(timer);
+  }, [visibleLiveContracts]);
+  const effectiveExpiry = selectedExpiry ?? chainDefaultExpiry ?? signals?.best?.expiry ?? null;
+  // Displayed everywhere in the modal: the pooled live price, the overview's last before its first tick.
+  const spotPrice = liveSpotPrice ?? overview?.pricing.last ?? null;
+  // Read at request time only: the chain and a picked contract are scored at the spot of that moment, not re-fetched per tick.
+  const spotPriceRef = useRef(spotPrice);
+  spotPriceRef.current = spotPrice;
+
+  const signalsSettled = signals !== null || signalsError !== null || notInSignalsUniverse;
+  useEffect(() => {
+    if (signalsSettled && chainDefaultExpiry === undefined) setChainDefaultExpiry(signals?.best?.expiry ?? null);
+  }, [signalsSettled, chainDefaultExpiry, signals]);
+  // Wait for a spot (or a settled overview) so the first chain is scored at the same spot as the live candidates.
+  const chainSpotSettled = spotPrice !== null || overview !== null || overviewError !== null;
+  const requestedChainExpiry = selectedExpiry ?? chainDefaultExpiry ?? null;
+  const chainReady = chainDefaultExpiry !== undefined && chainSpotSettled;
+  useEffect(() => {
+    if (!chainReady) return;
+    let cancelled = false;
+    setChainLoading(true);
+    setChainError(null);
+    fetchSignalsChain(symbol, requestedChainExpiry, spotPriceRef.current)
+      .then((result) => {
+        if (!cancelled) setChain(result);
+      })
+      .catch((err) => {
+        if (!cancelled) setChainError(err instanceof ApiError ? err.message : "Could not load the option chain.");
+      })
+      .finally(() => {
+        if (!cancelled) setChainLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [symbol, requestedChainExpiry, chainReady, streamKey]);
+  // Order building only: the scoring spot as a last resort so an order can still be sized before any price arrives.
+  const spotPriceForOrders = spotPrice ?? signals?.spotPrice ?? null;
   const ivShift = effectiveExpiry ? (signals?.ivShiftByExpiry[effectiveExpiry] ?? null) : null;
   const ivShiftValue = !effectiveExpiry
     ? "—"
@@ -481,59 +543,223 @@ export function SignalsTickerModal({ symbol, initialRollLegId = null, onClose }:
   const yieldTierByKey = useMemo(() => {
     const ranked = [...shownCandidates].sort((a, b) => a.annualizedYield - b.annualizedYield);
     const tiers = new Map<string, number>();
-    ranked.forEach((candidate, index) => tiers.set(candidateKey(candidate), Math.min(5, Math.floor((index / ranked.length) * 5) + 1)));
+    ranked.forEach((candidate, index) => tiers.set(candidateContractKey(candidate), Math.min(5, Math.floor((index / ranked.length) * 5) + 1)));
     return tiers;
   }, [shownCandidates]);
-  const selectedCandidate = useMemo(() => (selectedKey ? (signals?.candidates.find((candidate) => candidateKey(candidate) === selectedKey) ?? null) : null), [signals, selectedKey]);
+  const selectedCandidate = useMemo(() => (selectedKey ? (signals?.candidates.find((candidate) => candidateContractKey(candidate) === selectedKey) ?? null) : null), [signals, selectedKey]);
   const selectedRoll = useMemo(() => (selectedRollKey ? (signals?.rolls.find((roll) => rollKey(roll) === selectedRollKey) ?? null) : null), [signals, selectedRollKey]);
+  const rollModeHeldLeg = useMemo(() => (rollModeLegId ? (signals?.heldLegs.find((leg) => leg.legId === rollModeLegId) ?? null) : null), [signals, rollModeLegId]);
   const selectedRollHeldLeg = useMemo(() => (selectedRoll ? (signals?.heldLegs.find((leg) => leg.legId === selectedRoll.legId) ?? null) : null), [signals, selectedRoll]);
+  // What the order under review depends on holds its own lines on top of the on-screen ones (a pick, or a roll's replacement
+  // and held leg), so the order setup is scored live however far the chain is scrolled. Joined so the effect compares by value.
+  const pinnedContractsJoined = useMemo(() => {
+    const keys: string[] = [];
+    if (selectedCandidate) keys.push(candidateContractKey(selectedCandidate));
+    if (selectedRoll && selectedRollHeldLeg) keys.push(signalContractKey(selectedRollHeldLeg), candidateContractKey(selectedRoll.replacement));
+    if (chainPick && chainPick.status === "ready") {
+      keys.push(chainPick.key);
+      if (rollModeHeldLeg) keys.push(signalContractKey(rollModeHeldLeg));
+    }
+    return [...new Set(keys)].join(",");
+  }, [selectedCandidate, selectedRoll, selectedRollHeldLeg, chainPick, rollModeHeldLeg]);
+  useEffect(() => {
+    const pinnedKeys = pinnedContractsJoined ? pinnedContractsJoined.split(",") : [];
+    if (notInSignalsUniverse || (subscribedLiveContracts.length === 0 && pinnedKeys.length === 0)) {
+      setQuotesFrame(null);
+      return;
+    }
+    return openSignalsQuotesStream(symbol, subscribedLiveContracts, pinnedKeys, setQuotesFrame, () => setQuotesFrame(null));
+  }, [symbol, subscribedLiveContracts, pinnedContractsJoined, notInSignalsUniverse, streamKey]);
+
+  // The ticker stream's candidates, with the on-screen ones replaced by their live-scored version (keeping the ticker
+  // stream's Monte Carlo share, which only it computes). Order and filtering stay on the ticker stream's values so a
+  // live re-grade never reshuffles the rows on screen (and with them the live set).
+  const liveCandidatesByKey = useMemo(
+    () =>
+      new Map(
+        (signals?.candidates ?? []).map((candidate) => {
+          const key = candidateContractKey(candidate);
+          const live = quotesFrame?.candidates[key];
+          return [key, live ? { ...live, uncompensatedSharePercent: candidate.uncompensatedSharePercent } : candidate];
+        }),
+      ),
+    [signals, quotesFrame],
+  );
+  const displayedHeldLegs = useMemo(() => (signals?.heldLegs ?? []).map((held) => quotesFrame?.heldLegs[held.legId] ?? held), [signals, quotesFrame]);
+  const rollsByLegId = useMemo(() => {
+    const byLeg = new Map<string, RollSignalCandidate[]>();
+    for (const roll of signals?.rolls ?? []) {
+      const live = quotesFrame?.rolls[rollKey(roll)];
+      byLeg.set(roll.legId, [...(byLeg.get(roll.legId) ?? []), live ? { ...live, replacement: { ...live.replacement, uncompensatedSharePercent: roll.replacement.uncompensatedSharePercent } } : roll]);
+    }
+    return byLeg;
+  }, [signals, quotesFrame]);
+
+  // The order setup is scored live off the pinned lines (see pinnedContractsJoined): the forms take these, never the ticker
+  // stream's snapshot-priced copies. The decay meters keep their selection-time references.
+  const liveSelectedCandidate = selectedCandidate && selectedKey ? (liveCandidatesByKey.get(selectedKey) ?? selectedCandidate) : null;
+  const liveSelectedRoll = selectedRoll ? (rollsByLegId.get(selectedRoll.legId)?.find((roll) => rollKey(roll) === selectedRollKey) ?? selectedRoll) : null;
+  const liveSelectedRollHeldLeg = selectedRollHeldLeg ? (displayedHeldLegs.find((held) => held.legId === selectedRollHeldLeg.legId) ?? selectedRollHeldLeg) : null;
+  const liveRollModeHeldLeg = rollModeHeldLeg ? (displayedHeldLegs.find((held) => held.legId === rollModeHeldLeg.legId) ?? rollModeHeldLeg) : null;
+  // A chain pick keeps the form type it was fetched as (scored or not) so a live flip never remounts the form and loses typed input.
+  const livePickedScore = chainPick?.result ? (quotesFrame?.pinned[chainPick.key]?.scored === chainPick.result.scored ? quotesFrame.pinned[chainPick.key]! : chainPick.result) : null;
+
   // The contract behind pendingOrder is whichever of these produced it --
   // selectedKey/selectedRollKey (and so selectedCandidate/selectedRoll) stay
   // set for the order's whole pending_confirmation lifetime (see
   // selectCandidate/selectRoll above), so this is still the right quote at
   // the instant OrderReviewPanel mounts. Seeds its Live Quote card instantly
-  // instead of a multi-second spinner for a fresh subscribe (2026-09-24,
-  // same fix as TickerDetailModal's liveQuoteForSelected).
-  const pendingOrderQuoteSeed = signalCandidateToQuoteSeed(selectedCandidate ?? selectedRoll?.replacement ?? null);
-  const rollsByLegId = useMemo(() => {
-    const byLeg = new Map<string, RollSignalCandidate[]>();
-    for (const roll of signals?.rolls ?? []) byLeg.set(roll.legId, [...(byLeg.get(roll.legId) ?? []), roll]);
-    return byLeg;
-  }, [signals]);
+  // instead of a multi-second spinner for a fresh subscribe.
+  const pendingOrderQuoteSeed = selectedCandidate || selectedRoll ? signalCandidateToQuoteSeed(selectedCandidate ?? selectedRoll?.replacement ?? null) : signalContractScoreToQuoteSeed(livePickedScore);
 
   function selectCandidate(candidate: SignalCandidate) {
     if (pendingOrder) return; // an order under review keeps its contract until cancelled or filled
+    abandonPendingChainPick();
+    setChainPick(null);
+    setChainNotice(null);
     setSelectedRollKey(null);
     setRollSelectionReference(null);
-    setSelectedKey(candidateKey(candidate));
+    setRollModeLegId(null);
+    setSelectedKey(candidateContractKey(candidate));
     setSelectionReference({ netEdge: candidate.netEdge, atIso: new Date().toISOString() });
     if (candidate.expiry !== effectiveExpiry) setSelectedExpiry(candidate.expiry);
   }
   const selectRoll = useCallback(
     (roll: RollSignalCandidate) => {
       if (pendingOrder) return;
+      chainPickRequestIdRef.current += 1;
+      setChainPickLoadingKey(null);
+      setChainPick(null);
       setSelectedKey(null);
       setSelectionReference(null);
       setSelectedRollKey(rollKey(roll));
+      setRollModeLegId(roll.legId);
       setRollSelectionReference({ netRollEdge: roll.netRollEdge, atIso: new Date().toISOString() });
     },
     [pendingOrder],
   );
+  function abandonPendingChainPick() {
+    chainPickRequestIdRef.current += 1; // a scoring response still in flight is then ignored
+    setChainPickLoadingKey(null);
+  }
   function clearSelection() {
+    abandonPendingChainPick();
     setPendingOrder(null);
+    setRollModeLegId(null);
+    setChainPick(null);
     setSelectedKey(null);
     setSelectionReference(null);
     setSelectedRollKey(null);
     setRollSelectionReference(null);
   }
+  // Any chain contract: a live candidate goes straight to the Signal form; anything else is scored on demand
+  // (one pooled live quote when the market is open, so this can take a few seconds).
+  function pickChainContract(contract: ChainContractRef, originCellState: SignalsChainCellState | null, forceNewTrade = false) {
+    const rollTarget = forceNewTrade ? null : rollModeHeldLeg;
+    if (pendingOrder) return;
+    setChainNotice(null);
+    const key = signalContractKey(contract);
+    if (rollTarget) {
+      const heldRightWord = rollTarget.right === "C" ? "call" : "put";
+      if (contract.right !== rollTarget.right) {
+        setChainNotice(`Rolling your ${heldRightWord}: pick a ${heldRightWord} on the chain, or cancel the roll to open a new trade.`);
+        return;
+      }
+      if (contract.expiry === rollTarget.expiry && contract.strike === rollTarget.strike) {
+        setChainNotice("That is the leg you already hold: pick a different strike or expiry to roll to.");
+        return;
+      }
+      const listedRoll = (rollsByLegId.get(rollTarget.legId) ?? []).find((roll) => candidateContractKey(roll.replacement) === key);
+      if (listedRoll) {
+        selectRoll(listedRoll);
+        return;
+      }
+    }
+    const liveCandidate = rollTarget ? undefined : liveCandidatesByKey.get(key);
+    if (liveCandidate) {
+      selectCandidate(liveCandidate);
+      return;
+    }
+    if (contract.expiry !== chain?.selectedExpiry) setSelectedExpiry(contract.expiry);
+    const requestId = ++chainPickRequestIdRef.current;
+    const selectedAtIso = new Date().toISOString();
+    setChainPickLoadingKey(key);
+    const settle = (settled: Pick<ChainContractPick, "status" | "result" | "error">) => {
+      if (requestId !== chainPickRequestIdRef.current) return;
+      setSelectedKey(null);
+      setSelectionReference(null);
+      setSelectedRollKey(null);
+      setRollSelectionReference(null);
+      if (!rollTarget) setRollModeLegId(null);
+      setChainPick({ key, contract, originCellState, selectedAtIso, ...settled });
+      setChainPickLoadingKey(null);
+    };
+    fetchSignalContractScore(symbol, contract, spotPriceRef.current)
+      .then((result) => settle({ status: "ready", result, error: null }))
+      .catch((err) => settle({ status: "error", result: null, error: err instanceof ApiError ? err.message : "Could not get a quote for this contract." }));
+  }
+  const scrollChainIntoView = useCallback(() => {
+    requestAnimationFrame(() => chainCardRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }));
+  }, []);
+
   // A roll badge / Telegram link opens on a leg: pre-select its best roll once the scores are in.
   useEffect(() => {
     if (!pendingRollLegId || !signals) return;
     const best = signals.rolls.find((roll) => roll.legId === pendingRollLegId); // rolls arrive best-first
     if (best) selectRoll(best);
-    else if (signals.heldLegs.some((leg) => leg.legId === pendingRollLegId)) setRollNotice("No credit roll to a lower-delta contract passes the Signals filters for that leg right now.");
+    else if (signals.heldLegs.some((leg) => leg.legId === pendingRollLegId)) {
+      setRollNotice(noCreditRollNotice);
+      setRollModeLegId(pendingRollLegId);
+    }
     setPendingRollLegId(null);
   }, [pendingRollLegId, signals, selectRoll]);
+
+  // Opened on a specific position: once positions and the Signals section above them have settled (so the
+  // layout no longer shifts), force the Positions card open and scroll that position's card into view.
+  const hasScrolledToFocusedPosition = useRef(false);
+  const focusedPositionIsOpen = tickerPositions.positions?.some((position) => position.id === focusPositionId && position.status === "open") ?? false;
+  useEffect(() => {
+    if (hasScrolledToFocusedPosition.current || !focusPositionId || !focusedPositionIsOpen || !signalsSettled) return;
+    setPositionsForceOpenSignal((signal) => signal + 1);
+    // The card body (and so the ref) mounts a render after the force-open: poll a few frames for it.
+    let animationFrameId = 0;
+    let attempts = 0;
+    function scrollWhenMounted() {
+      if (focusedPositionRef.current) {
+        hasScrolledToFocusedPosition.current = true;
+        focusedPositionRef.current.scrollIntoView({ behavior: "smooth", block: "start" });
+        return;
+      }
+      attempts += 1;
+      if (attempts < 20) animationFrameId = requestAnimationFrame(scrollWhenMounted);
+    }
+    scrollWhenMounted();
+    return () => cancelAnimationFrame(animationFrameId);
+  }, [focusPositionId, focusedPositionIsOpen, signalsSettled]);
+
+  useEffect(() => {
+    if (rollNotice) rollNoticeRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  }, [rollNotice]);
+
+  // A position card's Roll button: select that leg's best Signals roll (rolls arrive best-first).
+  const rollLeg = useCallback(
+    (legId: string) => {
+      if (!signals) {
+        setRollNotice(notInSignalsUniverse ? notInSignalsUniverseNotice : "Signals scores are still loading — try again in a moment.");
+        return;
+      }
+      const best = signals.rolls.find((roll) => roll.legId === legId);
+      if (best) {
+        setRollNotice(null);
+        selectRoll(best);
+        scrollOrderSetupIntoView();
+      } else {
+        setRollNotice(noCreditRollNotice);
+        setRollModeLegId(legId);
+      }
+    },
+    [signals, notInSignalsUniverse, selectRoll, scrollOrderSetupIntoView],
+  );
 
   const opportunityColumns = useMemo<DataTableColumn<SignalCandidate & { rank: number }>[]>(
     () => [
@@ -574,7 +800,7 @@ export function SignalsTickerModal({ symbol, initialRollLegId = null, onClose }:
           </FlashingNumber>
         ),
       },
-      { key: "friction", header: "Friction", align: "right", headerTitle: "Half-spread plus commission, in volatility points", render: (row) => <span className="font-mono text-secondary">{formatVolatilityPoints(row.frictionVolatility).replace("+", "")}</span> },
+      { key: "friction", header: "Friction", align: "right", headerTitle: "The Risk & Limits spread cost share of the half-spread, plus commission, in volatility points", render: (row) => <span className="font-mono text-secondary">{formatVolatilityPoints(row.frictionVolatility).replace("+", "")}</span> },
       {
         key: "iv",
         header: "Surf. / mid IV",
@@ -623,7 +849,7 @@ export function SignalsTickerModal({ symbol, initialRollLegId = null, onClose }:
           ) : row.quoteSource === "day" ? (
             <TooltipSpan className="d-inline-flex align-items-center gap-2 font-mono" text={`${quoteSourceLabel.day}${row.quotedAt ? ` · received ${formatDateTime(row.quotedAt)}` : ""}`}>
               <span className="iorio-still-dot" />
-              {formatShortAge(row.quotedAt) ?? "—"}
+              <QuoteAgeLabel quotedAt={row.quotedAt} />
             </TooltipSpan>
           ) : (
             <TooltipSpan className="font-mono text-secondary" text={signals?.snapshotCapturedAt ? `${formatDateTime(signals.snapshotCapturedAt)} snapshot quote — this contract is not in today's refresh pool` : quoteSourceLabel.snapshot}>
@@ -631,36 +857,59 @@ export function SignalsTickerModal({ symbol, initialRollLegId = null, onClose }:
             </TooltipSpan>
           ),
       },
-      { key: "yield", header: "Ann. yield", align: "right", render: (row) => <span className={`font-mono heat-yield-${yieldTierByKey.get(candidateKey(row)) ?? 1}`}>{formatPercentage(row.annualizedYield, 0)}</span> },
+      { key: "yield", header: "Ann. yield", align: "right", render: (row) => <span className={`font-mono heat-yield-${yieldTierByKey.get(candidateContractKey(row)) ?? 1}`}>{formatPercentage(row.annualizedYield, 0)}</span> },
       { key: "uncompensated", header: "Drift", align: "right", headerTitle: "Share of P&L variance from delta drift (UncompensatedShare)", render: (row) => <span className="font-mono text-secondary">{row.uncompensatedSharePercent === null ? "…" : `${row.uncompensatedSharePercent.toFixed(0)}%`}</span> },
       { key: "flags", header: "Flags", align: "center", render: (row) => <FlagBadges candidate={row} macroEvents={signals?.macroEvents ?? []} /> },
     ],
     [yieldTierByKey],
   );
-  const opportunityRows = useMemo(() => shownCandidates.map((candidate, index) => ({ ...candidate, rank: index + 1 })), [shownCandidates]);
+  const opportunityRows = useMemo(() => shownCandidates.map((candidate, index) => ({ ...(liveCandidatesByKey.get(candidateContractKey(candidate)) ?? candidate), rank: index + 1 })), [shownCandidates, liveCandidatesByKey]);
 
   const dayQuoteAgeRange = describeQuoteAgeRange(signals?.dayQuotesAsOf);
-  const liveLabel = streamFailed
-    ? "Live stream unavailable — snapshot values"
-    : signals?.priceSource === "live"
-      ? `Live · ${liveQuoteContractCount ?? 0} contracts live${effectiveExpiry ? ` for the ${formatDate(effectiveExpiry)} expiry` : ""} · ${dayQuoteAgeRange ? `other expiries on day quotes ${dayQuoteAgeRange}` : "no day quotes yet"}`
-      : "Connecting live prices…";
+  const liveLabel = notInSignalsUniverse
+    ? liveSpotPrice !== null
+      ? "Live stock price · not scored by Signals"
+      : "Connecting live price…"
+    : streamFailed
+      ? "Live stream unavailable — snapshot values"
+      : signals?.priceSource === "live"
+        ? `Live · ${quotesFrame?.contractKeys.length ?? 0} contracts on screen live · ${dayQuoteAgeRange ? `the rest on day quotes ${dayQuoteAgeRange}` : "no day quotes yet"}`
+        : "Connecting live prices…";
+  const showLivePulse = notInSignalsUniverse ? liveSpotPrice !== null : signals?.priceSource === "live" && !streamFailed;
 
   const positionsCards = (
     <TickerPositionsCards
       symbol={symbol}
       data={tickerPositions}
       currentPrice={spotPrice}
-      onRollSelect={(alert) => {
-        const legId = alert.suggestedStructure.closeLeg.legId;
-        const best = signals?.rolls.find((roll) => roll.legId === legId);
-        if (best) selectRoll(best);
-        else setRollNotice("No credit roll to a lower-delta contract passes the Signals filters for that leg right now.");
-      }}
+      focusPositionId={focusPositionId ?? undefined}
+      focusedPositionRef={focusedPositionRef}
+      forceOpenSignal={positionsForceOpenSignal}
+      onRollLeg={rollLeg}
+      onPositionChanged={onPositionsChanged}
       onSellCall={(prefill) => {
-        const match = prefill ? signals?.candidates.find((candidate) => candidate.strategyKey === "covered_call" && candidate.strike === prefill.strike && candidate.expiry === prefill.expiry) : undefined;
-        if (match) selectCandidate(match);
-        else setRollNotice(prefill ? "That call is not among the scored candidates for this ticker." : "Pick a call from the opportunities below.");
+        if (pendingOrder) {
+          setRollNotice("Finish or cancel the order under review first.");
+          return;
+        }
+        setRollNotice(null);
+        setRollModeLegId(null);
+        setChainPhoneSide("C");
+        // Recovery Path's Sell This: that exact contract, scored on demand when it is not a candidate.
+        if (prefill) {
+          const contract: ChainContractRef = { expiry: prefill.expiry, strike: prefill.strike, right: "C" };
+          const originCell = chain?.selectedExpiry === prefill.expiry ? chain.strikes.find((row) => row.strike === prefill.strike)?.call : undefined;
+          pickChainContract(contract, originCell?.state ?? null, true);
+          scrollOrderSetupIntoView();
+          return;
+        }
+        // Sell Call on held shares: the best covered call graded above Avoid, else the chain on its Calls side.
+        const bestCall = rankedCandidates.find((candidate) => candidate.strategyKey === "covered_call" && candidate.grade !== "avoid");
+        if (bestCall) {
+          selectCandidate(bestCall);
+          setChainNotice(null);
+        } else setChainNotice("Pick a call from the chain.");
+        scrollChainIntoView();
       }}
     />
   );
@@ -677,8 +926,8 @@ export function SignalsTickerModal({ symbol, initialRollLegId = null, onClose }:
       >
         <div className="modal-dialog modal-dialog-scrollable modal-dialog-inset">
           <div className="modal-content">
-            <div className="modal-header">
-              <div>
+            <div className="modal-header flex-wrap">
+              <div className="flex-grow-1" style={{ minWidth: 0 }}>
                 <div className="text-secondary text-uppercase fw-bold" style={{ fontSize: "0.68rem", letterSpacing: "0.06em" }}>
                   Signals
                 </div>
@@ -687,22 +936,43 @@ export function SignalsTickerModal({ symbol, initialRollLegId = null, onClose }:
                   {(signals?.companyName ?? overview?.companyName) && <span className="text-secondary fw-normal"> — {signals?.companyName ?? overview?.companyName}</span>}
                 </h5>
               </div>
-              <div className="ms-auto me-3 d-inline-flex align-items-center gap-2 text-secondary" style={{ fontSize: "0.75rem" }}>
-                {signals?.priceSource === "live" && !streamFailed && <span className="iorio-pulse-dot" />}
+              <div className="signals-modal-live-status d-inline-flex align-items-center gap-2 text-secondary" style={{ fontSize: "0.75rem" }}>
+                {showLivePulse && <span className="iorio-pulse-dot" />}
                 {liveLabel}
               </div>
               <button type="button" className="btn-close" aria-label="Close" onClick={requestClose} />
             </div>
-            <div className="modal-body">
+            <div className="modal-body" ref={modalContentRef}>
               {overviewError && <div className="alert alert-danger">{overviewError}</div>}
               {!overviewError && !overview && (
                 <div className="d-flex justify-content-center py-3">
                   <Spinner label="Loading pricing" />
                 </div>
               )}
-              {overview && <TickerHeaderStrip symbol={symbol} overview={overview} spotPrice={spotPrice} nextCalendarEvents={nextCalendarEvents} onShortlisted={() => setOverview((prev) => (prev ? { ...prev, isShortlisted: true } : prev))} />}
+              {overview && (
+                <TickerHeaderStrip
+                  symbol={symbol}
+                  overview={overview}
+                  spotPrice={spotPrice}
+                  nextCalendarEvents={nextCalendarEvents}
+                  onShortlisted={() => {
+                    setOverview((prev) => (prev ? { ...prev, isShortlisted: true } : prev));
+                    if (notInSignalsUniverse) setSignalsReloadKey((key) => key + 1);
+                  }}
+                />
+              )}
 
               {signalsError && <div className="alert alert-danger">{signalsError}</div>}
+              {notInSignalsUniverse && (
+                <div className="alert alert-secondary py-2" style={{ fontSize: "0.85rem" }}>
+                  {notInSignalsUniverseNotice}
+                </div>
+              )}
+              {!signals && !signalsError && !notInSignalsUniverse && (
+                <div className="d-flex justify-content-center py-3">
+                  <Spinner label="Loading signals" />
+                </div>
+              )}
               {signals && (
                 <div className="d-flex flex-wrap align-items-center gap-3 mb-3" style={{ fontSize: "0.8rem" }}>
                   <SignalMetric label="ATM IV (30d)" value={formatPercentage(signals.atmImpliedVolatility, 1)} />
@@ -713,7 +983,11 @@ export function SignalsTickerModal({ symbol, initialRollLegId = null, onClose }:
                     valueClassName={signals.atmImpliedVolatility !== null && signals.forecast ? pnlTextClass(signals.atmImpliedVolatility - signals.forecast.volatility) : ""}
                   />
                   <SignalMetric label={`Intraday IV shift${effectiveExpiry ? ` (${formatDate(effectiveExpiry)})` : ""}`} value={ivShiftValue} />
-                  <SignalMetric label="Momentum 12-1" value={signals.momentum === null ? "n/a" : formatSignedPercentageValue(signals.momentum * 100, 0)} />
+                  <SignalMetric
+                    label="Momentum 12-1"
+                    value={signals.momentum === null ? "n/a" : formatSignedPercentageValue(signals.momentum * 100, 0)}
+                    valueClassName={pnlTextClass(signals.momentum)}
+                  />
                   <SignalMetric label="Skew (30d)" value={signals.skew ? formatVolatilityPoints(signals.skew.skew) : "—"} />
                   <SignalMetric label="Vol flag" value={signals.elevatedVolatility ? `${signals.elevatedVolatility.elevated ? "Elevated" : "Normal"} (${signals.elevatedVolatility.ratio.toFixed(2)} vs ${signals.elevatedVolatility.threshold.toFixed(2)})` : "n/a"} />
                   <SignalMetric label="Shares free" value={formatNumber(signals.freeShares, 0)} />
@@ -725,26 +999,26 @@ export function SignalsTickerModal({ symbol, initialRollLegId = null, onClose }:
               )}
 
               {rollNotice && (
-                <div className="alert alert-info py-2" style={{ fontSize: "0.85rem" }}>
+                <div ref={rollNoticeRef} className="alert alert-info py-2" style={{ fontSize: "0.85rem" }}>
                   {rollNotice}
                 </div>
               )}
-              {signals && signals.unscoredReason && (
+              {signals && signals.unscoredReason && noSignalBadge && (
                 <>
-                  <div className="alert alert-secondary">
-                    <span className="badge bg-secondary-lt me-2" style={badgeFontSize}>
-                      Unscored
+                  <div className={`alert ${signals.unscoredReason === "analysing" ? "alert-info" : "alert-secondary"} d-flex align-items-center gap-2`}>
+                    <span className={`badge ${noSignalBadge.className} d-inline-flex align-items-center gap-1`} style={badgeFontSize}>
+                      {noSignalBadge.spinning && <Spinner size="sm" className="iorio-badge-spinner" />}
+                      {noSignalBadge.label}
                     </span>
-                    {unscoredReasonLabel[signals.unscoredReason]}
+                    <span>{noSignalBadge.reason}</span>
                   </div>
-                  {positionsCards}
                 </>
               )}
 
-              {signals && !signals.unscoredReason && (
+              {(signals || notInSignalsUniverse) && (
                 <div className="d-flex flex-column flex-lg-row gap-3">
                   <div style={{ minWidth: 0, flex: "1 1 68%" }}>
-                    {signals.heldLegs.length > 0 && (
+                    {signals && !signals.unscoredReason && signals.heldLegs.length > 0 && (
                       <div className="card mb-3">
                         <div className="card-header py-2 d-flex flex-wrap align-items-center gap-2">
                           <span className="text-secondary text-uppercase fw-bold" style={{ fontSize: "0.72rem", letterSpacing: "0.06em" }}>
@@ -755,117 +1029,240 @@ export function SignalsTickerModal({ symbol, initialRollLegId = null, onClose }:
                           </span>
                         </div>
                         <div className="card-body py-2">
-                          {signals.heldLegs.map((held) => (
+                          {displayedHeldLegs.map((held) => (
                             <HeldLegRolls key={held.legId} held={held} rolls={rollsByLegId.get(held.legId) ?? []} showAvoid={showAvoid} selectedRollKey={selectedRollKey} disabled={pendingOrder !== null} onSelect={selectRoll} />
                           ))}
                         </div>
                       </div>
                     )}
-                    <DataTable
-                      tableId="signals-opportunities"
-                      dense
-                      maxVisibleRows={15}
-                      columns={opportunityColumns}
-                      rows={opportunityRows}
-                      rowKey={(row) => candidateKey(row)}
-                      emptyMessage={hiddenAvoidCount > 0 ? `No candidate has positive net Edge right now. Tick "Show Avoid" to see the ${hiddenAvoidCount} hidden.` : "No candidates match the filters."}
-                      onRowClick={selectCandidate}
-                      rowClassName={(row) => [candidateKey(row) === selectedKey ? "table-active" : "", row.grade === "avoid" ? "text-secondary" : ""].filter(Boolean).join(" ") || undefined}
-                      toolbar={
-                        <div className="d-flex flex-wrap align-items-center gap-2 w-100" style={{ fontSize: "0.8rem" }}>
-                          <span className="text-secondary text-uppercase fw-bold" style={{ fontSize: "0.72rem", letterSpacing: "0.06em" }}>
-                            Opportunities
-                          </span>
-                          <SegmentedButtons
-                            value={strategyFilter}
-                            options={[
-                              { key: "all", label: "All" },
-                              { key: "cash_secured_put", label: "Puts (CSP)" },
-                              { key: "covered_call", label: "Calls (CC)" },
-                            ]}
-                            onChange={setStrategyFilter}
-                          />
-                          <SegmentedButtons value={dteFilter} options={dteFilters.map(({ key, label }) => ({ key, label }))} onChange={setDteFilter} />
-                          <label className="form-check form-check-inline mb-0 text-secondary">
-                            <input type="checkbox" className="form-check-input" checked={showAvoid} onChange={(event) => setShowAvoid(event.target.checked)} />
-                            <span className="form-check-label">Show Avoid ({hiddenAvoidCount} hidden)</span>
-                          </label>
-                          <span className="text-secondary ms-auto">
-                            {uncompensatedAsOf && <>Delta drift as of {formatCurrency(uncompensatedAsOf.spotPrice)} · </>}
-                            quotes: <span className="font-mono">{signals.quoteSourceCounts.live} live</span> · <span className="font-mono">{signals.quoteSourceCounts.day} day</span> · <span className="font-mono">{signals.quoteSourceCounts.snapshot} snapshot</span>
-                          </span>
-                        </div>
-                      }
-                      afterTable={
-                        <div className="card-footer text-secondary" style={{ fontSize: "0.75rem" }}>
-                          * quote from the 10:00 ET snapshot. Live quotes stream only for the selected expiry's contracts (up to 40); every other pooled contract shows the Day Signals loop's latest quote with its age.
-                        </div>
-                      }
-                    />
-
-                    {effectiveExpiry && (
-                      <div className="card mt-3">
-                        <div className="card-header py-2">
-                          <span className="text-secondary text-uppercase fw-bold" style={{ fontSize: "0.72rem", letterSpacing: "0.06em" }}>
-                            Option chain · {formatDate(effectiveExpiry)} expiry
-                          </span>
-                          <span className="text-secondary ms-2" style={{ fontSize: "0.75rem" }}>
-                            (graded rows carry the same pills as an alert would; click a row to select it)
-                          </span>
-                        </div>
-                        <ExpiryChainGrid candidates={signals.candidates} expiry={effectiveExpiry} spotPrice={spotPrice} selectedKey={selectedKey} onSelect={selectCandidate} />
-                      </div>
+                    {signals && !signals.unscoredReason && (
+                      <DataTable
+                        tableId="signals-opportunities"
+                        dense
+                        maxVisibleRows={10}
+                        columns={opportunityColumns}
+                        rows={opportunityRows}
+                        rowKey={(row) => candidateContractKey(row)}
+                        rowAttributes={(row) => ({ "data-live-contracts": candidateContractKey(row) })}
+                        emptyMessage={hiddenAvoidCount > 0 ? `No candidate has positive net Edge right now. Tick "Show Avoid" to see the ${hiddenAvoidCount} hidden.` : signals.noCandidatesReason ? describeNoCandidatesMessage(signals.noCandidatesReason) : "No candidates match the filters."}
+                        onRowClick={selectCandidate}
+                        rowClassName={(row) => [candidateContractKey(row) === selectedKey ? "table-active" : "", row.grade === "avoid" ? "text-secondary" : ""].filter(Boolean).join(" ") || undefined}
+                        toolbar={
+                          <div className="d-flex flex-wrap align-items-center gap-2 w-100" style={{ fontSize: "0.8rem" }}>
+                            <span className="text-secondary text-uppercase fw-bold" style={{ fontSize: "0.72rem", letterSpacing: "0.06em" }}>
+                              Opportunities
+                            </span>
+                            <SegmentedButtons
+                              value={strategyFilter}
+                              options={[
+                                { key: "all", label: "All" },
+                                { key: "cash_secured_put", label: "Puts (CSP)" },
+                                { key: "covered_call", label: "Calls (CC)" },
+                              ]}
+                              onChange={setStrategyFilter}
+                            />
+                            <SegmentedButtons value={dteFilter} options={dteFilters.map(({ key, label }) => ({ key, label }))} onChange={setDteFilter} />
+                            <label className="form-check form-check-inline mb-0 text-secondary">
+                              <input type="checkbox" className="form-check-input" checked={showAvoid} onChange={(event) => setShowAvoid(event.target.checked)} />
+                              <span className="form-check-label">Show Avoid ({hiddenAvoidCount} hidden)</span>
+                            </label>
+                            <span className="text-secondary ms-auto">
+                              {uncompensatedAsOf && <>Delta drift as of {formatCurrency(uncompensatedAsOf.spotPrice)} · </>}
+                              quotes: <span className="font-mono">{signals.quoteSourceCounts.live} live</span> · <span className="font-mono">{signals.quoteSourceCounts.day} day</span> · <span className="font-mono">{signals.quoteSourceCounts.snapshot} snapshot</span>
+                            </span>
+                          </div>
+                        }
+                        afterTable={
+                          <div className="card-footer text-secondary" style={{ fontSize: "0.75rem" }}>
+                            * quote from the 10:00 ET snapshot. Live quotes stream only for the contracts on screen; every other pooled contract shows the Day Signals loop's latest quote with its age.
+                          </div>
+                        }
+                      />
                     )}
 
-                    <div className="mt-3">{positionsCards}</div>
+                    <div ref={chainCardRef} style={{ scrollMarginTop: "1rem" }}>
+                      {rollModeHeldLeg && (
+                        <div className="alert bg-primary text-white border-0 py-2 mt-3 mb-0 d-flex flex-wrap align-items-center gap-2" style={{ fontSize: "0.9rem" }}>
+                          <span className="fw-semibold">
+                            Rolling your {describeHeldLeg(rollModeHeldLeg)}: click any {rollModeHeldLeg.right === "C" ? "call" : "put"} on the chain to roll to it, or pick one of the ranked rolls under Your positions.
+                          </span>
+                          <button type="button" className="btn btn-light ms-auto" disabled={pendingOrder !== null} onClick={clearSelection}>
+                            Cancel roll
+                          </button>
+                        </div>
+                      )}
+                      {chainNotice && (
+                        <div className="alert alert-info py-2 mt-3 mb-0" style={{ fontSize: "0.85rem" }}>
+                          {chainNotice}
+                        </div>
+                      )}
+                      <SignalsOptionChainCard
+                        chain={chain}
+                        loading={chainLoading || (!chain && !chainError)}
+                        error={chainError}
+                        spotPrice={spotPrice}
+                        liveCandidatesByKey={liveCandidatesByKey}
+                        liveChainCells={quotesFrame?.cells ?? {}}
+                        selectedContractKey={chainPickLoadingKey ?? selectedKey ?? chainPick?.key ?? null}
+                        pickingDisabled={pendingOrder !== null}
+                        phoneSide={chainPhoneSide}
+                        onPhoneSideChange={setChainPhoneSide}
+                        onSelectExpiry={(expiry) => {
+                          if (expiry !== chain?.selectedExpiry) setSelectedExpiry(expiry);
+                        }}
+                        onPickContract={(contract, cell) => {
+                          pickChainContract(contract, cell.state);
+                          // On a phone the order pane sits below the chain: bring its top into view.
+                          if (isPhoneLayout) scrollOrderSetupIntoView("start");
+                        }}
+                      />
+                    </div>
                   </div>
 
                   <div style={{ flex: "1 1 32%", minWidth: "19rem" }}>
-                    <div className="card">
-                      <div className="card-body">
+                    <div ref={orderSetupRef} className="card position-relative">
+                      {chainPickLoadingKey !== null && (
+                        <div className="position-absolute top-0 start-0 w-100 h-100" style={{ zIndex: 2, pointerEvents: "none" }}>
+                          <div className="d-flex justify-content-center" style={{ position: "sticky", top: "35vh" }}>
+                            <div className="d-inline-flex align-items-center gap-2 rounded px-3 py-2 bg-body border shadow-sm" style={{ fontSize: "0.85rem" }}>
+                              <Spinner size="sm" label="Getting a live quote" />
+                              Getting a live quote…
+                            </div>
+                          </div>
+                        </div>
+                      )}
+                      <div className="card-body" aria-busy={chainPickLoadingKey !== null} style={chainPickLoadingKey !== null ? { opacity: 0.4, pointerEvents: "none", userSelect: "none" } : undefined}>
                         {pendingOrder ? (
                           <OrderReviewPanel
                             order={pendingOrder.order}
+                            onOrderChange={(order) => setPendingOrder((current) => (current ? { ...current, order } : current))}
                             initialAdaptivePriority={pendingOrder.adaptivePriority}
-                            liveSpotPrice={spotPrice}
+                            liveSpotPrice={spotPriceForOrders}
                             initialQuote={pendingOrderQuoteSeed}
                             onCancelled={clearSelection}
                             onFilled={() => {
                               clearSelection();
                               void tickerPositions.loadPositions();
                               setStreamKey((key) => key + 1);
+                              onPositionsChanged?.();
                             }}
                           />
-                        ) : selectedRoll && selectedRollHeldLeg && rollSelectionReference ? (
+                        ) : signals && liveSelectedRoll && liveSelectedRollHeldLeg && rollSelectionReference ? (
                           <RollSignalOrderSetupForm
                             symbol={symbol}
                             signals={signals}
-                            roll={selectedRoll}
-                            held={selectedRollHeldLeg}
-                            spotPrice={spotPrice}
+                            roll={liveSelectedRoll}
+                            held={liveSelectedRollHeldLeg}
+                            spotPrice={spotPriceForOrders}
                             netRollEdgeAtSelection={rollSelectionReference.netRollEdge}
                             selectedAtIso={rollSelectionReference.atIso}
                             onCancel={clearSelection}
                             onSubmitted={(order, adaptivePriority) => setPendingOrder({ order, adaptivePriority })}
                           />
-                        ) : selectedCandidate && selectionReference ? (
+                        ) : signals && liveSelectedCandidate && selectionReference ? (
                           <SignalOrderSetupForm
                             symbol={symbol}
                             signals={signals}
-                            candidate={selectedCandidate}
-                            spotPrice={spotPrice}
+                            candidate={liveSelectedCandidate}
+                            spotPrice={spotPriceForOrders}
                             netEdgeAtSelection={selectionReference.netEdge}
                             selectedAtIso={selectionReference.atIso}
                             onCancel={clearSelection}
                             onSubmitted={(order, adaptivePriority) => setPendingOrder({ order, adaptivePriority })}
                           />
+                        ) : chainPick ? (
+                          chainPick.status === "error" || !chainPick.result ? (
+                            <div className="d-flex flex-column gap-2">
+                              <div className="alert alert-danger mb-0">{chainPick.error ?? "Could not get a quote for this contract."}</div>
+                              <div>
+                                <button type="button" className="btn btn-outline-secondary" onClick={clearSelection}>
+                                  Close
+                                </button>
+                              </div>
+                            </div>
+                          ) : liveRollModeHeldLeg && signals && livePickedScore ? (
+                            livePickedScore.scored ? (
+                              (() => {
+                                const pickedRoll = livePickedScore.rolls.find((roll) => roll.legId === liveRollModeHeldLeg.legId) ?? null;
+                                return pickedRoll ? (
+                                  <RollSignalOrderSetupForm
+                                    key={chainPick.key}
+                                    symbol={symbol}
+                                    signals={signals}
+                                    roll={pickedRoll}
+                                    held={liveRollModeHeldLeg}
+                                    spotPrice={spotPriceForOrders}
+                                    netRollEdgeAtSelection={(chainPick.result.scored ? chainPick.result.rolls.find((roll) => roll.legId === liveRollModeHeldLeg.legId)?.netRollEdge : undefined) ?? pickedRoll.netRollEdge}
+                                    selectedAtIso={chainPick.selectedAtIso}
+                                    notice={chainPick.result.notCandidateReason ? chainPickNotice(chainPick, chainPick.result.notCandidateReason) : null}
+                                    onCancel={clearSelection}
+                                    onSubmitted={(order, adaptivePriority) => setPendingOrder({ order, adaptivePriority })}
+                                  />
+                                ) : (
+                                  <RollSignalOrderSetupForm
+                                    key={chainPick.key}
+                                    symbol={symbol}
+                                    signals={signals}
+                                    roll={null}
+                                    unscoredReplacement={scoredContractAsQuoteOnly(livePickedScore)}
+                                    held={liveRollModeHeldLeg}
+                                    spotPrice={spotPriceForOrders}
+                                    netRollEdgeAtSelection={null}
+                                    selectedAtIso={chainPick.selectedAtIso}
+                                    notice={chainPick.result.notCandidateReason ? chainPickNotice(chainPick, chainPick.result.notCandidateReason) : null}
+                                    onCancel={clearSelection}
+                                    onSubmitted={(order, adaptivePriority) => setPendingOrder({ order, adaptivePriority })}
+                                  />
+                                );
+                              })()
+                            ) : (
+                              <RollSignalOrderSetupForm
+                                key={chainPick.key}
+                                symbol={symbol}
+                                signals={signals}
+                                roll={null}
+                                unscoredReplacement={livePickedScore}
+                                held={liveRollModeHeldLeg}
+                                spotPrice={spotPriceForOrders}
+                                netRollEdgeAtSelection={null}
+                                selectedAtIso={chainPick.selectedAtIso}
+                                notice={chainPick.result.notCandidateReason ? chainPickNotice(chainPick, chainPick.result.notCandidateReason) : null}
+                                onCancel={clearSelection}
+                                onSubmitted={(order, adaptivePriority) => setPendingOrder({ order, adaptivePriority })}
+                              />
+                            )
+                          ) : livePickedScore?.scored && signals ? (
+                            <SignalOrderSetupForm
+                              key={chainPick.key}
+                              symbol={symbol}
+                              signals={signals}
+                              candidate={livePickedScore}
+                              spotPrice={spotPriceForOrders}
+                              netEdgeAtSelection={chainPick.result.scored ? chainPick.result.netEdge : livePickedScore.netEdge}
+                              selectedAtIso={chainPick.selectedAtIso}
+                              notice={chainPick.result.notCandidateReason ? chainPickNotice(chainPick, chainPick.result.notCandidateReason) : null}
+                              onCancel={clearSelection}
+                              onSubmitted={(order, adaptivePriority) => setPendingOrder({ order, adaptivePriority })}
+                            />
+                          ) : (
+                            <ChainContractOrderSetupForm
+                              key={chainPick.key}
+                              symbol={symbol}
+                              contract={livePickedScore!}
+                              freeShares={signals?.freeShares ?? null}
+                              spotPrice={spotPriceForOrders}
+                              notice={chainPick.result.notCandidateReason ? chainPickNotice(chainPick, chainPick.result.notCandidateReason) : null}
+                              onCancel={clearSelection}
+                              onSubmitted={(order, adaptivePriority) => setPendingOrder({ order, adaptivePriority })}
+                            />
+                          )
                         ) : (
                           <>
                             <div className="text-secondary text-uppercase fw-bold mb-2" style={{ fontSize: "0.72rem", letterSpacing: "0.06em" }}>
                               Order setup
                             </div>
                             <p className="text-secondary mb-0" style={{ fontSize: "0.85rem" }}>
-                              Select an opportunity, a chain quote{signals.heldLegs.length > 0 ? " or a roll of one of your positions" : ""}.
+                              {signals && !signals.unscoredReason ? `Select an opportunity, any contract in the chain${signals.heldLegs.length > 0 ? " or a roll of one of your positions" : ""}.` : "Pick any contract in the chain."}
                             </p>
                           </>
                         )}
@@ -875,7 +1272,11 @@ export function SignalsTickerModal({ symbol, initialRollLegId = null, onClose }:
                 </div>
               )}
 
-              <div className="mt-4">
+              <div className="mt-4">{positionsCards}</div>
+
+              <TechnicalsCard technicals={technicals} technicalsError={technicalsError} />
+
+              <div className="mt-3">
                 {chartError && <div className="alert alert-danger">{chartError}</div>}
                 {!chartError && !chartBars && (
                   <div className="d-flex justify-content-center py-3">
@@ -892,6 +1293,57 @@ export function SignalsTickerModal({ symbol, initialRollLegId = null, onClose }:
         </div>
       </div>
     </>
+  );
+}
+
+function TechnicalsCard({ technicals, technicalsError }: { technicals: TickerTechnicals | null; technicalsError: string | null }) {
+  const { support, resistance } = technicals?.supportResistance ?? { support: null, resistance: null };
+  return (
+    <CollapsibleCard title="Technicals" storageKey="signals-modal-technicals">
+      {technicalsError && <div className="alert alert-danger mb-0">{technicalsError}</div>}
+      {!technicalsError && !technicals && (
+        <div className="d-flex justify-content-center py-3">
+          <Spinner size="sm" label="Loading technicals" />
+        </div>
+      )}
+      {technicals && (
+        <div className="d-flex flex-column gap-1">
+          <div className="d-flex flex-wrap align-items-center gap-3 font-mono" style={{ fontSize: "0.85rem" }}>
+            <span>
+              MA7 <strong>{formatCurrency(technicals.movingAverages.ma7)}</strong>
+            </span>
+            <span>
+              MA25 <strong>{formatCurrency(technicals.movingAverages.ma25)}</strong>
+            </span>
+            <span>
+              MA99 <strong>{formatCurrency(technicals.movingAverages.ma99)}</strong>
+            </span>
+            <span>
+              RSI <strong>{formatNumber(technicals.rsi, 2)}</strong>
+            </span>
+            <span className="d-inline-flex align-items-center gap-1">
+              MACD <span className={`badge ${macdSignalBadgeClass[technicals.macdSignal]}`} style={badgeFontSize}>{technicals.macdSignal}</span>
+            </span>
+          </div>
+          <div className="d-flex flex-wrap gap-3 text-secondary font-mono" style={{ fontSize: "0.8rem" }}>
+            {support ? (
+              <span>
+                {describeSupportResistanceLevel("support", support).label} <strong className="text-body">{formatCurrency(support.price)}</strong> ({describeSupportResistanceLevel("support", support).detail})
+              </span>
+            ) : (
+              <span>Support —</span>
+            )}
+            {resistance ? (
+              <span>
+                {describeSupportResistanceLevel("resistance", resistance).label} <strong className="text-body">{formatCurrency(resistance.price)}</strong> ({describeSupportResistanceLevel("resistance", resistance).detail})
+              </span>
+            ) : (
+              <span>Resistance —</span>
+            )}
+          </div>
+        </div>
+      )}
+    </CollapsibleCard>
   );
 }
 

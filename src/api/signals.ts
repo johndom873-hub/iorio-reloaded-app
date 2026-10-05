@@ -14,7 +14,22 @@ export interface MacroEvent {
   dateIso: string;
   title: string;
 }
-export type SignalsUnscoredReason = "no_snapshot" | "no_surface_fit" | "no_forecast" | "suspected_split" | "stale_surface";
+/** "analysing": today's snapshot is saved but its surface fit has not finished yet (pending, not a problem). */
+export type SignalsUnscoredReason = "no_snapshot" | "analysing" | "no_surface_fit" | "no_forecast" | "suspected_split";
+
+/** The facts behind an unscored reason (null for no_snapshot). */
+export type SignalsUnscoredDetail =
+  | { kind: "analysing"; snapshotCapturedAt: string }
+  | {
+      kind: "fit";
+      /** Expiries the fit produced a slice for, by fit status (ok, poor_fit, insufficient_points, ...). */
+      sliceStatusCounts: Record<string, number>;
+      expiryCount: number;
+      /** Why the fit produced nothing: a skip reason (no_spot_price, no_risk_free_rate, no_quotes) or "error: <message>"; null when it ran and no slice was usable. */
+      fitIssue: string | null;
+    }
+  | { kind: "forecast"; dailyBarCount: number; barsNeeded: number }
+  | { kind: "split"; splitDateIso: string };
 export type SignalsPriceSource = "live" | "frozen" | "snapshot";
 /** live = a pooled IBKR line (modal / screen best line), day = the Day Signals refresh loop, snapshot = the 10:00 ET capture. */
 export type SignalQuoteSource = "live" | "day" | "snapshot";
@@ -41,11 +56,8 @@ export interface SignalCandidate {
   netEdge: number;
   edgeDollars: number;
   vega: number;
-  netEdgeAtMid: number;
-  edgeDollarsAtMid: number;
   dollarRisk: number;
   riskAdjustedRatio: number;
-  riskAdjustedRatioAtMid: number;
   annualizedYield: number;
   uncompensatedSharePercent: number | null;
   quoteSource: SignalQuoteSource;
@@ -59,6 +71,8 @@ export interface SignalCandidate {
 // Roll Signals (Formula 3j, approved 2026-09-24): every open short option leg scored as a contract to keep,
 // and every (held leg, replacement) pair that passes the lower-delta and credit filters.
 export type RollSignalFlag = "near_expiry" | "assignment_risk" | "decayed";
+/** Only on a roll to a contract picked on the chain: the list never holds a roll with a warning. */
+export type RollSignalWarning = "debit" | "higher_delta";
 export type HeldLegUnscoredReason = "no_slice" | "no_quote" | "no_forecast";
 
 export interface HeldLegScore {
@@ -80,7 +94,7 @@ export interface HeldLegScore {
   midImpliedVolatility: number | null;
   /** Surface IV minus the forecast: what holding still offers, in annualised volatility. */
   edge: number | null;
-  /** Cost of buying the leg back (half-spread + commission over vega), in annualised volatility. */
+  /** Cost of buying the leg back (the spread cost share of the half-spread + commission, over vega), in annualised volatility. */
   frictionVolatility: number | null;
   vega: number | null;
   holdEdgeDollars: number | null;
@@ -103,12 +117,13 @@ export interface RollSignalCandidate {
   netRollEdgeDollarsPerContract: number;
   /** × quantity. */
   netRollEdgeDollars: number;
-  /** mid(B) − mid(A), per share; always > 0 (credit rolls only). */
+  /** mid(B) − mid(A), per share; positive unless the warnings say "debit". */
   netCreditPerShare: number;
-  /** |delta(B)| − |delta(A)|; never positive (lower-delta filter). */
+  /** |delta(B)| − |delta(A)|; positive only with the "higher_delta" warning. */
   deltaChange: number;
   dollarRiskChange: number;
   flags: RollSignalFlag[];
+  warnings: RollSignalWarning[];
   grade: SignalGrade;
 }
 
@@ -170,10 +185,34 @@ export interface TickerSignals {
   freeCash: number;
   /** Age range of the Day Signals quotes merged into this ticker's scoring. */
   dayQuotesAsOf: { oldest: string; newest: string; count: number } | null;
+  /** λ (0..1) the scores were computed with: the share of the half-spread charged as friction (Risk & Limits spread cost). */
+  spreadShareCharged: number;
   /** Formula 3h per expiry: the parallel IV shift applied (volatility points) and the fresh quotes it came from. */
   ivShiftByExpiry: Record<string, { shiftVolatilityPoints: number; quoteCount: number }>;
   quoteSourceCounts: Record<SignalQuoteSource, number>;
   unscoredReason: SignalsUnscoredReason | null;
+  unscoredDetail: SignalsUnscoredDetail | null;
+  /** Set when the ticker was scored but no candidate survived. */
+  noCandidatesReason: SignalsNoCandidatesReason | null;
+}
+
+/**
+ * Why a scored ticker has no candidates. "filtered": contracts were scorable but every one failed the
+ * Signals filters (min yield / delta band). "nothing_scorable": no contract got that far.
+ */
+export interface SignalsNoCandidatesReason {
+  kind: "filtered" | "nothing_scorable";
+  surfaceFitRejectedExpiries: string[];
+  spansEarningsExpiries: string[];
+  earningsDateIso: string | null;
+  belowMinDeltaCount: number;
+  aboveMaxDeltaCount: number;
+  belowMinYieldCount: number;
+  /** Highest annualised yield (%) among contracts that reached the yield check; null if none did. */
+  bestAnnualizedYieldPct: number | null;
+  minAnnualizedYieldPct: number;
+  deltaTargetMin: number;
+  deltaTargetMax: number;
 }
 
 export type SignalsScreenRow = Omit<TickerSignals, "candidates" | "rolls">;
@@ -257,9 +296,41 @@ export interface SignalsTickerFrame {
   type: "signalsTicker";
   at: string;
   signals: TickerSignals;
-  /** Contract keys (expiry|strike|right) with a live IBKR quote subscription for this stream's life. */
-  liveQuoteContracts: string[];
   uncompensatedAsOf: { spotPrice: number; at: string } | null;
+}
+
+/** Live quotes for exactly the contracts the modal has on screen, scored at the live spot (keys expiry|strike|right). */
+export interface SignalsQuotesFrame {
+  type: "signalsQuotes";
+  at: string;
+  spotPrice: number | null;
+  /** Requested contracts, each holding a live line. */
+  contractKeys: string[];
+  cells: Record<string, SignalsChainCell>;
+  candidates: Record<string, SignalCandidate>;
+  /** By leg id. */
+  heldLegs: Record<string, HeldLegScore>;
+  /** By roll key (legId|expiry|strike|right). */
+  rolls: Record<string, RollSignalCandidate>;
+  /** Each pinned contract scored live exactly like GET /signals/:symbol/contract (a pinned held-leg contract has no entry: see heldLegs). */
+  pinned: Record<string, SignalContractScore>;
+}
+
+/**
+ * Opens the live-quote stream for the contracts on screen plus the pinned ones (what an order under review depends on: the pick,
+ * and for a roll the held leg and replacement); reopen it (close + open) when either set changes.
+ */
+export function openSignalsQuotesStream(symbol: string, contractKeys: string[], pinnedKeys: string[], onFrame: (frame: SignalsQuotesFrame) => void, onError: () => void): () => void {
+  return openMultiplexedStream<SignalsQuotesFrame>({
+    kind: "signalsQuotes",
+    parameters: pinnedKeys.length > 0 ? { symbol, contracts: contractKeys, pinned: pinnedKeys } : { symbol, contracts: contractKeys },
+    onData: onFrame,
+    onError,
+    openLegacy: () => {
+      onError();
+      return () => {};
+    },
+  });
 }
 
 export interface SignalsRoadmap {
@@ -309,4 +380,98 @@ export function openSignalsScreenStream(onFrame: (frame: SignalsScreenFrame) => 
       return () => {};
     },
   });
+}
+
+// ---- Full option chain in the Signals modal (backend: lib/signalsChain.ts) ----
+
+/** candidate = one of the modal's graded candidates; filtered = quoted but left out by Signals (reason says why); unscored = the ticker has no score (or is still being analysed), so nothing is graded; not_captured = never quoted today. */
+export type SignalsChainCellState = "candidate" | "filtered" | "unscored" | "not_captured";
+
+export interface SignalsChainCell {
+  state: SignalsChainCellState;
+  bid: number | null;
+  ask: number | null;
+  delta: number | null;
+  quoteSource: SignalQuoteSource | null;
+  quotedAt: string | null;
+  /** Candidates only. */
+  grade: SignalGrade | null;
+  netEdge: number | null;
+  /** Filtered only: why Signals left it out, in plain words. */
+  reason: string | null;
+}
+
+export interface SignalsChainStrikeRow {
+  strike: number;
+  call: SignalsChainCell;
+  put: SignalsChainCell;
+}
+
+export interface SignalsChainExpiry {
+  expiry: string;
+  dte: number;
+  hasCandidate: boolean;
+  hasFittedSurface: boolean;
+}
+
+export interface SignalsChain {
+  symbol: string;
+  inSignalsUniverse: boolean;
+  snapshotDateIso: string | null;
+  spotPrice: number | null;
+  unscoredReason: SignalsUnscoredReason | null;
+  expiries: SignalsChainExpiry[];
+  /** The expiry `strikes` belongs to; null when the ticker has no listed expiry stored. */
+  selectedExpiry: string | null;
+  strikes: SignalsChainStrikeRow[];
+}
+
+export interface SignalContractContext {
+  right: "C" | "P";
+  /** Passes today's Signals filters too (it is one of the modal's candidates). */
+  isCandidate: boolean;
+  /** Why it is not a candidate (or not scored); null for a candidate. */
+  notCandidateReason: string | null;
+  /** The spot the contract was scored at. */
+  spotPrice: number | null;
+  priceSource: SignalsPriceSource;
+}
+
+/** Scored exactly like a candidate: SignalOrderSetupForm takes it unchanged. */
+export interface ScoredSignalContract extends SignalCandidate, SignalContractContext {
+  scored: true;
+  /** This contract as the replacement for each scorable open short leg of the same right. */
+  rolls: RollSignalCandidate[];
+}
+
+/** No Signals score (in the money, spans earnings, no surface for the expiry, no two-sided quote, ...): the quote alone. */
+export interface UnscoredSignalContract extends SignalContractContext {
+  scored: false;
+  strategyKey: SignalStrategyKey;
+  expiry: string;
+  strike: number;
+  dte: number;
+  bid: number | null;
+  ask: number | null;
+  delta: number | null;
+  quoteSource: SignalQuoteSource | null;
+  quotedAt: string | null;
+}
+
+export type SignalContractScore = ScoredSignalContract | UnscoredSignalContract;
+
+/** Every stored strike of one expiry (null = the API picks: first expiry with a candidate, else the nearest). `spotPrice` = the modal's live spot. */
+export function fetchSignalsChain(symbol: string, expiry: string | null, spotPrice: number | null): Promise<SignalsChain> {
+  const query = new URLSearchParams();
+  if (expiry) query.set("expiry", expiry);
+  if (spotPrice !== null && spotPrice > 0) query.set("spotPrice", String(spotPrice));
+  const queryString = query.toString();
+  return apiRequest<SignalsChain>(`/signals/${encodeURIComponent(symbol)}/chain${queryString ? `?${queryString}` : ""}`);
+}
+
+/** One contract scored like a Signals candidate with the filters lifted; takes one pooled live quote when the market is open (up to ~3 s). */
+export function fetchSignalContractScore(symbol: string, contract: { expiry: string; strike: number; right: "C" | "P" }, spotPrice: number | null): Promise<SignalContractScore> {
+  const query = new URLSearchParams({ expiry: contract.expiry, strike: String(contract.strike), right: contract.right });
+  if (spotPrice !== null && spotPrice > 0) query.set("spotPrice", String(spotPrice));
+  return apiRequest<SignalContractScore>(`/signals/${encodeURIComponent(symbol)}/contract?${query.toString()}`);
 }

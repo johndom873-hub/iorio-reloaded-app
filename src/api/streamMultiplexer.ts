@@ -12,7 +12,24 @@ import { ApiError, apiBaseUrl, apiRequest } from "./client";
 // new browser can briefly meet an old server) — see connect(). Both go away
 // once the legacy routes are deleted.
 
-export type MultiplexedStreamKind = "greeks" | "pnl" | "exposure" | "pricePerformancePrices" | "tradeAlertPrices" | "signalsScreen" | "signalsTicker" | "notifications" | "pulses";
+export type MultiplexedStreamKind = "greeks" | "pnl" | "exposure" | "pricePerformancePrices" | "stockPrices" | "signalsScreen" | "signalsTicker" | "signalsQuotes" | "notifications" | "pulses";
+
+// IBKR market-data lines only for the tab being looked at (Marcelo 2026-09-29): every kind here holds live
+// price lines on the server, so while this tab is hidden (another tab in front, window minimised, screen
+// locked) for hiddenTabPauseGraceMs they are unsubscribed, and re-sent — under a fresh id, since the server
+// ignores a subscribe that follows its own unsubscribe — the moment the tab is shown again. Every one of them
+// is a snapshot stream, so its first frame back is full current state. Notifications (which carry presence)
+// and the Pulse topology stream hold no lines and stay connected. With the server pool's own 2 s unsubscribe
+// grace, a switch back within ~4 s never touches IBKR.
+const lineHoldingKinds: ReadonlySet<MultiplexedStreamKind> = new Set(["greeks", "pnl", "exposure", "pricePerformancePrices", "stockPrices", "signalsScreen", "signalsTicker", "signalsQuotes"]);
+export const hiddenTabPauseGraceMs = 2_000;
+let areLineHoldingStreamsPaused = false;
+let hiddenTabPauseTimer: ReturnType<typeof setTimeout> | null = null;
+let isHiddenTabPauseDisabled = false;
+
+function isPausedByHiddenTab(subscription: Subscription): boolean {
+  return areLineHoldingStreamsPaused && lineHoldingKinds.has(subscription.kind);
+}
 
 type ServerFrame =
   | { type: "hello"; connectionId: string; protocolVersion: number }
@@ -177,28 +194,116 @@ function removeSubscription(subscription: Subscription) {
   if (subscription.closeLegacy) {
     subscription.closeLegacy();
     subscription.closeLegacy = null;
-  } else if (subscription.isSentToServer && connectionId !== null) {
-    const connectionIdAtCall = connectionId;
-    const generationAtCall = connectionGeneration;
-    enqueueControl(async () => {
-      if (generationAtCall !== connectionGeneration) return; // the connection is gone; so is the subscription
-      await apiRequest(`/stream/${connectionIdAtCall}/unsubscribe`, {
-        method: "POST",
-        body: JSON.stringify({ subscriptionId: subscription.subscriptionId }),
-      }).catch(() => {
-        // Best effort: closing the connection cleans up anyway.
-      });
-    });
+  } else {
+    sendUnsubscribe(subscription);
   }
   scheduleEvaluation();
+}
+
+function sendUnsubscribe(subscription: Subscription) {
+  if (!subscription.isSentToServer || connectionId === null) return;
+  subscription.isSentToServer = false;
+  const connectionIdAtCall = connectionId;
+  const generationAtCall = connectionGeneration;
+  const subscriptionIdAtCall = subscription.subscriptionId;
+  enqueueControl(async () => {
+    if (generationAtCall !== connectionGeneration) return; // the connection is gone; so is the subscription
+    await apiRequest(`/stream/${connectionIdAtCall}/unsubscribe`, {
+      method: "POST",
+      body: JSON.stringify({ subscriptionId: subscriptionIdAtCall }),
+    }).catch(() => {
+      // Best effort: closing the connection cleans up anyway.
+    });
+  });
+}
+
+function pauseLineHoldingStreams() {
+  hiddenTabPauseTimer = null;
+  if (areLineHoldingStreamsPaused) return;
+  areLineHoldingStreamsPaused = true;
+  for (const subscription of subscriptions.values()) {
+    if (!lineHoldingKinds.has(subscription.kind)) continue;
+    if (subscription.retryTimer !== null) {
+      clearTimeout(subscription.retryTimer);
+      subscription.retryTimer = null;
+    }
+    sendUnsubscribe(subscription);
+  }
+}
+
+function resumeLineHoldingStreams() {
+  if (hiddenTabPauseTimer !== null) {
+    clearTimeout(hiddenTabPauseTimer);
+    hiddenTabPauseTimer = null;
+  }
+  if (!areLineHoldingStreamsPaused) return;
+  areLineHoldingStreamsPaused = false;
+  for (const subscription of [...subscriptions.values()]) {
+    if (!lineHoldingKinds.has(subscription.kind) || subscription.isSentToServer) continue;
+    // A fresh id: the server refuses to resurrect one it was told to unsubscribe.
+    subscriptions.delete(subscription.subscriptionId);
+    subscription.subscriptionId = newSubscriptionId();
+    subscription.consecutiveFailures = 0;
+    subscriptions.set(subscription.subscriptionId, subscription);
+    if (connectionState === "ready") sendSubscribe(subscription);
+  }
+}
+
+function onTabVisibilityChange() {
+  if (document.visibilityState === "hidden") {
+    if (isHiddenTabPauseDisabled) return;
+    if (hiddenTabPauseTimer === null && !areLineHoldingStreamsPaused) hiddenTabPauseTimer = setTimeout(pauseLineHoldingStreams, hiddenTabPauseGraceMs);
+  } else {
+    resumeLineHoldingStreams();
+  }
+}
+
+/**
+ * Pulse's "keep live in background" switch: while disabled-pause is on, a hidden tab keeps its line-holding
+ * streams (the pause above never starts, and one already started is undone). Turning it off while the tab is
+ * hidden starts the normal grace timer. Per tab, not persisted here — the caller owns the setting.
+ */
+export function setHiddenTabPauseDisabled(isDisabled: boolean) {
+  if (isHiddenTabPauseDisabled === isDisabled) return;
+  isHiddenTabPauseDisabled = isDisabled;
+  if (isDisabled) {
+    resumeLineHoldingStreams();
+  } else {
+    onTabVisibilityChange();
+  }
+}
+
+/** True when the tab is in front, or is hidden but allowed to stay live — for polls that otherwise skip hidden tabs. */
+export function isTabLive(): boolean {
+  return document.visibilityState === "visible" || isHiddenTabPauseDisabled;
+}
+
+if (typeof document !== "undefined") {
+  document.addEventListener("visibilitychange", onTabVisibilityChange);
+  // A tab opened in the background starts hidden and fires no change event until it is shown.
+  if (document.visibilityState === "hidden") onTabVisibilityChange();
 }
 
 function enqueueControl(task: () => Promise<void>) {
   controlQueue = controlQueue.then(task).catch(() => {});
 }
 
+// A tab that was frozen or whose machine slept can come back with a connection the server dropped long ago
+// before EventSource has reported it. A subscribe sent on that id is answered 404 — a wasted request that
+// then triggers the reconnect anyway — so a connection that has been silent for longer than 1.5 heartbeats
+// (the server sends one every 20 s) is replaced first.
+const silentConnectionLimitBeforeSubscribeMs = 30_000;
+
+function isConnectionProbablyDead(): boolean {
+  return source === null || source.readyState !== EventSource.OPEN || Date.now() - lastActivityAtMs > silentConnectionLimitBeforeSubscribeMs;
+}
+
 function sendSubscribe(subscription: Subscription) {
-  if (subscription.isSentToServer || connectionId === null) return;
+  if (subscription.isSentToServer || connectionId === null || isPausedByHiddenTab(subscription)) return;
+  if (isConnectionProbablyDead()) {
+    handleConnectionLost();
+    return;
+  }
   subscription.isSentToServer = true;
   const connectionIdAtCall = connectionId;
   const generationAtCall = connectionGeneration;

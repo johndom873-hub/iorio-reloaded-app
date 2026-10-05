@@ -1,7 +1,13 @@
-export const apiBaseUrl = import.meta.env.VITE_API_BASE_URL;
+declare global {
+  interface Window {
+    __RUNTIME_CONFIG__?: { apiBaseUrl?: string };
+  }
+}
+
+export const apiBaseUrl = window.__RUNTIME_CONFIG__?.apiBaseUrl;
 
 if (!apiBaseUrl) {
-  throw new Error("Missing required environment variable: VITE_API_BASE_URL");
+  throw new Error("Missing API base URL: /config.js did not provide one (set VITE_API_BASE_URL on the server).");
 }
 
 export class ApiError extends Error {

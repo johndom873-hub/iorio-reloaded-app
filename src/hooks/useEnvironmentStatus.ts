@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
 import { fetchEnvironmentDetails, fetchPublicEnvironment, type EnvironmentDetails, type PublicEnvironment } from "../api/environment";
 import { openNotificationStream } from "../api/notifications";
 
@@ -12,7 +12,10 @@ export interface EnvironmentStatus {
   unknown: boolean;
 }
 
-/** Polls the authenticated environment status every 30 s while the tab is visible, and again when it regains focus. */
+/**
+ * Polls the authenticated environment status every 30 s while the tab is visible, and again when it regains focus.
+ * A market-data refusal is also pushed over the notification stream and applied at once, not on the next poll.
+ */
 export function useEnvironmentStatus(): EnvironmentStatus {
   const [details, setDetails] = useState<EnvironmentDetails | null>(null);
   const [failureCount, setFailureCount] = useState(0);
@@ -39,19 +42,28 @@ export function useEnvironmentStatus(): EnvironmentStatus {
       if (document.visibilityState === "visible") void load();
     };
     document.addEventListener("visibilitychange", onVisible);
-    // The kill switch must show in the top bar the moment anyone flips it, not up to 30 s later.
-    const unsubscribe = openNotificationStream((notification) => {
+    const closeNotificationStream = openNotificationStream((notification) => {
+      // The kill switch must show in the top bar the moment anyone flips it, not up to 30 s later.
       if (notification.type === "trading_halt_changed") void load();
+      if (notification.type !== "market_data_feed") return;
+      setDetails((current) => (current ? { ...current, marketDataFeedRefusal: notification.refusal } : current));
     });
     return () => {
       isMounted.current = false;
       window.clearInterval(timer);
       document.removeEventListener("visibilitychange", onVisible);
-      unsubscribe();
+      closeNotificationStream();
     };
   }, [load]);
 
   return { details, unknown: details === null || failureCount >= consecutiveFailuresBeforeUnknown };
+}
+
+/** AppLayout's EnvironmentStatus, shared with the pages it renders so they don't start a second poller. */
+export const EnvironmentStatusContext = createContext<EnvironmentStatus | null>(null);
+
+export function useSharedEnvironmentStatus(): EnvironmentStatus | null {
+  return useContext(EnvironmentStatusContext);
 }
 
 /** Login page: fetched once, no login required. `null` while loading or if it failed. */

@@ -11,7 +11,7 @@ import {
   type ScreenerFilters,
   type ScreenerScanRow,
 } from "../../api/screener";
-import { formatCompactNumber, formatPercentage, formatRelativeDate } from "../../lib/formatters";
+import { formatCompactNumber, formatCurrency, formatPercentage, formatRelativeDate } from "../../lib/formatters";
 
 interface FilterFormState {
   search: string;
@@ -85,10 +85,10 @@ function toFilters(form: FilterFormState): ScreenerFilters {
 }
 
 interface ScreenerTabProps {
-  onOpenTickerDetail: (symbol: string) => void;
+  onOpenTickerModal: (symbol: string) => void;
 }
 
-export function ScreenerTab({ onOpenTickerDetail }: ScreenerTabProps) {
+export function ScreenerTab({ onOpenTickerModal }: ScreenerTabProps) {
   const [form, setForm] = useState<FilterFormState>(loadStoredFilters);
   const [rows, setRows] = useState<ScreenerScanRow[]>([]);
   const [sectorOptions, setSectorOptions] = useState<string[]>([]);
@@ -153,7 +153,7 @@ export function ScreenerTab({ onOpenTickerDetail }: ScreenerTabProps) {
         <button
           type="button"
           className="btn btn-link p-0 text-decoration-none fw-bold"
-          onClick={() => onOpenTickerDetail(row.symbol)}
+          onClick={() => onOpenTickerModal(row.symbol)}
         >
           {row.symbol}
         </button>
@@ -181,6 +181,12 @@ export function ScreenerTab({ onOpenTickerDetail }: ScreenerTabProps) {
             </span>
           ))
         ),
+    },
+    {
+      key: "lastPrice",
+      header: "Price",
+      align: "right",
+      render: (row) => (row.lastPrice === null ? "—" : formatCurrency(Number(row.lastPrice))),
     },
     {
       key: "impliedVolatility",

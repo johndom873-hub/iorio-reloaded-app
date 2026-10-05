@@ -99,6 +99,71 @@
   justify-self: end;
   min-width: 0;
 }
+.iorio-pulse-page .keep-live-switch {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  margin: 0;
+  cursor: pointer;
+  user-select: none;
+}
+.iorio-pulse-page .keep-live-switch input {
+  position: absolute;
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+.iorio-pulse-page .keep-live-track {
+  position: relative;
+  flex-shrink: 0;
+  width: 26px;
+  height: 14px;
+  border-radius: 100px;
+  background: var(--bg-surface-raised);
+  border: 1px solid var(--border);
+  transition: background 0.15s, border-color 0.15s;
+}
+.iorio-pulse-page .keep-live-track::after {
+  content: "";
+  position: absolute;
+  top: 1px;
+  left: 1px;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--text-muted);
+  transition: transform 0.15s, background 0.15s;
+}
+.iorio-pulse-page .keep-live-switch input:checked + .keep-live-track {
+  background: var(--accent-dim);
+  border-color: var(--accent);
+}
+.iorio-pulse-page .keep-live-switch input:checked + .keep-live-track::after {
+  transform: translateX(12px);
+  background: var(--accent-glow);
+}
+.iorio-pulse-page .keep-live-switch input:focus-visible + .keep-live-track {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.iorio-pulse-page .keep-live-label {
+  font-family: var(--font-mono);
+  font-size: 0.65rem;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+.iorio-pulse-page.pulse-phone .phone-header-row3 {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding-top: 4px;
+}
+.iorio-pulse-page.pulse-phone .phone-header-row3 .keep-live-wrap {
+  flex-shrink: 0;
+  margin-left: auto;
+}
 /* Narrow: the centered badges would collide with the logo/clock, so they drop below the header
    instead of fighting for the same row (this page is a single-screen ops dashboard, not a
    scrolling one, so this is the one place a second row is acceptable). */
@@ -314,7 +379,7 @@
   white-space: nowrap;
 }
 .iorio-pulse-page .flash-changed {
-  animation: pulse-flash 1200ms ease-out;
+  animation: pulse-flash 1500ms ease-out; /* keep equal to FLASH_DURATION_MS in useFlashOnChange.ts */
 }
 @keyframes pulse-flash {
   0%,
@@ -601,6 +666,10 @@
 }
 .iorio-pulse-page .strat-badge.csp {
   background: var(--tblr-purple);
+  color: #fff;
+}
+.iorio-pulse-page .strat-badge.hedge {
+  background: var(--iorio-hedge);
   color: #fff;
 }
 .iorio-pulse-page .strat-badge.ns {
@@ -1495,7 +1564,7 @@
   font-size: 0.75rem;
 }
 
-/* Charts: 140px P&L, 120px Net Delta, each with its own axis row */
+/* Charts: 140px P&L, 120px P(Δ), each with its own axis row */
 .iorio-pulse-page.pulse-phone .phone-charts {
   display: flex;
   flex-direction: column;

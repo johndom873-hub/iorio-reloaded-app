@@ -4,8 +4,10 @@ import { DataTable, type DataTableColumn } from "../components/DataTable/DataTab
 import { Spinner } from "../components/Spinner";
 import { FlashingNumber } from "../components/FlashingNumber";
 import { ClosePositionModal } from "../components/ClosePositionModal";
-import { TickerDetailModal } from "../components/TickerDetailModal";
+import { RollBadge } from "../components/signals/RollBadge";
 import { CycleScoreboard } from "../components/CycleScoreboard";
+import { TodaysOrdersCard } from "../components/TodaysOrdersCard";
+import { NewPositionTag } from "../components/NewPositionTag";
 import { ApiError } from "../api/client";
 import {
   fetchCycleMarks,
@@ -17,7 +19,7 @@ import {
   type Position,
   type UnrealizedPnlResult,
 } from "../api/positions";
-import { fetchTradeAlerts, isRollAlert, type RollStructure, type TradeAlert } from "../api/tradeAlerts";
+import { fetchSignalsScreen, type SignalsScreenRow } from "../api/signals";
 import { fetchAccountValue } from "../api/dashboard";
 import { openNotificationStream } from "../api/notifications";
 import {
@@ -27,17 +29,18 @@ import {
   formatCurrencyTrimmed,
   formatDate,
   formatDaysToExpiry,
-  formatNumber,
   formatPercentageValue,
   formatSignedPnl,
   pnlTextClass,
 } from "../lib/formatters";
 import { liveCyclePnl } from "../lib/cycleLivePnl";
-import { useTickerDetailSymbol } from "../hooks/useTickerDetailSymbol";
+import { SUCCESS_PROBABILITY_HEADER, SUCCESS_PROBABILITY_HEADER_TITLE, formatSuccessProbability, successProbabilityFromDelta } from "../lib/successProbability";
+import { useRefreshAfterSignalsTickerModal, useSignalsTickerModal } from "../hooks/useSignalsTickerModal";
 import {
   positionExpiryDate,
   positionHasStockLeg,
   positionPnlAsOfDate,
+  positionHasLegEnteredTodayEastern,
   positionIsStockOnly,
   positionPremiumPnl,
   positionStockPnl,
@@ -47,9 +50,6 @@ import {
 } from "../lib/positionPnl";
 import { StrategyBadge } from "../components/StrategyBadge";
 import { TooltipSpan } from "../components/TooltipSpan";
-import { useTooltip } from "../hooks/useTooltip";
-
-type RollAlert = TradeAlert & { suggestedStructure: RollStructure };
 
 function structureSummary(position: Position): string {
   // An open position can carry closed legs from a past roll (they stay
@@ -67,19 +67,6 @@ function structureSummary(position: Position): string {
     .join(" / ");
 }
 
-// Extracted so useTooltip (a hook) can be called once per row from inside
-// the actions column's render(row) callback (a plain function, not a
-// component) without violating the Rules of Hooks -- see FlashingNumber.tsx's
-// doc comment for the same constraint.
-function RollButton({ rationale, onClick }: { rationale: string | null | undefined; onClick: () => void }) {
-  const ref = useTooltip<HTMLButtonElement>(rationale ?? "Roll alert pending for this position");
-  return (
-    <button ref={ref} type="button" className="btn btn-sm btn-outline-warning" onClick={onClick}>
-      Roll
-    </button>
-  );
-}
-
 export function PositionsPage() {
   const [positions, setPositions] = useState<Position[]>([]);
   const [loading, setLoading] = useState(true);
@@ -94,25 +81,14 @@ export function PositionsPage() {
   // Stored-mark cycle figures per open ticker (null until loaded); the row's live marks are applied on top in resolveCyclePnl.
   const [cycleMarksBySymbol, setCycleMarksBySymbol] = useState<Record<string, OpenCycleMarks> | null>(null);
   const [cycleMarksFetchFailed, setCycleMarksFetchFailed] = useState(false);
-  const [detailSymbol, setDetailSymbol] = useTickerDetailSymbol();
-  // Not persisted across a refresh (unlike detailSymbol) -- it's a one-shot
-  // "scroll to this position"/"pre-select this alert" aid, not state worth
-  // surviving a reload.
-  const [focusPositionId, setFocusPositionId] = useState<string | undefined>(undefined);
-  const [initialAlertId, setInitialAlertId] = useState<string | undefined>(undefined);
-  const openTickerDetail = useCallback(
-    (ticker: { symbol: string; focusPositionId?: string; alertId?: string }) => {
-      setDetailSymbol(ticker.symbol);
-      setFocusPositionId(ticker.focusPositionId);
-      setInitialAlertId(ticker.alertId);
-    },
-    [setDetailSymbol],
+  const { open: openTickerModal } = useSignalsTickerModal();
+  const openTickerModalAtPosition = useCallback(
+    (ticker: { symbol: string; focusPositionId?: string }) => openTickerModal(ticker.symbol, { focusPositionId: ticker.focusPositionId }),
+    [openTickerModal],
   );
   const [closePosition, setClosePosition] = useState<Position | null>(null);
-  // Pending roll alerts, keyed by the position they'd roll — drives the
-  // Roll button in the actions column.
-  const [rollAlertsByPositionId, setRollAlertsByPositionId] = useState<Record<string, RollAlert>>({});
-
+  // Signals screen rows by symbol: the Roll Signals badge of an open option position (its ticker's best roll).
+  const [signalsRowBySymbol, setSignalsRowBySymbol] = useState<Record<string, SignalsScreenRow>>({});
   const loadPositions = useCallback(async () => {
     try {
       setError(null);
@@ -123,25 +99,27 @@ export function PositionsPage() {
     }
   }, []);
 
-  const loadRollAlerts = useCallback(async () => {
+  const loadSignalsRows = useCallback(async () => {
     try {
-      const result = await fetchTradeAlerts({ status: "pending" });
-      const byPositionId: Record<string, RollAlert> = {};
-      for (const alert of result) {
-        if (isRollAlert(alert) && alert.relatedPositionId) byPositionId[alert.relatedPositionId] = alert;
-      }
-      setRollAlertsByPositionId(byPositionId);
+      const rows = await fetchSignalsScreen();
+      setSignalsRowBySymbol(Object.fromEntries(rows.map((row) => [row.symbol, row])));
     } catch {
-      // Non-critical — the Roll button just won't show if this fails.
+      // Non-critical — the roll badges just don't show if this fails.
     }
   }, []);
 
   useEffect(() => {
     setLoading(true);
-    Promise.all([loadPositions(), loadRollAlerts()]).finally(() => setLoading(false));
-  }, [loadPositions, loadRollAlerts]);
+    Promise.all([loadPositions(), loadSignalsRows()]).finally(() => setLoading(false));
+  }, [loadPositions, loadSignalsRows]);
 
-  // Same race as TickerDetailModal (see its matching comment): a fill flips
+  const reloadAfterSignalsTickerModal = useCallback(() => {
+    void loadPositions();
+    void loadSignalsRows();
+  }, [loadPositions, loadSignalsRows]);
+  useRefreshAfterSignalsTickerModal(reloadAfterSignalsTickerModal);
+
+  // Same race as in the Signals modal's useTickerPositions: a fill flips
   // order_requests.status to "filled" well before reconcilePositionsFromIbkr
   // actually creates the position row, and nothing else here re-fetches once
   // it does. Refetch on the worker's "position_opened" push instead of
@@ -232,24 +210,20 @@ export function PositionsPage() {
     return { state: "ready", value: liveCyclePnl(marks, price, liveUnrealizedPremiumByPositionId), storedAsOf: price === null ? marks.markDate : null };
   }
 
-  function renderNetDelta(row: Position) {
+  function renderSuccessProbabilityByDelta(row: Position) {
     const optionLeg = row.legs.find((leg) => leg.legType === "option" && !leg.exitAt);
     if (!optionLeg) return <span className="text-muted">—</span>;
+    if (optionLeg.side !== "short") return <TooltipSpan className="text-muted" text="Only a short option has a chance of success">—</TooltipSpan>;
     const greeks = greeksByLegId[optionLeg.id];
     if (!greeks) {
       if (greeksFetchFailed) return <TooltipSpan className="text-muted" text="Failed to load">—</TooltipSpan>;
-      return <Spinner size="sm" label="Loading delta" />;
+      return <Spinner size="sm" label="Loading P(Δ)" />;
     }
-    const value = greeks.delta;
+    const value = successProbabilityFromDelta(optionLeg, greeks.delta);
     if (value === null) return <TooltipSpan className="text-muted" text="No delta available">—</TooltipSpan>;
     return (
-      <FlashingNumber
-        value={value}
-        precision={2}
-        className={pnlTextClass(value)}
-        title={greeks.asOfDate ? `As of ${formatDate(greeks.asOfDate)} close` : undefined}
-      >
-        {formatNumber(value, 2)}
+      <FlashingNumber value={value} precision={2} title={greeks.asOfDate ? `As of ${formatDate(greeks.asOfDate)} close` : undefined}>
+        {formatSuccessProbability(value)}
       </FlashingNumber>
     );
   }
@@ -301,9 +275,10 @@ export function PositionsPage() {
         <button
           type="button"
           className="btn btn-link px-2 py-1 text-decoration-none fw-bold"
-          onClick={() => openTickerDetail({ symbol: row.symbol, focusPositionId: row.id })}
+          onClick={() => openTickerModalAtPosition({ symbol: row.symbol, focusPositionId: row.id })}
         >
           {row.symbol}
+          {positionHasLegEnteredTodayEastern(row) && <NewPositionTag />}
         </button>
       ),
     },
@@ -316,13 +291,22 @@ export function PositionsPage() {
     {
       key: "price",
       header: "Price",
-      headerTitle: "Current stock price",
+      headerTitle: "Current stock price. Greyed out when the market is closed: the last daily close (hover for its date)",
       align: "right",
       render: (row) => {
         const { price, failed } = resolvePrice(row);
         if (price === null) {
-          if (failed) return <span className="text-muted">—</span>;
-          return <Spinner size="sm" label="Loading price" />;
+          if (!failed) return <Spinner size="sm" label="Loading price" />;
+          // No live price (market closed): show the last daily close, greyed (text-secondary: text-muted fails AA in dark), the same stored mark Cycle P&L falls back to.
+          const storedMarks = cycleMarksBySymbol?.[row.symbol];
+          if (storedMarks && storedMarks.markPrice !== null) {
+            return (
+              <TooltipSpan className="text-secondary" text={storedMarks.markDate ? `As of ${formatDate(storedMarks.markDate)} close` : "Last close"}>
+                {formatCurrency(storedMarks.markPrice, 2)}
+              </TooltipSpan>
+            );
+          }
+          return <span className="text-muted">—</span>;
         }
         return <FlashingNumber value={price} precision={2}>{formatCurrency(price, 2)}</FlashingNumber>;
       },
@@ -504,11 +488,11 @@ export function PositionsPage() {
       },
     },
     {
-      key: "netDelta",
-      header: "Net Δ",
-      headerTitle: "The short option leg's delta, signed as reported (negative for a short call, positive for a short put)",
+      key: "successProbabilityByDelta",
+      header: SUCCESS_PROBABILITY_HEADER,
+      headerTitle: SUCCESS_PROBABILITY_HEADER_TITLE,
       align: "right",
-      render: (row) => renderNetDelta(row),
+      render: (row) => renderSuccessProbabilityByDelta(row),
     },
     {
       key: "actions",
@@ -535,7 +519,7 @@ export function PositionsPage() {
                 <button
                   type="button"
                   className="btn btn-sm btn-outline-warning"
-                  onClick={() => openTickerDetail({ symbol: row.symbol, focusPositionId: row.id })}
+                  onClick={() => openTickerModalAtPosition({ symbol: row.symbol, focusPositionId: row.id })}
                 >
                   Sell Call
                 </button>
@@ -548,15 +532,10 @@ export function PositionsPage() {
         }
 
         if (openOptionLeg) {
-          const alert = rollAlertsByPositionId[row.id];
+          const signalsRow = signalsRowBySymbol[row.symbol];
           return (
-            <div className="d-flex gap-1 justify-content-end">
-              {alert && (
-                <RollButton
-                  rationale={alert.rationale}
-                  onClick={() => openTickerDetail({ symbol: row.symbol, focusPositionId: row.id, alertId: alert.id })}
-                />
-              )}
+            <div className="d-flex gap-1 justify-content-end align-items-center">
+              {signalsRow?.bestRoll?.positionId === row.id && <RollBadge row={signalsRow} onClick={(legId) => openTickerModal(row.symbol, { rollLegId: legId })} />}
               <button type="button" className="btn btn-sm btn-outline-secondary" onClick={() => setClosePosition(row)}>
                 Close
               </button>
@@ -584,6 +563,8 @@ export function PositionsPage() {
         emptyMessage="No open positions yet."
       />
 
+      <TodaysOrdersCard />
+
       <CycleScoreboard />
 
       {closePosition && (
@@ -597,20 +578,6 @@ export function PositionsPage() {
         />
       )}
 
-      {detailSymbol && (
-        <TickerDetailModal
-          symbol={detailSymbol}
-          focusPositionId={focusPositionId}
-          initialAlertId={initialAlertId}
-          onClose={() => {
-            setDetailSymbol(null);
-            setFocusPositionId(undefined);
-            setInitialAlertId(undefined);
-            loadPositions();
-            loadRollAlerts();
-          }}
-        />
-      )}
     </>
   );
 }

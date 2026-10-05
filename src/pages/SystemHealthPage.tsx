@@ -10,7 +10,6 @@ import { TooltipSpan } from "../components/TooltipSpan";
 const jobLabels: Record<string, string> = {
   daily_market_data_capture: "Daily Market Data Capture",
   daily_pnl_snapshot: "Daily P&L Snapshot",
-  trade_alert_generation: "Trade Alert Generation",
   ibkr_health_check: "IBKR Gateway Health Check",
 };
 

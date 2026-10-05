@@ -5,8 +5,7 @@ import { openNotificationStream } from "../api/notifications";
 import { fetchPositionsBySymbol, openGreeksStream, openUnrealizedPnlStream, type Greeks, type Position, type UnrealizedPnlResult } from "../api/positions";
 
 // One ticker's positions with their live Greeks / unrealized P&L and the
-// account value for EXP% — extracted from TickerDetailModal (2026-09-22) so
-// the Signals modal shows the same Positions card from the same data.
+// account value for EXP%, for the Signals modal's Positions cards.
 
 export interface TickerPositionsData {
   positions: Position[] | null;

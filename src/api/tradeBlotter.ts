@@ -1,5 +1,5 @@
 import { apiRequest } from "./client";
-import type { LegSide, LegType, OptionType, OrderRequestStatus, PositionStrategyKey } from "./positions";
+import type { LegSide, LegType, OptionType, OrderCancellationReason, OrderRequestStatus, PositionStrategyKey } from "./positions";
 
 export interface Trade {
   id: string;
@@ -10,6 +10,8 @@ export interface Trade {
   side: "buy" | "sell";
   quantity: number;
   price: string;
+  // price * quantity * multiplier: the premium transacted for an option, the share value for stock.
+  value: string;
   commission: string | null;
   executedAt: string;
   isClosingTrade: boolean;
@@ -50,11 +52,13 @@ export interface PendingOrder {
   action: "BUY" | "SELL";
   quantity: number;
   unitPrice: number;
+  value: number;
   strike: number | null;
   expiry: string | null; // YYYY-MM-DD
   optionType: "C" | "P" | null;
   requestedByDisplayName: string | null;
   cancelledByDisplayName: string | null;
+  cancellationReason: OrderCancellationReason | null;
 }
 
 export interface TradeBlotterFilters {

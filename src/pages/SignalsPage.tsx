@@ -1,25 +1,27 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { IconAlertTriangle, IconChevronDown, IconRefresh } from "@tabler/icons-react";
-import { useSearchParams } from "react-router-dom";
+import { useEffect, useMemo, useState } from "react";
+import { IconAlertTriangle, IconChevronDown } from "@tabler/icons-react";
 import { ApiError } from "../api/client";
 import { fetchSignalsRoadmap, fetchSignalsScreen, openSignalsScreenStream, type DayQuotesFrameStatus, type RoadmapItem, type SignalGrade, type SignalsScreenRow } from "../api/signals";
 import { DataTable, type DataTableColumn } from "../components/DataTable/DataTable";
 import { FlashingNumber } from "../components/FlashingNumber";
+import { FlashingText } from "../components/FlashingText";
 import { PageHeader } from "../components/layout/PageHeader";
 import { ModelCaveatBadge, RoadmapEtaText } from "../components/signals/ModelCaveatBadge";
-import { SignalsTickerModal } from "../components/SignalsTickerModal";
+import { RollBadge } from "../components/signals/RollBadge";
+import { Spinner } from "../components/Spinner";
 import { TickColoredPrice } from "../components/TickColoredPrice";
 import { TooltipSpan } from "../components/TooltipSpan";
-import { useTickerDetailSymbol } from "../hooks/useTickerDetailSymbol";
-import { daysToExpiry, formatCurrency, formatDateTime, formatDaysToExpiry, formatPercentage, formatRelativeTime, formatSignedPercentageValue, formatSignedPnl, formatVolatilityPoints, pnlTextClass, formatShortAge } from "../lib/formatters";
-import { describeCandidateCompact, describeDayQuotesStatus, describeRoll, gradeBadgeClass, gradeExplanation, gradeLabel, priceSourceLabel, quoteSourceLabel, roadmapStatusBadgeClass, roadmapStatusLabel, signalsColumnExplanation, unscoredReasonLabel } from "../lib/signalsPresentation";
+import { useSignalsTickerModal } from "../hooks/useSignalsTickerModal";
+import { daysToExpiry, formatCurrency, formatDateTime, formatDaysToExpiry, formatPercentage, formatRelativeTime, formatSignedPercentageValue, formatSnapshotStamp, formatSignedPnl, formatVolatilityPoints, pnlTextClass } from "../lib/formatters";
+import { candidateContractKey, describeCandidateCompact, describeDayQuotesStatus, describeNoSignalBadge, type NoSignalBadge, gradeBadgeClass, gradeExplanation, gradeLabel, priceSourceLabel, quoteSourceLabel, roadmapStatusBadgeClass, roadmapStatusLabel, signalsColumnExplanation, restScoresFallbackMs } from "../lib/signalsPresentation";
 import { useTooltip } from "../hooks/useTooltip";
+import { QuoteAgeLabel } from "../components/QuoteAgeLabel";
 
 // Signals screen (stage 3 of the build; mockup approved 2026-09-22, v3):
 // every shortlist ticker, scored against the 10:00 ET fitted surface at live
 // prices. First paint from GET /signals, then the signalsScreen stream
 // replaces the rows at most once a second. A row opens the Signals modal
-// (stage 4), kept in the URL as ?signal=SYMBOL like Ticker Detail's ?ticker=.
+// (stage 4, mounted globally), kept in the URL as ?signal=SYMBOL.
 
 type StreamState = "connecting" | "live" | "failed";
 
@@ -34,31 +36,22 @@ function GradeBadge({ grade }: { grade: SignalGrade }) {
   );
 }
 
-/**
- * Roll Signals badge (variant B, approved 2026-09-24): solid, in the best roll's grade colour, counting the
- * held legs with a roll above Avoid. Click opens the modal on that roll.
- */
-function RollBadge({ row, onClick }: { row: SignalsScreenRow; onClick: (legId: string) => void }) {
-  const best = row.bestRoll;
-  const held = best ? row.heldLegs.find((leg) => leg.legId === best.legId) : undefined;
-  const tooltip = best && held ? `${signalsColumnExplanation.roll} Best: ${describeRoll(best, held)} · ${formatVolatilityPoints(best.netRollEdge)} (${formatSignedPnl(best.netRollEdgeDollars, 0)}) · net credit ${formatCurrency(best.netCreditPerShare)}/sh.` : "";
-  const ref = useTooltip<HTMLButtonElement>(tooltip);
-  if (!best || row.rollCount === 0) return null;
+/** No top signal: the badge (Analysing / Unscored / No candidates / Filtered) with the reason always shown under it (approved mockup 2026-10-03). */
+function UnscoredBadge({ row }: { row: SignalsScreenRow }) {
+  const badge = describeNoSignalBadge(row);
   return (
-    <button ref={ref} type="button" className={`badge border-0 d-inline-flex align-items-center gap-1 px-2 py-1 ${gradeBadgeClass[best.grade]}`} style={{ ...badgeFontSize, cursor: "pointer" }} onClick={() => onClick(best.legId)}>
-      <IconRefresh size={12} />
-      {row.rollCount} roll{row.rollCount === 1 ? "" : "s"} · {gradeLabel[best.grade]}
-    </button>
+    <div className="d-flex flex-column align-items-start gap-1">
+      <NoSignalBadgeLabel badge={badge} />
+      {badge.reason && <span className="text-secondary signals-no-signal-reason">{badge.reason}</span>}
+    </div>
   );
 }
 
-function UnscoredBadge({ row }: { row: SignalsScreenRow }) {
+function NoSignalBadgeLabel({ badge }: { badge: NoSignalBadge }) {
   return (
-    <span className="text-secondary">
-      <span className="badge bg-secondary-lt me-1" style={badgeFontSize}>
-        Unscored
-      </span>
-      {row.unscoredReason ? unscoredReasonLabel[row.unscoredReason] : ""}
+    <span className={`badge ${badge.className} d-inline-flex align-items-center gap-1`} style={badgeFontSize}>
+      {badge.spinning && <Spinner size="sm" className="iorio-badge-spinner" />}
+      {badge.label}
     </span>
   );
 }
@@ -93,7 +86,7 @@ function QuoteSourceCell({ row }: { row: SignalsScreenRow }) {
     return (
       <TooltipSpan className="d-inline-flex align-items-center gap-2 font-mono" text={`${quoteSourceLabel.day}${best.quotedAt ? ` · received ${formatDateTime(best.quotedAt)}` : ""}`}>
         <span className="iorio-still-dot" />
-        {formatShortAge(best.quotedAt) ?? "—"}
+        <QuoteAgeLabel quotedAt={best.quotedAt} />
       </TooltipSpan>
     );
   }
@@ -139,41 +132,13 @@ function latestSnapshotCapturedAt(rows: SignalsScreenRow[]): string | null {
 export function SignalsPage() {
   const [rows, setRows] = useState<SignalsScreenRow[]>([]);
   const [roadmap, setRoadmap] = useState<RoadmapItem[]>([]);
+  const [restRows, setRestRows] = useState<SignalsScreenRow[] | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [streamState, setStreamState] = useState<StreamState>("connecting");
   const [lastFrameAt, setLastFrameAt] = useState<string | null>(null);
   const [dayQuotes, setDayQuotes] = useState<DayQuotesFrameStatus | null>(null);
-  const [modalSymbol, setModalSymbol] = useTickerDetailSymbol("signal");
-  // Roll Signals: `?roll=<legId>` beside `?signal=` pre-selects that leg's best roll in the modal (badge click, Telegram link).
-  const [searchParams, setSearchParams] = useSearchParams();
-  const modalRollLegId = searchParams.get("roll");
-  const openModalOnRoll = useCallback(
-    (symbol: string, legId: string) =>
-      setSearchParams(
-        (previous) => {
-          const params = new URLSearchParams(previous);
-          params.set("signal", symbol);
-          params.set("roll", legId);
-          return params;
-        },
-        { replace: true },
-      ),
-    [setSearchParams],
-  );
-  const closeModal = useCallback(
-    () =>
-      setSearchParams(
-        (previous) => {
-          const params = new URLSearchParams(previous);
-          params.delete("signal");
-          params.delete("roll");
-          return params;
-        },
-        { replace: true },
-      ),
-    [setSearchParams],
-  );
+  const { symbol: modalSymbol, open: openTickerModal } = useSignalsTickerModal();
   const [roadmapOpen, setRoadmapOpen] = useState(false);
 
   useEffect(() => {
@@ -181,20 +146,35 @@ export function SignalsPage() {
     Promise.all([fetchSignalsScreen(), fetchSignalsRoadmap()])
       .then(([screenRows, roadmapResponse]) => {
         if (cancelled) return;
-        // A live frame may already have replaced the rows; the REST answer must not roll them back.
-        setRows((current) => (current.length > 0 ? current : screenRows));
+        setRestRows(screenRows);
         setRoadmap(roadmapResponse.items);
       })
       .catch((err) => {
-        if (!cancelled) setError(err instanceof ApiError ? err.message : "Could not load the Signals screen.");
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
+        if (cancelled) return;
+        setError(err instanceof ApiError ? err.message : "Could not load the Signals screen.");
+        setLoading(false);
       });
     return () => {
       cancelled = true;
     };
   }, []);
+
+  // The REST rows are scored at the 10:00 snapshot spot: shown only if no live frame has arrived after a short wait (or the stream
+  // failed), so the list never opens on stale grades that the live prices then correct.
+  useEffect(() => {
+    if (!restRows) return;
+    const showRestRows = () => {
+      // A live frame may already have replaced the rows; the REST answer must not roll them back.
+      setRows((current) => (current.length > 0 ? current : restRows));
+      setLoading(false);
+    };
+    if (streamState === "failed") {
+      showRestRows();
+      return;
+    }
+    const timer = setTimeout(showRestRows, restScoresFallbackMs);
+    return () => clearTimeout(timer);
+  }, [restRows, streamState]);
 
   // Re-opened when the modal opens/closes: the modal holds its own live lines, so the screen's
   // one-per-ticker best-contract lines are released while it is open (approved 2026-09-24).
@@ -206,6 +186,7 @@ export function SignalsPage() {
         setDayQuotes(frame.dayQuotes);
         setLastFrameAt(frame.at);
         setStreamState("live");
+        setLoading(false);
       },
       () => setStreamState("failed"),
       { bestContractLines: modalSymbol === null },
@@ -230,7 +211,7 @@ export function SignalsPage() {
         key: "ticker",
         header: "Ticker",
         render: (row) => (
-          <button type="button" className="btn btn-link p-0 text-decoration-none fw-bold" onClick={() => setModalSymbol(row.symbol)}>
+          <button type="button" className="btn btn-link p-0 text-decoration-none fw-bold" onClick={() => openTickerModal(row.symbol)}>
             {row.symbol}
           </button>
         ),
@@ -258,8 +239,34 @@ export function SignalsPage() {
         headerTitle: signalsColumnExplanation.day,
         render: (row) => <span className={`font-mono ${pnlTextClass(row.dayChangePercent)}`}>{formatSignedPercentageValue(row.dayChangePercent, 1)}</span>,
       },
-      { key: "best", header: "Top Signal", headerTitle: signalsColumnExplanation.best, render: (row) => (row.best ? <span className="text-nowrap">{describeCandidateCompact(row.best)}</span> : <UnscoredBadge row={row} />) },
-      { key: "yield", header: "Yield", align: "right", headerTitle: signalsColumnExplanation.yield, render: (row) => <span className="font-mono">{row.best ? formatPercentage(row.best.annualizedYield, 1) : "—"}</span> },
+      {
+        key: "best",
+        header: "Top Signal",
+        headerTitle: signalsColumnExplanation.best,
+        render: (row) =>
+          row.best ? (
+            <FlashingText changeKey={candidateContractKey(row.best)} className="text-nowrap">
+              {describeCandidateCompact(row.best)}
+            </FlashingText>
+          ) : (
+            <UnscoredBadge row={row} />
+          ),
+      },
+      {
+        key: "yield",
+        header: "Yield",
+        align: "right",
+        headerTitle: signalsColumnExplanation.yield,
+        // annualizedYield is a fraction shown as a percentage to 1 decimal, so 3 decimals of the fraction.
+        render: (row) =>
+          row.best ? (
+            <FlashingNumber value={row.best.annualizedYield} precision={3} className="font-mono">
+              {formatPercentage(row.best.annualizedYield, 1)}
+            </FlashingNumber>
+          ) : (
+            <span className="font-mono">—</span>
+          ),
+      },
       { key: "grade", header: "Grade", headerTitle: signalsColumnExplanation.grade, render: (row) => (row.best ? <GradeBadge grade={row.best.grade} /> : null) },
       {
         key: "netEdge",
@@ -297,6 +304,12 @@ export function SignalsPage() {
       },
       { key: "forecast", header: "FV", align: "right", headerTitle: signalsColumnExplanation.forecast, render: (row) => <span className="font-mono">{formatPercentage(row.forecast?.volatility, 1)}</span> },
       {
+        key: "snapshot",
+        header: "Snapshot",
+        headerTitle: "When the option-chain snapshot behind this row's score was captured: a clock time (ET) for today's, a date for an earlier one.",
+        render: (row) => <span className={`font-mono text-nowrap ${row.snapshotCapturedAt && formatSnapshotStamp(row.snapshotCapturedAt).includes("ET") ? "" : "text-secondary"}`}>{formatSnapshotStamp(row.snapshotCapturedAt)}</span>,
+      },
+      {
         key: "momentum",
         header: "Mom.",
         align: "right",
@@ -313,12 +326,12 @@ export function SignalsPage() {
         render: (row) => (
           <span className="d-inline-flex align-items-center gap-1 justify-content-end w-100">
             <ModelCaveatBadge symbol={row.symbol} caveats={row.caveats} />
-            <RollBadge row={row} onClick={(legId) => openModalOnRoll(row.symbol, legId)} />
+            <RollBadge row={row} onClick={(legId) => openTickerModal(row.symbol, { rollLegId: legId })} />
           </span>
         ),
       },
     ],
-    [setModalSymbol, openModalOnRoll],
+    [openTickerModal],
   );
 
   if (error) {
@@ -382,6 +395,7 @@ export function SignalsPage() {
           columns={columns}
           rows={rows}
           rowKey={(row) => row.tickerId}
+          rowClassName={(row) => (row.unscoredReason === "analysing" ? "signals-row-analysing" : row.unscoredReason ? "signals-row-unscored" : undefined)}
           loading={loading && rows.length === 0}
           emptyMessage="No tickers on the shortlist."
           toolbar={toolbar}
@@ -401,7 +415,7 @@ export function SignalsPage() {
               <div className="card-body py-2">
                 <div className="d-flex justify-content-between align-items-center">
                   <span>
-                    <button type="button" className="btn btn-link p-0 text-decoration-none fw-bold" onClick={() => setModalSymbol(row.symbol)}>
+                    <button type="button" className="btn btn-link p-0 text-decoration-none fw-bold" onClick={() => openTickerModal(row.symbol)}>
                       {row.symbol}
                     </button>{" "}
                     <TickColoredPrice value={row.spotPrice} initialReference={row.previousClose?.close ?? null} precision={2} title={priceSourceLabel[row.priceSource]}>
@@ -411,7 +425,7 @@ export function SignalsPage() {
                       {formatSignedPercentageValue(row.dayChangePercent, 1)}
                     </span>
                   </span>
-                  {row.best ? <GradeBadge grade={row.best.grade} /> : <span className="badge bg-secondary-lt" style={badgeFontSize}>Unscored</span>}
+                  {row.best ? <GradeBadge grade={row.best.grade} /> : <NoSignalBadgeLabel badge={describeNoSignalBadge(row)} />}
                 </div>
                 <div className="d-flex justify-content-between gap-2 text-secondary" style={{ fontSize: "0.8rem" }}>
                   {row.best ? (
@@ -422,7 +436,7 @@ export function SignalsPage() {
                       <span className="font-mono">{formatSignedPnl(row.best.edgeDollars, 0)}</span>
                     </>
                   ) : (
-                    <span>{row.unscoredReason ? unscoredReasonLabel[row.unscoredReason] : ""}</span>
+                    <span>{describeNoSignalBadge(row).reason}</span>
                   )}
                 </div>
                 <div className="d-flex justify-content-between align-items-center gap-2 text-secondary" style={{ fontSize: "0.8rem" }}>
@@ -433,7 +447,7 @@ export function SignalsPage() {
                 {(row.caveats.length > 0 || (row.bestRoll !== null && row.rollCount > 0)) && (
                   <div className="d-flex justify-content-end align-items-center gap-1 mt-1">
                     <ModelCaveatBadge symbol={row.symbol} caveats={row.caveats} />
-                    <RollBadge row={row} onClick={(legId) => openModalOnRoll(row.symbol, legId)} />
+                    <RollBadge row={row} onClick={(legId) => openTickerModal(row.symbol, { rollLegId: legId })} />
                   </div>
                 )}
               </div>
@@ -441,8 +455,6 @@ export function SignalsPage() {
           ))}
         </div>
       </div>
-
-      {modalSymbol && <SignalsTickerModal key={`${modalSymbol}|${modalRollLegId ?? ""}`} symbol={modalSymbol} initialRollLegId={modalRollLegId} onClose={closeModal} />}
 
     </>
   );

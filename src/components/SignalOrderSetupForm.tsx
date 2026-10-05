@@ -2,27 +2,28 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import { ApiError } from "../api/client";
 import { buildOpenOrder, type AdaptivePriority, type OrderRequest } from "../api/positions";
 import type { SignalCandidate, TickerSignals } from "../api/signals";
-import { checkSignalOrderLimits } from "../api/signalSettings";
-import { flashClassName, useFlashOnChange } from "../hooks/useFlashOnChange";
+import { checkOrderLimits } from "../api/orderChecks";
+import { FLASH_DURATION_MS, flashClassName, useFlashOnChange } from "../hooks/useFlashOnChange";
+import { computePayoff } from "../lib/payoff";
 import { formatCurrency, formatDate, formatPercentage, formatSignedPercentageValue, formatSignedPnl, formatVolatilityPoints } from "../lib/formatters";
-import { describeCandidate, describeSignalFlag, gradeBadgeClass, gradeLabel, signalFlagLetter } from "../lib/signalsPresentation";
+import { describeCandidate, describeNonLiveQuoteBlock, describeSignalFlag, gradeBadgeClass, gradeLabel, signalFlagLetter } from "../lib/signalsPresentation";
 import { Spinner } from "./Spinner";
+import { OrderCommissionRows } from "./OrderCommissionRows";
+import { toIbkrExpiry, useOrderCommissionPreview } from "../hooks/useOrderCommissionPreview";
+import type { CommissionPreviewLeg, OrderLimitsResult } from "../api/orderChecks";
 import { useTooltip } from "../hooks/useTooltip";
 
-// Signals order setup (stage 5, approved 2026-09-22). Same split as
-// RollOrderSetupForm: this is only the "form" half -- it builds the order
+// Signals order setup (stage 5, approved 2026-09-22). This is only the "form" half -- it builds the order
 // through the existing POST /positions/orders and hands the OrderRequest up;
 // the caller renders the shared OrderReviewPanel, which confirms and places
 // it exactly as every other order in the app. What is new: the Signal card
-// (net Edge at the mid and at the bid -- an Adaptive order fills somewhere
-// between), a decay meter against the score at selection, and the signal
-// snapshot saved with the order for Phase 2.
+// (net Edge with the Risk & Limits spread cost, the same figure as the list),
+// a decay meter against the score at selection, and the signal snapshot saved
+// with the order for Phase 2.
 
 export const decayWarningVolatilityPoints = 1;
-const signalOrderLimitsDebounceMs = 400;
+const orderLimitsDebounceMs = 400;
 const adaptivePriorities: AdaptivePriority[] = ["Patient", "Normal", "Urgent"];
-// Where an Adaptive order is expected to fill, as a share of the way from the mid to the bid.
-const expectedSpreadConcession: Record<AdaptivePriority, number> = { Patient: 0, Normal: 0.5, Urgent: 1 };
 
 interface SignalOrderSetupFormProps {
   symbol: string;
@@ -30,11 +31,13 @@ interface SignalOrderSetupFormProps {
   /** The selected candidate as scored NOW (it re-renders with every live frame). */
   candidate: SignalCandidate;
   spotPrice: number | null;
-  /** The list's net Edge (bid case) when the row was selected -- the decay meter's reference. */
+  /** The list's net Edge when the row was selected -- the decay meter's reference. */
   netEdgeAtSelection: number;
   selectedAtIso: string;
   onCancel: () => void;
   onSubmitted: (order: OrderRequest, adaptivePriority: AdaptivePriority) => void;
+  /** Shown under the title, e.g. why a contract picked from the full chain is not a Signals candidate. */
+  notice?: ReactNode;
 }
 
 function Row({ label, value, tone, strong }: { label: string; value: ReactNode; tone?: string; strong?: boolean }) {
@@ -67,7 +70,7 @@ function ReviewOrderButton({ disabled, blockedTooltip, building, onClick }: { di
   );
 }
 
-export function SignalOrderSetupForm({ symbol, signals, candidate, spotPrice, netEdgeAtSelection, selectedAtIso, onCancel, onSubmitted }: SignalOrderSetupFormProps) {
+export function SignalOrderSetupForm({ symbol, signals, candidate, spotPrice, netEdgeAtSelection, selectedAtIso, onCancel, onSubmitted, notice }: SignalOrderSetupFormProps) {
   const isCall = candidate.strategyKey === "covered_call";
   const defaultQuantity = isCall && signals.freeShares >= 100 ? Math.floor(signals.freeShares / 100) : 1;
   const [contractQty, setContractQty] = useState(String(defaultQuantity));
@@ -77,49 +80,69 @@ export function SignalOrderSetupForm({ symbol, signals, candidate, spotPrice, ne
 
   const quantity = Math.max(1, Math.floor(Number(contractQty) || 0));
   const mid = (candidate.bid + candidate.ask) / 2;
-  const frictionAtMid = candidate.edge - candidate.netEdgeAtMid;
-  const frictionAtBid = candidate.frictionVolatility;
-  const concession = expectedSpreadConcession[adaptivePriority];
-  const netEdgeExpected = candidate.netEdgeAtMid - (candidate.netEdgeAtMid - candidate.netEdge) * concession;
-  const edgeDollarsExpected = netEdgeExpected * candidate.vega * 100;
-  // Same mid-to-bid interpolation as netEdgeExpected, so the expected fill price backing the risk
-  // denominator matches the same Adaptive priority assumption as the expected Edge $ numerator.
-  const premiumExpected = mid - (mid - candidate.bid) * concession;
+  // Fewer free shares than the contracts need: the order buys the rest with the call, as one combo.
+  const isBuyWrite = isCall && signals.freeShares < quantity * 100;
+  // The order goes out as a limit at the mid; the expected fill gives up the Risk & Limits share of the half-spread,
+  // the same assumption the list's net Edge is scored with. The fill priority changes how fast it fills, not this.
+  const netEdgeExpected = candidate.netEdge;
+  const edgeDollarsExpected = candidate.edgeDollars;
+  const premiumExpected = mid - (mid - candidate.bid) * signals.spreadShareCharged;
   const capitalAtRiskPerContract = isCall ? (spotPrice ?? 0) * 100 : candidate.strike * 100;
   const dollarRiskExpected = capitalAtRiskPerContract - premiumExpected;
   const riskAdjustedRatioExpected = edgeDollarsExpected / dollarRiskExpected;
+  // One IBKR what-if per form (re-asked only when the contracts change, never on a price tick); the expected premium follows the live quote.
+  const limitPriceForPreview = Number(mid.toFixed(2));
+  const commissionPreviewLegs: CommissionPreviewLeg[] | null =
+    limitPriceForPreview > 0 && (!isBuyWrite || (spotPrice !== null && spotPrice > 0))
+      ? [
+          ...(isBuyWrite ? [{ role: "stock" as const, action: "BUY" as const, symbol, quantity: quantity * 100 - signals.freeShares, unitPrice: spotPrice! }] : []),
+          { role: "option" as const, action: "SELL" as const, symbol, quantity, unitPrice: limitPriceForPreview, strike: candidate.strike, expiry: toIbkrExpiry(candidate.expiry), right: isCall ? ("C" as const) : ("P" as const) },
+        ]
+      : null;
+  const commissionPreview = useOrderCommissionPreview(commissionPreviewLegs);
   const decay = candidate.netEdge - netEdgeAtSelection;
   const decayed = Math.abs(decay) >= decayWarningVolatilityPoints / 100;
-  const netEdgeFlash = useFlashOnChange(candidate.netEdge, 1200, 3);
+  const netEdgeFlash = useFlashOnChange(candidate.netEdge, FLASH_DURATION_MS, 3);
 
   // A covered call always sends both legs (buy the shares, sell the call) in one order, so having
   // no free shares yet is the normal case, not a blocker -- only a cash-secured put needs the cash upfront.
   const insufficientCashFlagged = candidate.flags.includes("insufficient_cash");
   const capitalAtRisk = isCall ? (spotPrice ?? 0) * 100 * quantity : candidate.strike * 100 * quantity;
   const maxGainAtBid = candidate.bid * 100 * quantity;
+  // Expiration payoff at the bid (same computePayoff as the Positions cards and Order Review): a covered call
+  // buys the shares at spot in the same order, so its max gain includes the stock's upside to the strike.
+  const payoffAtBid =
+    isCall && spotPrice === null
+      ? null
+      : computePayoff(candidate.strategyKey, [
+          ...(isCall ? [{ legType: "stock" as const, optionType: null, entryPrice: String(spotPrice), strikePrice: null, quantity: quantity * 100, multiplier: 1 }] : []),
+          { legType: "option", optionType: isCall ? "call" : "put", entryPrice: String(candidate.bid), strikePrice: String(candidate.strike), quantity, multiplier: 100 },
+        ]);
 
-  // The three Signals-tab blocking limits (max position %, max concentration per ticker %, min cash
+  // The blocking limits (max position %, max exposure per ticker %, min cash
   // reserve %) depend on the chosen contract quantity and live portfolio state, so they're re-checked
   // against the backend (debounced) rather than read off candidate.flags, which is fixed at generation
   // time. This is cosmetic only -- POST /orders/:id/confirm re-evaluates the same check server-side and
   // is the real enforcement point, so a failed/slow check here fails open rather than blocking the UI.
-  const [signalLimitsResult, setSignalLimitsResult] = useState<{ blocked: boolean; reasons: string[] } | null>(null);
+  const [orderLimitsResult, setOrderLimitsResult] = useState<OrderLimitsResult | null>(null);
   const limitsDebounceRef = useRef<number | null>(null);
   useEffect(() => {
     if (limitsDebounceRef.current !== null) window.clearTimeout(limitsDebounceRef.current);
     limitsDebounceRef.current = window.setTimeout(() => {
-      checkSignalOrderLimits({ symbol, strategyKey: candidate.strategyKey, quantity, strike: candidate.strike, spotPrice })
-        .then(setSignalLimitsResult)
-        .catch(() => setSignalLimitsResult(null));
-    }, signalOrderLimitsDebounceMs);
+      // Spot only matters to a covered call's share shortfall; a put's check ignores it and would otherwise re-run on every price tick.
+      checkOrderLimits({ symbol, strategyKey: candidate.strategyKey, quantity, strike: candidate.strike, spotPrice: isCall ? spotPrice : null })
+        .then(setOrderLimitsResult)
+        .catch(() => setOrderLimitsResult(null));
+    }, orderLimitsDebounceMs);
     return () => {
       if (limitsDebounceRef.current !== null) window.clearTimeout(limitsDebounceRef.current);
     };
-  }, [symbol, candidate.strategyKey, candidate.strike, quantity, spotPrice]);
+  }, [symbol, candidate.strategyKey, candidate.strike, quantity, spotPrice, isCall]);
 
   const blockingReasons = [
+    ...[describeNonLiveQuoteBlock("This contract", candidate.quoteSource)].filter((reason): reason is string => reason !== null),
     ...(insufficientCashFlagged ? ["Not enough free cash to secure this put."] : []),
-    ...(signalLimitsResult?.blocked ? signalLimitsResult.reasons : []),
+    ...(orderLimitsResult?.blocked ? orderLimitsResult.reasons : []),
   ];
 
   async function handleReviewOrder() {
@@ -146,7 +169,7 @@ export function SignalOrderSetupForm({ symbol, signals, candidate, spotPrice, ne
             nextEarningsDateIso: signals.nextEarningsDateIso,
             gradeCounts: signals.gradeCounts,
           },
-          order: { quantity, adaptivePriority, referencePremium: Number(mid.toFixed(2)), netEdgeExpected, edgeDollarsExpected, riskAdjustedRatioExpected },
+          order: { quantity, adaptivePriority: isBuyWrite ? null : adaptivePriority, referencePremium: Number(mid.toFixed(2)), netEdgeExpected, edgeDollarsExpected, riskAdjustedRatioExpected },
           timing: { selectedAtIso, builtAtIso, netEdgeAtSelection, netEdgeAtBuild: candidate.netEdge },
         },
       });
@@ -157,8 +180,6 @@ export function SignalOrderSetupForm({ symbol, signals, candidate, spotPrice, ne
       setBuilding(false);
     }
   }
-
-  const gradeForExpected = netEdgeExpected <= 0 ? "avoid" : candidate.grade;
 
   return (
     <div className="d-flex flex-column gap-3">
@@ -173,6 +194,8 @@ export function SignalOrderSetupForm({ symbol, signals, candidate, spotPrice, ne
           </span>
         </h4>
       </div>
+
+      {notice}
 
       {blockingReasons.length > 0 && (
         <div className="alert alert-warning mb-0 py-2" style={{ fontSize: "0.85rem" }}>
@@ -197,14 +220,14 @@ export function SignalOrderSetupForm({ symbol, signals, candidate, spotPrice, ne
               net Edge ({formatSignedPnl(edgeDollarsExpected, 0)})
             </span>
           </div>
-          <span className={`badge ${gradeBadgeClass[gradeForExpected]}`} style={{ fontSize: "0.8rem" }}>
-            {gradeLabel[gradeForExpected]}
+          <span className={`badge ${gradeBadgeClass[candidate.grade]}`} style={{ fontSize: "0.8rem" }}>
+            {gradeLabel[candidate.grade]}
           </span>
         </div>
         <div className="mt-2">
           <Row label="Surface IV at this strike (10:00 snapshot, live spot)" value={formatPercentage(candidate.surfaceImpliedVolatility, 1)} />
           <Row label={`Forecast volatility (${signals.forecast?.windowDays ?? 63}-day Yang-Zhang)`} value={formatPercentage(candidate.forecastVolatility, 1)} />
-          <Row label="Friction (mid-bid range)" value={`${formatVolatilityPoints(frictionAtMid).replace("+", "")} – ${formatVolatilityPoints(frictionAtBid).replace("+", "")}`} />
+          <Row label={`Friction (${formatPercentage(signals.spreadShareCharged, 0)} of the half-spread + commission)`} value={formatVolatilityPoints(candidate.frictionVolatility).replace("+", "")} />
         </div>
         <div className={`d-flex align-items-center gap-2 mt-2 rounded px-2 py-1 ${decayed ? "bg-warning-lt" : "bg-secondary-lt"}`} style={{ fontSize: "0.78rem" }}>
           {decayed ? `Net Edge has moved ${formatVolatilityPoints(decay)} since you selected this contract at ${formatDate(selectedAtIso)}.` : `Net Edge is steady since you selected this contract (${formatVolatilityPoints(netEdgeAtSelection)}).`}
@@ -240,22 +263,31 @@ export function SignalOrderSetupForm({ symbol, signals, candidate, spotPrice, ne
           </label>
           <input id="signal-order-qty" type="number" min={1} step={1} className="form-control form-control-sm font-mono" style={{ width: "6rem" }} value={contractQty} onChange={(event) => setContractQty(event.target.value)} />
         </div>
-        <div className="d-flex justify-content-between align-items-center gap-3 mb-2">
-          <span className="text-secondary text-uppercase" style={{ fontSize: "0.7rem", fontWeight: 600, letterSpacing: "0.04em" }}>
-            Fill priority (IBKR Adaptive)
-          </span>
-          <div className="btn-group" role="group">
-            {adaptivePriorities.map((priority) => (
-              <button key={priority} type="button" className={`btn btn-sm ${priority === adaptivePriority ? "btn-primary" : "btn-outline-secondary"}`} onClick={() => setAdaptivePriority(priority)}>
-                {priority}
-              </button>
-            ))}
+        {!isBuyWrite && (
+          <div className="d-flex justify-content-between align-items-center gap-3 mb-2">
+            <span className="text-secondary text-uppercase" style={{ fontSize: "0.7rem", fontWeight: 600, letterSpacing: "0.04em" }}>
+              Fill priority (IBKR Adaptive)
+            </span>
+            <div className="btn-group" role="group">
+              {adaptivePriorities.map((priority) => (
+                <button key={priority} type="button" className={`btn btn-sm ${priority === adaptivePriority ? "btn-primary" : "btn-outline-secondary"}`} onClick={() => setAdaptivePriority(priority)}>
+                  {priority}
+                </button>
+              ))}
+            </div>
           </div>
-        </div>
+        )}
         <Row label="Reference premium (bid)" value={formatCurrency(candidate.bid)} />
-        <Row label="Max gain (at bid)" value={formatSignedPnl(maxGainAtBid, 0)} tone="text-success" />
+        <Row label="Max gain (at bid)" value={formatSignedPnl(payoffAtBid?.maxGain ?? maxGainAtBid, 0)} tone="text-success" />
+        {payoffAtBid && (
+          <>
+            <Row label="Max loss (at bid)" value={formatSignedPnl(-payoffAtBid.maxLoss, 0)} tone="text-danger" />
+            <Row label="Breakeven" value={formatCurrency(payoffAtBid.breakeven)} />
+          </>
+        )}
         <Row label="Capital at risk" value={formatCurrency(capitalAtRisk, 0)} />
         <Row label="Annualised yield" value={formatPercentage(candidate.annualizedYield, 0)} />
+        <OrderCommissionRows {...commissionPreview} expectedPremiumDollars={premiumExpected * 100 * quantity} />
         {isCall && (
           <div className="text-secondary font-mono" style={{ fontSize: "0.75rem" }}>
             = {quantity * 100} shares required · you hold {signals.freeShares} free share{signals.freeShares === 1 ? "" : "s"} of {symbol}

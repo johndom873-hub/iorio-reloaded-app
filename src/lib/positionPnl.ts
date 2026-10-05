@@ -1,4 +1,5 @@
 import type { Position, PositionStrategyKey, UnrealizedPnlResult } from "../api/positions";
+import { easternIsoDate, todayInEasternIso } from "./formatters";
 
 // A position synced straight from IBKR that doesn't cleanly pair into a
 // known strategy shape shows up as "unstructured" (needs review) rather
@@ -7,6 +8,7 @@ import type { Position, PositionStrategyKey, UnrealizedPnlResult } from "../api/
 export function strategyLabel(strategyKey: PositionStrategyKey): string {
   if (strategyKey === "covered_call") return "Covered Call";
   if (strategyKey === "cash_secured_put") return "Cash-Secured Put";
+  if (strategyKey === "hedge") return "Hedge";
   return "Needs Review";
 }
 
@@ -15,6 +17,7 @@ export function strategyLabel(strategyKey: PositionStrategyKey): string {
 export function strategyAbbrev(strategyKey: PositionStrategyKey): string {
   if (strategyKey === "covered_call") return "CC";
   if (strategyKey === "cash_secured_put") return "CSP";
+  if (strategyKey === "hedge") return "HDG";
   return "N/S";
 }
 
@@ -22,17 +25,19 @@ export function strategyAbbrev(strategyKey: PositionStrategyKey): string {
 export function strategyTooltip(strategyKey: PositionStrategyKey): string {
   if (strategyKey === "covered_call") return "Covered Call";
   if (strategyKey === "cash_secured_put") return "Cash-Secured Put";
+  if (strategyKey === "hedge") return "Hedge — a long option held to offset the risk of the other positions";
   return "No strategy (N/S) — a position that doesn't pair into a covered call or cash-secured put; needs review";
 }
 
 // THE strategy palette (the Strategy scoreboard's, standardized 2026-09-20):
-// CC blue, CSP purple, N/S orange — solid Tabler colours. Every place a
+// CC blue, CSP purple, N/S orange, hedge dark cyan (--iorio-hedge, theme.css) — solid colours. Every place a
 // strategy is shown as a coloured badge, chart series or bar segment uses
 // these so a colour always means the same strategy; see StrategyBadge.tsx
 // and strategyColors.ts.
 export function strategyBadgeClass(strategyKey: PositionStrategyKey): string {
   if (strategyKey === "covered_call") return "bg-blue text-white";
   if (strategyKey === "cash_secured_put") return "bg-purple text-white";
+  if (strategyKey === "hedge") return "bg-hedge";
   return "bg-orange text-orange-fg";
 }
 
@@ -127,10 +132,18 @@ export function positionPnlAsOfDate(position: Position, unrealizedByPositionId: 
   return unrealizedByPositionId[position.id]?.asOfDate ?? null;
 }
 
+// P&L % divides by the capital the position's whole P&L was earned on (approved 2026-10-01): the shares still
+// held plus those already sold in closed slices, not just Exp $ (the capital exposed now). `?? capitalAtRisk`
+// covers the minutes between this app deploying and the API that sends capitalDeployed.
+export function positionPnlPercentBase(position: Position): number | null {
+  const base = position.capitalDeployed ?? position.capitalAtRisk;
+  return base === null ? null : Number(base);
+}
+
 export function positionTotalPnlPercent(position: Position, pnl: number | null): number | null {
-  const capitalAtRisk = position.capitalAtRisk === null ? null : Number(position.capitalAtRisk);
-  if (pnl === null || capitalAtRisk === null || capitalAtRisk === 0) return null;
-  return (pnl / capitalAtRisk) * 100;
+  const base = positionPnlPercentBase(position);
+  if (pnl === null || base === null || base === 0) return null;
+  return (pnl / base) * 100;
 }
 
 // The expiry driving this position: the nearest expiry among its still-open
@@ -158,14 +171,14 @@ export interface PositionTotals {
   stockPnl: number;
   exposureDollars: number;
   exposurePercent: number | null;
-  /** Total P&L $ / total Exp $ over the positions that have both. */
+  /** Total P&L $ / the sum of the rows' P&L % bases (Exp $, plus shares already sold) over the positions that have both. */
   pnlPercent: number | null;
   /** Positions left out of the P&L sums because no live price or snapshot exists. */
   positionsWithoutPnl: number;
 }
 
 // Approved 2026-09-19: totals are straight sums of the row figures; total
-// P&L % is total P&L $ / total Exp $ (never an average of row percentages);
+// P&L % is total P&L $ / total of the rows' P&L % base (never an average of row percentages);
 // total EXP % is the straight sum of the rows' EXP % (each is exposure /
 // total account value, so the sum equals total exposure / account value).
 export function computePositionTotals(
@@ -183,7 +196,7 @@ export function computePositionTotals(
     pnlPercent: null,
     positionsWithoutPnl: 0,
   };
-  let pnlRowsExposure = 0;
+  let pnlRowsBase = 0;
   for (const position of positions) {
     const exposure = position.capitalAtRisk === null ? null : Number(position.capitalAtRisk);
     if (exposure !== null) totals.exposureDollars += exposure;
@@ -197,7 +210,8 @@ export function computePositionTotals(
       continue;
     }
     totals.totalPnl += pnl;
-    if (exposure !== null) pnlRowsExposure += exposure;
+    const pnlPercentBase = positionPnlPercentBase(position);
+    if (pnlPercentBase !== null) pnlRowsBase += pnlPercentBase;
     const premium = positionPremiumPnl(position, unrealizedByPositionId);
     if (typeof premium === "number" && !positionIsStockOnly(position)) totals.premiumPnl += premium;
     if (positionHasStockLeg(position)) {
@@ -205,7 +219,13 @@ export function computePositionTotals(
       if (typeof stock === "number") totals.stockPnl += stock;
     }
   }
-  if (pnlRowsExposure > 0) totals.pnlPercent = (totals.totalPnl / pnlRowsExposure) * 100;
+  if (pnlRowsBase > 0) totals.pnlPercent = (totals.totalPnl / pnlRowsBase) * 100;
   if (totalAccountValue !== null && totalAccountValue > 0) totals.exposurePercent = (totals.exposureDollars / totalAccountValue) * 100;
   return totals;
+}
+
+/** True when any leg of the position (open or already closed) was entered on today's US/Eastern date: a position opened today, or one rolled (or added to) today. */
+export function positionHasLegEnteredTodayEastern(position: Position): boolean {
+  const today = todayInEasternIso();
+  return position.legs.some((leg) => easternIsoDate(leg.entryAt) === today);
 }

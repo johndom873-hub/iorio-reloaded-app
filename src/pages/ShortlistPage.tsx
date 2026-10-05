@@ -1,25 +1,24 @@
 import { useState } from "react";
 import { PageHeader } from "../components/layout/PageHeader";
-import { TickerDetailModal } from "../components/TickerDetailModal";
 import { ShortlistTab } from "../components/shortlist/ShortlistTab";
 import { ScreenerTab } from "../components/screener/ScreenerTab";
-import { useTickerDetailSymbol } from "../hooks/useTickerDetailSymbol";
+import { useSignalsTickerModal } from "../hooks/useSignalsTickerModal";
 
-type ScreenerPageTab = "screener" | "shortlist";
+type ShortlistPageTab = "shortlist" | "screener";
 
-const tabs: { key: ScreenerPageTab; label: string }[] = [
-  { key: "screener", label: "Screener" },
+const tabs: { key: ShortlistPageTab; label: string }[] = [
   { key: "shortlist", label: "Shortlist" },
+  { key: "screener", label: "Screener" },
 ];
 
-export function ScreenerPage() {
-  const [activeTab, setActiveTab] = useState<ScreenerPageTab>("shortlist");
-  const [detailSymbol, setDetailSymbol] = useTickerDetailSymbol();
+export function ShortlistPage() {
+  const [activeTab, setActiveTab] = useState<ShortlistPageTab>("shortlist");
+  const { open: openTickerModal } = useSignalsTickerModal();
 
   return (
     <>
       <PageHeader
-        title="Screener"
+        title="Shortlist"
         subtitle={activeTab === "screener" ? "Search for candidate tickers to monitor" : "Monitor tickers for trading opportunities"}
       />
 
@@ -38,12 +37,11 @@ export function ScreenerPage() {
       </ul>
 
       {activeTab === "screener" ? (
-        <ScreenerTab onOpenTickerDetail={setDetailSymbol} />
+        <ScreenerTab onOpenTickerModal={openTickerModal} />
       ) : (
-        <ShortlistTab onOpenTickerDetail={setDetailSymbol} />
+        <ShortlistTab onOpenTickerModal={openTickerModal} />
       )}
 
-      {detailSymbol && <TickerDetailModal symbol={detailSymbol} onClose={() => setDetailSymbol(null)} />}
     </>
   );
 }

@@ -40,6 +40,55 @@
   --iorio-topbar-height: 4rem;
 }
 
+/* Hedge strategy colour: dark cyan, white text >5:1 in both themes. Kept off teal (the cycle card's Stock badge),
+   pink (its Option badge), green (positive P&L) and grey (the Cash segment of the allocation bar). */
+:root {
+  --iorio-hedge: #0e7490;
+}
+.badge.bg-hedge {
+  background-color: var(--iorio-hedge) !important;
+  color: #fff !important;
+}
+
+/* Standard outline buttons (Marcelo, 2026-09-30): every .btn-outline-* rests as an outline on the page
+   background, with the label in the theme's text colour (white on dark, black on light), and fills solid
+   with a white label on hover, focus and when active/checked. Warning is the one exception: white on the
+   orange fill is only ~3:1, so its hover label is dark. */
+:root {
+  --iorio-outline-button-text: #000;
+}
+:root[data-bs-theme="dark"] {
+  --iorio-outline-button-text: #fff;
+}
+.btn-outline-primary,
+.btn-outline-secondary,
+.btn-outline-danger,
+.btn-outline-warning {
+  --tblr-btn-bg: transparent;
+  --tblr-btn-color: var(--iorio-outline-button-text);
+  --tblr-btn-hover-color: #fff;
+  --tblr-btn-active-color: #fff;
+  --tblr-btn-disabled-color: var(--iorio-outline-button-text);
+}
+/* Secondary fills the same grey in both themes (Tabler's dark-mode secondary is a light grey that fails with a white label). */
+.btn-outline-secondary {
+  --tblr-btn-hover-bg: #6b7280;
+  --tblr-btn-hover-border-color: #6b7280;
+  --tblr-btn-active-bg: #6b7280;
+  --tblr-btn-active-border-color: #6b7280;
+}
+/* Dark mode: the resting outline uses the lighter accents (the fill on hover stays the standard solid colour) so the border reads on the dark surface. */
+:root[data-bs-theme="dark"] .btn-outline-primary {
+  --tblr-btn-border-color: #0ea5e9;
+}
+:root[data-bs-theme="dark"] .btn-outline-danger {
+  --tblr-btn-border-color: #e64343;
+}
+.btn-outline-warning {
+  --tblr-btn-hover-color: #000;
+  --tblr-btn-active-color: #000;
+}
+
 :root[data-bs-theme="dark"] {
   /* Deliberately NOT the same #0f141d as .iorio-sidebar/.iorio-topbar —
      Tabler's own gray-800 token, distinct enough from the navy chrome
@@ -242,12 +291,13 @@
 /* The top bar's centre slot (Day Signals, 2026-09-24): empty in normal operation, carries the
    "Live data restricted" pill while the chain capture holds its priority market-data lines. The
    IORIO Pulse link moved to the right-hand group to free it. */
+/* Centred in the free space between the badges and the right-hand group (auto margins),
+   not the page: absolute centring overlapped the badges once two status pills showed. */
 .iorio-topbar-center {
-  position: absolute;
-  left: 50%;
-  transform: translateX(-50%);
   display: flex;
   align-items: center;
+  gap: 0.5rem;
+  margin-inline: auto;
 }
 .iorio-topbar-status {
   display: inline-flex;
@@ -262,6 +312,28 @@
   background: rgba(245, 180, 88, 0.08);
   cursor: default;
   white-space: nowrap;
+}
+/* The top bar is dark navy in both themes, so a fixed red reads the same in light and dark. */
+.iorio-topbar-status-danger {
+  color: #ff8a8a;
+  border-color: rgba(255, 138, 138, 0.5);
+  background: rgba(255, 138, 138, 0.1);
+}
+/* 992-1199px: the market badge and this pill compete for the centre slot, so the pill shrinks to its
+   icon (as the "Trading blocked" chip does); the full wording stays in its tooltip. */
+@media (min-width: 992px) and (max-width: 1199.98px) {
+  .iorio-topbar-center .iorio-topbar-status:not(.iorio-topbar-status-danger) {
+    gap: 0;
+    padding-inline: 0.5rem;
+  }
+  .iorio-topbar-center .iorio-topbar-restriction-text {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+  }
 }
 .iorio-topbar-status-compact {
   padding: 0.15rem 0.55rem;
@@ -623,8 +695,8 @@
 /* Dense, trading-terminal-style tables app-wide (approved 2026-08-31) —
    Bootstrap's table-sm only tightens cell padding, it doesn't shrink the
    font, so this was previously hand-inlined only on the shared DataTable
-   component and every other table.table-sm in the app (TradeAlerts,
-   TickerDetailModal, PositionDetailModal) stayed at the larger base font.
+   component and every other table.table-sm in the app stayed at the larger
+   base font.
    One rule here instead of repeating the inline style at every call site. */
 .table.table-sm {
   font-size: 0.8125rem;
@@ -682,7 +754,9 @@
    WCAG contrast: success #2fb344 = 2.74:1, warning #f59f00 = 2.13:1, both
    fail the 4.5:1 minimum for small text). Danger #d63939 already passes
    (4.66:1) and is left as-is. These darker same-hue shades pass comfortably
-   (green 5.40:1, amber 5.87:1) while still reading clearly as green/amber.
+   (green 5.40:1). Amber fills (warning badges, Weak grade) stay Tabler's true amber #f59f00 with a black
+   label (9.84:1) in both themes: a white label would need a brown-looking fill (Marcelo, 2026-09-30).
+   Amber used as text (.iorio-note-amber, prep warning) has to be darker on white (#ad5b00, 5.0:1).
    Covers both the solid and -lt (light tint) variants, since -lt badges
    with dark text have the opposite problem in dark mode: illegibly low
    contrast against the dark background. */
@@ -708,8 +782,8 @@
 .badge.bg-warning-lt,
 .badge.bg-yellow,
 .badge.bg-yellow-lt {
-  background-color: #8c5a00 !important;
-  color: #fff !important;
+  background-color: #f59f00 !important;
+  color: #000 !important;
 }
 
 /* Reuses the brand blue's already-verified accessible shade (#0369A1,
@@ -721,7 +795,7 @@
   color: #fff !important;
 }
 
-/* Trade Alerts' "Expired" status badge — same -lt contrast bug. #6c757d is
+/* Secondary badges — same -lt contrast bug. #6c757d is
    Bootstrap's own $secondary, already verified >4.5:1 with white text. */
 .badge.bg-secondary,
 .badge.bg-secondary-lt {
@@ -739,9 +813,9 @@
 
 /* Price/change badges (e.g. Trade Blotter P&L) — global UI/UX standard.
    Reuses the same darkened green already used for bg-success above
-   (5.40:1 contrast, verified). Negative uses a muted red rather than the
-   brighter alert-style bg-danger red, to read as a value rather than an
-   error state; #8c3a3a is dark enough to comfortably pass 4.5:1 with white,
+   (5.40:1 contrast, verified). Negative is a true red (#c62828; the earlier
+   muted #8c3a3a read as brown, Marcelo 2026-09-30), still darker than the
+   alert-style bg-danger red; it is dark enough to comfortably pass 4.5:1 with white,
    same reasoning as the darkened warning amber above. */
 .badge-change-pos {
   background-color: #1e7a33;
@@ -750,7 +824,7 @@
 }
 
 .badge-change-neg {
-  background-color: #8c3a3a;
+  background-color: #c62828;
   color: #fff;
   font-weight: 700;
 }
@@ -777,8 +851,8 @@
 }
 
 .badge-grade-weak {
-  background-color: #a35f00;
-  color: #fff;
+  background-color: #f59f00;
+  color: #000;
 }
 
 .badge-grade-avoid {
@@ -831,10 +905,10 @@
 }
 
 .flash-changed {
-  animation: flash-bg-changed 1200ms ease-out;
+  animation: flash-bg-changed 1500ms ease-out; /* keep equal to FLASH_DURATION_MS in useFlashOnChange.ts */
 }
 
-/* Ticker Detail modal: a small inset + rounded corners instead of true
+/* Signals modal: a small inset + rounded corners instead of true
    edge-to-edge full-bleed, so the backdrop stays visible and it reads as a
    modal rather than a full-page view (Marcelo, 2026-08-27). Combined-class
    selectors (rather than !important) beat Bootstrap's plain .modal-dialog
@@ -852,6 +926,21 @@
 .modal-dialog-inset .modal-content {
   height: 100%;
   max-height: 100%;
+}
+
+/* Signals modal header: the live-status line sits between the title and the close button, and drops to its
+   own full-width row under the title on phones so it doesn't squeeze the symbol/company name. */
+.signals-modal-live-status {
+  order: 3;
+  flex-basis: 100%;
+  margin-top: 0.25rem;
+}
+@media (min-width: 576px) {
+  .signals-modal-live-status {
+    order: 0;
+    flex-basis: auto;
+    margin: 0 1rem 0 auto;
+  }
 }
 
 /* Volatility Surface modal: chart/table split at an exact 50/50 -- stacks to full width below lg like the
@@ -1004,7 +1093,7 @@
   --prep-success: #2fb344;
   --prep-success-lt: #e6f6e9;
   --prep-danger: #d63939;
-  --prep-warning: #b45309;
+  --prep-warning: #ad5b00;
   --prep-warning-lt: #fdf1e2;
   --prep-skip: #8a94a3;
   --prep-track: #e3e7eb;
@@ -1066,11 +1155,274 @@
 .badge.ticker-prep-badge.is-history-missing:disabled { opacity: 0.5; cursor: not-allowed; }
 
 /* Amber "not enforced yet" note under a settings field. Tabler's text-warning
-   (#f59f00) is 2.13:1 on white; the darkened amber used for the warning badges
-   passes at 5.87:1, and dark mode needs a lighter shade for the card surface. */
+   (#f59f00) is 2.13:1 on white; the darker amber below passes at 5.0:1, and dark
+   mode needs a lighter shade for the card surface. */
 .iorio-note-amber {
-  color: #a35f00;
+  color: #ad5b00;
 }
 :root[data-bs-theme="dark"] .iorio-note-amber {
   color: #f5b458;
+}
+
+/* Signals modal full option chain (SignalsOptionChainCard). Each side of a strike row is one button laid out
+   as a grid, so the header's column labels use the same grid to line up. Colours come from Tabler tokens. */
+.signals-chain-expiry-tabs {
+  display: flex;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  padding: 0 0.5rem;
+  scrollbar-width: thin;
+}
+.signals-chain-expiry-tab {
+  position: relative;
+  flex: none;
+  padding: 0.6rem 0.85rem;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  background: transparent;
+  color: var(--tblr-body-color);
+  font-size: 0.8rem;
+  font-weight: 500;
+  white-space: nowrap;
+}
+/* Active tab: body text (AA in both themes; primary-blue text is too dark on the dark surface) over a primary underline. */
+.signals-chain-expiry-tab:hover {
+  border-bottom-color: var(--tblr-border-color);
+}
+.signals-chain-expiry-tab.is-active {
+  border-bottom-color: var(--tblr-primary);
+  font-weight: 700;
+}
+.signals-chain-candidate-dot {
+  position: absolute;
+  top: 0.45rem;
+  right: 0.3rem;
+  width: 0.4rem;
+  height: 0.4rem;
+  border-radius: 50%;
+  background: var(--tblr-success);
+}
+/* Ten strike rows plus the spot row (and the header): the chain only holds live lines for what is on screen,
+   so its height sets how many it uses. Desktop (measured): header 2.8rem, row 2.0625rem, spot row 1.35rem. */
+.signals-chain-scroll {
+  max-height: calc(2.8rem + 10 * 2.0625rem + 1.35rem);
+  overflow-y: auto;
+}
+.signals-chain-scroll.is-phone {
+  /* Phone (measured): header 1.55rem, row 2.8125rem. */
+  max-height: calc(1.55rem + 10 * 2.8125rem + 1.35rem);
+}
+.signals-chain-table {
+  table-layout: fixed;
+  font-size: 0.8rem;
+}
+.signals-chain-table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  /* A sticky cell loses the table's collapsed bottom border while scrolled: draw it on the cell itself. */
+  box-shadow: inset 0 -1px 0 var(--tblr-border-color);
+}
+.signals-chain-strike-column {
+  width: 5rem;
+  background: var(--tblr-bg-surface-secondary);
+}
+.signals-chain-column-labels,
+.signals-chain-cell {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 0.25rem;
+  align-items: center;
+  padding: 0.25rem 0.5rem;
+  text-align: right;
+}
+.signals-chain-column-labels.has-strike,
+.signals-chain-cell.has-strike {
+  grid-template-columns: 4rem repeat(5, minmax(0, 1fr));
+}
+.signals-chain-cell {
+  width: 100%;
+  min-height: 2rem;
+  border: 0;
+  background: transparent;
+  color: var(--tblr-body-color);
+  font-size: 0.8rem;
+  cursor: pointer;
+}
+.signals-chain-cell.has-strike {
+  min-height: 2.75rem;
+}
+.signals-chain-yield {
+  color: #1e7a33;
+}
+:root[data-bs-theme="dark"] .signals-chain-yield {
+  color: #47c270;
+}
+.signals-chain-cell.text-secondary {
+  color: var(--tblr-secondary-color) !important;
+}
+.signals-chain-cell:hover:not(:disabled) {
+  background: var(--tblr-active-bg);
+}
+.signals-chain-cell:focus-visible {
+  outline: 2px solid var(--tblr-primary);
+  outline-offset: -2px;
+}
+/* A ring drawn with box-shadow, not outline: Bootstrap's :focus:not(:focus-visible) reset would drop an outline right after the click. */
+.signals-chain-scroll .signals-chain-cell.is-selected {
+  background: var(--tblr-primary-lt);
+  box-shadow: inset 0 0 0 2px var(--tblr-primary);
+}
+.signals-chain-cell:disabled,
+.signals-chain-cell.is-in-the-money {
+  cursor: default;
+}
+.signals-chain-filtered-label {
+  font-size: 0.72rem;
+}
+.signals-chain-spot-marker {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.1rem 0.75rem;
+  font-size: 0.75rem;
+}
+.signals-chain-spot-line {
+  flex: 1 1 auto;
+  border-top: 2px solid currentColor;
+}
+/* Order-pane notice for a chain contract that is not a Signals candidate: amber (.iorio-note-amber) when filtered, secondary text otherwise. */
+.signals-chain-notice {
+  border: 1px solid currentColor;
+  border-radius: var(--tblr-border-radius);
+  padding: 0.5rem 0.75rem;
+  font-size: 0.85rem;
+}
+
+/* Branded 404 (NotFoundPage): Tabler's .empty, centred in the page body's visible height. */
+.iorio-not-found {
+  min-height: 60vh;
+}
+
+/* Position card: the legs table sits left of the payoff chart (40%) on wide screens, stacked on narrow ones. */
+.position-payoff-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 1rem;
+  align-items: start;
+}
+@media (min-width: 992px) {
+  .position-payoff-layout {
+    grid-template-columns: minmax(0, 1fr) 40%;
+  }
+}
+.position-payoff-chart {
+  min-width: 0;
+  /* The chart is pulled up 30px inside its box (see PositionCard), which would leave that much blank space under it. */
+  margin-bottom: -30px;
+}
+
+/* Labels in a position card's stats row (Max Gain, EXP $, Opened, ...): lighter than text-muted on the dark surface, where muted was hard to read. */
+.position-stat-label {
+  color: var(--tblr-secondary-color);
+}
+:root[data-bs-theme="dark"] .position-stat-label {
+  color: #c2cbd8;
+}
+
+/* Middle-dot separator between the items of a position card's stats row (Max Gain · Max Loss · ...). */
+.position-stat + .position-stat::before {
+  content: "\00b7";
+  margin-right: 0.5rem;
+  color: var(--tblr-secondary-color);
+  font-weight: 700;
+}
+.position-payoff-chart .apexcharts-svg {
+  overflow: visible;
+}
+
+/* "new" tag after the ticker of a position opened or rolled today (ET). Pink: not one of the strategy colours
+   (blue/purple/orange) or the P&L green/red next to it. White on #be185d is 6.0:1; dark mode flips to a light
+   pink with dark text (#500724 on #f9a8d4 is 9.6:1). */
+.iorio-new-tag {
+  display: inline-block;
+  vertical-align: super;
+  margin-left: 0.2rem;
+  padding: 0 0.3rem;
+  border-radius: 0.2rem;
+  background-color: #be185d;
+  color: #fff;
+  font-size: 0.6rem;
+  font-weight: 700;
+  line-height: 1.4;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+:root[data-bs-theme="dark"] .iorio-new-tag {
+  background-color: #f9a8d4;
+  color: #500724;
+}
+
+/* Dashboard Performance grid: year labels stay visible while the 13 columns scroll sideways on a phone. */
+.performance-grid {
+  table-layout: fixed;
+  /* Year-label column + 12 months + Year column; 5rem fits "+10.30%" in the mono font. */
+  min-width: calc(4.5rem + 13 * 5rem);
+}
+.performance-grid th:first-child {
+  width: 4.5rem;
+}
+.performance-grid th:not(:first-child) {
+  width: calc((100% - 4.5rem) / 13);
+}
+.performance-grid th,
+.performance-grid td {
+  white-space: nowrap;
+  padding-left: 0.6rem;
+  padding-right: 0.6rem;
+}
+.performance-grid thead th {
+  background-color: var(--tblr-bg-surface-secondary);
+}
+.performance-grid th:first-child,
+.performance-grid td:first-child {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+}
+.performance-grid tbody td:first-child,
+.performance-grid tbody th:first-child {
+  background-color: var(--tblr-bg-surface);
+}
+.performance-grid .performance-grid-year-column,
+.performance-grid th:nth-child(2),
+.performance-grid td:nth-child(2) {
+  border-left: 1px solid var(--tblr-border-color);
+}
+
+/* Signals screen: tickers with no top signal (approved mockup 2026-10-03). The row tint marks a pending snapshot (azure) or one that
+   could not be scored (red); the translucent inset shadow works on both themes, as Bootstrap's own row states do. */
+.table > tbody > tr.signals-row-analysing > td {
+  box-shadow: inset 0 0 0 9999px rgba(3, 105, 161, 0.08);
+}
+.table > tbody > tr.signals-row-unscored > td {
+  box-shadow: inset 0 0 0 9999px rgba(214, 57, 57, 0.07);
+}
+:root[data-bs-theme="dark"] .table > tbody > tr.signals-row-analysing > td {
+  box-shadow: inset 0 0 0 9999px rgba(14, 165, 233, 0.14);
+}
+:root[data-bs-theme="dark"] .table > tbody > tr.signals-row-unscored > td {
+  box-shadow: inset 0 0 0 9999px rgba(242, 109, 109, 0.12);
+}
+.signals-no-signal-reason {
+  font-size: 0.75rem;
+  line-height: 1.35;
+  max-width: 22rem;
+  white-space: normal;
+}
+/* The standard spinner, scaled to sit inside a 0.72rem badge. */
+.iorio-badge-spinner {
+  width: 0.7rem;
+  height: 0.7rem;
+  border-width: 0.12em;
 }

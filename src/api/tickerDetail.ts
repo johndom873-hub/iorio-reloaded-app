@@ -13,20 +13,6 @@ export interface TickerPricing {
   volume: number | null;
 }
 
-export interface OptionQuote {
-  expiry: string; // YYYYMMDD
-  strike: number;
-  right: "C" | "P";
-  bid: number | null;
-  ask: number | null;
-  last: number | null;
-  impliedVolatility: number | null;
-  delta: number | null;
-  gamma: number | null;
-  vega: number | null;
-  theta: number | null;
-}
-
 export interface TickerOverview {
   companyName: string | null;
   sector: string | null;
@@ -43,7 +29,7 @@ export interface PriceBar {
   volume: number;
 }
 
-export type TickerDetailSection = "overview" | "chart" | "optionChain" | "technicals";
+export type TickerDetailSection = "overview" | "spot" | "chart" | "technicals";
 
 export interface MovingAverages {
   ma7: number | null;
@@ -79,25 +65,15 @@ export type TickerDetailStreamEvent =
   // Header price: same frozen-then-live, last-trade-only source as the Positions table (see streamTickerDetail.ts).
   | { type: "spot"; data: { last: number } }
   | { type: "chart"; data: PriceBar[] }
-  | { type: "optionChain"; data: OptionQuote[] }
-  // The chain's expiry tabs with their strikes (before any quote) and which expiry the stream quotes live.
-  | { type: "optionChainExpiries"; data: { expiries: OptionChainExpiry[]; activeExpiry: string } }
   | { type: "technicals"; data: TickerTechnicals }
   | { type: "error"; section: TickerDetailSection; message: string }
   | { type: "streamError"; message: string }
   | { type: "done" };
 
-export interface OptionChainExpiry {
-  expiry: string; // YYYYMMDD
-  strikes: number[];
-}
-
 /**
- * Opens the Ticker Detail SSE stream and forwards each parsed event. See
- * streamTickerDetail.ts on the backend for why this is a stream rather than
- * one blocking request: pricing/chart/optionChain arrive independently
- * instead of the modal blocking on the slowest of the three (the option
- * chain, ~15-25s).
+ * Opens the ticker detail SSE stream (overview, pooled spot price, chart,
+ * technicals) and forwards each parsed event. Each section arrives
+ * independently instead of the modal blocking on the slowest one.
  *
  * Closes itself on "done"/"streamError" (terminal events) rather than
  * relying on EventSource's default auto-reconnect behavior, which would
@@ -105,18 +81,14 @@ export interface OptionChainExpiry {
  * clean server-side close. Returns a cleanup function for the caller to
  * invoke on unmount/symbol change.
  */
-export type TickerDetailStreamSection = "overview" | "spot" | "chart" | "optionChain" | "technicals";
-
 export function openTickerDetailStream(
   symbol: string,
   onEvent: (event: TickerDetailStreamEvent) => void,
-  options: { sections?: TickerDetailStreamSection[]; expiry?: string } = {},
+  options: { sections?: TickerDetailSection[] } = {},
 ): () => void {
-  // No `sections` = everything. The Signals modal asks for a subset to skip the option chain; Ticker Detail opens the
-  // chain as its own stream with `expiry` (only that tab's strikes are quoted — 2026-09-24).
+  // No `sections` = everything.
   const params = new URLSearchParams();
   if (options.sections) params.set("sections", options.sections.join(","));
-  if (options.expiry) params.set("expiry", options.expiry);
   const query = params.size > 0 ? `?${params.toString()}` : "";
   return openDeferredEventSource(`${apiBaseUrl}/tickers/${encodeURIComponent(symbol)}/detail/stream${query}`, onEvent);
 }

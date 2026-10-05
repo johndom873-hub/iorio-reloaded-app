@@ -14,6 +14,7 @@ export function portfolioFromExposure(exposure: ExposureData): Portfolio {
     coveredCalls: valueFor("covered_call"),
     cashSecuredPuts: valueFor("cash_secured_put"),
     unstructured: valueFor("unstructured"),
+    hedge: valueFor("hedge"),
     availableCash: exposure.availableCash,
   };
 }

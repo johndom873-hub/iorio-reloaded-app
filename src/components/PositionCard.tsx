@@ -2,12 +2,9 @@ import { useMemo, useState } from "react";
 import { Spinner } from "./Spinner";
 import { ApexChart } from "./charts/ApexChart";
 import { ClosePositionModal } from "./ClosePositionModal";
-import type { RollAlertLike } from "./RollOrderSetupForm";
 import { RecoveryPathModal } from "./RecoveryPathModal";
-import { ApiError } from "../api/client";
 import { useTheme } from "../contexts/ThemeContext";
-import { fetchRollCandidate, type Greeks, type Position, type UnrealizedPnlResult } from "../api/positions";
-import type { RollStructure, TradeAlert } from "../api/tradeAlerts";
+import type { Greeks, Position, UnrealizedPnlResult } from "../api/positions";
 import { computePayoff } from "../lib/payoff";
 import {
   daysAgo,
@@ -25,10 +22,7 @@ import {
   todayInEasternIso,
 } from "../lib/formatters";
 import {
-  positionHasOptionLeg,
-  positionHasStockLeg,
   positionPnlAsOfDate,
-  positionIsStockOnly,
   positionPremiumPnl,
   positionStockPnl,
   positionTotalPnl,
@@ -36,7 +30,6 @@ import {
 } from "../lib/positionPnl";
 import { StrategyBadge } from "./StrategyBadge";
 import { TooltipSpan } from "./TooltipSpan";
-import { useTooltip } from "../hooks/useTooltip";
 
 interface PositionCardProps {
   position: Position;
@@ -47,8 +40,6 @@ interface PositionCardProps {
   /** Last-known total account value, for EXP% — see PositionsPage's own prop of the same name. */
   totalAccountValue: number | null;
   currentPrice: number | null;
-  /** This position's pending roll alert, if any — drives the roll-alert banner and the enhanced Roll button on its leg. */
-  rollAlert?: TradeAlert & { suggestedStructure: RollStructure };
   onChanged: () => void;
   /**
    * Scrolls to this ticker's option chain so the user can pick a strike to
@@ -57,25 +48,8 @@ interface PositionCardProps {
    * quantity in the chain's order panel instead of leaving it blank.
    */
   onSellCall: (prefill?: { strike: number; expiry: string; quantity: number; premium: number }) => void;
-  /**
-   * Opens (or replaces) the roll review in TickerDetailModal's own Order
-   * Setup slot — since 2026-09-15, a roll no longer opens its own stacked
-   * modal, so this card just hands the alert/candidate shape up to the
-   * parent instead of rendering RollPositionModal itself.
-   */
-  onRollSelect: (alert: RollAlertLike) => void;
-}
-
-// Extracted so useTooltip (a hook) can be called once per row from inside
-// displayedLegs.map() without violating the Rules of Hooks — see
-// FlashingNumber.tsx's doc comment for the same constraint.
-function RollAlertButton({ rationale, onClick }: { rationale: string | null | undefined; onClick: () => void }) {
-  const ref = useTooltip<HTMLButtonElement>(rationale ?? "Roll alert pending");
-  return (
-    <button ref={ref} type="button" className="btn btn-sm btn-outline-warning" onClick={onClick}>
-      Roll Alert
-    </button>
-  );
+  /** Selects this open short leg's best Signals roll in the Signals modal's order setup (or explains there is none). */
+  onRollLeg: (legId: string) => void;
 }
 
 const annotationColorsByTheme = {
@@ -83,15 +57,27 @@ const annotationColorsByTheme = {
   dark: { breakeven: "#f59f00", current: "#748ffc", zero: "#adb5bd" },
 } as const;
 
-// One open position's full detail + actions, as a card inside the
-// consolidated ticker/position modal (2026-08-31 modal-wiring-audit merge).
-// A symbol can have more than one concurrently open position here (e.g. an
+// One open position's full detail + actions, as a card inside the Signals
+// modal. A symbol can have more than one concurrently open position here (e.g. an
 // open CSP and an open covered call at once), so the parent renders one of
 // these per open position rather than assuming exactly one. Extracted from
 // the old standalone PositionDetailModal — same legs table/payoff
-// chart/editable fields/Close flow, now reusable per-card. Roll is new here:
-// PositionDetailModal never had it (Roll was only reachable from a live
-// Trade Alert's roll row).
+// chart/editable fields/Close flow, now reusable per-card. Roll on a short
+// option leg selects that leg's best Signals roll in the Signals modal.
+const payoffAxisMaximumGainMargin = 1.05;
+const payoffAxisMaximumStepsBelowZero = 4;
+
+// Zero-anchored y axis for the payoff chart: from -k·top to top, where top = max gain + 5% and k covers the lowest plotted
+// P&L, capped so a lopsided position (a put's small premium against a huge max loss) keeps its gain side readable; the
+// steeper part of the loss then runs off the bottom (Max Loss is shown above the chart).
+function buildPayoffYAxis(payoff: ReturnType<typeof computePayoff>): { min?: number; max?: number; tickAmount?: number } {
+  if (!payoff || !(payoff.maxGain > 0)) return {};
+  const top = payoff.maxGain * payoffAxisMaximumGainMargin;
+  const lowestPnl = Math.min(0, ...payoff.points.map((point) => point.pnl));
+  const stepsBelowZero = Math.min(payoffAxisMaximumStepsBelowZero, Math.max(1, Math.ceil(-lowestPnl / top - 1e-9)));
+  return { min: -stepsBelowZero * top, max: top, tickAmount: stepsBelowZero + 1 };
+}
+
 export function PositionCard({
   position,
   greeksByLegId,
@@ -100,10 +86,9 @@ export function PositionCard({
   unrealizedPnlFetchFailed,
   totalAccountValue,
   currentPrice,
-  rollAlert,
   onChanged,
   onSellCall,
-  onRollSelect,
+  onRollLeg,
 }: PositionCardProps) {
   const { theme } = useTheme();
   const annotationColors = annotationColorsByTheme[theme];
@@ -127,34 +112,54 @@ export function PositionCard({
     [position],
   );
 
-  const [rollingLegId, setRollingLegId] = useState<string | null>(null);
-  const [rollError, setRollError] = useState<string | null>(null);
+  // Roll acts on one leg: the open short option leg expiring soonest (the only one for a single-leg position).
+  const rollableLeg = useMemo(() => {
+    if (position.status !== "open") return null;
+    const rollableLegs = displayedLegs.filter((leg) => leg.legType === "option" && leg.side === "short");
+    return rollableLegs.sort((legA, legB) => (legA.expiryDate ?? "").localeCompare(legB.expiryDate ?? ""))[0] ?? null;
+  }, [position.status, displayedLegs]);
 
   const payoff = useMemo(
-    () => (position.strategyKey !== "unstructured" ? computePayoff(position.strategyKey, displayedLegs) : null),
-    [position, displayedLegs],
+    // Hedges and unstructured positions have no strategy payoff diagram.
+    () => (position.strategyKey === "covered_call" || position.strategyKey === "cash_secured_put" ? computePayoff(position.strategyKey, displayedLegs, currentPrice, position.breakEven ?? null) : null),
+    [position, displayedLegs, currentPrice],
   );
 
-  async function handleRollClick(legId: string) {
-    setRollingLegId(legId);
-    setRollError(null);
-    try {
-      const candidate = await fetchRollCandidate(position.id, legId);
-      onRollSelect({
-        symbol: candidate.symbol,
-        relatedPositionId: candidate.relatedPositionId,
-        suggestedStructure: candidate.suggestedStructure,
-      });
-    } catch (err) {
-      setRollError(err instanceof ApiError ? err.message : "Failed to compute a roll candidate.");
-    } finally {
-      setRollingLegId(null);
+  const payoffYAxis = useMemo(() => buildPayoffYAxis(payoff), [payoff]);
+
+  // P&L is tracked per leg type (option premium / stock), not per leg: each leg's cell shows its type's figure, and "—" when a
+  // second leg of the same type makes the split ambiguous.
+  const optionLegCount = displayedLegs.filter((leg) => leg.legType === "option").length;
+  const stockLegCount = displayedLegs.filter((leg) => leg.legType === "stock").length;
+  const renderLegPnl = (leg: (typeof displayedLegs)[number]) => {
+    const isOption = leg.legType === "option";
+    if ((isOption ? optionLegCount : stockLegCount) > 1) {
+      return (
+        <TooltipSpan className="text-muted" text="P&L is tracked per leg type, not per leg">
+          —
+        </TooltipSpan>
+      );
     }
-  }
+    const pnl = isOption ? positionPremiumPnl(position, unrealizedPnlByPositionId) : positionStockPnl(position, unrealizedPnlByPositionId);
+    const meaning = isOption ? "Premium collected vs. current buy-back cost of the option contract" : "Stock P&L: price movement of the shares held vs. entry, plus any shares already sold (realized, net of closing commissions)";
+    if (pnl === "loading" || pnl === null) {
+      return (
+        <TooltipSpan className="text-muted" text={pnl === null ? "No live price or recent snapshot available" : "Loading"}>
+          —
+        </TooltipSpan>
+      );
+    }
+    return (
+      <TooltipSpan className={pnlTextClass(pnl)} text={meaning}>
+        {formatSignedPnl(pnl)}
+      </TooltipSpan>
+    );
+  };
 
   return (
     <div>
-      <div className="d-flex flex-wrap align-items-center gap-2 mb-3">
+      <div className={`mb-3${payoff ? " position-payoff-layout" : ""}`}>
+      <div className="d-flex flex-wrap align-items-center gap-2">
         <StrategyBadge strategyKey={position.strategyKey} />
         {(() => {
           const pnl = positionTotalPnl(position, unrealizedPnlByPositionId);
@@ -191,76 +196,43 @@ export function PositionCard({
             </>
           );
         })()}
-        {positionHasOptionLeg(position) &&
-          !positionIsStockOnly(position) &&
-          (() => {
-            const premiumPnl = positionPremiumPnl(position, unrealizedPnlByPositionId);
-            return (
-              <TooltipSpan className="small" text="Premium collected vs. current buy-back cost of the option contract(s)">
-                <span className="text-muted">Premium P&L:</span>{" "}
-                {premiumPnl === "loading" || premiumPnl === null ? (
-                  <span className="text-muted">—</span>
-                ) : (
-                  <span className={pnlTextClass(premiumPnl)}>{formatSignedPnl(premiumPnl)}</span>
-                )}
-              </TooltipSpan>
-            );
-          })()}
-        {positionHasStockLeg(position) &&
-          (() => {
-            const stockPnl = positionStockPnl(position, unrealizedPnlByPositionId);
-            return (
-              <TooltipSpan className="small" text="Stock price movement vs. entry price">
-                <span className="text-muted">Stock P&L:</span>{" "}
-                {stockPnl === "loading" || stockPnl === null ? (
-                  <span className="text-muted">—</span>
-                ) : (
-                  <span className={pnlTextClass(stockPnl)}>{formatSignedPnl(stockPnl)}</span>
-                )}
-              </TooltipSpan>
-            );
-          })()}
         {position.capitalAtRisk !== null && (
-          <TooltipSpan className="small" text="Capital committed to this position — stock cost for covered calls, strike collateral for cash-secured puts">
-            <span className="text-muted">EXP $:</span> {formatCurrency(Number(position.capitalAtRisk), 0)}
+          <TooltipSpan className="small position-stat" text="Capital committed to this position — stock cost for covered calls, strike collateral for cash-secured puts — and, in brackets, its share of total account value (positions + cash)">
+            <span className="position-stat-label">EXP $:</span> {formatCurrency(Number(position.capitalAtRisk), 0)}
+            {totalAccountValue !== null && <> ({formatPercentageValue((Number(position.capitalAtRisk) / totalAccountValue) * 100, 1)})</>}
           </TooltipSpan>
         )}
-        {position.capitalAtRisk !== null && totalAccountValue !== null && (
-          <TooltipSpan className="small" text="This position's capital as a share of total account value (positions + cash)">
-            <span className="text-muted">EXP %:</span> {formatPercentageValue((Number(position.capitalAtRisk) / totalAccountValue) * 100, 1)}
-          </TooltipSpan>
-        )}
-        {position.capitalAtRisk !== null &&
-          (() => {
-            const pnl = positionTotalPnl(position, unrealizedPnlByPositionId);
-            if (pnl === "loading" || pnl === null) return null;
-            return (
-              <TooltipSpan className="small" text="Market value — capital committed to this position plus its unrealized P&L">
-                <span className="text-muted">MV:</span> {formatCurrency(Number(position.capitalAtRisk) + pnl, 0)}
-              </TooltipSpan>
-            );
-          })()}
-        <TooltipSpan className="small" text={formatDateTime(position.openedAt)}>
-          <span className="text-muted">Opened:</span> {formatDaysAgo(daysAgo(position.openedAt))}
+        <TooltipSpan className="small position-stat" text={formatDateTime(position.openedAt)}>
+          <span className="position-stat-label">Opened:</span> {formatDaysAgo(daysAgo(position.openedAt))}
         </TooltipSpan>
       </div>
-      {rollAlert && (
-        <div className="alert alert-warning d-flex flex-wrap align-items-center justify-content-between gap-2">
-          <div>
-            <strong>Roll alert:</strong> {rollAlert.rationale ?? "This position is ready to roll."}
-          </div>
-          <button
-            type="button"
-            className="btn btn-outline-secondary"
-            onClick={() => onRollSelect({ id: rollAlert.id, symbol: rollAlert.symbol, relatedPositionId: rollAlert.relatedPositionId, suggestedStructure: rollAlert.suggestedStructure })}
-          >
-            Review Roll
-          </button>
+      {payoff && (
+        <div className="d-flex flex-wrap align-items-center justify-content-lg-center gap-2">
+          <span className="small fw-semibold">Payout at Expiration</span>
+        <TooltipSpan className="small position-stat" text="Best case at expiration: the premium kept (plus any stock gain up to the strike)">
+          <span className="position-stat-label">Max Gain:</span> <span className="text-success">{formatSignedPnl(payoff.maxGain, 0)}</span>
+        </TooltipSpan>
+        <TooltipSpan className="small position-stat" text="Worst case at expiration: the stock (or the assigned shares) going to zero">
+          <span className="position-stat-label">Max Loss:</span> <span className="text-danger">{formatSignedPnl(-payoff.maxLoss, 0)}</span>
+        </TooltipSpan>
+        <TooltipSpan
+          className="small position-stat"
+          text={
+            position.strategyKey === "covered_call" && position.breakEven != null
+              ? "Stock price at expiration where the position neither gains nor loses: the cycle break-even, with premium from earlier calls or an assigned put already netted out"
+              : "Stock price at expiration where the position neither gains nor loses"
+          }
+        >
+          <span className="position-stat-label">Breakeven:</span> {formatCurrency(payoff.breakeven)}
+        </TooltipSpan>
         </div>
       )}
+      </div>
       <div>
-        <div className="table-responsive mb-3">
-          <table className="table table-sm table-vcenter card-table mb-0">
+        <div className={payoff ? "position-payoff-layout" : undefined}>
+          <div className="position-legs-table">
+          <div className="table-responsive">
+          <table className="table table-sm table-vcenter card-table mb-0 text-nowrap">
             <thead className="table-light">
               <tr>
                 <th>Leg</th>
@@ -269,18 +241,15 @@ export function PositionCard({
                 <th className="text-end">Strike</th>
                 <th>Expiry</th>
                 <th className="text-end">Entry</th>
+                <th className="text-end">P&L</th>
                 <th className="text-end">Delta</th>
                 <TooltipSpan as="th" className="text-end" text="Rate of change of delta per $1 move in the underlying — higher gamma means delta (and assignment risk) can shift faster">
                   Gamma
                 </TooltipSpan>
-                <th className="text-end">Exit</th>
-                <th></th>
               </tr>
             </thead>
             <tbody>
               {displayedLegs.map((leg) => {
-                const rollEligible = position.status === "open" && leg.legType === "option" && leg.side === "short" && !leg.exitAt;
-                const legRollAlert = rollAlert && rollAlert.suggestedStructure.closeLeg.legId === leg.id ? rollAlert : undefined;
                 return (
                   <tr key={leg.id}>
                     <td>{leg.legType === "stock" ? "Stock" : leg.optionType === "call" ? "Call" : "Put"}</td>
@@ -289,6 +258,7 @@ export function PositionCard({
                     <td className="text-end">{leg.strikePrice ? formatCurrencyTrimmed(Number(leg.strikePrice)) : "—"}</td>
                     <td>{formatExpiryWithDte(leg.expiryDate, position.status === "closed" ? position.openedAt : todayInEasternIso())}</td>
                     <td className="text-end">{formatCurrency(Number(leg.entryPrice))}</td>
+                    <td className="text-end">{renderLegPnl(leg)}</td>
                     <td className="text-end">
                       {leg.legType === "option" ? (
                         leg.id in greeksByLegId ? (
@@ -319,129 +289,87 @@ export function PositionCard({
                         "—"
                       )}
                     </td>
-                    <td className="text-end">{leg.exitAt ? formatCurrency(Number(leg.exitPrice)) : "—"}</td>
-                    <td className="text-end">
-                      {rollEligible && legRollAlert && (
-                        <RollAlertButton
-                          rationale={legRollAlert.rationale}
-                          onClick={() =>
-                            onRollSelect({
-                              id: legRollAlert.id,
-                              symbol: legRollAlert.symbol,
-                              relatedPositionId: legRollAlert.relatedPositionId,
-                              suggestedStructure: legRollAlert.suggestedStructure,
-                            })
-                          }
-                        />
-                      )}
-                      {rollEligible && !legRollAlert && (
-                        <button
-                          type="button"
-                          className="btn btn-sm btn-outline-primary d-inline-flex align-items-center gap-1"
-                          disabled={rollingLegId === leg.id}
-                          onClick={() => handleRollClick(leg.id)}
-                        >
-                          {rollingLegId === leg.id && <Spinner size="sm" />}
-                          Roll
-                        </button>
-                      )}
-                    </td>
                   </tr>
                 );
               })}
             </tbody>
           </table>
-        </div>
-        {rollError && <div className="alert alert-danger">{rollError}</div>}
-
-        {payoff && (
-          <div className="mb-3">
-            <h4 className="mb-2" style={{ fontSize: "0.9rem" }}>
-              Payoff at Expiration
-            </h4>
-            <div className="row mb-2">
-              <div className="col-4">
-                <div className="text-muted" style={{ fontSize: "0.72rem" }}>
-                  Max Gain
-                </div>
-                <div className="fw-bold text-success">{formatSignedPnl(payoff.maxGain, 0)}</div>
-              </div>
-              <div className="col-4">
-                <div className="text-muted" style={{ fontSize: "0.72rem" }}>
-                  Max Loss
-                </div>
-                <div className="fw-bold text-danger">{formatSignedPnl(-payoff.maxLoss, 0)}</div>
-              </div>
-              <div className="col-4">
-                <div className="text-muted" style={{ fontSize: "0.72rem" }}>
-                  Breakeven
-                </div>
-                <div className="fw-bold">{formatCurrency(payoff.breakeven)}</div>
-              </div>
+          </div>
+          {position.status === "open" && (
+            <div className="d-flex flex-wrap gap-2 mt-3">
+              {isUnstructured && hasOpenStockLeg && (
+                <>
+                  <button type="button" className="btn btn-outline-warning" onClick={() => onSellCall()}>
+                    Sell Call
+                  </button>
+                  <button type="button" className="btn btn-outline-secondary" onClick={() => setShowRecoveryPath(true)}>
+                    Recovery Path
+                  </button>
+                </>
+              )}
+              {rollableLeg && (
+                <button type="button" className="btn btn-outline-primary" onClick={() => onRollLeg(rollableLeg.id)}>
+                  Roll Option
+                </button>
+              )}
+              <button type="button" className="btn btn-outline-danger" onClick={() => setShowClose(true)}>
+                Close Position
+              </button>
             </div>
-            <ApexChart
-              type="area"
-              height={220}
-              series={[{ name: "P&L at Expiration", data: payoff.points.map((p) => ({ x: p.price, y: p.pnl })) }]}
-              options={{
-                xaxis: { type: "numeric", labels: { formatter: (value: string) => formatCurrency(Number(value)) } },
-                yaxis: { labels: { formatter: (value: number) => formatCurrency(value) } },
-                grid: { padding: { top: 24 } },
-                tooltip: {
-                  x: { formatter: (value: number) => formatCurrency(value) },
-                  y: { formatter: (value: number) => formatSignedPnl(value) },
-                },
-                annotations: {
-                  xaxis: [
-                    {
-                      x: payoff.breakeven,
-                      borderColor: annotationColors.breakeven,
-                      label: {
-                        text: "Breakeven",
-                        style: { fontSize: "0.7rem", color: "#fff", background: annotationColors.breakeven },
-                        offsetY: 4,
+          )}
+          </div>
+          {payoff && (
+            <div className="position-payoff-chart">
+              <ApexChart
+                type="area"
+                height={196}
+                series={[{ name: "P&L at Expiration", data: payoff.points.map((p) => ({ x: p.price, y: p.pnl })) }]}
+                options={{
+                  xaxis: { type: "numeric", labels: { formatter: (value: string) => formatCurrency(Number(value)) } },
+                  // Top of the axis is the max gain + 5% (Marcelo, 2026-09-30). Ticks are anchored on $0 and step in multiples of that top, so
+                  // the top and $0 are always ticks (a bare `max` leaves Apex's ticks on odd values).
+                  yaxis: { ...payoffYAxis, labels: { formatter: (value: number) => formatCurrency(Math.round(value) + 0, 0) } },
+                  // Apex leaves ~30px above the plot: pull the chart up so its top gridline lines up with the top of the legs table beside it.
+                chart: { offsetY: -30, parentHeightOffset: 0 },
+                grid: { padding: { top: 0 } },
+                  tooltip: {
+                    x: { formatter: (value: number) => formatCurrency(value) },
+                    y: { formatter: (value: number) => formatSignedPnl(value) },
+                  },
+                  annotations: {
+                    xaxis: [
+                      {
+                        x: payoff.breakeven,
+                        borderColor: annotationColors.breakeven,
+                        label: {
+                          text: "Breakeven",
+                          style: { fontSize: "0.7rem", color: "#fff", background: annotationColors.breakeven },
+                          offsetY: -6,
+                        },
                       },
-                    },
-                    ...(currentPrice !== null
-                      ? [
-                          {
-                            x: currentPrice,
-                            borderColor: annotationColors.current,
-                            label: {
-                              text: "Current",
-                              style: { fontSize: "0.7rem", color: "#fff", background: annotationColors.current },
-                              offsetY: 65,
+                      ...(currentPrice !== null
+                        ? [
+                            {
+                              x: currentPrice,
+                              borderColor: annotationColors.current,
+                              label: {
+                                text: "Current",
+                                style: { fontSize: "0.7rem", color: "#fff", background: annotationColors.current },
+                                offsetY: 62,
+                              },
                             },
-                          },
-                        ]
-                      : []),
-                  ],
-                  yaxis: [{ y: 0, borderColor: annotationColors.zero, strokeDashArray: 4 }],
-                },
-                dataLabels: { enabled: false },
-                stroke: { curve: "straight", width: 2 },
-              }}
-            />
-          </div>
-        )}
-
-        {position.status === "open" && (
-          <div className="border-top pt-3 d-flex flex-wrap gap-2">
-            {isUnstructured && hasOpenStockLeg && (
-              <>
-                <button type="button" className="btn btn-outline-warning" onClick={() => onSellCall()}>
-                  Sell Call
-                </button>
-                <button type="button" className="btn btn-outline-secondary" onClick={() => setShowRecoveryPath(true)}>
-                  Recovery Path
-                </button>
-              </>
-            )}
-            <button type="button" className="btn btn-outline-danger" onClick={() => setShowClose(true)}>
-              Close Position
-            </button>
-          </div>
-        )}
+                          ]
+                        : []),
+                    ],
+                    yaxis: [{ y: 0, borderColor: annotationColors.zero, strokeDashArray: 4 }],
+                  },
+                  dataLabels: { enabled: false },
+                  stroke: { curve: "straight", width: 2 },
+                }}
+              />
+            </div>
+          )}
+        </div>
       </div>
 
       {showClose && (

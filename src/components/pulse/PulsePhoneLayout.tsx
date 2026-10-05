@@ -19,11 +19,12 @@ export interface PhoneSystemLed {
 
 export interface PulsePhoneLayoutProps {
   clock: string;
+  keepLiveSwitch: ReactNode;
   environmentStatus: EnvironmentStatus;
   attentionPill: ReactNode;
   marketLine: ReactNode;
   kpiTiles: ReactNode;
-  allocation: { ccPct: number; cspPct: number; unstructuredPct: number; cashPct: number };
+  allocation: { ccPct: number; cspPct: number; unstructuredPct: number; hedgePct: number; cashPct: number };
   charts: { pnlSeries: number[]; pnlChart: ReactNode; deltaChart: ReactNode };
   positions: { count: number; totalPnl: number | null; exposurePercent: number | null; head: ReactNode; rows: ReactNode; empty: ReactNode };
   signals: { shownCount: number; scoredCount: number; bestRow: ReactNode; head: ReactNode; rows: ReactNode; empty: ReactNode };
@@ -50,6 +51,7 @@ function AllocationLegendItem({ color, label, percent }: { color: string; label:
  */
 export function PulsePhoneLayout({
   clock,
+  keepLiveSwitch,
   environmentStatus,
   attentionPill,
   marketLine,
@@ -87,7 +89,10 @@ export function PulsePhoneLayout({
         </div>
         <div className="phone-header-row2">
           <EnvironmentBadges status={environmentStatus} />
+        </div>
+        <div className="phone-header-row3">
           {marketLine}
+          {keepLiveSwitch}
         </div>
       </header>
 
@@ -100,6 +105,7 @@ export function PulsePhoneLayout({
             <AllocationLegendItem color="var(--tblr-blue)" label="CC" percent={allocation.ccPct} />
             <AllocationLegendItem color="var(--tblr-purple)" label="CSP" percent={allocation.cspPct} />
             <AllocationLegendItem color="var(--tblr-orange)" label="N/S" percent={allocation.unstructuredPct} />
+            <AllocationLegendItem color="var(--iorio-hedge)" label="HDG" percent={allocation.hedgePct} />
             <AllocationLegendItem color="var(--border-strong)" label="Cash" percent={allocation.cashPct} />
           </span>
         </div>
@@ -107,6 +113,7 @@ export function PulsePhoneLayout({
           <span className="alloc-seg" style={{ width: `${allocation.ccPct}%`, background: "var(--tblr-blue)" }} />
           <span className="alloc-seg" style={{ width: `${allocation.cspPct}%`, background: "var(--tblr-purple)" }} />
           <span className="alloc-seg" style={{ width: `${allocation.unstructuredPct}%`, background: "var(--tblr-orange)" }} />
+          <span className="alloc-seg" style={{ width: `${allocation.hedgePct}%`, background: "var(--iorio-hedge)" }} />
           <span className="alloc-seg" style={{ width: `${allocation.cashPct}%`, background: "var(--border-strong)" }} />
         </div>
       </div>

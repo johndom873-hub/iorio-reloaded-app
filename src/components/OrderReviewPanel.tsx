@@ -2,13 +2,11 @@ import { useEffect, useRef, useState } from "react";
 import { Spinner } from "./Spinner";
 import { ApiError } from "../api/client";
 import { useBackgroundJobs, type OrderJob } from "../contexts/BackgroundJobsContext";
-import { cancelOrder, confirmOrder, openOrderLegQuoteStream, type AdaptivePriority, type OrderLegQuote, type OrderRequest } from "../api/positions";
+import { cancelOrder, clearOrderConfirmationSent, confirmOrder, markOrderConfirmationSent, openOrderLegQuoteStream, type AdaptivePriority, type OrderLegQuote, type OrderRequest } from "../api/positions";
 
-// Just the fields the Live Quote card below actually renders -- deliberately
-// not OptionQuote itself, since a Day Signals caller's already-known quote
-// (SignalCandidate) has no gamma/last of its own to offer, only
-// bid/ask/delta/vega/IV. TickerDetailModal's OptionQuote satisfies this
-// structurally (it has every field here, plus more), so it needs no mapping.
+// Just the fields the Live Quote card below actually renders -- a Signals
+// caller's already-known quote (SignalCandidate) has no gamma/last of its own
+// to offer, only bid/ask/delta/vega/IV.
 export interface OrderReviewQuoteSeed {
   bid: number | null;
   ask: number | null;
@@ -23,6 +21,7 @@ import {
   daysToExpiry,
   formatCurrency,
   formatCurrencyTrimmed,
+  formatDate,
   formatExpiryWithDte,
   formatNumber,
   formatPercentage,
@@ -30,9 +29,8 @@ import {
   formatSignedPnl,
   ibkrExpiryToIsoDate,
   orderRequestStatusBadgeClass,
+  orderRequestStatusLabel,
   todayInEasternIso,
-  isOrderRequestFinal,
-  orderRequestFillLabel,
 } from "../lib/formatters";
 import { computeAnnualizedYield, computeCapitalAtRiskFromOrderLegs, computePayoff, orderLegsToPayoffInput } from "../lib/payoff";
 import { computeProbabilityOfProfit } from "../lib/probabilityOfProfit";
@@ -44,26 +42,28 @@ interface OrderReviewPanelProps {
   /** Starting value of the fill-priority select (the Signals setup form lets the user pick it before review). */
   initialAdaptivePriority?: AdaptivePriority;
   onCancelled: () => void;
-  /** Fires once the order reaches a terminal, successful state (filled/partially_filled). */
+  /** Every change to the order (confirmed, submitted, filled...), so the caller's copy never goes stale. */
+  onOrderChange?: (order: OrderRequest) => void;
+  /** Fires once the order reaches a terminal state with fills (filled/partially_filled/cancelled_partially_filled). */
   onFilled: () => void;
   /**
    * Real live underlying price, when the caller already has one streaming
-   * (TickerDetailModal's own overview stream) -- used for POP instead of the
+   * (the Signals modal's pooled spot price) -- used for POP instead of the
    * stockLeg-unitPrice-or-strike approximation below. Genuinely needed here
    * (not just nice-to-have): a CSP or a covered call sold against
    * already-held shares has no stock leg in the order at all, so without
    * this the fallback would silently use the strike itself as "spot,"
    * materially skewing POP for exactly the orders Juan flagged POP as most
-   * important for. Left undefined for Roll/Close (RollPositionModal/
-   * ClosePositionModal), which don't have a spot price already on hand --
+   * important for. Left undefined for Close (ClosePositionModal), which
+   * doesn't have a spot price already on hand --
    * POP simply doesn't render there rather than opening a second live IBKR
    * stream just for this one number.
    */
   liveSpotPrice?: number | null;
   /**
-   * The option-chain quote the caller already had for this leg a moment
-   * ago (TickerDetailModal's own optionChain stream, still warm on the
-   * same IBKR line the Live Quote card is about to subscribe to) -- lets
+   * The quote the caller already had for this leg a moment ago (the
+   * Signals modal's scored candidate, often still warm on the same IBKR
+   * line the Live Quote card is about to subscribe to) -- lets
    * the card paint bid/ask/spread/IV/Greeks instantly instead of sitting
    * on a spinner for a fresh subscribe-and-first-tick round trip (found
    * 2026-09-24). Display only: it never feeds the compliance/signalLimits
@@ -73,7 +73,7 @@ interface OrderReviewPanelProps {
   initialQuote?: OrderReviewQuoteSeed | null;
 }
 
-const terminalStatuses = new Set(["filled", "partially_filled", "cancelled", "rejected", "error"]);
+const terminalStatuses = new Set(["filled", "partially_filled", "cancelled", "cancelled_partially_filled", "rejected", "error"]);
 
 function legDescription(leg: OrderRequest["payload"]["legs"][number]): string {
   if (leg.role === "stock") return `${leg.action} ${leg.quantity} sh @ ${formatCurrency(leg.unitPrice)}`;
@@ -83,8 +83,9 @@ function legDescription(leg: OrderRequest["payload"]["legs"][number]): string {
   return `${leg.action} ${leg.quantity}x ${leg.strike ? formatCurrencyTrimmed(leg.strike) : "—"} ${right} exp ${expiryLabel} @ ${formatCurrency(leg.unitPrice)}`;
 }
 
-function statusLabel(order: Pick<OrderRequest, "status" | "filledQuantity" | "remainingQuantity" | "ibkrStatus">): string {
-  switch (order.status) {
+function statusLabel(status: OrderRequest["status"], cancellationReason: OrderRequest["cancellationReason"]): string {
+  if (cancellationReason && (status === "cancelled" || status === "cancelled_partially_filled")) return orderRequestStatusLabel(status, cancellationReason);
+  switch (status) {
     case "pending_confirmation":
       return "Awaiting your confirmation";
     case "confirmed":
@@ -96,9 +97,11 @@ function statusLabel(order: Pick<OrderRequest, "status" | "filledQuantity" | "re
     case "filled":
       return "Filled";
     case "partially_filled":
-      return orderRequestFillLabel(order);
+      return "Partially filled";
     case "cancelled":
       return "Cancelled";
+    case "cancelled_partially_filled":
+      return "Cancelled after partly filling";
     case "rejected":
       return "Rejected by IBKR";
     case "error":
@@ -112,7 +115,7 @@ function statusLabel(order: Pick<OrderRequest, "status" | "filledQuantity" | "re
  * form only ever builds an OrderRequest (this component's `order` prop) —
  * nothing is sent to IBKR until the user clicks Confirm here.
  */
-export function OrderReviewPanel({ order: initialOrder, initialAdaptivePriority, onCancelled, onFilled, liveSpotPrice, initialQuote }: OrderReviewPanelProps) {
+export function OrderReviewPanel({ order: initialOrder, initialAdaptivePriority, onCancelled, onOrderChange, onFilled, liveSpotPrice, initialQuote }: OrderReviewPanelProps) {
   const { jobs, startOrderJob } = useBackgroundJobs();
   // Once confirmed or cancel-requested, status polling is owned by
   // BackgroundJobsContext (startOrderJob below) rather than a local
@@ -123,6 +126,11 @@ export function OrderReviewPanel({ order: initialOrder, initialAdaptivePriority,
   const [localOrder, setLocalOrder] = useState(initialOrder);
   const job = jobs.find((candidate): candidate is OrderJob => candidate.kind === "order" && candidate.id === localOrder.id);
   const order = job?.order ?? localOrder;
+  useEffect(() => {
+    if (order !== initialOrder) onOrderChange?.(order);
+    // Only on an actual change of the order; the callback's identity doesn't matter.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [order]);
   const [confirming, setConfirming] = useState(false);
   // Juan's 2026-09-02 ask: a per-order Urgent/Normal/Patient picker for the
   // Adaptive algo, instead of the always-"Normal" default set 2026-08-31.
@@ -130,7 +138,10 @@ export function OrderReviewPanel({ order: initialOrder, initialAdaptivePriority,
   // type -- open/close/roll all render this same panel. Only meaningful
   // while pending (sent along with Confirm); a resumed/reloaded order
   // that's already past pending_confirmation shows its actual stored value.
+  // Not offered on combos: IBKR's Adaptive is single-leg only, so a combo is a
+  // plain limit order at its net price.
   const [adaptivePriority, setAdaptivePriority] = useState<AdaptivePriority>(initialAdaptivePriority ?? "Normal");
+  const isComboOrder = localOrder.payload.legs.length > 1;
   const [cancelling, setCancelling] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [quote, setQuote] = useState<OrderLegQuote | null>(null);
@@ -148,7 +159,7 @@ export function OrderReviewPanel({ order: initialOrder, initialAdaptivePriority,
   // shared job's order flips to a filled state, guarded so a re-render at an
   // already-terminal status doesn't call onFilled twice.
   useEffect(() => {
-    if ((order.status === "filled" || order.status === "partially_filled") && !notifiedFilledRef.current) {
+    if ((order.status === "filled" || order.status === "partially_filled" || order.status === "cancelled_partially_filled") && !notifiedFilledRef.current) {
       notifiedFilledRef.current = true;
       onFilled();
     }
@@ -175,7 +186,7 @@ export function OrderReviewPanel({ order: initialOrder, initialAdaptivePriority,
 
   // Streams for as long as the panel stays open (approved 2026-08-27,
   // replacing a fetch-once snapshot) -- every tick recomputes Ann. Yield
-  // below and, for an opening order, a live delta-vs-strategy-band
+  // below and, for an opening order, a live delta-band
   // compliance verdict that gates Confirm. Only orders with an option leg
   // have anything to quote (a lone stock leg never does).
   useEffect(() => {
@@ -226,10 +237,10 @@ export function OrderReviewPanel({ order: initialOrder, initialAdaptivePriority,
         : !quote.compliance || quote.compliance.compliant
           ? null
           : quote.compliance.reason;
-  // Signals-tab position/concentration/cash-reserve limits (approved 2026-09-24) -- signalLimits is
-  // only ever non-null for a Signals-originated order, evaluated independently of the delta band above.
-  const signalLimitsBlockReason = quote?.signalLimits?.blocked ? quote.signalLimits.reasons.join(" ") : null;
-  const complianceBlockReason = [deltaComplianceBlockReason, signalLimitsBlockReason].filter((reason): reason is string => reason !== null).join(" ") || null;
+  // Position/exposure/cash-reserve limits (approved 2026-09-24) -- signalLimits is
+  // non-null for any opening or rolling order, evaluated independently of the delta band above.
+  const orderLimitsBlockReason = quote?.signalLimits?.blocked ? quote.signalLimits.reasons.join(" ") : null;
+  const complianceBlockReason = [deltaComplianceBlockReason, orderLimitsBlockReason].filter((reason): reason is string => reason !== null).join(" ") || null;
 
   // Recomputed from the live quote (approved 2026-08-27) so this doesn't
   // freeze at the yield shown when the order was first built -- the same
@@ -302,11 +313,13 @@ export function OrderReviewPanel({ order: initialOrder, initialAdaptivePriority,
   async function handleConfirm() {
     setConfirming(true);
     setError(null);
+    markOrderConfirmationSent(localOrder.id);
     try {
-      const confirmed = await confirmOrder(localOrder.id, adaptivePriority);
+      const confirmed = await confirmOrder(localOrder.id, isComboOrder ? undefined : adaptivePriority);
       setLocalOrder(confirmed);
       startOrderJob(confirmed);
     } catch (err) {
+      clearOrderConfirmationSent(localOrder.id);
       setError(err instanceof ApiError ? err.message : "Failed to confirm order.");
     } finally {
       setConfirming(false);
@@ -336,8 +349,7 @@ export function OrderReviewPanel({ order: initialOrder, initialAdaptivePriority,
   const isPending = order.status === "pending_confirmation";
   const isTerminal = terminalStatuses.has(order.status);
   const isWaiting = order.status === "confirmed" || order.status === "submitted";
-  // A partial fill IBKR has stopped working (gap fix 7, 2026-09-28) has nothing left to cancel.
-  const canRequestCancel = order.status === "submitted" || (order.status === "partially_filled" && !isOrderRequestFinal(order));
+  const canRequestCancel = order.status === "submitted" || order.status === "partially_filled";
   const cancelRequested = order.status === "cancel_requested";
 
   return (
@@ -505,33 +517,50 @@ export function OrderReviewPanel({ order: initialOrder, initialAdaptivePriority,
           submitted → filled/cancelled/etc). */}
       {!isPending && (
         <div className="d-flex align-items-center gap-2">
-          <span className={`badge ${orderRequestStatusBadgeClass(order.status)}`}>{statusLabel(order)}</span>
+          <span className={`badge ${orderRequestStatusBadgeClass(order.status, order.cancellationReason)}`}>{statusLabel(order.status, order.cancellationReason)}</span>
           {isWaiting && <Spinner size="sm" label="Waiting for IBKR" />}
         </div>
       )}
       {order.errorMessage && <div className="alert alert-danger mb-0">{order.errorMessage}</div>}
       {order.note && <div className="alert alert-info mb-0">{order.note}</div>}
-      {order.calendarWarning && <div className="alert alert-warning mb-0">⚠ {order.calendarWarning}</div>}
+      {order.calendarWarningEvents && order.calendarWarningEvents.length > 0 ? (
+        <div className="alert alert-warning mb-0">
+          <div className="fw-semibold">
+            ⚠ {order.calendarWarningEvents.length} economic event{order.calendarWarningEvents.length === 1 ? "" : "s"} before expiry
+          </div>
+          <ul className="mb-0 mt-1 ps-3">
+            {order.calendarWarningEvents.map((event) => (
+              <li key={`${event.eventDate}-${event.title}`}>
+                <span className="text-nowrap">{formatDate(event.eventDate)}</span> · {event.title}
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : (
+        order.calendarWarning && <div className="alert alert-warning mb-0">⚠ {order.calendarWarning}</div>
+      )}
 
       {isPending && (
         <>
-          <div className="d-flex justify-content-between align-items-center">
-            <label htmlFor="adaptive-priority-select" className="text-secondary mb-0" style={{ fontSize: "0.8rem" }}>
-              Fill priority (IBKR Adaptive)
-            </label>
-            <select
-              id="adaptive-priority-select"
-              className="form-select form-select-sm"
-              style={{ width: "auto" }}
-              ref={adaptivePrioritySelectTooltipRef}
-              value={adaptivePriority}
-              onChange={(event) => setAdaptivePriority(event.target.value as AdaptivePriority)}
-            >
-              <option value="Urgent">Urgent</option>
-              <option value="Normal">Normal</option>
-              <option value="Patient">Patient</option>
-            </select>
-          </div>
+          {!isComboOrder && (
+            <div className="d-flex justify-content-between align-items-center">
+              <label htmlFor="adaptive-priority-select" className="text-secondary mb-0" style={{ fontSize: "0.8rem" }}>
+                Fill priority (IBKR Adaptive)
+              </label>
+              <select
+                id="adaptive-priority-select"
+                className="form-select form-select-sm"
+                style={{ width: "auto" }}
+                ref={adaptivePrioritySelectTooltipRef}
+                value={adaptivePriority}
+                onChange={(event) => setAdaptivePriority(event.target.value as AdaptivePriority)}
+              >
+                <option value="Urgent">Urgent</option>
+                <option value="Normal">Normal</option>
+                <option value="Patient">Patient</option>
+              </select>
+            </div>
+          )}
           <div className="d-flex gap-2">
             <span ref={confirmWrapperTooltipRef} tabIndex={complianceBlockReason ? 0 : undefined} style={{ display: "inline-block", flex: 1 }}>
               <button
@@ -567,7 +596,7 @@ export function OrderReviewPanel({ order: initialOrder, initialAdaptivePriority,
           <Spinner size="sm" label="Waiting for IBKR to confirm the cancellation" />
         </button>
       )}
-      {isTerminal && order.status !== "filled" && order.status !== "partially_filled" && (
+      {isTerminal && order.status !== "filled" && order.status !== "partially_filled" && order.status !== "cancelled_partially_filled" && (
         <button type="button" className="btn btn-outline-secondary" onClick={onCancelled}>
           Close
         </button>

@@ -282,7 +282,7 @@ export function ClosePositionModal({ position, onClose, onClosed }: ClosePositio
                   <div className="d-flex justify-content-between align-items-center border rounded p-2 mb-3">
                     <DottedLabelTooltip
                       label="Wheel cycle P&L"
-                      tooltipHtml={`Live profit and loss of ${position.symbol}'s whole wheel cycle (every put, call and share since it began), with shares and open options marked at live prices. Covers the entire ticker, not only this position.`}
+                      tooltipHtml={`Live profit and loss of ${position.symbol}'s whole wheel cycle (every put, call, share and hedge since it began), with shares and open options marked at live prices. Covers the entire ticker, not only this position.`}
                     />
                     {liveState?.cycleTotal != null ? (
                       <span className={`fw-bold font-mono ${pnlTextClass(liveState.cycleTotal)}`}>{formatSignedPnl(liveState.cycleTotal)}</span>
@@ -307,7 +307,7 @@ export function ClosePositionModal({ position, onClose, onClosed }: ClosePositio
               )}
 
               {pendingOrder ? (
-                <OrderReviewPanel order={pendingOrder} initialAdaptivePriority={adaptivePriority} onCancelled={onClose} onFilled={onClosed} />
+                <OrderReviewPanel order={pendingOrder} onOrderChange={setPendingOrder} initialAdaptivePriority={adaptivePriority} onCancelled={onClose} onFilled={onClosed} />
               ) : openLegs.length === 0 ? (
                 <div className="alert alert-warning">This position has no open legs to close.</div>
               ) : isUnstructured ? (
@@ -350,7 +350,7 @@ export function ClosePositionModal({ position, onClose, onClosed }: ClosePositio
                               />
                             </div>
                             <div className="col-6">
-                              <label className="form-label">{leg.legType === "option" ? "Buy-back" : "Sell"} limit price</label>
+                              <label className="form-label">{leg.legType === "option" && leg.side === "short" ? "Buy-back" : "Sell"} limit price</label>
                               <input
                                 type="number"
                                 step="0.01"
@@ -438,7 +438,7 @@ export function ClosePositionModal({ position, onClose, onClosed }: ClosePositio
 
                   <div className="row g-3 mb-2">
                     <div className="col-6">
-                      <label className="form-label">Option buy-back limit price</label>
+                      <label className="form-label">{optionLeg?.side === "long" ? "Option sell limit price" : "Option buy-back limit price"}</label>
                       <input
                         type="number"
                         step="0.01"

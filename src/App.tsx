@@ -7,9 +7,8 @@ import { ProtectedRoute } from "./components/layout/ProtectedRoute";
 import { LoginPage } from "./pages/LoginPage";
 import { DashboardPage } from "./pages/DashboardPage";
 import { PositionsPage } from "./pages/PositionsPage";
-import { TradeAlertsPage } from "./pages/TradeAlertsPage";
 import { SignalsPage } from "./pages/SignalsPage";
-import { ScreenerPage } from "./pages/ScreenerPage";
+import { ShortlistPage } from "./pages/ShortlistPage";
 import { PricePerformancePage } from "./pages/PricePerformancePage";
 import { TradeBlotterPage } from "./pages/TradeBlotterPage";
 import { RiskLimitsPage } from "./pages/RiskLimitsPage";
@@ -17,6 +16,7 @@ import { PlutoPage } from "./pages/PlutoPage";
 import { SystemHealthPage } from "./pages/SystemHealthPage";
 import { CalendarEventsPage } from "./pages/CalendarEventsPage";
 import { PulsePage } from "./pages/PulsePage";
+import { NotFoundPage } from "./pages/NotFoundPage";
 
 function App() {
   return (
@@ -34,15 +34,15 @@ function App() {
                 <Route element={<AppLayout />}>
                   <Route path="/" element={<DashboardPage />} />
                   <Route path="/positions" element={<PositionsPage />} />
-                  <Route path="/trade-alerts" element={<TradeAlertsPage />} />
                   <Route path="/signals" element={<SignalsPage />} />
-                  <Route path="/screener" element={<ScreenerPage />} />
+                  <Route path="/shortlist" element={<ShortlistPage />} />
                   <Route path="/price-performance" element={<PricePerformancePage />} />
                   <Route path="/trade-blotter" element={<TradeBlotterPage />} />
                   <Route path="/risk-limits" element={<RiskLimitsPage />} />
                   <Route path="/pluto" element={<PlutoPage />} />
                   <Route path="/system-health" element={<SystemHealthPage />} />
                   <Route path="/calendar" element={<CalendarEventsPage />} />
+                  <Route path="*" element={<NotFoundPage />} />
                 </Route>
               </Route>
             </Routes>

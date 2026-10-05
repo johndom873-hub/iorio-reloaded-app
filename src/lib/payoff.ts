@@ -26,15 +26,26 @@ export interface PayoffResult {
 }
 
 const chartPointCount = 60;
-const chartRangeFraction = 0.25;
+// The chart shows the break-even ±15% (Marcelo, 2026-09-30), widened just enough to keep the current price on it.
+const chartRangeFraction = 0.15;
+const currentPriceMarginFraction = 0.02;
 
 // Expiration-only "hockey stick" math, approved 2026-08-19 — see PROGRESS.md
 // and the Positions screen plan. Uses each leg's actual multiplier rather
 // than assuming 100, since the schema explicitly supports non-standard
 // multipliers (post-split/special-dividend adjusted contracts).
-function buildChartPoints(centerPrice: number, payoffAt: (price: number) => number): PayoffPoint[] {
-  const low = centerPrice * (1 - chartRangeFraction);
-  const high = centerPrice * (1 + chartRangeFraction);
+export function computeChartPriceRange(breakeven: number, currentPrice: number | null): { low: number; high: number } {
+  let low = breakeven * (1 - chartRangeFraction);
+  let high = breakeven * (1 + chartRangeFraction);
+  if (currentPrice !== null && currentPrice > 0) {
+    low = Math.min(low, currentPrice * (1 - currentPriceMarginFraction));
+    high = Math.max(high, currentPrice * (1 + currentPriceMarginFraction));
+  }
+  return { low, high };
+}
+
+function buildChartPoints(breakeven: number, currentPrice: number | null, payoffAt: (price: number) => number): PayoffPoint[] {
+  const { low, high } = computeChartPriceRange(breakeven, currentPrice);
   const step = (high - low) / (chartPointCount - 1);
   return Array.from({ length: chartPointCount }, (_, i) => {
     const price = low + step * i;
@@ -42,13 +53,14 @@ function buildChartPoints(centerPrice: number, payoffAt: (price: number) => numb
   });
 }
 
-export function computeCoveredCallPayoff(legs: PayoffLegInput[]): PayoffResult | null {
+// A covered call's net cost per share is the symbol's cycle break-even when known (premium from earlier calls and any assigned
+// put is already netted out; approved 2026-10-02), else the stock entry less this call's premium.
+export function computeCoveredCallPayoff(legs: PayoffLegInput[], currentPrice: number | null = null, cycleBreakEven: number | null = null): PayoffResult | null {
   const stockLeg = legs.find((leg) => leg.legType === "stock");
   const callLeg = legs.find((leg) => leg.legType === "option" && leg.optionType === "call");
   if (!stockLeg || !callLeg || callLeg.strikePrice === null) return null;
 
-  const stockEntryPrice = Number(stockLeg.entryPrice);
-  const callPremium = Number(callLeg.entryPrice);
+  const netCostPerShare = cycleBreakEven ?? Number(stockLeg.entryPrice) - Number(callLeg.entryPrice);
   const strike = Number(callLeg.strikePrice);
   // Share count comes from the stock leg's quantity, not its `multiplier`
   // (that field means "shares per option contract" and is meaningless for a
@@ -58,18 +70,18 @@ export function computeCoveredCallPayoff(legs: PayoffLegInput[]): PayoffResult |
 
   const payoffAt = (price: number) => {
     const cappedPrice = Math.min(price, strike);
-    return (cappedPrice - stockEntryPrice + callPremium) * shareCount;
+    return (cappedPrice - netCostPerShare) * shareCount;
   };
 
   return {
-    maxGain: (strike - stockEntryPrice + callPremium) * shareCount,
-    maxLoss: (stockEntryPrice - callPremium) * shareCount,
-    breakeven: stockEntryPrice - callPremium,
-    points: buildChartPoints(stockEntryPrice, payoffAt),
+    maxGain: (strike - netCostPerShare) * shareCount,
+    maxLoss: netCostPerShare * shareCount,
+    breakeven: netCostPerShare,
+    points: buildChartPoints(netCostPerShare, currentPrice, payoffAt),
   };
 }
 
-export function computeCashSecuredPutPayoff(legs: PayoffLegInput[]): PayoffResult | null {
+export function computeCashSecuredPutPayoff(legs: PayoffLegInput[], currentPrice: number | null = null): PayoffResult | null {
   const putLeg = legs.find((leg) => leg.legType === "option" && leg.optionType === "put");
   if (!putLeg || putLeg.strikePrice === null) return null;
 
@@ -87,13 +99,13 @@ export function computeCashSecuredPutPayoff(legs: PayoffLegInput[]): PayoffResul
     maxGain: putPremium * shareCount,
     maxLoss: (strike - putPremium) * shareCount,
     breakeven: strike - putPremium,
-    points: buildChartPoints(strike, payoffAt),
+    points: buildChartPoints(strike - putPremium, currentPrice, payoffAt),
   };
 }
 
-export function computePayoff(strategyKey: StrategyKey, legs: PayoffLegInput[]): PayoffResult | null {
-  if (strategyKey === "covered_call") return computeCoveredCallPayoff(legs);
-  return computeCashSecuredPutPayoff(legs);
+export function computePayoff(strategyKey: StrategyKey, legs: PayoffLegInput[], currentPrice: number | null = null, cycleBreakEven: number | null = null): PayoffResult | null {
+  if (strategyKey === "covered_call") return computeCoveredCallPayoff(legs, currentPrice, cycleBreakEven);
+  return computeCashSecuredPutPayoff(legs, currentPrice);
 }
 
 // Adapts an unconfirmed OrderRequest's legs (role/action/unitPrice/strike,
@@ -115,13 +127,10 @@ export function orderLegsToPayoffInput(legs: OrderLeg[]): PayoffLegInput[] {
   }));
 }
 
-// Same ranking formula already approved and shipped server-side for trade
-// alert candidates (generateTradeAlertCandidates.ts, approved 2026-08-20):
+// Approved annualized-yield formula (2026-08-20), same as the server's:
 //   annualizedYield = (premium / capitalAtRisk) * (365 / dte)
 // capitalAtRisk = spot price for a covered call (the stock you'd hold),
-// strike price for a cash-secured put (the cash you'd reserve). Reused here
-// so the option chain can show yield for every browsable strike, not just
-// alert candidates -- same math, no new formula, just applied more broadly.
+// strike price for a cash-secured put (the cash you'd reserve).
 // Returns null when the inputs can't support a real number (no premium, or
 // dte/capitalAtRisk <= 0).
 export function computeAnnualizedYield(
@@ -135,7 +144,7 @@ export function computeAnnualizedYield(
   return (premium / capitalAtRisk) * (365 / dte);
 }
 
-// Same definition already established for Trade Alerts/Positions'
+// Same definition already established for Positions'
 // capitalAtRisk (stock entry cost for a covered call, strike collateral for
 // a CSP) -- computed here from the order's own proposed legs since an
 // unconfirmed order has no stored capitalAtRisk field the way a real

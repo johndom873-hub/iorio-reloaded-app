@@ -6,9 +6,9 @@ import { fetchCycleScoreboard, type CycleBucketKey, type CycleScoreboard as Cycl
 import { formatSignedPnl, pnlTextClass } from "../lib/formatters";
 import { TooltipSpan } from "./TooltipSpan";
 
-const bucketOrder: CycleBucketKey[] = ["csp", "unstructured", "cc"];
+const bucketOrder: CycleBucketKey[] = ["csp", "unstructured", "cc", "hedge"];
 
-// Fair strategy scoreboard (approved 2026-09-19): every wheel cycle attributed to CSP / Unstructured / CC. The
+// Fair strategy scoreboard (approved 2026-09-19): every wheel cycle attributed to CSP / Unstructured / CC / Hedge. The
 // "Premium only" column is the old view where a put looks like free money; the fair view charges it for the
 // assignment (assignment-day close vs strike) and gives each strategy only what happened while it held the shares.
 export function CycleScoreboard() {
@@ -60,7 +60,7 @@ export function CycleScoreboard() {
               <tfoot className="table-totals-row">
                 <tr>
                   <td>Total</td>
-                  <td className="text-end font-mono">{formatSignedPnl(data.buckets.csp.premium + data.buckets.cc.premium)}</td>
+                  <td className="text-end font-mono">{formatSignedPnl(data.buckets.csp.premium + data.buckets.cc.premium + data.buckets.hedge.premium)}</td>
                   <td className={`text-end font-mono ${pnlTextClass(data.buckets.csp.stock + data.buckets.unstructured.stock + data.buckets.cc.stock)}`}>
                     {formatSignedPnl(data.buckets.csp.stock + data.buckets.unstructured.stock + data.buckets.cc.stock)}
                   </td>

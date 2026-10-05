@@ -9,7 +9,7 @@ interface RecoveryPathModalProps {
   positionId: string;
   symbol: string;
   onClose: () => void;
-  /** Sell This on the suggested candidate — jumps to the option chain in the parent TickerDetailModal, prefilled. */
+  /** Sell This on the suggested candidate — selects that exact call in the Signals modal's chain and order setup, scored on demand when it is not a Signals candidate. */
   onSellCandidate: (prefill: { strike: number; expiry: string; quantity: number; premium: number }) => void;
 }
 
@@ -95,9 +95,9 @@ export function RecoveryPathModal({ positionId, symbol, onClose, onSellCandidate
                     </div>
                     <div className="col-6 col-md-3">
                       <div className="text-secondary" style={{ fontSize: "0.8rem" }}>
-                        Entry price
+                        {result.costBasisSource === "cycle_break_even" ? "Break-even" : "Entry price"}
                       </div>
-                      <div className="font-mono">{formatCurrency(result.entryPrice)}</div>
+                      <div className="font-mono">{formatCurrency(result.costBasisPerShare)}</div>
                     </div>
                     <div className="col-6 col-md-3">
                       <div className="text-secondary" style={{ fontSize: "0.8rem" }}>

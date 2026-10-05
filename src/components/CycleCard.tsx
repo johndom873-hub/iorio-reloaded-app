@@ -22,7 +22,7 @@ const timelineColumns = [
 ];
 
 // The symbol's wheel cycle (approved 2026-09-19): summary tiles + a dated timeline where every event is owned by
-// exactly one bucket (CSP / Unstructured / CC). Figures are as of the latest daily close (open shares marked at it,
+// exactly one bucket (CSP / Unstructured / CC / Hedge). Figures are as of the latest daily close (open shares marked at it,
 // open options at the last nightly snapshot), not live ticks.
 export function CycleCard({ symbol }: { symbol: string }) {
   const [cycles, setCycles] = useState<Cycle[] | null>(null);

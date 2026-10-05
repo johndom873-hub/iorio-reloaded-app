@@ -2,7 +2,6 @@ import { apiRequest, apiBaseUrl, apiStreamedRequest } from "./client";
 import { openMultiplexedStream } from "./streamMultiplexer";
 import { openDeferredEventSource } from "./tickerDetail";
 import type { StrategyKey } from "./strategy";
-import type { RollStructure } from "./tradeAlerts";
 
 export type PositionStatus = "open" | "closed";
 export type LegType = "stock" | "option";
@@ -30,7 +29,9 @@ export interface PositionLeg {
 // surfaced as "unstructured" rather than hidden — see worker.ts's
 // reconcilePositionsFromIbkr and PROGRESS.md's "IBKR is the source of
 // truth" decision, 2026-08-24.
-export type PositionStrategyKey = StrategyKey | "unstructured";
+//
+// "hedge" is a long option bought outside the app (e.g. the long TLT call that hedges the cash-secured puts).
+export type PositionStrategyKey = StrategyKey | "unstructured" | "hedge";
 
 export interface Position {
   id: string;
@@ -53,6 +54,8 @@ export interface Position {
   realizedStockPnl: string;
   /** Entry-time capital committed: stock cost for covered calls, strike collateral for CSPs. Null if unavailable. */
   capitalAtRisk: string | null;
+  /** Base for P&L %: capitalAtRisk plus the shares already sold in closed slices of a position that still holds shares. */
+  capitalDeployed: string | null;
   // Cycle break-even per share (open positions only), see cycleBreakEven.ts in the API repo; null with a reason when it can't be trusted.
   breakEven?: number | null;
   breakEvenUnavailableReason?: string | null;
@@ -79,34 +82,17 @@ export function fetchPositionsBySymbol(symbol: string): Promise<Position[]> {
   return apiRequest<Position[]>(`/positions?symbol=${encodeURIComponent(symbol)}&status=all`);
 }
 
-export interface RollCandidate {
-  symbol: string;
-  relatedPositionId: string;
-  rationale: string;
-  suggestedStructure: RollStructure;
-}
-
-// On-demand equivalent of a scheduled roll alert, for one specific leg —
-// read-only, writes nothing (no trade_alerts/order_requests row). Feeds
-// straight into RollPositionModal the same way a real roll alert's
-// suggestedStructure does.
-export function fetchRollCandidate(positionId: string, legId: string): Promise<RollCandidate> {
-  return apiStreamedRequest<RollCandidate>(`/positions/${positionId}/roll-candidate`, {
-    method: "POST",
-    body: JSON.stringify({ legId }),
-  });
-}
-
 export interface RecoveryPathCandidate {
   expiry: string;
   strike: number;
   right: "call" | "put";
   delta: number;
   premium: number;
+  bid: number | null;
+  ask: number | null;
   dte: number;
   annualizedYield: number;
   spotPrice: number;
-  probabilityOfProfit: number | null;
   calendarUnverified: boolean;
 }
 
@@ -114,6 +100,9 @@ export interface RecoveryPath {
   symbol: string;
   shares: number;
   entryPrice: number;
+  /** What the loss is measured from: the cycle break-even per share (premium already collected is netted out), or the average entry price when that is unavailable. */
+  costBasisPerShare: number;
+  costBasisSource: "cycle_break_even" | "entry_price";
   currentPrice: number;
   unrealizedLoss: number;
   contractsAvailable: number;
@@ -139,6 +128,9 @@ export function fetchRecoveryPath(positionId: string): Promise<RecoveryPath> {
 // process, from IBKR's own fill data — these functions never return a
 // Position directly anymore.
 
+/** Why an order ended cancelled when nobody pressed Cancel: a DAY order IBKR expired at the 16:00 ET close, IBKR's own cancel earlier in the day, or the 15-minute sweep of orders never confirmed, or the worker's cancel of an order left unfilled past the Risk & Limits time limit. */
+export type OrderCancellationReason = "expired_at_close" | "cancelled_by_ibkr" | "not_confirmed_in_time" | "not_filled_in_time";
+
 export type OrderRequestStatus =
   | "pending_confirmation"
   | "confirmed"
@@ -147,6 +139,7 @@ export type OrderRequestStatus =
   | "filled"
   | "partially_filled"
   | "cancelled"
+  | "cancelled_partially_filled"
   | "rejected"
   | "error";
 
@@ -168,18 +161,16 @@ export interface OrderRequest {
   requestType: string;
   payload: { symbol: string; strategyKey: string; legs: OrderLeg[]; adaptivePriority?: AdaptivePriority };
   relatedPositionId: string | null;
-  sourceAlertId: string | null;
   status: OrderRequestStatus;
   ibkrOrderId: number | null;
   errorMessage: string | null;
-  /** IBKR's running fill counts and last raw status (gap fix 7, 2026-09-28); null before the first IBKR status event. */
-  filledQuantity?: number | null;
-  remainingQuantity?: number | null;
-  ibkrStatus?: string | null;
+  cancellationReason: OrderCancellationReason | null;
   /** Non-blocking advisory from POST /orders — e.g. leftover uncovered shares beyond what this order uses. Never persisted, transient on the preview response only. */
   note?: string | null;
   /** Non-blocking economic-calendar advisory (New Position/Roll only, approved 2026-08-31) — Medium/High-importance events between today and expiry. Persisted at order-creation time (2026-09-24) so it survives a GET /orders/:id, not just the creation response. */
   calendarWarning?: string | null;
+  /** The same warning as data, one entry per event (orders created before 2026-09-28 only have calendarWarning). */
+  calendarWarningEvents?: { title: string; eventDate: string }[] | null;
   /** The API's stored FRED risk-free rate (decimal) at build time, for Order Review's probability of profit. Persisted at order-creation time (2026-09-24), same as calendarWarning. */
   riskFreeRate?: number | null;
   createdAt: string;
@@ -191,8 +182,6 @@ export interface OpenOrderInput {
   strategyKey: StrategyKey;
   stock?: { quantity: number; limitPrice: number };
   option: { quantity: number; limitPrice: number; strikePrice: number; expiryDate: string };
-  /** Links this order back to the Trade Alert it was created from, if any — see tradeAlerts.ts. */
-  sourceAlertId?: string;
   /** Signals modal only: the scores at the moment the order was built, stored with the order for Phase 2 (see signals.ts). */
   signalSnapshot?: Record<string, unknown>;
 }
@@ -222,8 +211,6 @@ export interface RollLegInput {
 }
 
 export interface RollOrderInput {
-  /** Omitted for a roll built from an on-demand candidate (fetchRollCandidate), which has no backing trade_alerts row. */
-  sourceAlertId?: string;
   closeLegId: string;
   closeLimitPrice: number;
   newLeg: RollLegInput;
@@ -242,18 +229,75 @@ export function confirmOrder(orderId: string, adaptivePriority?: AdaptivePriorit
   });
 }
 
+export interface TodaysOrderLeg {
+  role: "stock" | "option";
+  action: "BUY" | "SELL";
+  quantity: number;
+  unitPrice: number;
+  strike: number | null;
+  /** YYYYMMDD. */
+  expiry: string | null;
+  right: "C" | "P" | null;
+  filledQuantity: number;
+  averageFillPrice: number | null;
+}
+
+/** One order on the Positions page's Today's Orders card: every order whose last status update is today (US/Eastern), plus any still-active one from earlier. */
+export interface TodaysOrder {
+  id: string;
+  requestType: string;
+  status: OrderRequestStatus;
+  symbol: string;
+  strategyKey: PositionStrategyKey;
+  createdAt: string;
+  updatedAt: string;
+  requestedByDisplayName: string | null;
+  cancelledByDisplayName: string | null;
+  cancellationReason: OrderCancellationReason | null;
+  errorMessage: string | null;
+  ibkrOrderId: number | null;
+  ibkrPermId: number | null;
+  adaptivePriority: AdaptivePriority | null;
+  /** Per-share net of the legs' limit prices: positive is a net debit, negative a net credit. */
+  netLimitPrice: number;
+  commission: number | null;
+  legs: TodaysOrderLeg[];
+}
+
+export function fetchTodaysOrders(): Promise<TodaysOrder[]> {
+  return apiRequest<TodaysOrder[]>("/positions/orders/today");
+}
+
 export function cancelOrder(orderId: string): Promise<OrderRequest> {
   return apiRequest<OrderRequest>(`/positions/orders/${orderId}/cancel`, { method: "POST" });
 }
 
+// Orders whose Confirm has been sent from this tab. A close-cleanup must never cancel them, even when the
+// caller's copy still says pending_confirmation (the Confirm response hasn't landed, or the copy is stale).
+const ordersConfirmedInThisTab = new Set<string>();
+
+/** Called by OrderReviewPanel just before it sends Confirm. */
+export function markOrderConfirmationSent(orderId: string): void {
+  ordersConfirmedInThisTab.add(orderId);
+}
+
+/** Called when a Confirm request failed, so the order counts as unconfirmed again. */
+export function clearOrderConfirmationSent(orderId: string): void {
+  ordersConfirmedInThisTab.delete(orderId);
+}
+
 /**
  * A review panel closed without Confirm or Cancel used to leave its built
- * order in pending_confirmation for good (2026-09-24). Cancels it best-effort
- * — only while still unconfirmed, and never blocking the close itself.
+ * order in pending_confirmation for good (2026-09-24). Cancels it best-effort,
+ * never blocking the close itself, and only when it is still unconfirmed on the
+ * server: the caller's copy can be stale (closing a modal after confirming used
+ * to cancel the live order at IBKR).
  */
 export function cancelUnconfirmedOrder(order: OrderRequest | null | undefined): void {
-  if (!order || order.status !== "pending_confirmation") return;
-  void cancelOrder(order.id).catch(() => {});
+  if (!order || order.status !== "pending_confirmation" || ordersConfirmedInThisTab.has(order.id)) return;
+  void fetchOrder(order.id)
+    .then((current) => (current.status === "pending_confirmation" && !ordersConfirmedInThisTab.has(order.id) ? cancelOrder(order.id) : undefined))
+    .catch(() => {});
 }
 
 export function fetchOrder(orderId: string): Promise<OrderRequest> {
@@ -265,9 +309,9 @@ export interface OrderLegQuoteCompliance {
   reason: string | null;
 }
 
-// Signals-tab position/concentration/cash-reserve limits (approved
-// 2026-09-24) -- non-null only for an order built from the Signals order
-// setup flow, re-evaluated periodically server-side (not every tick).
+// Position/exposure/cash-reserve limits (approved 2026-09-24) -- non-null for
+// any opening or rolling order, re-evaluated periodically server-side (not
+// every tick).
 export interface OrderLegQuoteSignalLimits {
   blocked: boolean;
   reasons: string[];
@@ -307,24 +351,6 @@ export type OrderLegQuoteStreamEvent =
  */
 export function openOrderLegQuoteStream(orderId: string, onEvent: (event: OrderLegQuoteStreamEvent) => void): () => void {
   return openDeferredEventSource<OrderLegQuoteStreamEvent>(`${apiBaseUrl}/positions/orders/${orderId}/quote/stream`, onEvent);
-}
-
-/**
- * Same live quote as openOrderLegQuoteStream, but for a contract that has no
- * order_requests row yet — used by RollPositionModal, which needs live
- * pricing for both legs of a proposed roll (the closing leg and the
- * replacement) before the roll order is built. Never carries a compliance
- * verdict (always null) — rolling isn't gated the way an opening order is.
- */
-export function openContractQuoteStream(
-  symbol: string,
-  expiry: string,
-  strike: number,
-  right: "C" | "P",
-  onEvent: (event: OrderLegQuoteStreamEvent) => void,
-): () => void {
-  const params = new URLSearchParams({ symbol, expiry, strike: String(strike), right });
-  return openDeferredEventSource<OrderLegQuoteStreamEvent>(`${apiBaseUrl}/positions/quote/stream?${params.toString()}`, onEvent);
 }
 
 /** One leg's live quote in the Close form's stream; `mid` is null unless both bid and ask are present. */
@@ -410,8 +436,8 @@ function openLegacyGreeksStream(legIds: string[], onUpdate: (result: Record<stri
   // server-side (see streamLiveGreeks.ts), so under sustained IBKR/Gateway
   // trouble this would otherwise keep piling on more concurrent connection
   // attempts forever instead of failing once. Found 2026-09-11: opening
-  // Ticker Detail (which already holds several of its own one-shot
-  // connections — chart/chain/technicals/overview) on top of the Positions
+  // a ticker modal (which already holds several of its own one-shot
+  // connections — chart/technicals/overview) on top of the Positions
   // table's own greeks/pnl streams could leave IBKR/the SSH tunnel
   // saturated, and this stream would retry into that pile-up indefinitely
   // rather than ever settling into a visible "failed to load" state.
@@ -524,7 +550,7 @@ function openLegacyUnrealizedPnlStream(
 }
 
 // Wheel cycles (approved 2026-09-19, see cycles.ts in the API repo).
-export type CycleBucketKey = "csp" | "unstructured" | "cc";
+export type CycleBucketKey = "csp" | "unstructured" | "cc" | "hedge";
 
 export interface CycleBucketResult {
   premium: number;

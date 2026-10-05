@@ -1,12 +1,15 @@
 // Shared formatting helpers. Any new formatting logic anywhere in the app
 // should be added here rather than inlined at the call site.
-import type { OrderRequestStatus } from "../api/positions";
+import type { OrderCancellationReason, OrderRequestStatus } from "../api/positions";
 import type { JobRunStatus } from "../api/systemHealth";
 
 // Shared between OrderReviewPanel (the live confirm/submit flow) and the
 // Trade Blotter (showing every in-flight order's real IBKR state) — both
-// need the exact same order_requests.status -> human label mapping.
-export function orderRequestStatusLabel(status: OrderRequestStatus): string {
+// need the exact same order_requests.status -> human label mapping. A cancel
+// nobody asked for says why (cancellationReason), e.g. a DAY order's expiry.
+export function orderRequestStatusLabel(status: OrderRequestStatus, cancellationReason: OrderCancellationReason | null): string {
+  if (status === "cancelled" && cancellationReason) return cancelledWithoutUserLabel[cancellationReason];
+  if (status === "cancelled_partially_filled" && cancellationReason === "expired_at_close") return "Expired after partly filling";
   switch (status) {
     case "pending_confirmation":
       return "Awaiting confirmation";
@@ -22,6 +25,8 @@ export function orderRequestStatusLabel(status: OrderRequestStatus): string {
       return "Partially filled";
     case "cancelled":
       return "Cancelled";
+    case "cancelled_partially_filled":
+      return "Cancelled after partly filling";
     case "rejected":
       return "Rejected by IBKR";
     case "error":
@@ -29,26 +34,32 @@ export function orderRequestStatusLabel(status: OrderRequestStatus): string {
   }
 }
 
-// IBKR statuses after which nothing more will fill — mirrors lib/orderRequestStatus.ts in the API.
-const finalIbkrStatuses = new Set(["Filled", "Cancelled", "ApiCancelled", "Inactive"]);
+const cancelledWithoutUserLabel: Record<OrderCancellationReason, string> = {
+  expired_at_close: "Expired at close",
+  cancelled_by_ibkr: "Cancelled by IBKR",
+  not_confirmed_in_time: "Not confirmed in time",
+  not_filled_in_time: "Not filled in time",
+};
 
-/** A partial fill that IBKR has stopped working (the DAY remainder expired, or it was cancelled) is final; a working one is not. */
-export function isOrderRequestFinal(order: { status: OrderRequestStatus; ibkrStatus?: string | null }): boolean {
-  if (order.status === "filled" || order.status === "cancelled" || order.status === "rejected" || order.status === "error") return true;
-  return order.status === "partially_filled" && order.ibkrStatus != null && finalIbkrStatuses.has(order.ibkrStatus);
-}
-
-/** "Partially filled — 2 of 5, remainder cancelled" / "Partially filled — 2 of 5, still working"; falls back to the plain label. */
-export function orderRequestFillLabel(order: { status: OrderRequestStatus; filledQuantity?: number | null; remainingQuantity?: number | null; ibkrStatus?: string | null }): string {
-  if (order.status !== "partially_filled" || order.filledQuantity == null || order.remainingQuantity == null) return orderRequestStatusLabel(order.status);
-  const total = order.filledQuantity + order.remainingQuantity;
-  const tail = isOrderRequestFinal(order) ? "remainder not filled" : "still working";
-  return `Partially filled — ${order.filledQuantity} of ${total}, ${tail}`;
-}
-
-export function orderRequestStatusBadgeClass(status: OrderRequestStatus): string {
+/** An order that expired at the close or was never confirmed is not a failure: neutral, not red. */
+export function orderRequestStatusBadgeClass(status: OrderRequestStatus, cancellationReason: OrderCancellationReason | null): string {
+  if (status === "cancelled" && (cancellationReason === "expired_at_close" || cancellationReason === "not_confirmed_in_time" || cancellationReason === "not_filled_in_time")) return "bg-secondary-lt";
   if (status === "filled") return "bg-success-lt";
   if (status === "rejected" || status === "error" || status === "cancelled") return "bg-danger-lt";
+  if (status === "cancelled_partially_filled") return "bg-warning-lt";
+  return "bg-azure-lt";
+}
+
+/** "Open" / "Roll" / "Close" for an order_requests.request_type (open_covered_call, open_cash_secured_put, roll_leg, close_position). */
+export function orderRequestTypeLabel(requestType: string): string {
+  if (requestType === "roll_leg") return "Roll";
+  if (requestType === "close_position") return "Close";
+  return "Open";
+}
+
+export function orderRequestTypeBadgeClass(requestType: string): string {
+  if (requestType === "roll_leg") return "bg-yellow-lt";
+  if (requestType === "close_position") return "bg-secondary-lt";
   return "bg-azure-lt";
 }
 
@@ -121,7 +132,7 @@ export function formatPercentageValue(percentOrNull: number | null | undefined, 
   return `${percentOrNull.toFixed(decimalPlaces)}%`;
 }
 
-// IBKR returns option expiries as "YYYYMMDD" (see OptionQuote.expiry); the
+// IBKR returns option expiries as "YYYYMMDD" (e.g. an order leg's expiry); the
 // rest of the app stores/sends dates as ISO "YYYY-MM-DD".
 export function ibkrExpiryToIsoDate(expiryYyyymmdd: string): string {
   return `${expiryYyyymmdd.slice(0, 4)}-${expiryYyyymmdd.slice(4, 6)}-${expiryYyyymmdd.slice(6, 8)}`;
@@ -172,12 +183,30 @@ export function daysToExpiry(expiryIsoDate: string, asOf: string | Date = new Da
 // WITA, UTC+8, sees "expired" for a same-US-trading-day expiry well before
 // the market has even closed).
 export function todayInEasternIso(): string {
+  return easternIsoDate(new Date());
+}
+
+/** The US/Eastern calendar date ("YYYY-MM-DD") an instant falls on, regardless of the viewer's timezone. */
+export function easternIsoDate(dateInput: string | Date): string {
   return new Intl.DateTimeFormat("en-CA", {
     timeZone: "America/New_York",
     year: "numeric",
     month: "2-digit",
     day: "2-digit",
-  }).format(new Date());
+  }).format(typeof dateInput === "string" ? new Date(dateInput) : dateInput);
+}
+
+/** Clock time in US/Eastern (market time) regardless of the viewer's timezone, e.g. "09:31 ET". */
+export function formatEasternTime(isoTimestamp: string): string {
+  const time = new Intl.DateTimeFormat("en-US", { timeZone: "America/New_York", hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).format(new Date(isoTimestamp));
+  return `${time} ET`;
+}
+
+/** When a snapshot was captured, as short as the day allows: the Eastern clock time ("10:03 ET") if it was today, else the Eastern date ("Sep 30"). */
+export function formatSnapshotStamp(isoTimestamp: string | null | undefined): string {
+  if (!isoTimestamp) return "—";
+  const capturedDate = easternIsoDate(isoTimestamp);
+  return capturedDate === todayInEasternIso() ? formatEasternTime(isoTimestamp) : formatMonthDay(capturedDate);
 }
 
 // Platform-wide convention (approved 2026-08-28): every plain expiry date
@@ -188,13 +217,43 @@ export function todayInEasternIso(): string {
 // ("in 7d") already stands in for the date itself (e.g. Positions'
 // Expiry column) — the DTE would just repeat what "in 7d" already says.
 // asOf defaults to now; pass it for a historical DTE (see daysToExpiry).
+/** A plain "YYYY-MM-DD" as a short month and day, no year: "Oct 2". Same local-date parsing as formatDate. */
+export function formatMonthDay(dateIso: string): string {
+  if (!plainIsoDatePattern.test(dateIso)) return "—";
+  const [year, month, day] = dateIso.split("-").map(Number);
+  return new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric" }).format(new Date(year, month - 1, day));
+}
+
 export function formatExpiryWithDte(expiryIsoDate: string | null | undefined, asOf?: string | Date): string {
   if (!expiryIsoDate) return "—";
   return `${formatDate(expiryIsoDate)} (${daysToExpiry(expiryIsoDate, asOf)} DTE)`;
 }
 
+/** "114P 3DTE" / "202.5C 3DTE" — the compact contract label shared by Pulse's Trades and Latest Events and the Signals Top Signal column. */
+export function formatOptionContractShort(strike: number | string, right: "C" | "P", dte: number | null): string {
+  return `${formatNumber(strike, 2)}${right}${dte === null ? "" : ` ${dte}DTE`}`;
+}
+
+/** One order leg as a short line: "Buy 100 sh @ 52.30" / "Sell 1x 55C Oct 17 @ 1.20" (expiry as IBKR's YYYYMMDD). */
+export function formatOrderLegDescription(leg: {
+  role: "stock" | "option";
+  action: string;
+  quantity: number;
+  unitPrice: number;
+  strike: number | null;
+  expiry: string | null;
+  right: "C" | "P" | null;
+}): string {
+  const action = leg.action === "BUY" ? "Buy" : "Sell";
+  const price = formatCurrency(leg.unitPrice);
+  if (leg.role === "stock") return `${action} ${formatNumber(leg.quantity)} sh @ ${price}`;
+  const strike = leg.strike === null ? "—" : formatCurrencyTrimmed(leg.strike);
+  const expiry = leg.expiry && leg.expiry.length === 8 ? ` ${formatMonthDay(ibkrExpiryToIsoDate(leg.expiry))}` : "";
+  return `${action} ${formatNumber(leg.quantity)}x ${strike}${leg.right ?? ""}${expiry} @ ${price}`;
+}
+
 // Pairs with daysToExpiry for the "(in X days)" label shown next to an
-// expiry date across the app (Positions table, Order Review, Trade Alerts).
+// expiry date across the app (Positions table, Order Review).
 export function formatDaysToExpiry(days: number): string {
   if (days < 0) return "expired";
   if (days === 0) return "today";
@@ -272,8 +331,18 @@ export function formatHourMinute(dateInput: string | Date | number): string {
 // per trading day). Used to turn a raw bar count into a human "how much history" figure (Shortlist).
 const tradingDaysPerYear = 252;
 
+/** "1 position" / "3 positions"; pass `plural` for irregular nouns. */
+export function pluralize(count: number, singular: string, plural = `${singular}s`): string {
+  return `${count} ${count === 1 ? singular : plural}`;
+}
+
 export function formatBarsAsYears(dailyBarCount: number): string {
   return `${(dailyBarCount / tradingDaysPerYear).toFixed(1)}y`;
+}
+
+/** A number as the text of an editable input: up to decimalPlaces decimals, no trailing zeros, no thousands separators (2.5 stays "2.5", 20 stays "20"). */
+export function formatInputNumber(value: number, decimalPlaces = 2): string {
+  return String(Number(value.toFixed(decimalPlaces)));
 }
 
 export function formatNumber(value: number | string | null | undefined, maximumFractionDigits = 0): string {
@@ -333,6 +402,21 @@ export function formatRelativeTime(dateInput: string | Date | null | undefined):
   return `${diffHours}h ago`;
 }
 
+/** "12s ago", "5m ago", "3h ago", "2d ago" -- the age of a timestamp, counting seconds under a minute. Pass `now` from a ticking clock to keep it current; "—" when unknown or invalid. */
+export function formatRelativeAge(dateInput: string | Date | null | undefined, now: Date = new Date()): string {
+  if (!dateInput) return "—";
+  const date = typeof dateInput === "string" ? new Date(dateInput) : dateInput;
+  if (Number.isNaN(date.getTime())) return "—";
+  // A client clock slightly behind the server's would otherwise show a negative age for a brand-new timestamp.
+  const ageSeconds = Math.max(0, Math.floor((now.getTime() - date.getTime()) / 1000));
+  if (ageSeconds < 60) return `${ageSeconds}s ago`;
+  const ageMinutes = Math.floor(ageSeconds / 60);
+  if (ageMinutes < 60) return `${ageMinutes}m ago`;
+  const ageHours = Math.floor(ageMinutes / 60);
+  if (ageHours < 24) return `${ageHours}h ago`;
+  return `${Math.floor(ageHours / 24)}d ago`;
+}
+
 /** Compact age for a value shown next to a quote: "now", "3m", "1h 05m"; null when unknown, invalid or in the future. */
 export function formatShortAge(dateInput: string | Date | null | undefined, now: Date = new Date()): string | null {
   if (!dateInput) return null;
@@ -345,6 +429,17 @@ export function formatShortAge(dateInput: string | Date | null | undefined, now:
   if (diffMinutes < 60) return `${diffMinutes}m`;
   const hours = Math.floor(diffMinutes / 60);
   return `${hours}h ${String(diffMinutes % 60).padStart(2, "0")}m`;
+}
+
+/** Like formatShortAge but counts seconds under a minute: "12s", "3m", "1h 05m"; null when unknown, invalid or in the future. */
+export function formatShortAgeWithSeconds(dateInput: string | Date | null | undefined, now: Date = new Date()): string | null {
+  if (!dateInput) return null;
+  const date = typeof dateInput === "string" ? new Date(dateInput) : dateInput;
+  if (Number.isNaN(date.getTime())) return null;
+  const diffMs = now.getTime() - date.getTime();
+  if (diffMs < 0) return null;
+  if (diffMs < 60_000) return `${Math.floor(diffMs / 1000)}s`;
+  return formatShortAge(date, now);
 }
 
 export function formatDuration(
@@ -361,6 +456,17 @@ export function formatDuration(
   const minutes = Math.floor(totalSeconds / 60);
   const seconds = totalSeconds % 60;
   return minutes > 0 ? `${minutes}m ${seconds}s` : `${seconds}s`;
+}
+
+/** Time left until `targetIso` as "2d 14h", "6h 12m" or "14m" (the top-bar market countdown). Minute resolution, never negative. */
+export function formatCountdownUntil(targetIso: string, now: Date = new Date()): string {
+  const totalMinutes = Math.max(0, Math.round((new Date(targetIso).getTime() - now.getTime()) / 60_000));
+  const days = Math.floor(totalMinutes / 1440);
+  const hours = Math.floor((totalMinutes % 1440) / 60);
+  const minutes = totalMinutes % 60;
+  if (days > 0) return `${days}d ${hours}h`;
+  if (hours > 0) return `${hours}h ${String(minutes).padStart(2, "0")}m`;
+  return `${minutes}m`;
 }
 
 export function formatSignedPnl(amountInDollars: number | null | undefined, decimalPlaces = 2): string {

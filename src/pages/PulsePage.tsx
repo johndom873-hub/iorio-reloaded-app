@@ -17,9 +17,11 @@ import {
   fetchOrder,
   fetchPulseChartHistory,
   type Position,
+  type PositionLeg,
   type UnrealizedPnlResult,
   type Greeks,
   type OrderLeg,
+  type OrderCancellationReason,
   type OrderRequestStatus,
 } from "../api/positions";
 import { fetchSignalsScreen, type SignalCandidate, type SignalsScreenRow } from "../api/signals";
@@ -27,20 +29,16 @@ import { fetchTradeBlotter, type Trade } from "../api/tradeBlotter";
 import { openNotificationStream, fetchRecentNotifications, type AppNotification } from "../api/notifications";
 import {
   fetchPresence,
-  fetchDbHealth,
-  fetchGenosukeHealth,
-  fetchWebDynoHealth,
-  fetchGatewayHealth,
-  fetchMarketStatus,
+  fetchSystemHealthSummary,
   type PresenceUser,
   type DbHealth,
   type GenosukeHealth,
   type WebDynoHealth,
   type GatewayHealth,
-  type MarketStatus,
   type MarketSessionState,
 } from "../api/systemHealth";
-import { daysToExpiry, todayInEasternIso, formatSignedPnl, formatSignedPercentageValue, formatCompactDollars, formatDateTime, formatFeedTime, formatNumber, formatPercentageValue, formatRelativeDate, ibkrExpiryToIsoDate } from "../lib/formatters";
+import { daysToExpiry, todayInEasternIso, formatSignedPnl, formatSignedPercentageValue, formatCompactDollars, formatDateTime, formatFeedTime, formatNumber, formatPercentageValue, formatRelativeDate, formatOptionContractShort, ibkrExpiryToIsoDate, orderRequestStatusLabel } from "../lib/formatters";
+import { formatSuccessProbability, successProbabilityFromDelta, SUCCESS_PROBABILITY_HEADER } from "../lib/successProbability";
 import { positionExpiryDate, strategyAbbrev as positionStrategyAbbrev, strategyTooltip } from "../lib/positionPnl";
 import { FlashingNumber } from "../components/FlashingNumber";
 import { TooltipSpan } from "../components/TooltipSpan";
@@ -52,10 +50,16 @@ import { useMediaQuery } from "../hooks/useMediaQuery";
 import { ResizableRail } from "../components/pulse/ResizableRail";
 import { ResizableColumns } from "../components/pulse/ResizableColumns";
 import { TotalPnlChart } from "../components/pulse/TotalPnlChart";
-import { NetDeltaChart, type DeltaSeries } from "../components/pulse/NetDeltaChart";
+import { SuccessProbabilityChart, type SuccessProbabilitySeries } from "../components/pulse/SuccessProbabilityChart";
 import { EnvironmentBadges } from "../components/layout/EnvironmentBadges";
 import { useEnvironmentStatus } from "../hooks/useEnvironmentStatus";
-import { describeSignalUpgrade } from "../lib/signalsPresentation";
+import { describeAssignmentRisk, describeSignalUpgradeCompact, describeUnscoredReason } from "../lib/signalsPresentation";
+import { openPositionsSignature } from "../lib/positionsSignature";
+import { usePollWhileVisible } from "../hooks/usePollWhileVisible";
+import { useMarketStatus } from "../hooks/useMarketStatus";
+import { useKeepLiveInBackground } from "../hooks/useKeepLiveInBackground";
+import { KeepLiveSwitch } from "../components/pulse/KeepLiveSwitch";
+import { isTabLive } from "../api/streamMultiplexer";
 
 const CHART_SAMPLE_INTERVAL_MS = 60_000;
 // 8 hours of history at one sample/minute — matches the backend's rolling
@@ -65,12 +69,11 @@ const CHART_MAX_SAMPLES = 480;
 const HEALTH_POLL_INTERVAL_MS = 30_000;
 const ACCOUNT_POLL_INTERVAL_MS = 60_000;
 const TRADES_LIMIT = 30;
+const POSITIONS_POLL_INTERVAL_MS = 60_000;
 const EVENTS_LIMIT = 30;
-// Reference line on the Net Delta chart, carried over unchanged from the
-// earlier profit-probability plot (set 2026-09-19, kept as-is 2026-09-24
-// when the chart switched to plotting |delta|). A constant, not a setting,
+// Reference line on the P(Δ) chart: below it, success is less likely than not. A constant, not a setting,
 // since nothing else consumes it.
-const NET_DELTA_REFERENCE_LINE = 0.5;
+const SUCCESS_PROBABILITY_REFERENCE_LINE = 0.5;
 // How long a topology line stays lit: the dot's travel time, which is also how
 // long the line glows (set to 300 ms 2026-09-19; was 1100 ms). The extra
 // grace lets the last animation frame land before the dot is removed.
@@ -92,7 +95,7 @@ const CONNECTIONS_USED_PERCENT_BANDS = [50, 80] as const;
 const DB_SIZE_USED_PERCENT_BANDS = [70, 90] as const;
 const DB_AVERAGE_RESPONSE_MS_BANDS = [50, 200] as const;
 const DB_SLOWEST_RESPONSE_MS_BANDS = [500, 2000] as const;
-const GATEWAY_RECONNECT_BANDS = [1, 5] as const;
+const GATEWAY_UNPLANNED_DROP_BANDS = [1, 5] as const;
 const GATEWAY_IN_FLIGHT_BANDS = [1, 5] as const;
 const GATEWAY_LIVE_CONNECTIONS_BANDS = [50, 80] as const;
 const GATEWAY_HEALTHY_UPTIME_MS = 30 * 60_000;
@@ -103,13 +106,14 @@ function strategyAbbrev(strategyKey: string): "CC" | "CSP" {
   return strategyKey === "covered_call" ? "CC" : "CSP";
 }
 
-const strategyBadgeModifier: Record<string, string> = { covered_call: "cc", cash_secured_put: "csp", unstructured: "ns" };
+const strategyBadgeModifier: Record<string, string> = { covered_call: "cc", cash_secured_put: "csp", hedge: "hedge", unstructured: "ns" };
 
 // Latest Events' own terse status wording (distinct from
 // orderRequestStatusLabel's fuller labels used in OrderReviewPanel/Trade
 // Blotter, which have more room) — the three most frequent statuses get a
 // short standalone word; everything else keeps the "Order <status>" form.
-function orderEventStatusLabel(status: OrderRequestStatus): string {
+function orderEventStatusLabel(status: OrderRequestStatus, cancellationReason: OrderCancellationReason | null): string {
+  if (cancellationReason && (status === "cancelled" || status === "cancelled_partially_filled")) return orderRequestStatusLabel(status, cancellationReason);
   switch (status) {
     case "filled":
       return "Filled";
@@ -135,8 +139,8 @@ function formatOrderLegsSummary(legs: OrderLeg[], asOf: string): string {
         return `${leg.action} ${leg.quantity} @ ${leg.unitPrice.toFixed(2)}`;
       }
       const expiryIsoDate = leg.expiry ? (leg.expiry.length === 8 ? ibkrExpiryToIsoDate(leg.expiry) : leg.expiry) : null;
-      const dte = expiryIsoDate ? `${daysToExpiry(expiryIsoDate, asOf)}d ` : "";
-      return `${leg.action} ${leg.quantity} ${leg.strike}${leg.right ?? ""} ${dte}@ ${leg.unitPrice.toFixed(2)}`;
+      const contract = leg.strike !== undefined && leg.right ? formatOptionContractShort(leg.strike, leg.right, expiryIsoDate ? daysToExpiry(expiryIsoDate, asOf) : null) : "";
+      return `${leg.action} ${leg.quantity} ${contract} @ ${leg.unitPrice.toFixed(2)}`;
     })
     .join(" + ");
 }
@@ -147,10 +151,7 @@ function colorForIndex(index: number, total: number): string {
 }
 
 function signalStrikeLabel(candidate: SignalCandidate): string {
-  const right = candidate.strategyKey === "covered_call" ? "C" : "P";
-  const expiry = new Date(candidate.expiry);
-  const expiryLabel = `${String(expiry.getUTCMonth() + 1).padStart(2, "0")}/${String(expiry.getUTCDate()).padStart(2, "0")}`;
-  return `${candidate.strike}${right} ${expiryLabel}`;
+  return formatOptionContractShort(candidate.strike, candidate.strategyKey === "covered_call" ? "C" : "P", candidate.dte);
 }
 
 function formatBytes(bytesText: string | null | undefined): string {
@@ -174,14 +175,13 @@ function tradeSideAndQuantity(trade: Trade): string {
 }
 
 function tradeDetailText(trade: Trade): string {
-  const contract = trade.strikePrice ? ` ${formatNumber(trade.strikePrice, 2)}${trade.optionType === "call" ? "C" : "P"}` : "";
-  const dte = trade.expiryDate ? ` ${daysToExpiry(trade.expiryDate, trade.executedAt)}DTE` : "";
-  return `${trade.symbol}${contract}${dte} @ ${formatNumber(trade.price, 2)}`;
+  const contract = trade.strikePrice ? ` ${formatOptionContractShort(trade.strikePrice, trade.optionType === "call" ? "C" : "P", trade.expiryDate ? daysToExpiry(trade.expiryDate, trade.executedAt) : null)}` : "";
+  return `${trade.symbol}${contract} @ ${formatNumber(trade.price, 2)}`;
 }
 
 // Phone layout's Systems header carries one LED per node (rules approved
 // 2026-09-28): Database is the worst of its existing colour bands; Gateway
-// is red without a live IBKR connection and amber when reconnects or
+// is red without a live IBKR connection and amber when unplanned drops or
 // in-flight orders reach their warn band; IBKR is red while account data is
 // failing; every other node is green once its health call has answered and
 // grey until then. Presence (Front End) arrives in the same poll as the web
@@ -214,7 +214,7 @@ function phoneSystemLeds(input: {
     : gatewayHealth.staleOrMissing || !gatewayHealth.connected
       ? "led-warn"
       : worstOf(
-            higherIsWorseStatus(gatewayHealth.totalReconnects, ...GATEWAY_RECONNECT_BANDS),
+            higherIsWorseStatus(gatewayHealth.unplannedDropsLast24h, ...GATEWAY_UNPLANNED_DROP_BANDS),
             higherIsWorseStatus(gatewayHealth.inFlightOrderCount, ...GATEWAY_IN_FLIGHT_BANDS),
           ) === "ok"
         ? ""
@@ -255,7 +255,7 @@ function describeAttentionReasons(gatewayHealth: GatewayHealth | null, accountDa
       key: "gateway",
       name: "Gateway disconnected from IBKR",
       detail: "Worker is running but has lost its IBKR connection; it is retrying.",
-      meta: `Status code ${gatewayHealth.lastSystemStatusCode ?? "—"} · reconnects ${gatewayHealth.totalReconnects ?? "—"}`,
+      meta: `Status code ${gatewayHealth.lastSystemStatusCode ?? "—"} · drops in 24h ${gatewayHealth.unplannedDropsLast24h ?? "—"}`,
     });
   }
   if (accountDataError) {
@@ -349,46 +349,13 @@ function marketStatusStyle(state: MarketSessionState | undefined): { badgeLabel:
   }
 }
 
-const MARKET_STATUS_POLL_INTERVAL_MS = 60_000;
-
-// Server-computed from the real exchanges the book actually trades on
-// (tickers.primary_exchange) plus market_calendar's holiday coverage — see
-// src/lib/marketSessionStatus.ts in the API repo. Polled rather than
-// computed client-side since it depends on that DB state, not just the
-// current time.
-function useMarketStatus() {
-  const [status, setStatus] = useState<MarketStatus | null>(null);
-  useEffect(() => {
-    let cancelled = false;
-    function poll() {
-      fetchMarketStatus()
-        .then((result) => {
-          if (!cancelled) setStatus(result);
-        })
-        .catch(() => {});
-    }
-    poll();
-    const interval = window.setInterval(() => {
-      if (document.visibilityState === "visible") poll();
-    }, MARKET_STATUS_POLL_INTERVAL_MS);
-    const handleVisibilityChange = () => {
-      if (document.visibilityState === "visible") poll();
-    };
-    document.addEventListener("visibilitychange", handleVisibilityChange);
-    return () => {
-      cancelled = true;
-      window.clearInterval(interval);
-      document.removeEventListener("visibilitychange", handleVisibilityChange);
-    };
-  }, []);
-  return status;
-}
-
 interface EventItem {
   id: number;
   time: string;
   text: string;
   color: string;
+  /** Set on order rows: one row per order, replaced (not repeated) as its status changes. */
+  orderId?: string;
 }
 
 function EventRow({ time, text, color }: { time: string; text: string; color: string }) {
@@ -417,6 +384,7 @@ export function PulsePage() {
   const environmentStatus = useEnvironmentStatus();
   // Phone layout at and below the width where the desktop header already wraps (see PulsePage.css).
   const isPhoneLayout = useMediaQuery("(max-width: 700px)");
+  const { isKeepingLive, setIsKeepingLive } = useKeepLiveInBackground();
 
   const [clock, setClock] = useState(() => new Date().toLocaleTimeString("en-US", { hour12: false }));
   useEffect(() => {
@@ -456,7 +424,7 @@ export function PulsePage() {
     const refreshAvailableCash = () => fetchAvailableCash().then(setAvailableCash).catch(() => {});
     refreshAvailableCash();
     const interval = window.setInterval(() => {
-      if (document.visibilityState === "visible") refreshAvailableCash();
+      if (isTabLive()) refreshAvailableCash();
     }, ACCOUNT_POLL_INTERVAL_MS);
     const handleVisibilityChange = () => {
       if (document.visibilityState === "visible") refreshAvailableCash();
@@ -488,10 +456,11 @@ export function PulsePage() {
   const ccPct = strategyPct("covered_call");
   const cspPct = strategyPct("cash_secured_put");
   const unstructuredPct = strategyPct("unstructured");
+  const hedgePct = strategyPct("hedge");
   // Remainder rather than the server's "unallocated" row, which is computed
   // against the account value at stream open and would drift from the live
   // denominator used above.
-  const cashPct = Math.max(0, 100 - ccPct - cspPct - unstructuredPct);
+  const cashPct = Math.max(0, 100 - ccPct - cspPct - unstructuredPct - hedgePct);
 
   // --- Positions: same fetch + live SSE idiom as PositionsPage.tsx. ---
   const [positions, setPositions] = useState<Position[]>([]);
@@ -499,9 +468,14 @@ export function PulsePage() {
   const [unrealizedPnlByPositionId, setUnrealizedPnlByPositionId] = useState<Record<string, UnrealizedPnlResult>>({});
 
   const loadPositions = useCallback(() => {
-    fetchPositions({ status: "open" }).then(setPositions).catch(() => {});
+    fetchPositions({ status: "open" })
+      .then((fetchedPositions) => setPositions((current) => (openPositionsSignature(current) === openPositionsSignature(fetchedPositions) ? current : fetchedPositions)))
+      .catch(() => {});
   }, []);
   useEffect(() => loadPositions(), [loadPositions]);
+  // The worker's reconcile pass (every 60s) can change positions without publishing an event
+  // (a leftover-stock position closing, a leg's quantity growing as a multi-lot order fills).
+  usePollWhileVisible(loadPositions, POSITIONS_POLL_INTERVAL_MS);
 
   useEffect(() => {
     const optionLegIds = positions.flatMap((position) => position.legs.filter((leg) => leg.legType === "option").map((leg) => leg.id));
@@ -534,21 +508,24 @@ export function PulsePage() {
     totalUnrealizedPnl !== null && accountValueBeforeUnrealizedPnl ? (totalUnrealizedPnl / accountValueBeforeUnrealizedPnl) * 100 : null;
 
   // --- Top Signals by Edge $ ---
-  // REST snapshot pricing, re-fetched every minute: holds no IBKR market-data lines (the live
+  // REST snapshot pricing, re-fetched every minute while the tab is live: holds no IBKR market-data lines (the live
   // signalsScreen stream would add a stock line per shortlist ticker plus a best-contract option line).
   const [signalRows, setSignalRows] = useState<SignalsScreenRow[]>([]);
-  useEffect(() => {
-    const refreshSignals = () => fetchSignalsScreen().then(setSignalRows).catch(() => {});
-    refreshSignals();
-    const intervalId = window.setInterval(refreshSignals, topSignalsRefreshIntervalMs);
-    return () => window.clearInterval(intervalId);
+  const refreshSignals = useCallback(() => {
+    fetchSignalsScreen().then(setSignalRows).catch(() => {});
   }, []);
+  useEffect(() => refreshSignals(), [refreshSignals]);
+  usePollWhileVisible(refreshSignals, topSignalsRefreshIntervalMs);
   // One signal per ticker (its best candidate), positive Edge $ only, highest first. No length cap —
   // mirrors the Trades panel's "fetch generously, let overflow:hidden clip" design.
   const topSignals = signalRows
     .flatMap((row) => (row.best && row.best.edgeDollars > 0 ? [{ symbol: row.symbol, candidate: row.best }] : []))
     .sort((a, b) => b.candidate.edgeDollars - a.candidate.edgeDollars);
   const scoredTickerCount = signalRows.filter((row) => row.unscoredReason === null).length;
+  // Why the other tickers are not counted (Analysing / Unscored with the reason), for the panel's count tooltip.
+  const unscoredTickersTooltip = signalRows
+    .flatMap((row) => (row.unscoredReason ? [`${row.symbol}: ${describeUnscoredReason(row.unscoredReason, row.unscoredDetail)}`] : []))
+    .join(" · ");
 
   // --- Trades: fetch generously and let the panel's own overflow:hidden
   // clip whatever doesn't fit — no scroll, per the panel design. ---
@@ -573,20 +550,21 @@ export function PulsePage() {
   useEffect(() => {
     let cancelled = false;
     function poll() {
-      Promise.all([fetchDbHealth(), fetchGenosukeHealth(), fetchWebDynoHealth(), fetchGatewayHealth(), fetchPresence()])
-        .then(([db, genosuke, webDyno, gateway, presence]) => {
+      fetchSystemHealthSummary()
+        .then(({ db, genosuke, webDyno, gateway, presence }) => {
           if (cancelled) return;
-          setDbHealth(db);
-          setGenosukeHealth(genosuke);
-          setWebDynoHealth(webDyno);
-          setGatewayHealth(gateway);
-          setPresenceUsers(presence.users);
+          // A reading the server could not load comes back null: keep the last good one on screen.
+          if (db) setDbHealth(db);
+          if (genosuke) setGenosukeHealth(genosuke);
+          if (webDyno) setWebDynoHealth(webDyno);
+          if (gateway) setGatewayHealth(gateway);
+          if (presence) setPresenceUsers(presence.users);
         })
         .catch(() => {});
     }
     poll();
     const interval = window.setInterval(() => {
-      if (document.visibilityState === "visible") poll();
+      if (isTabLive()) poll();
     }, HEALTH_POLL_INTERVAL_MS);
     const handleVisibilityChange = () => {
       if (document.visibilityState === "visible") poll();
@@ -612,9 +590,10 @@ export function PulsePage() {
     window.setTimeout(() => setPulses((prev) => prev.filter((pulse) => pulse.key !== key)), durationMs + PULSE_REMOVAL_GRACE_MS);
   }, []);
 
-  const appendEvent = useCallback((text: string, color: string) => {
+  const appendEvent = useCallback((text: string, color: string, orderId?: string) => {
     eventIdRef.current += 1;
-    setEvents((prev) => [{ id: eventIdRef.current, time: new Date().toLocaleTimeString("en-US", { hour12: false }), text, color }, ...prev].slice(0, EVENTS_LIMIT));
+    const item: EventItem = { id: eventIdRef.current, time: new Date().toLocaleTimeString("en-US", { hour12: false }), text, color, orderId };
+    setEvents((prev) => [item, ...(orderId ? prev.filter((event) => event.orderId !== orderId) : prev)].slice(0, EVENTS_LIMIT));
   }, []);
 
   // Fetches the most recent events from the backend and describes them with
@@ -635,40 +614,35 @@ export function PulsePage() {
             const color = notification.status === "success" ? "var(--accent-glow)" : "var(--danger)";
             return { occurredAt, text: `Job ${notification.status === "success" ? "done" : "failed"} — ${notification.jobName}`, color };
           }
-          case "alert_generated":
-            return {
-              occurredAt,
-              text: `Alert — ${notification.symbol} ${strategyAbbrev(notification.strategyKey)}, ${(notification.annualizedYield * 100).toFixed(1)}% yield`,
-              color: "var(--warning)",
-            };
+          case "assignment_risk":
+            return { occurredAt, text: `Assignment risk — ${describeAssignmentRisk(notification)}`, color: "var(--warning)" };
           case "signal_upgraded":
-            return { occurredAt, text: `Signal — ${describeSignalUpgrade(notification)}`, color: "var(--success)" };
+            return { occurredAt, text: `Signal — ${describeSignalUpgradeCompact(notification)}`, color: "var(--success)" };
           case "order_status": {
             // Resolved server-side in the same response — no per-order request.
             if (!order) return null;
             const legsSummary = formatOrderLegsSummary(order.payload.legs, occurredAt);
             return {
               occurredAt,
-              text: `${orderEventStatusLabel(order.status)} — ${order.payload.symbol}${legsSummary ? `: ${legsSummary}` : ""}`,
+              text: `${orderEventStatusLabel(order.status, order.cancellationReason)} — ${order.payload.symbol}${legsSummary ? `: ${legsSummary}` : ""}`,
               color: "var(--success)",
+              orderId: notification.orderId,
             };
           }
           case "position_opened":
             return { occurredAt, text: `Position opened — ${notification.symbol}`, color: "var(--success)" };
           case "position_closed":
             return { occurredAt, text: `Position closed — ${notification.symbol}`, color: "var(--success)" };
-          case "genosuke_reply":
-            return { occurredAt, text: `Genosuke replied: ${notification.preview}`, color: "var(--text-secondary)" };
           default:
             return null;
         }
       }),
     );
     return described
-      .filter((item): item is { occurredAt: string; text: string; color: string } => item !== null)
+      .filter((item): item is { occurredAt: string; text: string; color: string; orderId?: string } => item !== null)
       .map((item) => {
         eventIdRef.current += 1;
-        return { id: eventIdRef.current, time: formatFeedTime(item.occurredAt), text: item.text, color: item.color };
+        return { id: eventIdRef.current, time: formatFeedTime(item.occurredAt), text: item.text, color: item.color, orderId: item.orderId };
       });
   }, []);
 
@@ -728,14 +702,14 @@ export function PulsePage() {
           }
           break;
         }
-        case "alert_generated": {
-          firePulse("gateway-db", "var(--warning)");
-          appendEvent(`Alert — ${notification.symbol} ${strategyAbbrev(notification.strategyKey)}, ${(notification.annualizedYield * 100).toFixed(1)}% yield`, "var(--warning)");
+        case "assignment_risk": {
+          firePulse("heroku-db", "var(--warning)");
+          appendEvent(`Assignment risk — ${describeAssignmentRisk(notification)}`, "var(--warning)");
           break;
         }
         case "signal_upgraded": {
           firePulse("heroku-db", "var(--success)");
-          appendEvent(`Signal — ${describeSignalUpgrade(notification)}`, "var(--success)");
+          appendEvent(`Signal — ${describeSignalUpgradeCompact(notification)}`, "var(--success)");
           break;
         }
         case "order_status": {
@@ -743,7 +717,7 @@ export function PulsePage() {
             .then((order) => {
               firePulse("heroku-gateway", "var(--success)", { reverse: true });
               const legsSummary = formatOrderLegsSummary(order.payload.legs, todayInEasternIso());
-              appendEvent(`${orderEventStatusLabel(order.status)} — ${order.payload.symbol}${legsSummary ? `: ${legsSummary}` : ""}`, "var(--success)");
+              appendEvent(`${orderEventStatusLabel(order.status, order.cancellationReason)} — ${order.payload.symbol}${legsSummary ? `: ${legsSummary}` : ""}`, "var(--success)", notification.orderId);
               if (order.status === "filled" || order.status === "partially_filled") {
                 loadTrades();
               }
@@ -755,17 +729,20 @@ export function PulsePage() {
           firePulse("gateway-db", "var(--success)");
           appendEvent(`Position opened — ${notification.symbol}`, "var(--success)");
           loadPositions();
+          // The worker buffers an opening fill until reconciliation creates the leg, so the
+          // trade rows land after the order's "filled" event; this event follows the insert.
+          loadTrades();
           break;
         }
         case "position_closed": {
           firePulse("gateway-db", "var(--success)");
           appendEvent(`Position closed — ${notification.symbol}`, "var(--success)");
           loadPositions();
+          loadTrades();
           break;
         }
         case "genosuke_reply": {
           firePulse("heroku-genosuke", "var(--text-secondary)");
-          appendEvent(`Genosuke replied: ${notification.preview}`, "var(--text-secondary)");
           setTelegramFlash(true);
           window.setTimeout(() => setTelegramFlash(false), 900);
           break;
@@ -793,6 +770,8 @@ export function PulsePage() {
   // Keyed by position id, not symbol — a rolled position can leave two
   // distinct open positions sharing one ticker (confirmed in dev data: two
   // separate SPCX positions), which would otherwise collide.
+  // Raw signed leg delta as stored; converted to P(Δ) when the chart series are built, since the stored history
+  // can arrive before the positions list that says whether each leg is a call or a put.
   const [deltaSeriesByPositionId, setDeltaSeriesByPositionId] = useState<Record<string, number[]>>({});
   const latestDataRef = useRef({ unrealizedPnlByPositionId, greeksByLegId, positions });
   useEffect(() => {
@@ -811,7 +790,7 @@ export function PulsePage() {
           if (Object.keys(prev).length > 0) return prev;
           const next: Record<string, number[]> = {};
           for (const [positionId, samples] of Object.entries(history.deltaSamplesByPositionId)) {
-            next[positionId] = samples.slice(-CHART_MAX_SAMPLES).map((sample) => Math.abs(sample.delta));
+            next[positionId] = samples.slice(-CHART_MAX_SAMPLES).map((sample) => sample.delta);
           }
           return next;
         });
@@ -834,7 +813,7 @@ export function PulsePage() {
           if (!optionLeg) continue;
           const delta = greeksMap[optionLeg.id]?.delta;
           if (delta === null || delta === undefined) continue;
-          next[position.id] = [...(next[position.id] ?? []), Math.abs(delta)].slice(-CHART_MAX_SAMPLES);
+          next[position.id] = [...(next[position.id] ?? []), delta].slice(-CHART_MAX_SAMPLES);
         }
         return next;
       });
@@ -842,14 +821,18 @@ export function PulsePage() {
     return () => window.clearInterval(interval);
   }, []);
 
-  const deltaSeriesForChart: DeltaSeries[] = positions
+  const successProbabilitySeriesForChart: SuccessProbabilitySeries[] = positions
     .filter((position) => position.strategyKey === "covered_call" || position.strategyKey === "cash_secured_put")
     .filter((position) => (deltaSeriesByPositionId[position.id]?.length ?? 0) >= 2)
-    .map((position, index, arr) => ({
+    .map((position) => ({ position, optionLeg: position.legs.find((leg) => leg.legType === "option") }))
+    .filter((entry): entry is { position: Position; optionLeg: PositionLeg } => entry.optionLeg !== undefined)
+    .map(({ position, optionLeg }, index, arr) => ({
       id: position.id,
       symbol: position.symbol,
       color: colorForIndex(index, arr.length),
-      values: deltaSeriesByPositionId[position.id]!,
+      values: deltaSeriesByPositionId[position.id]!
+        .map((delta) => successProbabilityFromDelta(optionLeg, delta))
+        .filter((probability): probability is number => probability !== null),
     }));
 
   // Real, computed status — not decorative. "Degraded" whenever the Gateway
@@ -928,7 +911,7 @@ export function PulsePage() {
       <span style={{ textAlign: "right" }}>DTE</span>
       <span style={{ textAlign: "right" }}>Exp $</span>
       <span style={{ textAlign: "right" }}>Exp %</span>
-      <span style={{ textAlign: "right" }}>|Δ|</span>
+      <span style={{ textAlign: "right" }}>{SUCCESS_PROBABILITY_HEADER}</span>
       <span style={{ textAlign: "right" }}>P&amp;L</span>
     </div>
   );
@@ -940,8 +923,7 @@ export function PulsePage() {
     const expPct = capitalAtRisk !== null && netLiquidationValue ? (capitalAtRisk / netLiquidationValue) * 100 : null;
     const pnl = unrealizedPnlByPositionId[position.id]?.unrealizedPnl ?? null;
     const optionLeg = position.legs.find((leg) => leg.legType === "option");
-    const legDelta = optionLeg ? greeksByLegId[optionLeg.id]?.delta ?? null : null;
-    const absDelta = legDelta !== null ? Math.abs(legDelta) : null;
+    const successProbability = optionLeg ? successProbabilityFromDelta(optionLeg, greeksByLegId[optionLeg.id]?.delta) : null;
     return (
       <div className="pos-row" key={position.id}>
         <span className="pos-sym">{position.symbol}</span>
@@ -955,8 +937,8 @@ export function PulsePage() {
         <FlashingNumber value={expPct} precision={1} className="pos-pct">
           {expPct !== null ? `${expPct.toFixed(1)}%` : "—"}
         </FlashingNumber>
-        <FlashingNumber value={absDelta} precision={2} className="pos-pct">
-          {absDelta !== null ? absDelta.toFixed(2) : "—"}
+        <FlashingNumber value={successProbability} precision={2} className="pos-pct">
+          {formatSuccessProbability(successProbability)}
         </FlashingNumber>
         <FlashingNumber value={pnl} className={`pos-pnl ${pnl !== null && pnl < 0 ? "neg" : "pos"}`}>
           {formatSignedPnl(pnl, 0)}
@@ -1206,33 +1188,32 @@ export function PulsePage() {
                 <span className={`sub-value ${gatewayHealth?.uptimeMs == null ? "" : gatewayHealth.uptimeMs >= GATEWAY_HEALTHY_UPTIME_MS ? "ok" : "warn"}`}>
                   {formatDurationShort(gatewayHealth?.uptimeMs)}
                 </span>
-                {gatewayHealth?.totalReconnects != null && (
-                  <span className="sub-unit">
+                {gatewayHealth?.unplannedDropsLast24h != null && (
+                  <span className="sub-unit" title="Connection drops in the last 24 hours, not counting the Gateway's daily 05:30 UTC restart">
                     {" ("}
-                    <FlashingNumber value={gatewayHealth.totalReconnects} className={`sub-value ${higherIsWorseStatus(gatewayHealth.totalReconnects, ...GATEWAY_RECONNECT_BANDS)}`}>
-                      {gatewayHealth.totalReconnects}
+                    <FlashingNumber value={gatewayHealth.unplannedDropsLast24h} className={`sub-value ${higherIsWorseStatus(gatewayHealth.unplannedDropsLast24h, ...GATEWAY_UNPLANNED_DROP_BANDS)}`}>
+                      {gatewayHealth.unplannedDropsLast24h}
                     </FlashingNumber>
-                    {compact ? ")" : ` reconnect${gatewayHealth.totalReconnects === 1 ? "" : "s"})`}
+                    {` drop${gatewayHealth.unplannedDropsLast24h === 1 ? "" : "s"}${compact ? "" : " in 24h"})`}
                   </span>
                 )}
               </span>
             </div>
             <div className="sub-row">
-              <span className="sub-name">{compact ? "Live connections" : "IBKR live connections"}</span>
-              <span className="sub-value-group">
-                <FlashingNumber value={gatewayHealth?.marketDataLineCount ?? null} className={`sub-value ${higherIsWorseStatus(gatewayHealth?.marketDataLineCount, ...GATEWAY_LIVE_CONNECTIONS_BANDS)}`}>
-                  {gatewayHealth?.marketDataLineCount ?? "—"}
+              <span className="sub-name">{compact ? "Data lines" : "IBKR data lines"}</span>
+              <TooltipSpan
+                className="sub-value-group"
+                text={
+                  gatewayHealth?.marketDataLines
+                    ? `${gatewayHealth.marketDataLines.byUse.map((use) => `${use.label} ${use.lines}`).join(" · ") || "None in use"}. Every process sharing the IBKR login counts; scans count the lines they hold.`
+                    : undefined
+                }
+              >
+                <FlashingNumber value={gatewayHealth?.marketDataLines?.inUse ?? null} className={`sub-value ${higherIsWorseStatus(gatewayHealth?.marketDataLines?.inUse, ...GATEWAY_LIVE_CONNECTIONS_BANDS)}`}>
+                  {gatewayHealth?.marketDataLines?.inUse ?? "—"}
                 </FlashingNumber>
-                {gatewayHealth?.priorityReservedLineCount != null && (
-                  <span className="sub-unit">
-                    {" ("}
-                    <FlashingNumber value={gatewayHealth.priorityReservedLineCount} className="sub-value">
-                      {gatewayHealth.priorityReservedLineCount}
-                    </FlashingNumber>
-                    {compact ? " rsv)" : " reserved)"}
-                  </span>
-                )}
-              </span>
+                {gatewayHealth?.marketDataLines && <span className="sub-unit">{` / ${gatewayHealth.marketDataLines.budget}`}</span>}
+              </TooltipSpan>
             </div>
           </>
         )}
@@ -1332,10 +1313,10 @@ export function PulsePage() {
   const deltaChartPanel = (
     <div className="chart-panel">
       <div className="chart-panel-title">
-        <span>Net Delta · live</span>
-        <span className="cur-val">threshold {NET_DELTA_REFERENCE_LINE.toFixed(2)}</span>
+        <span>{SUCCESS_PROBABILITY_HEADER} · live</span>
+        <span className="cur-val">threshold {SUCCESS_PROBABILITY_REFERENCE_LINE.toFixed(2)}</span>
       </div>
-      <NetDeltaChart seriesByPosition={deltaSeriesForChart} referenceLine={NET_DELTA_REFERENCE_LINE} timestamps={pnlTimestamps} />
+      <SuccessProbabilityChart seriesByPosition={successProbabilitySeriesForChart} referenceLine={SUCCESS_PROBABILITY_REFERENCE_LINE} timestamps={pnlTimestamps} />
     </div>
   );
 
@@ -1362,6 +1343,7 @@ export function PulsePage() {
       <div className="iorio-pulse-page pulse-phone">
         <PulsePhoneLayout
           clock={clock}
+          keepLiveSwitch={<KeepLiveSwitch isKeepingLive={isKeepingLive} onChange={setIsKeepingLive} label="Live in bg" />}
           environmentStatus={environmentStatus}
           attentionPill={<AttentionPill reasons={attentionReasons} />}
           marketLine={
@@ -1372,7 +1354,7 @@ export function PulsePage() {
             </span>
           }
           kpiTiles={kpiValueTiles}
-          allocation={{ ccPct, cspPct, unstructuredPct, cashPct }}
+          allocation={{ ccPct, cspPct, unstructuredPct, hedgePct, cashPct }}
           charts={{ pnlSeries, pnlChart: pnlChartPanel, deltaChart: deltaChartPanel }}
           positions={{
             count: positions.length,
@@ -1451,6 +1433,7 @@ export function PulsePage() {
           <EnvironmentBadges status={environmentStatus} />
         </div>
         <div className="pulse-header-right">
+          <KeepLiveSwitch isKeepingLive={isKeepingLive} onChange={setIsKeepingLive} label="Keep live in background" />
           <AttentionPill reasons={attentionReasons} />
           <div className="clock">{clock}</div>
         </div>
@@ -1468,6 +1451,7 @@ export function PulsePage() {
               style={{ width: `${unstructuredPct}%`, background: "var(--tblr-orange)" }}
               data-label={`No strategy — ${unstructuredPct.toFixed(0)}%`}
             />
+            <span className="alloc-seg" style={{ width: `${hedgePct}%`, background: "var(--iorio-hedge)" }} data-label={`Hedge — ${hedgePct.toFixed(0)}%`} />
             <span className="alloc-seg" style={{ width: `${cashPct}%`, background: "var(--border-strong)" }} data-label={`Cash — ${cashPct.toFixed(0)}%`} />
           </div>
         </div>
@@ -1486,9 +1470,9 @@ export function PulsePage() {
           <div className="panel">
             <div className="panel-title">
               Top Signals <span className="panel-subtitle">by Edge $</span>
-              <span className="count">
+              <TooltipSpan className="count" text={unscoredTickersTooltip ? `${scoredTickerCount} of ${signalRows.length} tickers scored. ${unscoredTickersTooltip}` : `All ${signalRows.length} tickers scored`}>
                 {topSignals.length} of {scoredTickerCount}
-              </span>
+              </TooltipSpan>
             </div>
             {signalsHead}
             {topSignals.length === 0 && signalsEmpty}

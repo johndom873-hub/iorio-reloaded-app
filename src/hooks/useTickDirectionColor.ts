@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { pnlTextClass } from "../lib/formatters";
+import { FLASH_DURATION_MS, useFlashCycle } from "./useFlashOnChange";
 
 /**
  * Colors a live-streamed price by comparison to its own previous tick, not a
@@ -16,7 +17,7 @@ import { pnlTextClass } from "../lib/formatters";
 export function useTickDirectionColor(value: number | null, initialReference: number | null, precision = 2): { colorClass: string; flashing: boolean } {
   const previousRoundedRef = useRef<number | null>(initialReference == null ? null : Number(initialReference.toFixed(precision)));
   const [colorClass, setColorClass] = useState("");
-  const [flashing, setFlashing] = useState(false);
+  const { flashing, triggerFlash } = useFlashCycle(FLASH_DURATION_MS);
 
   useEffect(() => {
     if (value === null) return;
@@ -27,10 +28,8 @@ export function useTickDirectionColor(value: number | null, initialReference: nu
     if (previous === null) return; // first-ever tick, nothing to compare against yet
 
     setColorClass(pnlTextClass(rounded - previous));
-    setFlashing(true);
-    const timeoutId = window.setTimeout(() => setFlashing(false), 1200);
-    return () => window.clearTimeout(timeoutId);
-  }, [value, precision]);
+    triggerFlash();
+  }, [value, precision, triggerFlash]);
 
   return { colorClass, flashing };
 }

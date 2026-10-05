@@ -33,8 +33,7 @@ import { PlutoTickersCard } from "../components/pluto/PlutoTickersCard";
 import { PlutoTiles } from "../components/pluto/PlutoTiles";
 import { PlutoTimeline } from "../components/pluto/PlutoTimeline";
 import { Spinner } from "../components/Spinner";
-import { TickerDetailModal } from "../components/TickerDetailModal";
-import { useTickerDetailSymbol } from "../hooks/useTickerDetailSymbol";
+import { useSignalsTickerModal } from "../hooks/useSignalsTickerModal";
 import { todayInEasternIso } from "../lib/formatters";
 
 const stateRefreshIntervalMs = 30_000;
@@ -78,7 +77,7 @@ export function PlutoPage() {
   const [lastChange, setLastChange] = useState<PlutoSettingsAuditRow | null>(null);
   const [scoreboard, setScoreboard] = useState<PlutoScoreboard | null>(null);
   const [scoreboardError, setScoreboardError] = useState<string | null>(null);
-  const [tickerDetailSymbol, setTickerDetailSymbol] = useTickerDetailSymbol();
+  const { open: openTickerModal } = useSignalsTickerModal();
 
   const loadState = useCallback(async () => {
     try {
@@ -225,7 +224,7 @@ export function PlutoPage() {
         </div>
 
         <div className="mb-3">
-          <PlutoActionsTable actions={actions} loading={actionsLoading} error={actionsError} onOpenTickerDetail={setTickerDetailSymbol} />
+          <PlutoActionsTable actions={actions} loading={actionsLoading} error={actionsError} onOpenTickerDetail={openTickerModal} />
         </div>
 
         <PlutoTickersCard
@@ -238,7 +237,7 @@ export function PlutoPage() {
             void loadTickers();
             void loadState();
           }}
-          onOpenTickerDetail={setTickerDetailSymbol}
+          onOpenTickerDetail={openTickerModal}
         />
 
         <PlutoParametersCard settings={settings} lastChange={lastChange} loading={settingsLoading} error={settingsError} onSaved={(saved) => { setSettings(saved); void loadSettings(); void loadState(); }} />
@@ -247,7 +246,6 @@ export function PlutoPage() {
           Every control writes to the timeline with who did it. Pause is one click; Pause and cancel, Resume, Mode and Save changes confirm first.
         </div>
 
-        {tickerDetailSymbol && <TickerDetailModal symbol={tickerDetailSymbol} onClose={() => setTickerDetailSymbol(null)} />}
       </div>
     </div>
   );

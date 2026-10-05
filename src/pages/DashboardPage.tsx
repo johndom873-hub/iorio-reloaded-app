@@ -6,7 +6,6 @@ import { Spinner } from "../components/Spinner";
 import { ApexChart, textColorByTheme } from "../components/charts/ApexChart";
 import { CollapsibleCard } from "../components/CollapsibleCard";
 import { DottedLabelTooltip, HelpTooltip } from "../components/HelpTooltip";
-import { TickerDetailModal } from "../components/TickerDetailModal";
 import { ClosePositionModal } from "../components/ClosePositionModal";
 import { TickColoredPrice } from "../components/TickColoredPrice";
 import { useTheme } from "../contexts/ThemeContext";
@@ -15,16 +14,18 @@ import {
   fetchAvailableCash,
   fetchDashboardEvents,
   fetchDashboardSummary,
+  fetchPerformance,
   fetchPeriodPnlByStrategy,
   fetchPnlHistory,
   type AvailableCash,
   type DashboardSummary,
+  type PerformanceSummary,
   type PeriodPnlByStrategy,
   type PnlHistoryPoint,
   type PositionEvent,
   type StrategyPeriodPnlRow,
 } from "../api/dashboard";
-import { openTradeAlertCurrentPricesStream } from "../api/tradeAlerts";
+import { openStockPricesStream } from "../api/stockPrices";
 import { fetchPositions, fetchUnrealizedPnl, type Position, type UnrealizedPnlResult } from "../api/positions";
 import { AVAILABLE_CASH_PERCENT_BANDS, lowerIsWorseStatus, statusTextClass } from "../lib/statusThresholds";
 import { fetchExposure, type ConcentrationRow, type ExposureData, type StrategyAllocationRow, type TopPositionRow } from "../api/riskLimits";
@@ -40,13 +41,15 @@ import {
   pnlTextClass,
 } from "../lib/formatters";
 import { portfolioFromExposure } from "../lib/portfolioFromExposure";
-import { useTickerDetailSymbol } from "../hooks/useTickerDetailSymbol";
+import { useRefreshAfterSignalsTickerModal, useSignalsTickerModal } from "../hooks/useSignalsTickerModal";
 import { TooltipSpan } from "../components/TooltipSpan";
+import { PerformanceCard } from "../components/PerformanceCard";
 
 const strategyLabels: Record<string, string> = {
   covered_call: "Covered Calls",
   cash_secured_put: "Cash-Secured Puts",
   unstructured: "No strategy",
+  hedge: "Hedges",
   unallocated: "Unallocated (cash)",
 };
 
@@ -100,7 +103,7 @@ interface AllocationListProps {
   donutTotalLabel?: string;
   // Only "Top Positions" rows carry a tickerSymbol — that's what makes them
   // clickable, matching the platform-wide convention that any displayed
-  // ticker opens TickerDetailModal (By Strategy/By Industry labels aren't
+  // ticker opens the Signals modal (By Strategy/By Industry labels aren't
   // tickers, so they stay plain text).
   onTickerClick?: (ticker: { symbol: string; focusPositionId?: string }) => void;
 }
@@ -227,11 +230,13 @@ interface TopStatProps {
   // Small secondary figure next to the value (a % of account, etc.), coloured independently of the value.
   delta?: string | null;
   deltaClassName?: string;
+  // Equal-width columns from lg up (five cards); the phone default is two per row.
+  columnClassName?: string;
 }
 
-function TopStat({ label, value, loading, valueClassName, tooltip, delta, deltaClassName }: TopStatProps) {
+function TopStat({ label, value, loading, valueClassName, tooltip, delta, deltaClassName, columnClassName = "col-6 col-lg" }: TopStatProps) {
   return (
-    <div className="col-6 col-lg-3">
+    <div className={columnClassName}>
       <div className="card h-100">
         <div className="card-body">
           {/* HelpTooltip's own hit-target padding (4px) is taller than a
@@ -270,7 +275,7 @@ function TopStat({ label, value, loading, valueClassName, tooltip, delta, deltaC
 
 function PortfolioTile({ label, value, swatchColor }: { label: string; value: number | null; swatchColor: string }) {
   return (
-    <div className="col-6 col-md-3">
+    <div className="col-6 col-md">
       <div className="text-muted mb-1 d-flex align-items-center gap-2" style={{ fontSize: "0.75rem" }}>
         <span className="allocation-swatch" style={{ background: swatchColor }} />
         {label}
@@ -285,6 +290,7 @@ const ALLOCATION_COLORS = {
   coveredCalls: "var(--tblr-blue)",
   cashSecuredPuts: "var(--tblr-purple)",
   unstructured: "var(--tblr-orange)",
+  hedge: "var(--iorio-hedge)",
   cash: "var(--tblr-gray-500)",
 } as const;
 
@@ -296,10 +302,10 @@ const periodColumns: { key: keyof StrategyPeriodPnlRow; label: string }[] = [
 ];
 
 // Footnote for the Residual row on both P&L cards. Residual = the account's own P&L (change in net liquidation value)
-// minus the three strategy rows, so it is a plug: it holds whatever the strategy cycles don't attribute. Interest and
+// minus the four strategy rows, so it is a plug: it holds whatever the strategy cycles don't attribute. Interest and
 // dividends are deliberately not named: Flex shows none on this paper account (see PROGRESS.md, 2026-09-11 / 2026-09-21).
 const residualTooltipHtml =
-  "<strong>Residual</strong> = account P&amp;L (change in net liquidation value) minus the three strategy rows." +
+  "<strong>Residual</strong> = account P&amp;L (change in net liquidation value) minus the four strategy rows." +
   "<br/><br/>It holds what the strategy cycles don't attribute: commissions (cycles are gross) and timing differences " +
   "between IBKR's account value and this platform's price marks, which are captured at slightly different moments." +
   "<br/><br/>Positions open at the start of a period with no stored option mark are also left out of that period's strategy rows, " +
@@ -464,6 +470,9 @@ export function DashboardPage() {
   const [summary, setSummary] = useState<DashboardSummary | null>(null);
   const [summaryLoading, setSummaryLoading] = useState(true);
   const [summaryError, setSummaryError] = useState<string | null>(null);
+  const [performance, setPerformance] = useState<PerformanceSummary | null>(null);
+  const [performanceLoading, setPerformanceLoading] = useState(true);
+  const [performanceError, setPerformanceError] = useState<string | null>(null);
 
   const [history, setHistory] = useState<PnlHistoryPoint[]>([]);
   const [historyLoading, setHistoryLoading] = useState(true);
@@ -501,17 +510,11 @@ export function DashboardPage() {
   const [needsAttentionError, setNeedsAttentionError] = useState<string | null>(null);
   const [needsAttentionPriceBySymbol, setNeedsAttentionPriceBySymbol] = useState<Record<string, number | null>>({});
   const [needsAttentionPriceStreamFailed, setNeedsAttentionPriceStreamFailed] = useState(false);
-  const [detailSymbol, setDetailSymbol] = useTickerDetailSymbol();
-  // Not persisted across a refresh (unlike detailSymbol) -- it's a one-shot
-  // "scroll to this position" aid, not state worth surviving a reload.
-  const [focusPositionId, setFocusPositionId] = useState<string | undefined>(undefined);
+  const { open: openTickerModal } = useSignalsTickerModal();
   const [closePosition, setClosePosition] = useState<Position | null>(null);
-  const openTickerDetail = useCallback(
-    (ticker: { symbol: string; focusPositionId?: string }) => {
-      setDetailSymbol(ticker.symbol);
-      setFocusPositionId(ticker.focusPositionId);
-    },
-    [setDetailSymbol],
+  const openTickerModalAtPosition = useCallback(
+    (ticker: { symbol: string; focusPositionId?: string }) => openTickerModal(ticker.symbol, { focusPositionId: ticker.focusPositionId }),
+    [openTickerModal],
   );
 
   useEffect(() => {
@@ -519,6 +522,13 @@ export function DashboardPage() {
       .then(setSummary)
       .catch((err) => setSummaryError(err instanceof ApiError ? err.message : "Failed to load dashboard summary."))
       .finally(() => setSummaryLoading(false));
+  }, []);
+
+  useEffect(() => {
+    fetchPerformance()
+      .then(setPerformance)
+      .catch((err) => setPerformanceError(err instanceof ApiError ? err.message : "Failed to load performance."))
+      .finally(() => setPerformanceLoading(false));
   }, []);
 
   const loadExposure = useCallback(() => {
@@ -602,13 +612,14 @@ export function DashboardPage() {
   useEffect(() => {
     loadNeedsAttention();
   }, [loadNeedsAttention]);
+  useRefreshAfterSignalsTickerModal(loadNeedsAttention);
 
   const needsAttentionSymbols = Array.from(new Set(needsAttention.map((position) => position.symbol))).sort().join(",");
 
   useEffect(() => {
     if (!needsAttentionSymbols) return;
     setNeedsAttentionPriceStreamFailed(false);
-    return openTradeAlertCurrentPricesStream(
+    return openStockPricesStream(
       needsAttentionSymbols.split(","),
       (result) => {
         setNeedsAttentionPriceStreamFailed(false);
@@ -641,6 +652,7 @@ export function DashboardPage() {
     { label: "Covered Calls", percent: allocationPercentFor("covered_call"), color: ALLOCATION_COLORS.coveredCalls },
     { label: "Cash-Secured Puts", percent: allocationPercentFor("cash_secured_put"), color: ALLOCATION_COLORS.cashSecuredPuts },
     { label: "No strategy", percent: allocationPercentFor("unstructured"), color: ALLOCATION_COLORS.unstructured },
+    { label: "Hedges", percent: allocationPercentFor("hedge"), color: ALLOCATION_COLORS.hedge },
     { label: "Cash", percent: allocationPercentFor("unallocated"), color: ALLOCATION_COLORS.cash },
   ];
 
@@ -652,6 +664,7 @@ export function DashboardPage() {
 
       {summaryError && <div className="alert alert-danger">{summaryError}</div>}
       {cashError && <div className="alert alert-danger">{cashError}</div>}
+      {performanceError && <div className="alert alert-danger">{performanceError}</div>}
 
       <div className="row g-3 mb-3">
         <TopStat
@@ -684,7 +697,19 @@ export function DashboardPage() {
           delta={formatSignedPercentageValue(totalUnrealizedPnlPercent, 2)}
           deltaClassName={pnlTextClass(totalUnrealizedPnlPercent)}
         />
+        <TopStat
+          label="MTD Performance"
+          columnClassName="col-12 col-lg"
+          loading={performanceLoading}
+          value={formatSignedPercentageValue(performance?.monthToDate?.percent ?? null, 2)}
+          valueClassName={pnlTextClass(performance?.monthToDate?.percent ?? null)}
+          delta={performance?.monthToDate ? formatSignedPnl(performance.monthToDate.profitDollars, 0) : null}
+          deltaClassName={pnlTextClass(performance?.monthToDate?.profitDollars ?? null)}
+          tooltip="Return since the last month-end snapshot, with deposits, withdrawals and transfers between your accounts removed. The latest day's deposits and withdrawals can take until the next night to be reflected."
+        />
       </div>
+
+      <PerformanceCard performance={performance} loading={performanceLoading} />
 
       <CollapsibleCard title="Allocation" storageKey="portfolio" className="mb-3">
         {portfolioError && <div className="alert alert-danger mb-0">{portfolioError}</div>}
@@ -706,6 +731,7 @@ export function DashboardPage() {
               <PortfolioTile label="Covered Calls" value={portfolio?.coveredCalls ?? null} swatchColor={ALLOCATION_COLORS.coveredCalls} />
               <PortfolioTile label="Cash-Secured Puts" value={portfolio?.cashSecuredPuts ?? null} swatchColor={ALLOCATION_COLORS.cashSecuredPuts} />
               <PortfolioTile label="No strategy" value={portfolio?.unstructured ?? null} swatchColor={ALLOCATION_COLORS.unstructured} />
+              <PortfolioTile label="Hedges" value={portfolio?.hedge ?? null} swatchColor={ALLOCATION_COLORS.hedge} />
               <PortfolioTile label="Available Cash" value={portfolio?.availableCash ?? null} swatchColor={ALLOCATION_COLORS.cash} />
             </div>
           </>
@@ -741,7 +767,7 @@ export function DashboardPage() {
                           <button
                             type="button"
                             className="btn btn-link px-0 py-0 text-decoration-none fw-bold"
-                            onClick={() => openTickerDetail({ symbol: position.symbol, focusPositionId: position.id })}
+                            onClick={() => openTickerModalAtPosition({ symbol: position.symbol, focusPositionId: position.id })}
                           >
                             {position.symbol}
                           </button>
@@ -767,7 +793,7 @@ export function DashboardPage() {
                             <button
                               type="button"
                               className="btn btn-sm btn-outline-warning"
-                              onClick={() => openTickerDetail({ symbol: position.symbol, focusPositionId: position.id })}
+                              onClick={() => openTickerModalAtPosition({ symbol: position.symbol, focusPositionId: position.id })}
                             >
                               Sell Call
                             </button>
@@ -817,7 +843,7 @@ export function DashboardPage() {
               </thead>
               <tbody>
                 {events.map((event) => (
-                  <EventRow key={`${event.positionId}-${event.eventType}-${event.eventAt}`} event={event} onSymbolClick={openTickerDetail} />
+                  <EventRow key={`${event.positionId}-${event.eventType}-${event.eventAt}`} event={event} onSymbolClick={openTickerModalAtPosition} />
                 ))}
               </tbody>
             </table>
@@ -847,6 +873,7 @@ export function DashboardPage() {
                     <PeriodPnlRow label={<StrategyBadge strategyKey="covered_call" />} row={periodPnl.coveredCalls} />
                     <PeriodPnlRow label={<StrategyBadge strategyKey="cash_secured_put" />} row={periodPnl.cashSecuredPuts} />
                     <PeriodPnlRow label={<StrategyBadge strategyKey="unstructured" />} row={periodPnl.unstructured} />
+                    <PeriodPnlRow label={<StrategyBadge strategyKey="hedge" />} row={periodPnl.hedge} />
                     <PeriodPnlRow label={<DottedLabelTooltip label="Residual" tooltipHtml={residualTooltipHtml} />} row={periodPnl.residual} />
                     <PeriodPnlRow label="Total" row={periodPnl.total} bold />
                   </tbody>
@@ -867,7 +894,7 @@ export function DashboardPage() {
                 // than only rendering whatever strategy_key happens to have
                 // a row today — Unstructured otherwise disappears from this
                 // table entirely whenever no unstructured position is open.
-                const knownRows = (["covered_call", "cash_secured_put", "unstructured"] as const).map((strategyKey) => {
+                const knownRows = (["covered_call", "cash_secured_put", "unstructured", "hedge"] as const).map((strategyKey) => {
                   const found = summary.strategyBreakdown.find((row) => row.strategyKey === strategyKey);
                   return {
                     strategyKey,
@@ -951,7 +978,7 @@ export function DashboardPage() {
                 title="Top Positions"
                 emptyMessage="No open positions yet."
                 totalAccountValue={exposure?.totalAccountValue ?? null}
-                onTickerClick={openTickerDetail}
+                onTickerClick={openTickerModalAtPosition}
                 rows={(() => {
                   const topRows = (exposure?.topPositions ?? []).map((row: TopPositionRow) => ({
                     key: row.positionId,
@@ -1007,6 +1034,7 @@ export function DashboardPage() {
               { name: "Covered Calls", data: history.map((point) => ({ x: point.snapshotDate, y: point.coveredCalls })) },
               { name: "Cash-Secured Puts", data: history.map((point) => ({ x: point.snapshotDate, y: point.cashSecuredPuts })) },
               { name: "No strategy", data: history.map((point) => ({ x: point.snapshotDate, y: point.unstructured })) },
+              { name: "Hedges", data: history.map((point) => ({ x: point.snapshotDate, y: point.hedge })) },
               {
                 name: "Residual",
                 data: history.map((point) => ({ x: point.snapshotDate, y: point.residual === null ? null : point.residual })),
@@ -1020,7 +1048,7 @@ export function DashboardPage() {
               annotations: { yaxis: [{ y: 0, borderColor: textColorByTheme[theme], borderWidth: 1.5, strokeDashArray: 0 }] },
               plotOptions: { bar: { columnWidth: "70%" } },
               fill: { opacity: 1 }, // ApexCharts' bar default is 0.85, which lets the dark card show through and mutes the colours
-              colors: [tablerColor("--tblr-blue"), tablerColor("--tblr-purple"), tablerColor("--tblr-orange"), tablerColor("--tblr-secondary")],
+              colors: [tablerColor("--tblr-blue"), tablerColor("--tblr-purple"), tablerColor("--tblr-orange"), tablerColor("--iorio-hedge"), tablerColor("--tblr-secondary")],
               xaxis: {
                 type: "datetime",
                 tickAmount: Math.min(history.length - 1, 7),
@@ -1054,17 +1082,6 @@ export function DashboardPage() {
         />
       )}
 
-      {detailSymbol && (
-        <TickerDetailModal
-          symbol={detailSymbol}
-          focusPositionId={focusPositionId}
-          onClose={() => {
-            setDetailSymbol(null);
-            setFocusPositionId(undefined);
-            loadNeedsAttention();
-          }}
-        />
-      )}
     </>
   );
 }

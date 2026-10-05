@@ -1,22 +1,26 @@
 import { useEffect, useRef, useState } from "react";
 import { Link, NavLink, Outlet } from "react-router-dom";
 import { EnvironmentBadges } from "./EnvironmentBadges";
-import { useEnvironmentStatus } from "../../hooks/useEnvironmentStatus";
+import { MarketStatusBadge } from "./MarketStatusBadge";
+import { useMarketStatus } from "../../hooks/useMarketStatus";
+import { EnvironmentStatusContext, useEnvironmentStatus } from "../../hooks/useEnvironmentStatus";
+import type { MarketDataFeedRefusal } from "../../api/environment";
+import { formatEasternTime } from "../../lib/formatters";
 import { Collapse } from "@tabler/core/dist/js/tabler.esm.min.js";
 import {
+  IconBookmark,
   IconCalendarEvent,
   IconChartCandle,
   IconClock,
   IconChevronLeft,
   IconChevronRight,
-  IconClipboardList,
   IconActivity,
+  IconAlertTriangle,
   IconHeartRateMonitor,
   IconLayoutDashboard,
   IconLogout,
   IconMoon,
   IconReceipt2,
-  IconSearch,
   IconShieldCheck,
   IconPlanet,
   IconSun,
@@ -28,13 +32,13 @@ import { BackgroundJobsToastStack } from "./BackgroundJobsToastStack";
 import { NewVersionToast } from "./NewVersionToast";
 import { StreamConnectionToast } from "./StreamConnectionToast";
 import { useTooltip } from "../../hooks/useTooltip";
+import { SignalsTickerModalProvider } from "../../contexts/SignalsTickerModalContext";
 
 const navigationItems = [
   { to: "/", label: "Dashboard", icon: IconLayoutDashboard, end: true },
   { to: "/positions", label: "Positions", icon: IconChartCandle },
-  { to: "/screener", label: "Screener", icon: IconSearch },
+  { to: "/shortlist", label: "Shortlist", icon: IconBookmark },
   { to: "/signals", label: "Signals", icon: IconActivity },
-  { to: "/trade-alerts", label: "Trade Alerts", icon: IconClipboardList },
   { to: "/price-performance", label: "Price Performance", icon: IconTrendingUp },
   { to: "/trade-blotter", label: "Trade Blotter", icon: IconReceipt2 },
   { to: "/calendar", label: "Calendar", icon: IconCalendarEvent },
@@ -70,7 +74,7 @@ function readStoredSidebarMode(): SidebarMode {
 /**
  * "Real-time data disabled" when IBKR_MARKET_DATA_LINES_ENABLED=false refuses every market-data
  * line reservation outright (typically dev), or "Live data restricted" while a scheduled scan
- * (the 10:00 ET chain capture or the trade-alert scan) holds its priority lines instead (mockup
+ * (the 10:00 ET chain capture) holds its priority lines instead (mockup
  * rev 2, 2026-09-24). The two states don't overlap in practice — a disabled environment never
  * has an active priority reservation to report — but disabled takes precedence if it ever does.
  */
@@ -88,14 +92,33 @@ function MarketDataRestrictionPill({
     disabled
       ? "IBKR_MARKET_DATA_LINES_ENABLED=false in this environment — every market-data line reservation is refused, so screens show no live prices or quotes."
       : restriction
-        ? `A scheduled scan (the 10:00 ET chain capture, or the trade-alert scan) holds ${restriction.priorityLines} of IBKR's market-data lines while it runs. Live prices and quotes are served with the ${90 - restriction.priorityLines} lines left, most recent requests first; anything that could not get a line shows its last received value and catches up on its own.`
+        ? `A scheduled scan (the 10:00 ET chain capture) holds ${restriction.priorityLines} of IBKR's market-data lines while it runs. Live prices and quotes are served with the ${90 - restriction.priorityLines} lines left, most recent requests first; anything that could not get a line shows its last received value and catches up on its own.`
         : undefined,
   );
   if (!disabled && !restriction) return null;
   return (
     <span ref={ref} className={`iorio-topbar-status${compact ? " iorio-topbar-status-compact" : ""}`} tabIndex={0} role="status">
       <IconClock size={compact ? 14 : 16} aria-hidden="true" />
-      {disabled ? "Real-time data disabled" : "Live data restricted"}
+      <span className="iorio-topbar-restriction-text">{disabled ? "Real-time data disabled" : "Live data restricted"}</span>
+    </span>
+  );
+}
+
+/** Red while IBKR refuses live market data (error 10197) — pushed the moment it starts and stops. */
+function MarketDataFeedRefusalPill({ refusal, compact = false }: { refusal: MarketDataFeedRefusal | null | undefined; compact?: boolean }) {
+  const ref = useTooltip<HTMLSpanElement>(
+    refusal
+      ? `Since ${formatEasternTime(refusal.since)}, IBKR has refused market data (error 10197). Usually the Gateway's session went stale after IBKR briefly dropped its connection; the health check restarts the Gateway automatically within about 10 minutes. If it persists, someone may be logged into the live IBKR account elsewhere. This indicator re-checks IBKR every minute and disappears by itself once data flows again. Prices on screen are the last ones received.`
+      : undefined,
+  );
+  if (!refusal) return null;
+  return (
+    <span ref={ref} className={`iorio-topbar-status iorio-topbar-status-danger${compact ? " iorio-topbar-status-compact" : ""}`} tabIndex={0} role="alert">
+      <IconAlertTriangle size={compact ? 14 : 16} aria-hidden="true" />
+      <span>
+        Live prices stopped
+        {!compact && <span className="d-none d-xl-inline">: IBKR refusing data</span>}
+      </span>
     </span>
   );
 }
@@ -115,6 +138,7 @@ function BrandMark() {
 export function AppLayout() {
   const { logout } = useAuth();
   const environmentStatus = useEnvironmentStatus();
+  const marketStatus = useMarketStatus();
   const { theme, toggleTheme } = useTheme();
   const navTitleRefs = useRef<(HTMLSpanElement | null)[]>([]);
   const [sidebarMode, setSidebarMode] = useState<SidebarMode>(readStoredSidebarMode);
@@ -200,11 +224,15 @@ export function AppLayout() {
               <span className="iorio-pulse-dot" aria-hidden="true" />
               IORIO Pulse
             </Link>
-            <MarketDataRestrictionPill
-              restriction={environmentStatus.details?.marketDataRestriction}
-              linesEnabled={environmentStatus.details?.marketDataLinesEnabled ?? true}
-              compact
-            />
+            <div className="w-100 d-flex align-items-center gap-2 flex-wrap">
+              <MarketStatusBadge status={marketStatus} />
+              <MarketDataFeedRefusalPill refusal={environmentStatus.details?.marketDataFeedRefusal} compact />
+              <MarketDataRestrictionPill
+                restriction={environmentStatus.details?.marketDataRestriction}
+                linesEnabled={environmentStatus.details?.marketDataLinesEnabled ?? true}
+                compact
+              />
+            </div>
           </div>
           <div className="collapse navbar-collapse" id="sidebar-menu">
             <ul
@@ -257,6 +285,8 @@ export function AppLayout() {
           </h1>
           <EnvironmentBadges status={environmentStatus} />
           <div className="iorio-topbar-center">
+            <MarketStatusBadge status={marketStatus} />
+            <MarketDataFeedRefusalPill refusal={environmentStatus.details?.marketDataFeedRefusal} />
             <MarketDataRestrictionPill
               restriction={environmentStatus.details?.marketDataRestriction}
               linesEnabled={environmentStatus.details?.marketDataLinesEnabled ?? true}
@@ -285,7 +315,11 @@ export function AppLayout() {
       <div className="page-wrapper">
         <div className="page-body">
           <div className="container-fluid">
-            <Outlet />
+            <EnvironmentStatusContext.Provider value={environmentStatus}>
+              <SignalsTickerModalProvider>
+                <Outlet />
+              </SignalsTickerModalProvider>
+            </EnvironmentStatusContext.Provider>
           </div>
         </div>
       </div>
