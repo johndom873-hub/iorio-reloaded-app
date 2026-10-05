@@ -17,17 +17,13 @@ import { useTooltip } from "../hooks/useTooltip";
 // through the existing POST /positions/orders and hands the OrderRequest up;
 // the caller renders the shared OrderReviewPanel, which confirms and places
 // it exactly as every other order in the app. What is new: the Signal card
-// (net Edge at the mid and at the bid -- an Adaptive order fills somewhere
-// between), a decay meter against the score at selection, and the signal
-// snapshot saved with the order for Phase 2.
+// (net Edge with the Risk & Limits spread cost, the same figure as the list),
+// a decay meter against the score at selection, and the signal snapshot saved
+// with the order for Phase 2.
 
 export const decayWarningVolatilityPoints = 1;
 const orderLimitsDebounceMs = 400;
 const adaptivePriorities: AdaptivePriority[] = ["Patient", "Normal", "Urgent"];
-// Where an Adaptive order is expected to fill, as a share of the way from the mid to the bid.
-// A buy-write (shares + call in one combo) takes no Adaptive: it rests at its net limit, built
-// from the mid, and fills there (Marcelo, 2026-09-29), so it is expected at the mid.
-const expectedSpreadConcession: Record<AdaptivePriority, number> = { Patient: 0, Normal: 0.5, Urgent: 1 };
 
 interface SignalOrderSetupFormProps {
   symbol: string;
@@ -35,7 +31,7 @@ interface SignalOrderSetupFormProps {
   /** The selected candidate as scored NOW (it re-renders with every live frame). */
   candidate: SignalCandidate;
   spotPrice: number | null;
-  /** The list's net Edge (bid case) when the row was selected -- the decay meter's reference. */
+  /** The list's net Edge when the row was selected -- the decay meter's reference. */
   netEdgeAtSelection: number;
   selectedAtIso: string;
   onCancel: () => void;
@@ -84,16 +80,13 @@ export function SignalOrderSetupForm({ symbol, signals, candidate, spotPrice, ne
 
   const quantity = Math.max(1, Math.floor(Number(contractQty) || 0));
   const mid = (candidate.bid + candidate.ask) / 2;
-  const frictionAtMid = candidate.edge - candidate.netEdgeAtMid;
-  const frictionAtBid = candidate.frictionVolatility;
   // Fewer free shares than the contracts need: the order buys the rest with the call, as one combo.
   const isBuyWrite = isCall && signals.freeShares < quantity * 100;
-  const concession = isBuyWrite ? 0 : expectedSpreadConcession[adaptivePriority];
-  const netEdgeExpected = candidate.netEdgeAtMid - (candidate.netEdgeAtMid - candidate.netEdge) * concession;
-  const edgeDollarsExpected = netEdgeExpected * candidate.vega * 100;
-  // Same mid-to-bid interpolation as netEdgeExpected, so the expected fill price backing the risk
-  // denominator matches the same Adaptive priority assumption as the expected Edge $ numerator.
-  const premiumExpected = mid - (mid - candidate.bid) * concession;
+  // The order goes out as a limit at the mid; the expected fill gives up the Risk & Limits share of the half-spread,
+  // the same assumption the list's net Edge is scored with. The fill priority changes how fast it fills, not this.
+  const netEdgeExpected = candidate.netEdge;
+  const edgeDollarsExpected = candidate.edgeDollars;
+  const premiumExpected = mid - (mid - candidate.bid) * signals.spreadShareCharged;
   const capitalAtRiskPerContract = isCall ? (spotPrice ?? 0) * 100 : candidate.strike * 100;
   const dollarRiskExpected = capitalAtRiskPerContract - premiumExpected;
   const riskAdjustedRatioExpected = edgeDollarsExpected / dollarRiskExpected;
@@ -188,8 +181,6 @@ export function SignalOrderSetupForm({ symbol, signals, candidate, spotPrice, ne
     }
   }
 
-  const gradeForExpected = netEdgeExpected <= 0 ? "avoid" : candidate.grade;
-
   return (
     <div className="d-flex flex-column gap-3">
       <div>
@@ -229,14 +220,14 @@ export function SignalOrderSetupForm({ symbol, signals, candidate, spotPrice, ne
               net Edge ({formatSignedPnl(edgeDollarsExpected, 0)})
             </span>
           </div>
-          <span className={`badge ${gradeBadgeClass[gradeForExpected]}`} style={{ fontSize: "0.8rem" }}>
-            {gradeLabel[gradeForExpected]}
+          <span className={`badge ${gradeBadgeClass[candidate.grade]}`} style={{ fontSize: "0.8rem" }}>
+            {gradeLabel[candidate.grade]}
           </span>
         </div>
         <div className="mt-2">
           <Row label="Surface IV at this strike (10:00 snapshot, live spot)" value={formatPercentage(candidate.surfaceImpliedVolatility, 1)} />
           <Row label={`Forecast volatility (${signals.forecast?.windowDays ?? 63}-day Yang-Zhang)`} value={formatPercentage(candidate.forecastVolatility, 1)} />
-          <Row label="Friction (mid-bid range)" value={`${formatVolatilityPoints(frictionAtMid).replace("+", "")} – ${formatVolatilityPoints(frictionAtBid).replace("+", "")}`} />
+          <Row label={`Friction (${formatPercentage(signals.spreadShareCharged, 0)} of the half-spread + commission)`} value={formatVolatilityPoints(candidate.frictionVolatility).replace("+", "")} />
         </div>
         <div className={`d-flex align-items-center gap-2 mt-2 rounded px-2 py-1 ${decayed ? "bg-warning-lt" : "bg-secondary-lt"}`} style={{ fontSize: "0.78rem" }}>
           {decayed ? `Net Edge has moved ${formatVolatilityPoints(decay)} since you selected this contract at ${formatDate(selectedAtIso)}.` : `Net Edge is steady since you selected this contract (${formatVolatilityPoints(netEdgeAtSelection)}).`}

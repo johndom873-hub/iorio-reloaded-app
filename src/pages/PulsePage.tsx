@@ -21,6 +21,7 @@ import {
   type UnrealizedPnlResult,
   type Greeks,
   type OrderLeg,
+  type OrderCancellationReason,
   type OrderRequestStatus,
 } from "../api/positions";
 import { fetchSignalsScreen, type SignalCandidate, type SignalsScreenRow } from "../api/signals";
@@ -36,7 +37,7 @@ import {
   type GatewayHealth,
   type MarketSessionState,
 } from "../api/systemHealth";
-import { daysToExpiry, todayInEasternIso, formatSignedPnl, formatSignedPercentageValue, formatCompactDollars, formatDateTime, formatFeedTime, formatNumber, formatPercentageValue, formatRelativeDate, formatOptionContractShort, ibkrExpiryToIsoDate } from "../lib/formatters";
+import { daysToExpiry, todayInEasternIso, formatSignedPnl, formatSignedPercentageValue, formatCompactDollars, formatDateTime, formatFeedTime, formatNumber, formatPercentageValue, formatRelativeDate, formatOptionContractShort, ibkrExpiryToIsoDate, orderRequestStatusLabel } from "../lib/formatters";
 import { formatSuccessProbability, successProbabilityFromDelta, SUCCESS_PROBABILITY_HEADER } from "../lib/successProbability";
 import { positionExpiryDate, strategyAbbrev as positionStrategyAbbrev, strategyTooltip } from "../lib/positionPnl";
 import { FlashingNumber } from "../components/FlashingNumber";
@@ -111,7 +112,8 @@ const strategyBadgeModifier: Record<string, string> = { covered_call: "cc", cash
 // orderRequestStatusLabel's fuller labels used in OrderReviewPanel/Trade
 // Blotter, which have more room) — the three most frequent statuses get a
 // short standalone word; everything else keeps the "Order <status>" form.
-function orderEventStatusLabel(status: OrderRequestStatus): string {
+function orderEventStatusLabel(status: OrderRequestStatus, cancellationReason: OrderCancellationReason | null): string {
+  if (cancellationReason && (status === "cancelled" || status === "cancelled_partially_filled")) return orderRequestStatusLabel(status, cancellationReason);
   switch (status) {
     case "filled":
       return "Filled";
@@ -622,7 +624,7 @@ export function PulsePage() {
             const legsSummary = formatOrderLegsSummary(order.payload.legs, occurredAt);
             return {
               occurredAt,
-              text: `${orderEventStatusLabel(order.status)} — ${order.payload.symbol}${legsSummary ? `: ${legsSummary}` : ""}`,
+              text: `${orderEventStatusLabel(order.status, order.cancellationReason)} — ${order.payload.symbol}${legsSummary ? `: ${legsSummary}` : ""}`,
               color: "var(--success)",
               orderId: notification.orderId,
             };
@@ -715,7 +717,7 @@ export function PulsePage() {
             .then((order) => {
               firePulse("heroku-gateway", "var(--success)", { reverse: true });
               const legsSummary = formatOrderLegsSummary(order.payload.legs, todayInEasternIso());
-              appendEvent(`${orderEventStatusLabel(order.status)} — ${order.payload.symbol}${legsSummary ? `: ${legsSummary}` : ""}`, "var(--success)", notification.orderId);
+              appendEvent(`${orderEventStatusLabel(order.status, order.cancellationReason)} — ${order.payload.symbol}${legsSummary ? `: ${legsSummary}` : ""}`, "var(--success)", notification.orderId);
               if (order.status === "filled" || order.status === "partially_filled") {
                 loadTrades();
               }

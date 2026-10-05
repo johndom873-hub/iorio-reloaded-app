@@ -1,6 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from "react";
 import { fetchOrder, type OrderRequest } from "../api/positions";
 import { openNotificationStream } from "../api/notifications";
+import { orderRequestStatusLabel } from "../lib/formatters";
 import { describeAssignmentRisk, describeRollSignalUpgrade, describeSignalUpgrade } from "../lib/signalsPresentation";
 import { useAuth } from "./AuthContext";
 
@@ -57,6 +58,7 @@ function orderJobStatus(order: OrderRequest): BackgroundJobStatus {
 }
 
 function orderStatusMessage(order: OrderRequest): string {
+  if (order.cancellationReason && (order.status === "cancelled" || order.status === "cancelled_partially_filled")) return orderRequestStatusLabel(order.status, order.cancellationReason);
   switch (order.status) {
     case "pending_confirmation":
       return "Awaiting your confirmation";

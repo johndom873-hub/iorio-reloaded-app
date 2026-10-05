@@ -1,12 +1,15 @@
 // Shared formatting helpers. Any new formatting logic anywhere in the app
 // should be added here rather than inlined at the call site.
-import type { OrderRequestStatus } from "../api/positions";
+import type { OrderCancellationReason, OrderRequestStatus } from "../api/positions";
 import type { JobRunStatus } from "../api/systemHealth";
 
 // Shared between OrderReviewPanel (the live confirm/submit flow) and the
 // Trade Blotter (showing every in-flight order's real IBKR state) — both
-// need the exact same order_requests.status -> human label mapping.
-export function orderRequestStatusLabel(status: OrderRequestStatus): string {
+// need the exact same order_requests.status -> human label mapping. A cancel
+// nobody asked for says why (cancellationReason), e.g. a DAY order's expiry.
+export function orderRequestStatusLabel(status: OrderRequestStatus, cancellationReason: OrderCancellationReason | null): string {
+  if (status === "cancelled" && cancellationReason) return cancelledWithoutUserLabel[cancellationReason];
+  if (status === "cancelled_partially_filled" && cancellationReason === "expired_at_close") return "Expired after partly filling";
   switch (status) {
     case "pending_confirmation":
       return "Awaiting confirmation";
@@ -31,7 +34,15 @@ export function orderRequestStatusLabel(status: OrderRequestStatus): string {
   }
 }
 
-export function orderRequestStatusBadgeClass(status: OrderRequestStatus): string {
+const cancelledWithoutUserLabel: Record<OrderCancellationReason, string> = {
+  expired_at_close: "Expired at close",
+  cancelled_by_ibkr: "Cancelled by IBKR",
+  not_confirmed_in_time: "Not confirmed in time",
+};
+
+/** An order that expired at the close or was never confirmed is not a failure: neutral, not red. */
+export function orderRequestStatusBadgeClass(status: OrderRequestStatus, cancellationReason: OrderCancellationReason | null): string {
+  if (status === "cancelled" && (cancellationReason === "expired_at_close" || cancellationReason === "not_confirmed_in_time")) return "bg-secondary-lt";
   if (status === "filled") return "bg-success-lt";
   if (status === "rejected" || status === "error" || status === "cancelled") return "bg-danger-lt";
   if (status === "cancelled_partially_filled") return "bg-warning-lt";

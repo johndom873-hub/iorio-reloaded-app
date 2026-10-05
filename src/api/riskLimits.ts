@@ -19,6 +19,8 @@ export interface TradingSettings {
   commissionWarnSharePctOfPremium: number;
   priceCheckMaxDeviationPct: number;
   priceCheckMinToleranceDollars: number;
+  /** Signals friction: the percentage of the half-spread charged (0 = always the mid, 100 = always the bid). */
+  spreadCostChargedPct: number;
   updatedAt: string;
   updatedByDisplayName: string | null;
 }

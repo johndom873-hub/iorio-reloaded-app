@@ -128,6 +128,9 @@ export function fetchRecoveryPath(positionId: string): Promise<RecoveryPath> {
 // process, from IBKR's own fill data — these functions never return a
 // Position directly anymore.
 
+/** Why an order ended cancelled when nobody pressed Cancel: a DAY order IBKR expired at the 16:00 ET close, IBKR's own cancel earlier in the day, or the 15-minute sweep of orders never confirmed. */
+export type OrderCancellationReason = "expired_at_close" | "cancelled_by_ibkr" | "not_confirmed_in_time";
+
 export type OrderRequestStatus =
   | "pending_confirmation"
   | "confirmed"
@@ -161,6 +164,7 @@ export interface OrderRequest {
   status: OrderRequestStatus;
   ibkrOrderId: number | null;
   errorMessage: string | null;
+  cancellationReason: OrderCancellationReason | null;
   /** Non-blocking advisory from POST /orders — e.g. leftover uncovered shares beyond what this order uses. Never persisted, transient on the preview response only. */
   note?: string | null;
   /** Non-blocking economic-calendar advisory (New Position/Roll only, approved 2026-08-31) — Medium/High-importance events between today and expiry. Persisted at order-creation time (2026-09-24) so it survives a GET /orders/:id, not just the creation response. */
@@ -249,6 +253,7 @@ export interface TodaysOrder {
   updatedAt: string;
   requestedByDisplayName: string | null;
   cancelledByDisplayName: string | null;
+  cancellationReason: OrderCancellationReason | null;
   errorMessage: string | null;
   ibkrOrderId: number | null;
   ibkrPermId: number | null;

@@ -147,8 +147,8 @@ export function TodaysOrdersCard() {
       header: "Status",
       render: (row) => (
         <div>
-          <span className={`badge ${orderRequestStatusBadgeClass(row.status)}`} style={{ fontSize: "0.72rem" }}>
-            {orderRequestStatusLabel(row.status)}
+          <span className={`badge ${orderRequestStatusBadgeClass(row.status, row.cancellationReason)}`} style={{ fontSize: "0.72rem" }}>
+            {orderRequestStatusLabel(row.status, row.cancellationReason)}
           </span>
           {row.errorMessage && (
             <TooltipSpan as="div" className="text-danger text-truncate" style={{ fontSize: "0.72rem", maxWidth: "12rem" }} text={row.errorMessage}>

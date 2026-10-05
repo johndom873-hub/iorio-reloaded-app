@@ -29,6 +29,7 @@ import {
   formatSignedPnl,
   ibkrExpiryToIsoDate,
   orderRequestStatusBadgeClass,
+  orderRequestStatusLabel,
   todayInEasternIso,
 } from "../lib/formatters";
 import { computeAnnualizedYield, computeCapitalAtRiskFromOrderLegs, computePayoff, orderLegsToPayoffInput } from "../lib/payoff";
@@ -82,7 +83,8 @@ function legDescription(leg: OrderRequest["payload"]["legs"][number]): string {
   return `${leg.action} ${leg.quantity}x ${leg.strike ? formatCurrencyTrimmed(leg.strike) : "—"} ${right} exp ${expiryLabel} @ ${formatCurrency(leg.unitPrice)}`;
 }
 
-function statusLabel(status: OrderRequest["status"]): string {
+function statusLabel(status: OrderRequest["status"], cancellationReason: OrderRequest["cancellationReason"]): string {
+  if (cancellationReason && (status === "cancelled" || status === "cancelled_partially_filled")) return orderRequestStatusLabel(status, cancellationReason);
   switch (status) {
     case "pending_confirmation":
       return "Awaiting your confirmation";
@@ -515,7 +517,7 @@ export function OrderReviewPanel({ order: initialOrder, initialAdaptivePriority,
           submitted → filled/cancelled/etc). */}
       {!isPending && (
         <div className="d-flex align-items-center gap-2">
-          <span className={`badge ${orderRequestStatusBadgeClass(order.status)}`}>{statusLabel(order.status)}</span>
+          <span className={`badge ${orderRequestStatusBadgeClass(order.status, order.cancellationReason)}`}>{statusLabel(order.status, order.cancellationReason)}</span>
           {isWaiting && <Spinner size="sm" label="Waiting for IBKR" />}
         </div>
       )}

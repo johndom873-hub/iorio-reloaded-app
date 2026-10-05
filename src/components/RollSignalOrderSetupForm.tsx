@@ -25,8 +25,6 @@ import { useTooltip } from "../hooks/useTooltip";
 export const rollDecayWarningVolatilityPoints = 1;
 const orderLimitsDebounceMs = 400;
 const adaptivePriorities: AdaptivePriority[] = ["Patient", "Normal", "Urgent"];
-// Where an Adaptive combo is expected to fill, as a share of the way from the net-credit mid to the worst case (buy the ask, sell the bid).
-const expectedSpreadConcession: Record<AdaptivePriority, number> = { Patient: 0, Normal: 0.5, Urgent: 1 };
 
 interface RollSignalOrderSetupFormProps {
   symbol: string;
@@ -92,8 +90,9 @@ export function RollSignalOrderSetupForm({ symbol, signals, roll, unscoredReplac
   // Without a Signals score the replacement's capital base is strike×100 (put) or spot×100 (call), less the premium it brings in.
   const replacementCapitalBase = isCall ? (spotPrice ?? 0) * 100 : target.strike * 100;
   const replacementDollarRisk = replacement ? replacement.dollarRisk : replacementCapitalBase - replacementMid;
-  const concession = expectedSpreadConcession[adaptivePriority];
-  const netCreditExpected = netCreditAtMid - (netCreditAtMid - netCreditWorst) * concession;
+  // Both legs go out at their mids; the expected fill gives up the Risk & Limits share of both half-spreads (the
+  // way from the mid credit to the worst case), the same assumption the net roll Edge is scored with.
+  const netCreditExpected = netCreditAtMid - (netCreditAtMid - netCreditWorst) * signals.spreadShareCharged;
   const holdEdgeDollars = (held.holdEdgeDollars ?? 0) * quantity;
   const closeCostDollars = (held.closeCostDollars ?? 0) * quantity;
   const replacementEdgeDollars = (replacement?.edgeDollars ?? 0) * quantity;
@@ -355,7 +354,7 @@ export function RollSignalOrderSetupForm({ symbol, signals, roll, unscoredReplac
           </div>
         </div>
         <Row label={`Net ${netWord} limit (mid)`} value={`${netMoney(netCreditAtMid)} /sh · ${netMoney(netCreditAtMid * 100 * quantity, 0)} total`} />
-        <Row label={`Expected net ${netWord} at ${adaptivePriority}`} value={`${netMoney(netCreditExpected)} /sh · ${netMoney(netCreditExpected * 100 * quantity, 0)} total`} />
+        <Row label={`Expected net ${netWord} (${formatPercentage(signals.spreadShareCharged, 0)} of the half-spreads)`} value={`${netMoney(netCreditExpected)} /sh · ${netMoney(netCreditExpected * 100 * quantity, 0)} total`} />
         <Row label={`Held leg: sold at ${formatCurrency(held.entryPrice)}, closing near ${formatCurrency(heldMid)}`} value={`${formatSignedPnl(realisedOnHeldLeg, 0)} realised`} tone={realisedOnHeldLeg >= 0 ? "text-success" : "text-danger"} />
         <Row label="New leg credit (mid)" value={formatSignedPnl(replacementMid * 100 * quantity, 0)} tone="text-success" />
         <Row label="Capital at risk after roll" value={formatCurrency(capitalAtRiskAfter, 0)} />

@@ -1,5 +1,5 @@
 import { apiRequest } from "./client";
-import type { LegSide, LegType, OptionType, OrderRequestStatus, PositionStrategyKey } from "./positions";
+import type { LegSide, LegType, OptionType, OrderCancellationReason, OrderRequestStatus, PositionStrategyKey } from "./positions";
 
 export interface Trade {
   id: string;
@@ -52,6 +52,7 @@ export interface PendingOrder {
   optionType: "C" | "P" | null;
   requestedByDisplayName: string | null;
   cancelledByDisplayName: string | null;
+  cancellationReason: OrderCancellationReason | null;
 }
 
 export interface TradeBlotterFilters {

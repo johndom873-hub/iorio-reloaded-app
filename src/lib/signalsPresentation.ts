@@ -369,7 +369,7 @@ export const signalsColumnExplanation = {
   best: "The candidate contract with the highest Edge $ across every expiry and strike on the out-of-the-money side.",
   yield: "Annualised yield of the Top Signal contract: mid premium / capital at risk, annualised to a 365-day year.",
   grade: gradeExplanation,
-  netEdge: "Net Edge = implied volatility at the strike (fitted surface) minus the forecast volatility minus friction (half-spread and commission), in volatility points.",
+  netEdge: "Net Edge = implied volatility at the strike (fitted surface) minus the forecast volatility minus friction (the Risk & Limits spread cost share of the half-spread, plus commission), in volatility points.",
   edgeDollars: "Net Edge x vega x 100: the excess premium in dollars per contract.",
   atmIv: "At-the-money implied volatility from the fitted surface, expiry nearest 30 days. Coloured green when it's above FV (forecast), red when below.",
   forecast: "Forecast realized volatility: trailing 63-day Yang-Zhang (21-day when 63 is unavailable).",

@@ -36,6 +36,7 @@ interface SettingsFormState {
   commissionWarnSharePctOfPremium: string;
   priceCheckMaxDeviationPct: string;
   priceCheckMinToleranceDollars: string;
+  spreadCostChargedPct: string;
 }
 
 function toFormState(settings: TradingSettings): SettingsFormState {
@@ -51,6 +52,7 @@ function toFormState(settings: TradingSettings): SettingsFormState {
     commissionWarnSharePctOfPremium: formatInputNumber(settings.commissionWarnSharePctOfPremium),
     priceCheckMaxDeviationPct: formatInputNumber(settings.priceCheckMaxDeviationPct),
     priceCheckMinToleranceDollars: formatInputNumber(settings.priceCheckMinToleranceDollars),
+    spreadCostChargedPct: formatInputNumber(settings.spreadCostChargedPct),
   };
 }
 
@@ -66,6 +68,7 @@ const fieldLabels: Record<keyof SettingsFormState, string> = {
   commissionWarnSharePctOfPremium: "Commission warning %",
   priceCheckMaxDeviationPct: "Max distance from the live mid %",
   priceCheckMinToleranceDollars: "Minimum allowance $",
+  spreadCostChargedPct: "Spread cost %",
 };
 
 // A blank input used to become 0 silently (Number("") === 0) and save as a real limit.
@@ -87,6 +90,7 @@ function toUpdateInput(form: SettingsFormState): TradingSettingsInput {
     commissionWarnSharePctOfPremium: Number(form.commissionWarnSharePctOfPremium),
     priceCheckMaxDeviationPct: Number(form.priceCheckMaxDeviationPct),
     priceCheckMinToleranceDollars: Number(form.priceCheckMinToleranceDollars),
+    spreadCostChargedPct: Number(form.spreadCostChargedPct),
   };
 }
 
@@ -542,13 +546,20 @@ export function RiskLimitsPage() {
                 />
               </SettingsSection>
 
-              <SettingsSection title="Signals" description="Signals only suggests trades that pay at least this much per year.">
+              <SettingsSection title="Signals" description="Signals only suggests trades that pay at least this much per year, and counts part of each contract's bid/ask spread as a trading cost.">
                 <NumberField
                   label={fieldLabels.minAnnualizedYieldPct}
                   value={formState.minAnnualizedYieldPct}
                   step="0.5"
                   help="Floor on annualised yield (premium as a % of the capital at risk, scaled to a year by days to expiry). Candidates below it are filtered out."
                   onChange={(value) => updateField("minAnnualizedYieldPct", value)}
+                />
+                <NumberField
+                  label={fieldLabels.spreadCostChargedPct}
+                  value={formState.spreadCostChargedPct}
+                  step="5"
+                  help="How much of the half-spread (the distance from the mid to the bid) Signals counts as a trading cost. Orders go out as limits at the mid, but a fill can come up to half a spread below the fair price at that moment. 0 assumes every fill is worth the full mid, 100 assumes every fill is at the bid. Changes Net Edge, Edge $, grades and roll scores."
+                  onChange={(value) => updateField("spreadCostChargedPct", value)}
                 />
               </SettingsSection>
 

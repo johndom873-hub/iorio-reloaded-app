@@ -51,11 +51,8 @@ export interface SignalCandidate {
   netEdge: number;
   edgeDollars: number;
   vega: number;
-  netEdgeAtMid: number;
-  edgeDollarsAtMid: number;
   dollarRisk: number;
   riskAdjustedRatio: number;
-  riskAdjustedRatioAtMid: number;
   annualizedYield: number;
   uncompensatedSharePercent: number | null;
   quoteSource: SignalQuoteSource;
@@ -92,7 +89,7 @@ export interface HeldLegScore {
   midImpliedVolatility: number | null;
   /** Surface IV minus the forecast: what holding still offers, in annualised volatility. */
   edge: number | null;
-  /** Cost of buying the leg back (half-spread + commission over vega), in annualised volatility. */
+  /** Cost of buying the leg back (the spread cost share of the half-spread + commission, over vega), in annualised volatility. */
   frictionVolatility: number | null;
   vega: number | null;
   holdEdgeDollars: number | null;
@@ -183,6 +180,8 @@ export interface TickerSignals {
   freeCash: number;
   /** Age range of the Day Signals quotes merged into this ticker's scoring. */
   dayQuotesAsOf: { oldest: string; newest: string; count: number } | null;
+  /** λ (0..1) the scores were computed with: the share of the half-spread charged as friction (Risk & Limits spread cost). */
+  spreadShareCharged: number;
   /** Formula 3h per expiry: the parallel IV shift applied (volatility points) and the fresh quotes it came from. */
   ivShiftByExpiry: Record<string, { shiftVolatilityPoints: number; quoteCount: number }>;
   quoteSourceCounts: Record<SignalQuoteSource, number>;

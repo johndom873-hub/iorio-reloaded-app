@@ -1,6 +1,6 @@
 import { apiBaseUrl, apiRequest } from "./client";
 import { openMultiplexedStream } from "./streamMultiplexer";
-import type { OrderLeg, OrderRequestStatus } from "./positions";
+import type { OrderCancellationReason, OrderLeg, OrderRequestStatus } from "./positions";
 import type { MarketDataFeedRefusal } from "./environment";
 
 export type AppNotification =
@@ -318,7 +318,7 @@ export interface RecentNotificationEvent {
    * server-side so the Latest Events backfill needs no per-order request
    * (null when the order no longer exists).
    */
-  order?: { status: OrderRequestStatus; payload: { symbol: string; legs: OrderLeg[] } } | null;
+  order?: { status: OrderRequestStatus; payload: { symbol: string; legs: OrderLeg[] }; cancellationReason: OrderCancellationReason | null } | null;
 }
 
 // Backs the Pulse dashboard's Latest Events panel on mount, since the SSE

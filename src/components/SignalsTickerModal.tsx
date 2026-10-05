@@ -800,7 +800,7 @@ export function SignalsTickerModal({ symbol, initialRollLegId = null, focusPosit
           </FlashingNumber>
         ),
       },
-      { key: "friction", header: "Friction", align: "right", headerTitle: "Half-spread plus commission, in volatility points", render: (row) => <span className="font-mono text-secondary">{formatVolatilityPoints(row.frictionVolatility).replace("+", "")}</span> },
+      { key: "friction", header: "Friction", align: "right", headerTitle: "The Risk & Limits spread cost share of the half-spread, plus commission, in volatility points", render: (row) => <span className="font-mono text-secondary">{formatVolatilityPoints(row.frictionVolatility).replace("+", "")}</span> },
       {
         key: "iv",
         header: "Surf. / mid IV",
