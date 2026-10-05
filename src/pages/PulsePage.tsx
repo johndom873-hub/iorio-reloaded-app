@@ -95,7 +95,7 @@ const CONNECTIONS_USED_PERCENT_BANDS = [50, 80] as const;
 const DB_SIZE_USED_PERCENT_BANDS = [70, 90] as const;
 const DB_AVERAGE_RESPONSE_MS_BANDS = [50, 200] as const;
 const DB_SLOWEST_RESPONSE_MS_BANDS = [500, 2000] as const;
-const GATEWAY_RECONNECT_BANDS = [1, 5] as const;
+const GATEWAY_UNPLANNED_DROP_BANDS = [1, 5] as const;
 const GATEWAY_IN_FLIGHT_BANDS = [1, 5] as const;
 const GATEWAY_LIVE_CONNECTIONS_BANDS = [50, 80] as const;
 const GATEWAY_HEALTHY_UPTIME_MS = 30 * 60_000;
@@ -181,7 +181,7 @@ function tradeDetailText(trade: Trade): string {
 
 // Phone layout's Systems header carries one LED per node (rules approved
 // 2026-09-28): Database is the worst of its existing colour bands; Gateway
-// is red without a live IBKR connection and amber when reconnects or
+// is red without a live IBKR connection and amber when unplanned drops or
 // in-flight orders reach their warn band; IBKR is red while account data is
 // failing; every other node is green once its health call has answered and
 // grey until then. Presence (Front End) arrives in the same poll as the web
@@ -214,7 +214,7 @@ function phoneSystemLeds(input: {
     : gatewayHealth.staleOrMissing || !gatewayHealth.connected
       ? "led-warn"
       : worstOf(
-            higherIsWorseStatus(gatewayHealth.totalReconnects, ...GATEWAY_RECONNECT_BANDS),
+            higherIsWorseStatus(gatewayHealth.unplannedDropsLast24h, ...GATEWAY_UNPLANNED_DROP_BANDS),
             higherIsWorseStatus(gatewayHealth.inFlightOrderCount, ...GATEWAY_IN_FLIGHT_BANDS),
           ) === "ok"
         ? ""
@@ -255,7 +255,7 @@ function describeAttentionReasons(gatewayHealth: GatewayHealth | null, accountDa
       key: "gateway",
       name: "Gateway disconnected from IBKR",
       detail: "Worker is running but has lost its IBKR connection; it is retrying.",
-      meta: `Status code ${gatewayHealth.lastSystemStatusCode ?? "—"} · reconnects ${gatewayHealth.totalReconnects ?? "—"}`,
+      meta: `Status code ${gatewayHealth.lastSystemStatusCode ?? "—"} · drops in 24h ${gatewayHealth.unplannedDropsLast24h ?? "—"}`,
     });
   }
   if (accountDataError) {
@@ -1188,13 +1188,13 @@ export function PulsePage() {
                 <span className={`sub-value ${gatewayHealth?.uptimeMs == null ? "" : gatewayHealth.uptimeMs >= GATEWAY_HEALTHY_UPTIME_MS ? "ok" : "warn"}`}>
                   {formatDurationShort(gatewayHealth?.uptimeMs)}
                 </span>
-                {gatewayHealth?.totalReconnects != null && (
-                  <span className="sub-unit">
+                {gatewayHealth?.unplannedDropsLast24h != null && (
+                  <span className="sub-unit" title="Connection drops in the last 24 hours, not counting the Gateway's daily 05:30 UTC restart">
                     {" ("}
-                    <FlashingNumber value={gatewayHealth.totalReconnects} className={`sub-value ${higherIsWorseStatus(gatewayHealth.totalReconnects, ...GATEWAY_RECONNECT_BANDS)}`}>
-                      {gatewayHealth.totalReconnects}
+                    <FlashingNumber value={gatewayHealth.unplannedDropsLast24h} className={`sub-value ${higherIsWorseStatus(gatewayHealth.unplannedDropsLast24h, ...GATEWAY_UNPLANNED_DROP_BANDS)}`}>
+                      {gatewayHealth.unplannedDropsLast24h}
                     </FlashingNumber>
-                    {compact ? ")" : ` reconnect${gatewayHealth.totalReconnects === 1 ? "" : "s"})`}
+                    {` drop${gatewayHealth.unplannedDropsLast24h === 1 ? "" : "s"}${compact ? "" : " in 24h"})`}
                   </span>
                 )}
               </span>

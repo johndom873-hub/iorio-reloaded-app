@@ -80,6 +80,8 @@ export interface GatewayHealth {
   staleOrMissing: boolean;
   uptimeMs?: number | null;
   totalReconnects?: number;
+  /** Connection drops in the last 24 hours, excluding the Gateway's planned daily restart; null when the worker predates the reading. */
+  unplannedDropsLast24h?: number | null;
   lastSystemStatusCode?: number | null;
   clientId?: number | null;
   updatedAt?: string;
