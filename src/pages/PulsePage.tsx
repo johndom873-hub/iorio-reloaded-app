@@ -506,15 +506,14 @@ export function PulsePage() {
     totalUnrealizedPnl !== null && accountValueBeforeUnrealizedPnl ? (totalUnrealizedPnl / accountValueBeforeUnrealizedPnl) * 100 : null;
 
   // --- Top Signals by Edge $ ---
-  // REST snapshot pricing, re-fetched every minute: holds no IBKR market-data lines (the live
+  // REST snapshot pricing, re-fetched every minute while the tab is live: holds no IBKR market-data lines (the live
   // signalsScreen stream would add a stock line per shortlist ticker plus a best-contract option line).
   const [signalRows, setSignalRows] = useState<SignalsScreenRow[]>([]);
-  useEffect(() => {
-    const refreshSignals = () => fetchSignalsScreen().then(setSignalRows).catch(() => {});
-    refreshSignals();
-    const intervalId = window.setInterval(refreshSignals, topSignalsRefreshIntervalMs);
-    return () => window.clearInterval(intervalId);
+  const refreshSignals = useCallback(() => {
+    fetchSignalsScreen().then(setSignalRows).catch(() => {});
   }, []);
+  useEffect(() => refreshSignals(), [refreshSignals]);
+  usePollWhileVisible(refreshSignals, topSignalsRefreshIntervalMs);
   // One signal per ticker (its best candidate), positive Edge $ only, highest first. No length cap —
   // mirrors the Trades panel's "fetch generously, let overflow:hidden clip" design.
   const topSignals = signalRows
