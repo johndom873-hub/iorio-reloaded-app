@@ -128,8 +128,8 @@ export function fetchRecoveryPath(positionId: string): Promise<RecoveryPath> {
 // process, from IBKR's own fill data — these functions never return a
 // Position directly anymore.
 
-/** Why an order ended cancelled when nobody pressed Cancel: a DAY order IBKR expired at the 16:00 ET close, IBKR's own cancel earlier in the day, or the 15-minute sweep of orders never confirmed. */
-export type OrderCancellationReason = "expired_at_close" | "cancelled_by_ibkr" | "not_confirmed_in_time";
+/** Why an order ended cancelled when nobody pressed Cancel: a DAY order IBKR expired at the 16:00 ET close, IBKR's own cancel earlier in the day, or the 15-minute sweep of orders never confirmed, or the worker's cancel of an order left unfilled past the Risk & Limits time limit. */
+export type OrderCancellationReason = "expired_at_close" | "cancelled_by_ibkr" | "not_confirmed_in_time" | "not_filled_in_time";
 
 export type OrderRequestStatus =
   | "pending_confirmation"

@@ -38,11 +38,12 @@ const cancelledWithoutUserLabel: Record<OrderCancellationReason, string> = {
   expired_at_close: "Expired at close",
   cancelled_by_ibkr: "Cancelled by IBKR",
   not_confirmed_in_time: "Not confirmed in time",
+  not_filled_in_time: "Not filled in time",
 };
 
 /** An order that expired at the close or was never confirmed is not a failure: neutral, not red. */
 export function orderRequestStatusBadgeClass(status: OrderRequestStatus, cancellationReason: OrderCancellationReason | null): string {
-  if (status === "cancelled" && (cancellationReason === "expired_at_close" || cancellationReason === "not_confirmed_in_time")) return "bg-secondary-lt";
+  if (status === "cancelled" && (cancellationReason === "expired_at_close" || cancellationReason === "not_confirmed_in_time" || cancellationReason === "not_filled_in_time")) return "bg-secondary-lt";
   if (status === "filled") return "bg-success-lt";
   if (status === "rejected" || status === "error" || status === "cancelled") return "bg-danger-lt";
   if (status === "cancelled_partially_filled") return "bg-warning-lt";

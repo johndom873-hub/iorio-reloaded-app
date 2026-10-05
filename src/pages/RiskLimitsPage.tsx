@@ -37,6 +37,7 @@ interface SettingsFormState {
   priceCheckMaxDeviationPct: string;
   priceCheckMinToleranceDollars: string;
   spreadCostChargedPct: string;
+  orderUnfilledCancelMinutes: string;
 }
 
 function toFormState(settings: TradingSettings): SettingsFormState {
@@ -53,6 +54,7 @@ function toFormState(settings: TradingSettings): SettingsFormState {
     priceCheckMaxDeviationPct: formatInputNumber(settings.priceCheckMaxDeviationPct),
     priceCheckMinToleranceDollars: formatInputNumber(settings.priceCheckMinToleranceDollars),
     spreadCostChargedPct: formatInputNumber(settings.spreadCostChargedPct),
+    orderUnfilledCancelMinutes: formatInputNumber(settings.orderUnfilledCancelMinutes, 0),
   };
 }
 
@@ -69,6 +71,7 @@ const fieldLabels: Record<keyof SettingsFormState, string> = {
   priceCheckMaxDeviationPct: "Max distance from the live mid %",
   priceCheckMinToleranceDollars: "Minimum allowance $",
   spreadCostChargedPct: "Spread cost %",
+  orderUnfilledCancelMinutes: "Cancel unfilled orders after (min)",
 };
 
 // A blank input used to become 0 silently (Number("") === 0) and save as a real limit.
@@ -91,6 +94,7 @@ function toUpdateInput(form: SettingsFormState): TradingSettingsInput {
     priceCheckMaxDeviationPct: Number(form.priceCheckMaxDeviationPct),
     priceCheckMinToleranceDollars: Number(form.priceCheckMinToleranceDollars),
     spreadCostChargedPct: Number(form.spreadCostChargedPct),
+    orderUnfilledCancelMinutes: Number(form.orderUnfilledCancelMinutes),
   };
 }
 
@@ -488,6 +492,19 @@ export function RiskLimitsPage() {
                   step="0.5"
                   help="How much of the portfolio must stay as free cash after the order. An order that would eat into this reserve is blocked."
                   onChange={(value) => updateField("minCashReservePct", value)}
+                />
+              </SettingsSection>
+
+              <SettingsSection
+                title="Unfilled orders"
+                description="Orders are sent to IBKR as limits at the mid. One that has not filled after this many minutes is cancelled automatically, because Signals move through the day and a resting limit tends to fill just after the price has moved against it."
+              >
+                <NumberField
+                  label={fieldLabels.orderUnfilledCancelMinutes}
+                  value={formState.orderUnfilledCancelMinutes}
+                  step="1"
+                  help="Whole minutes, counted from when the order was sent to IBKR. 0 means never cancel (an unfilled order then lasts until the market close). The check runs every 30 seconds, so the cancel can come up to half a minute late. Covers every order sent to IBKR, including rolls and buy-writes; a part-filled order has its unfilled rest cancelled."
+                  onChange={(value) => updateField("orderUnfilledCancelMinutes", value)}
                 />
               </SettingsSection>
 
