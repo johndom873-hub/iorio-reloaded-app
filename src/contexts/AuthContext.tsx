@@ -1,10 +1,13 @@
 import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from "react";
 import { type AuthenticatedUser, fetchCurrentSession, login as loginRequest, logout as logoutRequest } from "../api/auth";
+import { signInWithPasskey } from "../api/passkeys";
 
 interface AuthContextValue {
   currentUser: AuthenticatedUser | null;
   isCheckingSession: boolean;
-  login: (username: string, password: string) => Promise<void>;
+  /** "passkey_enrollment_required" when passkeys are required: the password signed nobody in and only opens enrolment. */
+  login: (username: string, password: string) => Promise<"signed_in" | "passkey_enrollment_required">;
+  loginWithPasskey: () => Promise<void>;
   logout: () => Promise<void>;
 }
 
@@ -22,8 +25,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const login = useCallback(async (username: string, password: string) => {
-    const user = await loginRequest(username, password);
-    setCurrentUser(user);
+    const result = await loginRequest(username, password);
+    if (result.outcome === "signed_in") setCurrentUser(result.user);
+    return result.outcome;
+  }, []);
+
+  const loginWithPasskey = useCallback(async () => {
+    setCurrentUser(await signInWithPasskey());
   }, []);
 
   const logout = useCallback(async () => {
@@ -39,7 +47,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   return (
-    <AuthContext.Provider value={{ currentUser, isCheckingSession, login, logout }}>{children}</AuthContext.Provider>
+    <AuthContext.Provider value={{ currentUser, isCheckingSession, login, loginWithPasskey, logout }}>{children}</AuthContext.Provider>
   );
 }
 
