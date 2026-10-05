@@ -43,6 +43,8 @@ export function useEnvironmentStatus(): EnvironmentStatus {
     };
     document.addEventListener("visibilitychange", onVisible);
     const closeNotificationStream = openNotificationStream((notification) => {
+      // The kill switch must show in the top bar the moment anyone flips it, not up to 30 s later.
+      if (notification.type === "trading_halt_changed") void load();
       if (notification.type !== "market_data_feed") return;
       setDetails((current) => (current ? { ...current, marketDataFeedRefusal: notification.refusal } : current));
     });

@@ -86,6 +86,8 @@ export interface GatewayHealth {
   inFlightOrderCount: number;
   /** IBKR market-data lines in use across every process sharing the login, by use (screens, chain capture, Day Signals, snapshots). */
   marketDataLines?: { inUse: number; budget: number; byUse: { label: string; lines: number }[] };
+  /** The operator kill switch (platform_controls.trading_halt). */
+  tradingHalted?: boolean;
 }
 
 /** The Pulse page's five readings in one request; a reading the server failed to load is null. */

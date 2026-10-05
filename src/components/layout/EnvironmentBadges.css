@@ -15,7 +15,8 @@
 /* Narrow desktop (992-1199px): three chips would run into the centred Pulse pill, so the blocked chip
    shows only its warning icon here; the full wording stays in the button's accessible name and the popover. */
 @media (min-width: 992px) and (max-width: 1199.98px) {
-  .iorio-topbar .env-badge-blocked .env-badge-text {
+  .iorio-topbar .env-badge-blocked .env-badge-text,
+  .iorio-topbar .env-badge-halted .env-badge-text {
     position: absolute;
     width: 1px;
     height: 1px;
@@ -87,6 +88,12 @@
 .env-badge-blocked {
   background: #f59f00;
   color: #111827;
+}
+/* The operator kill switch (2026-09-28): red like LIVE (it is the one state a human chose), never amber,
+   so a halt is never mistaken for the worker's own blocked/offline states. */
+.env-badge-halted {
+  background: #b91c1c;
+  color: #ffffff;
 }
 .env-badge-unknown {
   border: 1px dashed #94a3b8;
@@ -165,4 +172,8 @@
   color: #7c2d12;
   font-size: 0.78rem;
   line-height: 1.4;
+}
+.env-popover-reason-halted {
+  background: #fee2e2;
+  color: #7f1d1d;
 }

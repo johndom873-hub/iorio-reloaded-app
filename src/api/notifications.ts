@@ -17,6 +17,8 @@ export type AppNotification =
   // Roll Signals: an open short leg's |delta| crossed the assignment-risk threshold (once per leg per trading day).
   | { type: "assignment_risk"; symbol: string; strategyKey: string; positionId: string; legId: string; right: "C" | "P"; strike: number; expiry: string; dte: number | null; delta: number; spotPrice: number | null }
   | { type: "genosuke_reply"; preview: string }
+  // The operator kill switch was flipped (Risk & Limits → Trading halt).
+  | { type: "trading_halt_changed"; enabled: boolean; reason: string | null; byDisplayName: string | null }
   | { type: "presence"; onlineUserIds: string[] }
   // Animation-only signal for Pulse's topology lines; only sent to the /pulse tab.
   | { type: "pulse"; edgeId: "ibkr-gateway" | "heroku-browser" | "heroku-db" | "genosuke-db" | "genosuke-llm" }

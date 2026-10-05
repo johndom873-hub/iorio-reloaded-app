@@ -6,7 +6,18 @@ import { CollapsibleCard } from "../components/CollapsibleCard";
 import { HelpTooltip } from "../components/HelpTooltip";
 import { TooltipSpan } from "../components/TooltipSpan";
 import { ApiError } from "../api/client";
-import { fetchTradingSettings, updateTradingSettings, type ConcentrationRow, type TradingSettings, type TradingSettingsInput } from "../api/riskLimits";
+import {
+  fetchTradingHalt,
+  fetchTradingSettings,
+  updateTradingHalt,
+  updateTradingSettings,
+  type ConcentrationRow,
+  type TradingHalt,
+  type TradingSettings,
+  type TradingSettingsInput,
+} from "../api/riskLimits";
+import { ConfirmModal } from "../components/ConfirmModal";
+import { openNotificationStream } from "../api/notifications";
 import { formatCurrency, formatDateTime, formatInputNumber, formatPercentage, formatRelativeTime } from "../lib/formatters";
 import { useExposureStream } from "../hooks/useExposureStream";
 import { useSignalsTickerModal } from "../hooks/useSignalsTickerModal";
@@ -23,6 +34,8 @@ interface SettingsFormState {
   recoveryDteMax: string;
   minAnnualizedYieldPct: string;
   commissionWarnSharePctOfPremium: string;
+  priceCheckMaxDeviationPct: string;
+  priceCheckMinToleranceDollars: string;
 }
 
 function toFormState(settings: TradingSettings): SettingsFormState {
@@ -36,6 +49,8 @@ function toFormState(settings: TradingSettings): SettingsFormState {
     recoveryDteMax: formatInputNumber(settings.recoveryDteMax, 0),
     minAnnualizedYieldPct: formatInputNumber(settings.minAnnualizedYieldPct),
     commissionWarnSharePctOfPremium: formatInputNumber(settings.commissionWarnSharePctOfPremium),
+    priceCheckMaxDeviationPct: formatInputNumber(settings.priceCheckMaxDeviationPct),
+    priceCheckMinToleranceDollars: formatInputNumber(settings.priceCheckMinToleranceDollars),
   };
 }
 
@@ -49,6 +64,8 @@ const fieldLabels: Record<keyof SettingsFormState, string> = {
   recoveryDteMax: "Expiry window max",
   minAnnualizedYieldPct: "Min annualised yield %",
   commissionWarnSharePctOfPremium: "Commission warning %",
+  priceCheckMaxDeviationPct: "Max distance from the live mid %",
+  priceCheckMinToleranceDollars: "Minimum allowance $",
 };
 
 // A blank input used to become 0 silently (Number("") === 0) and save as a real limit.
@@ -68,7 +85,138 @@ function toUpdateInput(form: SettingsFormState): TradingSettingsInput {
     recoveryDteMax: Number(form.recoveryDteMax),
     minAnnualizedYieldPct: Number(form.minAnnualizedYieldPct),
     commissionWarnSharePctOfPremium: Number(form.commissionWarnSharePctOfPremium),
+    priceCheckMaxDeviationPct: Number(form.priceCheckMaxDeviationPct),
+    priceCheckMinToleranceDollars: Number(form.priceCheckMinToleranceDollars),
   };
+}
+
+// The kill switch (gap fix 1 for Pluto, 2026-09-28). One button: red "Halt all trading" while trading
+// is allowed, green "Resume trading" while halted. Both go through a confirm modal (an action modal:
+// no backdrop/ESC dismiss); halting requires a reason, which the server also enforces. The card
+// refreshes itself when another user flips the switch, via the trading_halt_changed notification.
+function TradingHaltCard() {
+  const [halt, setHalt] = useState<TradingHalt | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [pending, setPending] = useState<"halt" | "resume" | null>(null);
+  const [reason, setReason] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    try {
+      setHalt(await fetchTradingHalt());
+      setLoadError(null);
+    } catch (err) {
+      setLoadError(err instanceof ApiError ? err.message : "Failed to load the trading halt state.");
+    }
+  }, []);
+
+  useEffect(() => {
+    void load();
+    return openNotificationStream((notification) => {
+      if (notification.type === "trading_halt_changed") void load();
+    });
+  }, [load]);
+
+  function openModal(kind: "halt" | "resume") {
+    setReason("");
+    setSubmitError(null);
+    setPending(kind);
+  }
+
+  async function submit() {
+    if (!pending) return;
+    const enabled = pending === "halt";
+    if (enabled && reason.trim() === "") {
+      setSubmitError("A reason is required to halt trading.");
+      return;
+    }
+    setSubmitting(true);
+    setSubmitError(null);
+    try {
+      setHalt(await updateTradingHalt({ enabled, reason: reason.trim() === "" ? null : reason.trim() }));
+      setPending(null);
+    } catch (err) {
+      setSubmitError(err instanceof ApiError ? err.message : "Failed to update the trading halt.");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  const halted = halt?.enabled === true;
+  return (
+    // A red border, not bg-danger-lt: the tinted background made the card's text unreadable in dark mode
+    // (text-dark on a dark red), and the state is already carried by the badge and the button.
+    <div className={`card mb-3${halted ? " border-danger" : ""}`}>
+      <div className="card-body">
+        <div className="d-flex flex-column flex-md-row align-items-md-center justify-content-between gap-3">
+          <div>
+            <h3 className="card-title mb-1">
+              Trading halt
+              {halt && (
+                <span className={`badge ms-2 ${halted ? "bg-danger text-white" : "bg-success text-white"}`} style={{ fontSize: "0.72rem" }}>
+                  {halted ? "HALTED" : "Trading allowed"}
+                </span>
+              )}
+            </h3>
+            {loadError ? (
+              <div className="text-danger" style={{ fontSize: "0.8rem" }}>{loadError}</div>
+            ) : halt === null ? (
+              <Spinner size="sm" label="Loading trading halt state" />
+            ) : halted ? (
+              <div className="text-danger" style={{ fontSize: "0.8rem" }}>
+                Halted by <strong>{halt.setByDisplayName ?? "an operator"}</strong>
+                {halt.setAt ? ` ${formatRelativeTime(halt.setAt) ?? formatDateTime(halt.setAt)}` : ""}
+                {halt.reason ? ` — ${halt.reason}` : ""}. No order from any origin (screens, Genosuke, bots) reaches IBKR until it is lifted; cancels still work.
+              </div>
+            ) : (
+              <div className="text-muted" style={{ fontSize: "0.8rem" }}>
+                The kill switch. Halting stops every order from every origin at confirm and again inside the trading worker, immediately.
+                {halt.setAt && ` Last lifted by ${halt.setByDisplayName ?? "an operator"} ${formatRelativeTime(halt.setAt) ?? formatDateTime(halt.setAt)}.`}
+              </div>
+            )}
+          </div>
+          {halt && (
+            <button type="button" className={`btn ${halted ? "btn-success" : "btn-danger"} flex-shrink-0`} onClick={() => openModal(halted ? "resume" : "halt")}>
+              {halted ? "Resume trading" : "Halt all trading"}
+            </button>
+          )}
+        </div>
+      </div>
+      {pending && (
+        <ConfirmModal
+          title={pending === "halt" ? "Halt all trading?" : "Resume trading?"}
+          confirmLabel={pending === "halt" ? "Halt trading" : "Resume trading"}
+          danger={pending === "halt"}
+          confirming={submitting}
+          onCancel={() => setPending(null)}
+          onConfirm={() => void submit()}
+          message={
+            <div>
+              <p className="mb-2">
+                {pending === "halt"
+                  ? "Every order from every origin will be refused at confirm and stopped inside the trading worker until someone resumes trading. Orders already working at IBKR are not cancelled."
+                  : "Orders will reach IBKR again from every origin."}
+              </p>
+              <label className="form-label" htmlFor="trading-halt-reason">
+                Reason{pending === "halt" ? "" : " (optional)"}
+              </label>
+              <textarea
+                id="trading-halt-reason"
+                className="form-control"
+                rows={2}
+                maxLength={300}
+                value={reason}
+                onChange={(event) => setReason(event.target.value)}
+                disabled={submitting}
+              />
+              {submitError && <div className="text-danger mt-2" style={{ fontSize: "0.8rem" }}>{submitError}</div>}
+            </div>
+          }
+        />
+      )}
+    </div>
+  );
 }
 
 interface ConcentrationListProps {
@@ -223,6 +371,8 @@ export function RiskLimitsPage() {
     <>
       <PageHeader title="Risk & Limits" subtitle="Current exposure and trading limits" />
 
+      <TradingHaltCard />
+
       <CollapsibleCard title="Account Exposure" storageKey="risk-limits-account-exposure" className="mb-3">
         {exposureLoading ? (
           <Spinner size="sm" label="Loading exposure" />
@@ -334,6 +484,26 @@ export function RiskLimitsPage() {
                   step="0.5"
                   help="How much of the portfolio must stay as free cash after the order. An order that would eat into this reserve is blocked."
                   onChange={(value) => updateField("minCashReservePct", value)}
+                />
+              </SettingsSection>
+
+              <SettingsSection
+                title="Limit-price check — this blocks an order"
+                description="Every leg's limit price is compared with its live mid (the middle of the bid and ask), when the order is confirmed and again right before it is sent. A sell priced below the mid, or a buy priced above it, by more than the larger of the two figures below is refused."
+              >
+                <NumberField
+                  label={fieldLabels.priceCheckMaxDeviationPct}
+                  value={formState.priceCheckMaxDeviationPct}
+                  step="0.5"
+                  help="How far a limit price may be on the wrong side of the live mid, as a % of the mid. A sell below the mid or a buy above it by more than this is blocked. Prices on the right side of the mid are never blocked. 0 means no tolerance beyond the minimum allowance."
+                  onChange={(value) => updateField("priceCheckMaxDeviationPct", value)}
+                />
+                <NumberField
+                  label={fieldLabels.priceCheckMinToleranceDollars}
+                  value={formState.priceCheckMinToleranceDollars}
+                  step="0.01"
+                  help="A floor on the allowance, in dollars per share, so a cheap option is not blocked over a few cents. The allowance is whichever is larger: the % above or this amount."
+                  onChange={(value) => updateField("priceCheckMinToleranceDollars", value)}
                 />
               </SettingsSection>
 
