@@ -291,13 +291,24 @@
 /* The top bar's centre slot (Day Signals, 2026-09-24): empty in normal operation, carries the
    "Live data restricted" pill while the chain capture holds its priority market-data lines. The
    IORIO Pulse link moved to the right-hand group to free it. */
-/* Centred in the free space between the badges and the right-hand group (auto margins),
-   not the page: absolute centring overlapped the badges once two status pills showed. */
+/* Three-column grid: equal 1fr sides around an auto-width centre, so the centre group (market badge
+   plus any status pills beside it) is centred on the screen however wide it gets. If a side is too
+   wide for that, the grid pushes the centre over instead of overlapping it. */
+.navbar.iorio-topbar > .container-fluid {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+}
+.iorio-topbar-left {
+  justify-self: start;
+}
 .iorio-topbar-center {
   display: flex;
   align-items: center;
   gap: 0.5rem;
-  margin-inline: auto;
+}
+.iorio-topbar-right {
+  justify-self: end;
 }
 .iorio-topbar-status {
   display: inline-flex;

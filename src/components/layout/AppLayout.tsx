@@ -278,10 +278,12 @@ export function AppLayout() {
 
       <header className="navbar navbar-expand-md navbar-dark d-print-none d-none d-lg-flex iorio-topbar">
         <div className="container-fluid">
-          <h1 className="navbar-brand mb-0">
-            <BrandMark />
-          </h1>
-          <EnvironmentBadges status={environmentStatus} />
+          <div className="iorio-topbar-left d-flex align-items-center">
+            <h1 className="navbar-brand mb-0">
+              <BrandMark />
+            </h1>
+            <EnvironmentBadges status={environmentStatus} />
+          </div>
           <div className="iorio-topbar-center">
             <MarketStatusBadge status={marketStatus} />
             <MarketDataFeedRefusalPill refusal={environmentStatus.details?.marketDataFeedRefusal} />
@@ -290,7 +292,7 @@ export function AppLayout() {
               linesEnabled={environmentStatus.details?.marketDataLinesEnabled ?? true}
             />
           </div>
-          <div className="ms-auto d-flex align-items-center gap-3">
+          <div className="iorio-topbar-right d-flex align-items-center gap-3">
             <a href="/pulse" target="_blank" rel="noopener noreferrer" className="iorio-pulse-nav-link">
               <span className="iorio-pulse-dot" aria-hidden="true" />
               IORIO Pulse
