@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import { ApiError } from "../api/client";
 import { buildOpenOrder, type AdaptivePriority, type OrderRequest } from "../api/positions";
 import type { SignalQuoteSource, SignalStrategyKey } from "../api/signals";
-import { checkSignalOrderLimits } from "../api/signalSettings";
+import { checkOrderLimits } from "../api/orderChecks";
 import { computeAnnualizedYield, computePayoff } from "../lib/payoff";
 import { formatCurrency, formatDateTime, formatPercentage, formatQuotePrice, formatSignedPnl } from "../lib/formatters";
 import { describeCandidate, describeNonLiveQuoteBlock, quoteSourceLabel } from "../lib/signalsPresentation";
@@ -11,7 +11,7 @@ import { FillPriorityPicker } from "./FillPriorityPicker";
 import { Spinner } from "./Spinner";
 import { OrderCommissionRows } from "./OrderCommissionRows";
 import { toIbkrExpiry, useOrderCommissionPreview } from "../hooks/useOrderCommissionPreview";
-import type { CommissionPreviewLeg } from "../api/signalSettings";
+import type { CommissionPreviewLeg, OrderLimitsResult } from "../api/orderChecks";
 
 // Order setup for a chain contract Signals could not score (in the money, spans earnings, no surface for the
 // expiry, no two-sided quote, ...): the quote and the plain payoff, no Signals card. Builds through the same
@@ -111,12 +111,12 @@ export function ChainContractOrderSetupForm({ symbol, contract, freeShares, spot
   const commissionPreview = useOrderCommissionPreview(commissionPreviewLegs);
 
   // Same debounced order-limits check as SignalOrderSetupForm (cosmetic: confirm re-checks server-side, so a failed check fails open).
-  const [orderLimitsResult, setOrderLimitsResult] = useState<{ blocked: boolean; reasons: string[] } | null>(null);
+  const [orderLimitsResult, setOrderLimitsResult] = useState<OrderLimitsResult | null>(null);
   const limitsDebounceRef = useRef<number | null>(null);
   useEffect(() => {
     if (limitsDebounceRef.current !== null) window.clearTimeout(limitsDebounceRef.current);
     limitsDebounceRef.current = window.setTimeout(() => {
-      checkSignalOrderLimits({ symbol, strategyKey: contract.strategyKey, quantity, strike: contract.strike, spotPrice: isCall ? spotPrice : null })
+      checkOrderLimits({ symbol, strategyKey: contract.strategyKey, quantity, strike: contract.strike, spotPrice: isCall ? spotPrice : null })
         .then(setOrderLimitsResult)
         .catch(() => setOrderLimitsResult(null));
     }, orderLimitsDebounceMs);

@@ -2,14 +2,14 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import { ApiError } from "../api/client";
 import { buildRollOrder, type AdaptivePriority, type OrderRequest } from "../api/positions";
 import type { HeldLegScore, RollSignalCandidate, TickerSignals, UnscoredSignalContract } from "../api/signals";
-import { checkSignalOrderLimits } from "../api/signalSettings";
+import { checkOrderLimits } from "../api/orderChecks";
 import { FLASH_DURATION_MS, flashClassName, useFlashOnChange } from "../hooks/useFlashOnChange";
 import { formatCurrency, formatCurrencyTrimmed, formatDate, formatPercentage, formatQuotePrice, formatSignedPnl, formatVolatilityPoints } from "../lib/formatters";
 import { describeHeldLeg, describeNonLiveQuoteBlock, describeRollSignalFlag, describeRollSignalWarning, describeSignalFlag, gradeBadgeClass, gradeLabel, heldLegUnscoredReasonLabel, netRollEdgeExplanation, rollFlagLetter, signalFlagLetter } from "../lib/signalsPresentation";
 import { Spinner } from "./Spinner";
 import { OrderCommissionRows } from "./OrderCommissionRows";
 import { toIbkrExpiry, useOrderCommissionPreview } from "../hooks/useOrderCommissionPreview";
-import type { CommissionPreviewLeg } from "../api/signalSettings";
+import type { CommissionPreviewLeg, OrderLimitsResult } from "../api/orderChecks";
 import { useTooltip } from "../hooks/useTooltip";
 
 // Roll Signals order setup (mockup rev 4 approved 2026-09-24). Same split as
@@ -23,7 +23,7 @@ import { useTooltip } from "../hooks/useTooltip";
 // the realised P&L locked in on the held leg).
 
 export const rollDecayWarningVolatilityPoints = 1;
-const signalOrderLimitsDebounceMs = 400;
+const orderLimitsDebounceMs = 400;
 const adaptivePriorities: AdaptivePriority[] = ["Patient", "Normal", "Urgent"];
 // Where an Adaptive combo is expected to fill, as a share of the way from the net-credit mid to the worst case (buy the ask, sell the bid).
 const expectedSpreadConcession: Record<AdaptivePriority, number> = { Patient: 0, Normal: 0.5, Urgent: 1 };
@@ -117,18 +117,18 @@ export function RollSignalOrderSetupForm({ symbol, signals, roll, unscoredReplac
       : null;
   const commissionPreview = useOrderCommissionPreview(commissionPreviewLegs);
 
-  // The Signals-tab blocking limits, re-checked against the backend with the roll rule (only the
+  // The blocking order limits, re-checked against the backend with the roll rule (only the
   // strike difference adds notional). Cosmetic: POST /orders/:id/confirm is the real gate.
-  const [signalLimitsResult, setSignalLimitsResult] = useState<{ blocked: boolean; reasons: string[] } | null>(null);
+  const [orderLimitsResult, setOrderLimitsResult] = useState<OrderLimitsResult | null>(null);
   const limitsDebounceRef = useRef<number | null>(null);
   useEffect(() => {
     if (limitsDebounceRef.current !== null) window.clearTimeout(limitsDebounceRef.current);
     limitsDebounceRef.current = window.setTimeout(() => {
       // No spot price: a roll's notional never uses it (only the strike difference counts), and passing it re-ran the check on every price tick.
-      checkSignalOrderLimits({ symbol, strategyKey: held.strategyKey, quantity, strike: target.strike, rollFromStrike: held.strike })
-        .then(setSignalLimitsResult)
-        .catch(() => setSignalLimitsResult(null));
-    }, signalOrderLimitsDebounceMs);
+      checkOrderLimits({ symbol, strategyKey: held.strategyKey, quantity, strike: target.strike, rollFromStrike: held.strike })
+        .then(setOrderLimitsResult)
+        .catch(() => setOrderLimitsResult(null));
+    }, orderLimitsDebounceMs);
     return () => {
       if (limitsDebounceRef.current !== null) window.clearTimeout(limitsDebounceRef.current);
     };
@@ -139,7 +139,7 @@ export function RollSignalOrderSetupForm({ symbol, signals, roll, unscoredReplac
     ...(held.mid === null ? ["The held leg has no live two-sided quote right now."] : []),
     ...(replacementTwoSided ? [] : ["The new contract has no two-sided quote right now."]),
     ...[describeNonLiveQuoteBlock("The leg you hold", held.quoteSource), describeNonLiveQuoteBlock("The new contract", target.quoteSource)].filter((reason): reason is string => reason !== null),
-    ...(signalLimitsResult?.blocked ? signalLimitsResult.reasons : []),
+    ...(orderLimitsResult?.blocked ? orderLimitsResult.reasons : []),
   ];
 
   async function handleReviewOrder() {

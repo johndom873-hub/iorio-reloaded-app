@@ -194,19 +194,21 @@ export interface TickerSignals {
 
 /**
  * Why a scored ticker has no candidates. "filtered": contracts were scorable but every one failed the
- * Signals tab filters (min yield / max delta). "nothing_scorable": no contract got that far.
+ * Signals filters (min yield / delta band). "nothing_scorable": no contract got that far.
  */
 export interface SignalsNoCandidatesReason {
   kind: "filtered" | "nothing_scorable";
   surfaceFitRejectedExpiries: string[];
   spansEarningsExpiries: string[];
   earningsDateIso: string | null;
+  belowMinDeltaCount: number;
   aboveMaxDeltaCount: number;
   belowMinYieldCount: number;
   /** Highest annualised yield (%) among contracts that reached the yield check; null if none did. */
   bestAnnualizedYieldPct: number | null;
   minAnnualizedYieldPct: number;
-  maxNetDelta: number;
+  deltaTargetMin: number;
+  deltaTargetMax: number;
 }
 
 export type SignalsScreenRow = Omit<TickerSignals, "candidates" | "rolls">;
@@ -422,7 +424,7 @@ export interface SignalsChain {
 
 export interface SignalContractContext {
   right: "C" | "P";
-  /** Passes today's Signals tab filters too (it is one of the modal's candidates). */
+  /** Passes today's Signals filters too (it is one of the modal's candidates). */
   isCandidate: boolean;
   /** Why it is not a candidate (or not scored); null for a candidate. */
   notCandidateReason: string | null;

@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import { ApiError } from "../api/client";
 import { buildOpenOrder, type AdaptivePriority, type OrderRequest } from "../api/positions";
 import type { SignalCandidate, TickerSignals } from "../api/signals";
-import { checkSignalOrderLimits } from "../api/signalSettings";
+import { checkOrderLimits } from "../api/orderChecks";
 import { FLASH_DURATION_MS, flashClassName, useFlashOnChange } from "../hooks/useFlashOnChange";
 import { computePayoff } from "../lib/payoff";
 import { formatCurrency, formatDate, formatPercentage, formatSignedPercentageValue, formatSignedPnl, formatVolatilityPoints } from "../lib/formatters";
@@ -10,7 +10,7 @@ import { describeCandidate, describeNonLiveQuoteBlock, describeSignalFlag, grade
 import { Spinner } from "./Spinner";
 import { OrderCommissionRows } from "./OrderCommissionRows";
 import { toIbkrExpiry, useOrderCommissionPreview } from "../hooks/useOrderCommissionPreview";
-import type { CommissionPreviewLeg } from "../api/signalSettings";
+import type { CommissionPreviewLeg, OrderLimitsResult } from "../api/orderChecks";
 import { useTooltip } from "../hooks/useTooltip";
 
 // Signals order setup (stage 5, approved 2026-09-22). This is only the "form" half -- it builds the order
@@ -22,7 +22,7 @@ import { useTooltip } from "../hooks/useTooltip";
 // snapshot saved with the order for Phase 2.
 
 export const decayWarningVolatilityPoints = 1;
-const signalOrderLimitsDebounceMs = 400;
+const orderLimitsDebounceMs = 400;
 const adaptivePriorities: AdaptivePriority[] = ["Patient", "Normal", "Urgent"];
 // Where an Adaptive order is expected to fill, as a share of the way from the mid to the bid.
 // A buy-write (shares + call in one combo) takes no Adaptive: it rests at its net limit, built
@@ -126,21 +126,21 @@ export function SignalOrderSetupForm({ symbol, signals, candidate, spotPrice, ne
           { legType: "option", optionType: isCall ? "call" : "put", entryPrice: String(candidate.bid), strikePrice: String(candidate.strike), quantity, multiplier: 100 },
         ]);
 
-  // The three Signals-tab blocking limits (max position %, max concentration per ticker %, min cash
+  // The blocking limits (max position %, max exposure per ticker %, min cash
   // reserve %) depend on the chosen contract quantity and live portfolio state, so they're re-checked
   // against the backend (debounced) rather than read off candidate.flags, which is fixed at generation
   // time. This is cosmetic only -- POST /orders/:id/confirm re-evaluates the same check server-side and
   // is the real enforcement point, so a failed/slow check here fails open rather than blocking the UI.
-  const [signalLimitsResult, setSignalLimitsResult] = useState<{ blocked: boolean; reasons: string[] } | null>(null);
+  const [orderLimitsResult, setOrderLimitsResult] = useState<OrderLimitsResult | null>(null);
   const limitsDebounceRef = useRef<number | null>(null);
   useEffect(() => {
     if (limitsDebounceRef.current !== null) window.clearTimeout(limitsDebounceRef.current);
     limitsDebounceRef.current = window.setTimeout(() => {
       // Spot only matters to a covered call's share shortfall; a put's check ignores it and would otherwise re-run on every price tick.
-      checkSignalOrderLimits({ symbol, strategyKey: candidate.strategyKey, quantity, strike: candidate.strike, spotPrice: isCall ? spotPrice : null })
-        .then(setSignalLimitsResult)
-        .catch(() => setSignalLimitsResult(null));
-    }, signalOrderLimitsDebounceMs);
+      checkOrderLimits({ symbol, strategyKey: candidate.strategyKey, quantity, strike: candidate.strike, spotPrice: isCall ? spotPrice : null })
+        .then(setOrderLimitsResult)
+        .catch(() => setOrderLimitsResult(null));
+    }, orderLimitsDebounceMs);
     return () => {
       if (limitsDebounceRef.current !== null) window.clearTimeout(limitsDebounceRef.current);
     };
@@ -149,7 +149,7 @@ export function SignalOrderSetupForm({ symbol, signals, candidate, spotPrice, ne
   const blockingReasons = [
     ...[describeNonLiveQuoteBlock("This contract", candidate.quoteSource)].filter((reason): reason is string => reason !== null),
     ...(insufficientCashFlagged ? ["Not enough free cash to secure this put."] : []),
-    ...(signalLimitsResult?.blocked ? signalLimitsResult.reasons : []),
+    ...(orderLimitsResult?.blocked ? orderLimitsResult.reasons : []),
   ];
 
   async function handleReviewOrder() {

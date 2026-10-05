@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { previewOrderCommission, type CommissionPreviewLeg, type OrderCommissionPreview } from "../api/signalSettings";
+import { previewOrderCommission, type CommissionPreviewLeg, type OrderCommissionPreview } from "../api/orderChecks";
 
 const commissionPreviewDebounceMs = 400;
 

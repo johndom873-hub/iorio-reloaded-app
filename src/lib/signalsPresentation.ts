@@ -90,7 +90,7 @@ function describeExpiryGroup(expiriesIso: string[]): string {
 
 /**
  * Why a scored ticker shows no candidates, as one line for the tooltip and modal. Filtered (approved 2026-09-28):
- * best yield vs the minimum, plus the max-delta count if any. Nothing scorable: which expiries dropped and why.
+ * best yield vs the minimum, plus the below-min and above-max delta counts if any. Nothing scorable: which expiries dropped and why.
  */
 export function describeNoCandidatesReason(reason: SignalsNoCandidatesReason): string {
   if (reason.kind === "filtered") {
@@ -98,8 +98,11 @@ export function describeNoCandidatesReason(reason: SignalsNoCandidatesReason): s
     if (reason.belowMinYieldCount > 0 && reason.bestAnnualizedYieldPct !== null) {
       parts.push(`Best annualised yield ${formatPercentageValue(reason.bestAnnualizedYieldPct, 1)} vs the ${formatPercentageValue(reason.minAnnualizedYieldPct, 0)} minimum`);
     }
+    if (reason.belowMinDeltaCount > 0) {
+      parts.push(`${pluralize(reason.belowMinDeltaCount, "contract", "contracts")} below the ${reason.deltaTargetMin.toFixed(2)} min delta`);
+    }
     if (reason.aboveMaxDeltaCount > 0) {
-      parts.push(`${pluralize(reason.aboveMaxDeltaCount, "contract", "contracts")} above the ${reason.maxNetDelta.toFixed(2)} max delta`);
+      parts.push(`${pluralize(reason.aboveMaxDeltaCount, "contract", "contracts")} above the ${reason.deltaTargetMax.toFixed(2)} max delta`);
     }
     return parts.join(" · ");
   }

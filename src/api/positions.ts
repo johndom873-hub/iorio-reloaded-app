@@ -304,9 +304,9 @@ export interface OrderLegQuoteCompliance {
   reason: string | null;
 }
 
-// Signals-tab position/concentration/cash-reserve limits (approved
-// 2026-09-24) -- non-null only for an order built from the Signals order
-// setup flow, re-evaluated periodically server-side (not every tick).
+// Position/exposure/cash-reserve limits (approved 2026-09-24) -- non-null for
+// any opening or rolling order, re-evaluated periodically server-side (not
+// every tick).
 export interface OrderLegQuoteSignalLimits {
   blocked: boolean;
   reasons: string[];

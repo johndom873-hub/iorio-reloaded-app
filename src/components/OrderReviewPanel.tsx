@@ -184,7 +184,7 @@ export function OrderReviewPanel({ order: initialOrder, initialAdaptivePriority,
 
   // Streams for as long as the panel stays open (approved 2026-08-27,
   // replacing a fetch-once snapshot) -- every tick recomputes Ann. Yield
-  // below and, for an opening order, a live delta-vs-strategy-band
+  // below and, for an opening order, a live delta-band
   // compliance verdict that gates Confirm. Only orders with an option leg
   // have anything to quote (a lone stock leg never does).
   useEffect(() => {
@@ -235,10 +235,10 @@ export function OrderReviewPanel({ order: initialOrder, initialAdaptivePriority,
         : !quote.compliance || quote.compliance.compliant
           ? null
           : quote.compliance.reason;
-  // Signals-tab position/concentration/cash-reserve limits (approved 2026-09-24) -- signalLimits is
-  // only ever non-null for a Signals-originated order, evaluated independently of the delta band above.
-  const signalLimitsBlockReason = quote?.signalLimits?.blocked ? quote.signalLimits.reasons.join(" ") : null;
-  const complianceBlockReason = [deltaComplianceBlockReason, signalLimitsBlockReason].filter((reason): reason is string => reason !== null).join(" ") || null;
+  // Position/exposure/cash-reserve limits (approved 2026-09-24) -- signalLimits is
+  // non-null for any opening or rolling order, evaluated independently of the delta band above.
+  const orderLimitsBlockReason = quote?.signalLimits?.blocked ? quote.signalLimits.reasons.join(" ") : null;
+  const complianceBlockReason = [deltaComplianceBlockReason, orderLimitsBlockReason].filter((reason): reason is string => reason !== null).join(" ") || null;
 
   // Recomputed from the live quote (approved 2026-08-27) so this doesn't
   // freeze at the yield shown when the order was first built -- the same

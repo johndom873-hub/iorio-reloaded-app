@@ -2,122 +2,33 @@ import { apiRequest, apiBaseUrl } from "./client";
 import { openMultiplexedStream } from "./streamMultiplexer";
 import type { StrategyKey } from "./strategy";
 
-export interface StrategySettings {
-  id: string;
-  strategyKey: StrategyKey;
-  deltaTargetMin: string;
-  deltaTargetMax: string;
-  // covered_call only — governs delta selection instead of
-  // deltaTargetMin/Max when the account already owns enough shares of the
-  // ticker to write a real covered call against. Null for cash_secured_put.
-  deltaTargetMinExistingPosition: string | null;
-  deltaTargetMaxExistingPosition: string | null;
-  dteTargetMin: number;
-  dteTargetMax: number;
-  maxPositionPctOfPortfolio: string;
-  maxAggregateCollateralPct: string;
-  maxConcentrationPerTickerPct: string;
-  maxConcentrationPerSectorPct: string;
-  minCashReservePct: string;
+/**
+ * The one set of trading limits (backend table trading_settings). The three limits that block an order, the
+ * delta band, the Recovery Path expiry window, the Signals minimum yield and the commission warning threshold.
+ * Percentages are 0-100; deltas are absolute values between 0 and 1; expiry window is whole days.
+ */
+export interface TradingSettings {
+  maxPositionPctOfPortfolio: number;
+  maxConcentrationPerTickerPct: number;
+  minCashReservePct: number;
+  deltaTargetMin: number;
+  deltaTargetMax: number;
+  recoveryDteMin: number;
+  recoveryDteMax: number;
+  minAnnualizedYieldPct: number;
+  commissionWarnSharePctOfPremium: number;
   updatedAt: string;
   updatedByDisplayName: string | null;
 }
 
-// Backend columns are snake_case; this app's convention elsewhere is
-// server-side camelCase mapping (see screener.ts's raw SELECT aliases), but
-// this route returns the row as-is from Knex, so map here instead.
-function mapSettingsRow(row: Record<string, unknown>): StrategySettings {
-  return {
-    id: row.id as string,
-    strategyKey: row.strategy_key as StrategyKey,
-    deltaTargetMin: row.delta_target_min as string,
-    deltaTargetMax: row.delta_target_max as string,
-    deltaTargetMinExistingPosition: (row.delta_target_min_existing_position as string | null) ?? null,
-    deltaTargetMaxExistingPosition: (row.delta_target_max_existing_position as string | null) ?? null,
-    dteTargetMin: row.dte_target_min as number,
-    dteTargetMax: row.dte_target_max as number,
-    maxPositionPctOfPortfolio: row.max_position_pct_of_portfolio as string,
-    maxAggregateCollateralPct: row.max_aggregate_collateral_pct as string,
-    maxConcentrationPerTickerPct: row.max_concentration_per_ticker_pct as string,
-    maxConcentrationPerSectorPct: row.max_concentration_per_sector_pct as string,
-    minCashReservePct: row.min_cash_reserve_pct as string,
-    updatedAt: row.updated_at as string,
-    updatedByDisplayName: (row.updated_by_display_name as string | null) ?? null,
-  };
+export type TradingSettingsInput = Omit<TradingSettings, "updatedAt" | "updatedByDisplayName">;
+
+export function fetchTradingSettings(): Promise<TradingSettings> {
+  return apiRequest<TradingSettings>("/risk-limits/settings");
 }
 
-export async function fetchStrategySettings(): Promise<StrategySettings[]> {
-  const rows = await apiRequest<Record<string, unknown>[]>("/risk-limits/settings");
-  return rows.map(mapSettingsRow);
-}
-
-export interface StrategySettingsInput {
-  deltaTargetMin: number;
-  deltaTargetMax: number;
-  // Required for covered_call, omitted for cash_secured_put.
-  deltaTargetMinExistingPosition?: number;
-  deltaTargetMaxExistingPosition?: number;
-  dteTargetMin: number;
-  dteTargetMax: number;
-  maxPositionPctOfPortfolio: number;
-  maxAggregateCollateralPct: number;
-  maxConcentrationPerTickerPct: number;
-  maxConcentrationPerSectorPct: number;
-  minCashReservePct: number;
-}
-
-/** Saves both strategies in one transaction (PUT /risk-limits/settings) — the Risk & Limits form's save (2026-09-24). */
-export async function updateAllStrategySettings(inputs: Partial<Record<StrategyKey, StrategySettingsInput>>): Promise<StrategySettings[]> {
-  const body: Record<string, unknown> = {};
-  for (const [strategyKey, input] of Object.entries(inputs)) {
-    if (!input) continue;
-    body[strategyKey] = toSettingsBody(input);
-  }
-  const rows = await apiRequest<Record<string, unknown>[]>("/risk-limits/settings", { method: "PUT", body: JSON.stringify(body) });
-  return rows.map(mapSettingsRow);
-}
-
-function toSettingsBody(input: StrategySettingsInput): Record<string, number> {
-  return {
-    delta_target_min: input.deltaTargetMin,
-    delta_target_max: input.deltaTargetMax,
-    ...(input.deltaTargetMinExistingPosition !== undefined && { delta_target_min_existing_position: input.deltaTargetMinExistingPosition }),
-    ...(input.deltaTargetMaxExistingPosition !== undefined && { delta_target_max_existing_position: input.deltaTargetMaxExistingPosition }),
-    dte_target_min: input.dteTargetMin,
-    dte_target_max: input.dteTargetMax,
-    max_position_pct_of_portfolio: input.maxPositionPctOfPortfolio,
-    max_aggregate_collateral_pct: input.maxAggregateCollateralPct,
-    max_concentration_per_ticker_pct: input.maxConcentrationPerTickerPct,
-    max_concentration_per_sector_pct: input.maxConcentrationPerSectorPct,
-    min_cash_reserve_pct: input.minCashReservePct,
-  };
-}
-
-export async function updateStrategySettings(
-  strategyKey: StrategyKey,
-  input: StrategySettingsInput,
-): Promise<StrategySettings> {
-  const row = await apiRequest<Record<string, unknown>>(`/risk-limits/settings/${strategyKey}`, {
-    method: "PUT",
-    body: JSON.stringify({
-      delta_target_min: input.deltaTargetMin,
-      delta_target_max: input.deltaTargetMax,
-      ...(input.deltaTargetMinExistingPosition !== undefined && {
-        delta_target_min_existing_position: input.deltaTargetMinExistingPosition,
-      }),
-      ...(input.deltaTargetMaxExistingPosition !== undefined && {
-        delta_target_max_existing_position: input.deltaTargetMaxExistingPosition,
-      }),
-      dte_target_min: input.dteTargetMin,
-      dte_target_max: input.dteTargetMax,
-      max_position_pct_of_portfolio: input.maxPositionPctOfPortfolio,
-      max_aggregate_collateral_pct: input.maxAggregateCollateralPct,
-      max_concentration_per_ticker_pct: input.maxConcentrationPerTickerPct,
-      max_concentration_per_sector_pct: input.maxConcentrationPerSectorPct,
-      min_cash_reserve_pct: input.minCashReservePct,
-    }),
-  });
-  return mapSettingsRow(row);
+export function updateTradingSettings(input: TradingSettingsInput): Promise<TradingSettings> {
+  return apiRequest<TradingSettings>("/risk-limits/settings", { method: "PUT", body: JSON.stringify(input) });
 }
 
 export interface AccountSummary {

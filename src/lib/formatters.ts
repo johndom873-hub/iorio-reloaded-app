@@ -328,6 +328,11 @@ export function formatBarsAsYears(dailyBarCount: number): string {
   return `${(dailyBarCount / tradingDaysPerYear).toFixed(1)}y`;
 }
 
+/** A number as the text of an editable input: up to decimalPlaces decimals, no trailing zeros, no thousands separators (2.5 stays "2.5", 20 stays "20"). */
+export function formatInputNumber(value: number, decimalPlaces = 2): string {
+  return String(Number(value.toFixed(decimalPlaces)));
+}
+
 export function formatNumber(value: number | string | null | undefined, maximumFractionDigits = 0): string {
   if (value === null || value === undefined) return "—";
   const numericValue = typeof value === "string" ? Number(value) : value;
