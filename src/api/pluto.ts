@@ -90,7 +90,6 @@ export interface PlutoSettings {
   windowEndEt: string;
   dailyLossBreakerPct: number;
   spyStressBreakerPct: number;
-  unfilledCancelMinutes: number;
   maxEdgeDriftVp: number;
   tickerCooldownMinutes: number;
   maxFillSlippagePct: number;
@@ -144,7 +143,7 @@ export interface PlutoGateResult {
 }
 
 export type PlutoActionKind = "open_covered_call" | "open_cash_secured_put" | "roll" | "close_shares" | "close_leg" | "no_trade";
-export type PlutoActionOutcome = "validated" | "blocked" | "order_built" | "confirmed" | "filled" | "partially_filled" | "cancelled" | "rejected" | "error" | "no_trade";
+export type PlutoActionOutcome = "validated" | "blocked" | "order_built" | "confirmed" | "filled" | "partially_filled" | "cancelled" | "cancelled_partially_filled" | "rejected" | "error" | "no_trade";
 
 export interface PlutoAction {
   id: string;

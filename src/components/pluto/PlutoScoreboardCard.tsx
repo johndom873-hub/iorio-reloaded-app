@@ -19,7 +19,7 @@ function Figure({ label, value, sub }: { label: string; value: React.ReactNode; 
 
 /** Cumulative record since the first pass: is Pluto making money, and does it think like the Edge $ ranking. */
 export function PlutoScoreboardCard({ scoreboard, error }: PlutoScoreboardCardProps) {
-  const filled = (scoreboard?.outcomes.filled ?? 0) + (scoreboard?.outcomes.partially_filled ?? 0);
+  const filled = (scoreboard?.outcomes.filled ?? 0) + (scoreboard?.outcomes.partially_filled ?? 0) + (scoreboard?.outcomes.cancelled_partially_filled ?? 0);
   const sent = filled + (scoreboard?.outcomes.cancelled ?? 0) + (scoreboard?.outcomes.rejected ?? 0) + (scoreboard?.outcomes.error ?? 0) + (scoreboard?.outcomes.confirmed ?? 0);
   const decided = scoreboard ? scoreboard.modelVsTopPick.agree + scoreboard.modelVsTopPick.disagree : 0;
   return (

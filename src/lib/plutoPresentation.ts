@@ -79,7 +79,7 @@ export function describePlutoEvent(event: PlutoEvent): PlutoTimelineEntry {
       return { badgeClass: "bg-success-lt", badgeLabel: "order confirmed", line: text(payload.description) || symbol, reason: null };
     case "order_outcome": {
       const outcome = text(payload.outcome);
-      const good = outcome === "filled" || outcome === "partially_filled";
+      const good = outcome === "filled" || outcome === "partially_filled" || outcome === "cancelled_partially_filled";
       return { badgeClass: good ? "bg-success text-white" : outcome === "cancelled" ? "bg-secondary-lt" : "bg-danger-lt", badgeLabel: humanizeKey(outcome).toLowerCase(), line: `${symbol}${payload.fillPrice ? ` · avg fill ${Number(payload.fillPrice).toFixed(2)}` : ""}`, reason: text(payload.error) || text(payload.reason) || null };
     }
     case "paused":
@@ -147,6 +147,7 @@ export function plutoOutcomeBadgeClass(outcome: PlutoActionOutcome): string {
   switch (outcome) {
     case "filled":
     case "partially_filled":
+    case "cancelled_partially_filled":
       return "bg-success text-white";
     case "confirmed":
     case "order_built":
@@ -167,6 +168,7 @@ export function plutoOutcomeBadgeClass(outcome: PlutoActionOutcome): string {
 
 export function plutoOutcomeLabel(outcome: PlutoActionOutcome): string {
   if (outcome === "confirmed") return "working";
+  if (outcome === "cancelled_partially_filled") return "partly filled, rest cancelled";
   return humanizeKey(outcome).toLowerCase();
 }
 
