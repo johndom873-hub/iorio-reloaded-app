@@ -22,7 +22,7 @@ import {
   IconMoon,
   IconReceipt2,
   IconShieldCheck,
-  IconPlanet,
+  IconPaw,
   IconSun,
   IconTrendingUp,
 } from "@tabler/icons-react";
@@ -43,7 +43,7 @@ const navigationItems = [
   { to: "/trade-blotter", label: "Trade Blotter", icon: IconReceipt2 },
   { to: "/calendar", label: "Calendar", icon: IconCalendarEvent },
   { to: "/risk-limits", label: "Risk & Limits", icon: IconShieldCheck },
-  { to: "/pluto", label: "Pluto", icon: IconPlanet },
+  { to: "/pluto", label: "Pluto", icon: IconPaw },
   { to: "/system-health", label: "System Health", icon: IconHeartRateMonitor },
 ];
 

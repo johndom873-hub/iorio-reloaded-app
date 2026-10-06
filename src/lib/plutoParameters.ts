@@ -120,7 +120,7 @@ export const plutoParameterGroups: PlutoParameterGroup[] = [
     summary: (settings) => `Day Signals every ${settings.daySignalsPollSeconds} s · ${settings.perTickerModelCooldownMinutes} min per-ticker model cooldown · up to ${settings.maxEnabledTickers} tickers`,
     parameters: [
       { field: "daySignalsPollSeconds", label: "Day Signals poll", unit: "s", kind: "integer", step: "1", help: "How often Pluto checks Day Signals for contracts quoted since its last analysis." },
-      { field: "burstLines", label: "Burst lines", unit: "lines", kind: "integer", step: "1", help: "IBKR market-data lines reserved for a short quote burst on the ticker being evaluated." },
+      { field: "burstLines", label: "Burst lines", unit: "lines", kind: "integer", step: "1", help: "Most option contracts Pluto quotes live in one short burst before deciding on a ticker. Their IBKR lines are booked only while the burst runs." },
       { field: "burstSettleSeconds", label: "Burst settle", unit: "s", kind: "integer", step: "1", help: "How long a burst waits for quotes before scoring." },
       { field: "perTickerModelCooldownMinutes", label: "Per-ticker model cooldown", unit: "min", kind: "integer", step: "1", help: "The model is not asked about the same ticker again within this time." },
       { field: "maxEnabledTickers", label: "Max allowed tickers", unit: "tickers", kind: "integer", step: "1", help: "Cap on Shortlist tickers Pluto may trade; each holds one IBKR market-data line." },
