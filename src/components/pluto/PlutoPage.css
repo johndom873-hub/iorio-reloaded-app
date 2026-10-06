@@ -238,6 +238,9 @@ a.pm-b:hover, button.pm-b.link:hover { text-decoration: underline; }
 .pm-feed li { display: grid; grid-template-columns: 44px 10px minmax(0, 1fr); gap: 10px; padding: 8px 18px; align-items: start; }
 .pm-feed li + li { border-top: 1px solid var(--border-soft); }
 .pm-feed time { font-size: 12.5px; color: var(--muted); font-variant-numeric: tabular-nums; padding-top: 1px; }
+/* "12:59 PM" needs more room than "12:59"; the column stays one width per feed so the dots line up. */
+.pm-feed.h12 li { grid-template-columns: 64px 10px minmax(0, 1fr); }
+.pm-feed time { white-space: nowrap; }
 .pm-feed .ev-dot { width: 8px; height: 8px; border-radius: 50%; margin-top: 6px; background: var(--muted); display: block; }
 .ev-dot.order { background: #0ea5e9; }
 .ev-dot.fill { background: #2fb344; }

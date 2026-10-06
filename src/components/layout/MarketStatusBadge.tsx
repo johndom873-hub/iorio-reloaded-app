@@ -15,7 +15,7 @@ const SESSION_HOURS_TEXT = "Pre-market 4:00–9:30 AM, regular session 9:30 AM�
 
 /** Top-bar badge for the US equity session: state on the left, live countdown to the next change on the right. */
 export function MarketStatusBadge({ status }: { status: MarketStatus | null }) {
-  const now = useTickingNow(null);
+  const now = useTickingNow(null, [status?.nextChangeAt]);
   const tooltipRef = useTooltip<HTMLSpanElement>(status ? `${status.exchanges.join(" · ")}. ${SESSION_HOURS_TEXT}` : undefined);
   if (!status) return null;
   const { label, countdownVerb } = stateDisplay[status.state];

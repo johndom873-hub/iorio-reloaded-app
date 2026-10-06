@@ -130,7 +130,15 @@ export function formatCompactDollarsTrimmed(amountInDollars: number | null | und
 }
 
 /** "4 h 10 min" / "25 min" — the time until an instant, in words; "0 min" once it has passed. */
+/** Seconds left when the target is under a minute away, else null: countdowns switch to seconds for their last minute. */
+function secondsLeftInLastMinute(targetIso: string, now: Date): number | null {
+  const secondsLeft = Math.max(0, Math.ceil((new Date(targetIso).getTime() - now.getTime()) / 1000));
+  return secondsLeft < 60 ? secondsLeft : null;
+}
+
 export function formatHoursMinutesUntil(targetIso: string, now: Date = new Date()): string {
+  const seconds = secondsLeftInLastMinute(targetIso, now);
+  if (seconds !== null) return `${seconds} s`;
   const totalMinutes = Math.max(0, Math.round((new Date(targetIso).getTime() - now.getTime()) / 60_000));
   const hours = Math.floor(totalMinutes / 60);
   const minutes = totalMinutes % 60;
@@ -219,6 +227,30 @@ export function easternIsoDate(dateInput: string | Date): string {
 export function formatEasternTime(isoTimestamp: string): string {
   const time = new Intl.DateTimeFormat("en-US", { timeZone: "America/New_York", hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).format(new Date(isoTimestamp));
   return `${time} ET`;
+}
+
+/** Clock time in the viewer's own timezone, in the browser locale's own 12- or 24-hour style, e.g. "8:23 PM" or "20:23". */
+export function formatBrowserClockTime(dateInput: string | Date): string {
+  const date = typeof dateInput === "string" ? new Date(dateInput) : dateInput;
+  return new Intl.DateTimeFormat(undefined, { hour: "numeric", minute: "2-digit" }).format(date);
+}
+
+/** Date and time in the viewer's own timezone and locale style, with the zone named, e.g. "Oct 6, 2026, 8:23 PM GMT+8". */
+export function formatBrowserDateTimeWithZone(dateInput: string | Date): string {
+  const date = typeof dateInput === "string" ? new Date(dateInput) : dateInput;
+  return new Intl.DateTimeFormat(undefined, { year: "numeric", month: "short", day: "numeric", hour: "numeric", minute: "2-digit", timeZoneName: "short" }).format(date);
+}
+
+/** Whether the browser's locale writes clock times with AM/PM (wider than a 24-hour "20:23"). */
+export function browserUsesTwelveHourClock(): boolean {
+  const hourCycle = new Intl.DateTimeFormat(undefined, { hour: "numeric" }).resolvedOptions().hourCycle;
+  return hourCycle === "h11" || hourCycle === "h12";
+}
+
+/** The viewer's own calendar date ("YYYY-MM-DD") an instant falls on. */
+export function browserLocalIsoDate(dateInput: string | Date): string {
+  const date = typeof dateInput === "string" ? new Date(dateInput) : dateInput;
+  return new Intl.DateTimeFormat("en-CA", { year: "numeric", month: "2-digit", day: "2-digit" }).format(date);
 }
 
 /** When a snapshot was captured, as short as the day allows: the Eastern clock time ("10:03 ET") if it was today, else the Eastern date ("Sep 30"). */
@@ -495,6 +527,8 @@ export function formatDuration(
 
 /** Time left until `targetIso` as "2d 14h", "6h 12m" or "14m" (the top-bar market countdown). Minute resolution, never negative. */
 export function formatCountdownUntil(targetIso: string, now: Date = new Date()): string {
+  const seconds = secondsLeftInLastMinute(targetIso, now);
+  if (seconds !== null) return `${seconds}s`;
   const totalMinutes = Math.max(0, Math.round((new Date(targetIso).getTime() - now.getTime()) / 60_000));
   const days = Math.floor(totalMinutes / 1440);
   const hours = Math.floor((totalMinutes % 1440) / 60);

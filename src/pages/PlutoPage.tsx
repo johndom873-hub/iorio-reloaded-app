@@ -93,7 +93,7 @@ export function PlutoPage() {
   const [scoreboard, setScoreboard] = useState<PlutoScoreboard | null>(null);
   const [scoreboardError, setScoreboardError] = useState<string | null>(null);
 
-  const now = useTickingNow(state?.lastPassAt ?? state?.updatedAt ?? null);
+  const now = useTickingNow(state?.lastPassAt ?? state?.updatedAt ?? null, [state?.session.windowStartAt, state?.session.windowEndAt]);
 
   const loadState = useCallback(async () => {
     try {
