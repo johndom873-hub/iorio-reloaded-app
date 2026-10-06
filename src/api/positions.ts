@@ -464,6 +464,10 @@ export interface UnrealizedPnlResult {
   // deltas), so it's null whenever live pricing is unavailable even if
   // unrealizedPnl itself fell back to a snapshot.
   stockMarketValue: number | null;
+  // The position's underlying stock price (last trade), for every strategy:
+  // priced beside the legs, so positions with no stock leg tick too. null until
+  // the stock has a quote.
+  underlyingPrice: number | null;
   // Set only when unrealizedPnl came from the last nightly snapshot instead
   // of a live IBKR quote (outside market hours) — the date that snapshot
   // was captured. null when unrealizedPnl is live, or when neither a live
