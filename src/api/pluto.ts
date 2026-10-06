@@ -19,6 +19,30 @@ export interface PlutoSession {
   windowStartEt: string;
   windowEndEt: string;
   cancelByEt: string;
+  /** Instants (ISO) of today's window and close, for countdowns in the viewer's clock. */
+  windowStartAt: string;
+  windowEndAt: string;
+  closeAt: string;
+}
+
+/** One of Pluto's orders IBKR may still be working (or still on its way there). */
+export interface PlutoWorkingOrder {
+  actionId: string;
+  orderRequestId: string;
+  symbol: string;
+  kind: PlutoActionKind;
+  contract: PlutoActionContract | null;
+  quantity: number | null;
+  limitPrice: number | null;
+  status: string;
+  createdAt: string;
+}
+
+export interface PlutoOrdersToday {
+  sent: number;
+  filled: number;
+  working: number;
+  blocked: number;
 }
 
 /** The pluto_state row as the mutation routes (mode, pause, resume, breaker reset) return it. */
@@ -42,18 +66,30 @@ export interface PlutoStateCore {
 /** GET /pluto/state: the row plus everything the screen's header and tiles need. */
 export interface PlutoState extends PlutoStateCore {
   blockReason: string | null;
-  orders: { working: number; unsent: number };
+  /** The latest switch on/off: who and when (from the event log). */
+  modeChangedAt: string | null;
+  modeChangedBy: string | null;
+  orders: { working: number; pending: number };
+  ordersToday: PlutoOrdersToday;
+  workingOrders: PlutoWorkingOrder[];
+  /** The platform's unfilled-order sweep cancels an order resting this long at IBKR (0 = never). */
+  unfilledCancelMinutes: number;
   counters: { actionsToday: number; modelCallsToday: number; costTodayUsd: number; maxActionsPerSession: number; dailyCostCeilingUsd: number };
   enabledTickers: { count: number; max: number };
   session: PlutoSession;
+  /** The newest analysis's pre-model checks: what holds Pluto back between analyses (worker offline, SPY stress…). */
+  lastChecks: { passId: string; startedAt: string; checks: Record<string, PlutoSystemCheck> } | null;
   book: {
     committedDollars: number;
     openPositionCount: number;
     openSymbols: string[];
     workingOrderSymbols: string[];
+    openPositionsBySymbol: Record<string, number>;
+    workingOrdersBySymbol: Record<string, number>;
     netLiquidationValue: number | null;
     netLiquidationValueAsOf: string | null;
     capitalBudgetPct: number;
+    orderSizePctOfBudget: number;
     maxOpenPositions: number;
   };
   agent: { connected: boolean; heartbeatAgeSeconds: number; gitSha: string | null; appEnvironment: string | null } | null;
@@ -68,7 +104,7 @@ export interface PlutoSettings {
   maxSectorExposurePct: number;
   maxOpenPositions: number;
   maxActionsPerSession: number;
-  maxOrderNotionalPct: number;
+  orderSizePctOfBudget: number;
   minCashReservePct: number;
   minGrade: "strong" | "good" | "weak";
   minEdgeDollars: number;
@@ -100,10 +136,9 @@ export interface PlutoSettings {
   confidenceFloor: number;
   consecutiveModelFailuresBreaker: number;
   promptVersion: string;
-  spotMoveTriggerPct: number;
+  daySignalsPollSeconds: number;
   burstLines: number;
   burstSettleSeconds: number;
-  coalescingWindowSeconds: number;
   perTickerModelCooldownMinutes: number;
   maxEnabledTickers: number;
   messageRateLimitPerSecond: number;
@@ -143,13 +178,27 @@ export interface PlutoGateResult {
 export type PlutoActionKind = "open_covered_call" | "open_cash_secured_put" | "roll" | "close_shares" | "close_leg" | "no_trade";
 export type PlutoActionOutcome = "validated" | "blocked" | "order_built" | "confirmed" | "filled" | "partially_filled" | "cancelled" | "cancelled_partially_filled" | "rejected" | "error" | "no_trade";
 
+/** What an action trades: an open's contract, a roll's replacement (plus the held leg it replaces), a close's leg or shares. */
+export interface PlutoActionContract {
+  strategyKey?: string;
+  expiry?: string;
+  strike?: number;
+  right?: "C" | "P";
+  legId?: string;
+  /** Rolls: the held leg being replaced. */
+  fromStrike?: number;
+  fromExpiry?: string;
+  positionId?: string;
+  legIds?: string[];
+}
+
 export interface PlutoAction {
   id: string;
   passId: string;
   kind: PlutoActionKind;
   symbol: string;
   tickerId: string | null;
-  contract: { strategyKey?: string; expiry?: string; strike?: number; legId?: string; positionId?: string; legIds?: string[] } | null;
+  contract: PlutoActionContract | null;
   candidateScores: Record<string, unknown> | null;
   deterministicTopPick: { id: string; edgeDollars: number; netEdge: number; grade: string } | null;
   gateResults: PlutoGateResult[];
@@ -166,6 +215,8 @@ export interface PlutoAction {
   /** Two-part orders only: the option's price implied by the net fill, with the other part at the price Pluto set. */
   impliedFillPrice: number | null;
   pessimisticPnl: number | null;
+  /** EXP $ the order adds (negative when a close releases exposure), as Positions counts it; null without an order. */
+  exposureDollars: number | null;
   /** Derived at read time from the legs this action opened (or closed, when a human opened them); null while none has closed. */
   realizedPnl: number | null;
   closedLegCount: number;
@@ -175,23 +226,27 @@ export interface PlutoAction {
   updatedAt: string;
 }
 
+/** The model's parsed answer, stored as the schema names it (snake_case). */
 export interface PlutoDecisionOutput {
   decision: "trade" | "no_trade" | "abstain";
-  actionKind?: string | null;
-  candidateId?: string | null;
-  sizeTier?: "full" | "half" | null;
+  action_kind?: string | null;
+  candidate_id?: string | null;
   confidence?: number;
   reasons?: string[];
-  risksAcknowledged?: string[];
-  systemConcerns?: string[];
+  risks_acknowledged?: string[];
+  system_concerns?: string[];
 }
 
 export interface PlutoPassDecision {
   callIndex: number;
   servedModelId: string | null;
+  /** OpenRouter service tier that served the call (default / flex / priority). */
+  serviceTier: string | null;
   parsedOutput: PlutoDecisionOutput | null;
   schemaValid: boolean;
   latencyMs: number | null;
+  tokensIn: number | null;
+  tokensOut: number | null;
   costUsd: number | null;
   error: string | null;
 }
@@ -211,6 +266,7 @@ export interface PlutoPass {
   tokensOut: number | null;
   costUsd: number | null;
   servedModelIds: string[];
+  promptVersion: string | null;
   decisions: PlutoPassDecision[];
   actions: PlutoAction[];
 }

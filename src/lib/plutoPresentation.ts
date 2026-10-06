@@ -1,41 +1,12 @@
-import type { PlutoAction, PlutoActionOutcome, PlutoEvent, PlutoPass } from "../api/pluto";
-import { formatDate, formatExpiryWithDte } from "./formatters";
+import type { PlutoAction, PlutoActionContract, PlutoActionKind, PlutoActionOutcome, PlutoEvent, PlutoPass, PlutoState, PlutoSystemCheck, PlutoWorkingOrder } from "../api/pluto";
+import { plutoParameterLabelByField } from "./plutoParameters";
+import { daysToExpiry, easternIsoDate, formatCurrency, formatDayMonth, formatEasternTime, formatRelativeAge, formatRelativeTime, formatDateTime, todayInEasternIso } from "./formatters";
 
-// Presentation rules for Pluto's ledger (timeline events, actions, passes). Pure functions so the
-// screen components stay declarative and the wording is unit-testable.
-
-export interface PlutoTimelineEntry {
-  badgeClass: string;
-  badgeLabel: string;
-  line: string;
-  reason: string | null;
-}
+// Presentation rules for the Pluto screen (redesign approved 2026-10-06): one status at a time, plain-language
+// wording for orders, decisions and the activity feed. Pure functions so the components stay declarative.
 
 function text(value: unknown): string {
   return value === null || value === undefined ? "" : String(value);
-}
-
-/** Heroku release "v212" stays as is; a bare git SHA is shortened to 7 characters. */
-function shortRelease(value: unknown): string {
-  const release = text(value);
-  return /^[0-9a-f]{40}$/.test(release) ? release.slice(0, 7) : release;
-}
-
-function joined(value: unknown): string | null {
-  return Array.isArray(value) && value.length > 0 ? value.map(String).join(" ") : null;
-}
-
-export function describeCandidateId(candidateId: string | null | undefined): string {
-  if (!candidateId) return "—";
-  // SYM:strategy:expiry:strike | SYM:roll:legId:expiry:strike
-  const parts = candidateId.split(":");
-  if (parts.length === 4) {
-    const [symbol, strategy, expiry, strike] = parts;
-    const right = strategy === "covered_call" ? "C" : strategy === "cash_secured_put" ? "P" : "";
-    return `${symbol} $${strike}${right} ${formatDate(expiry)}`;
-  }
-  if (parts.length === 5 && parts[1] === "roll") return `${parts[0]} roll → $${parts[4]} ${formatDate(parts[3]!)}`;
-  return candidateId;
 }
 
 /** "trading_halt" → "Trading halt" */
@@ -44,154 +15,606 @@ export function humanizeKey(key: string): string {
   return spaced.charAt(0).toUpperCase() + spaced.slice(1);
 }
 
-export function describePlutoEvent(event: PlutoEvent): PlutoTimelineEntry {
+// ---------- Status (the control bar) ----------
+
+export type PlutoStatusKind = "off" | "stopped" | "offline" | "paused" | "held" | "waiting" | "running";
+
+export interface PlutoStatus {
+  kind: PlutoStatusKind;
+  label: string;
+  headline: string;
+  subline: string;
+  /** Held: the problem Pluto is waiting on, shown under the control bar. */
+  holdAlert: { title: string; text: string } | null;
+}
+
+/** Heartbeat rows are written every 45 s; three missed beats means the program is not responding. */
+export const agentNotRespondingAfterSeconds = 150;
+
+const checksThatHoldPluto: Record<string, string> = {
+  trading_worker: "The trading worker is offline",
+  account_data: "Account data is unavailable",
+  reconciliation: "Positions haven't been reconciled recently",
+  trading_halt: "Trading is halted platform-wide",
+  session_close: "Today's session close is unknown",
+  actions_cap: "Daily order limit reached",
+  cost_ceiling: "Daily model spend ceiling reached",
+  model_failures: "Repeated model failures",
+};
+
+function workingOrdersPhrase(state: PlutoState): string {
+  const count = state.workingOrders.length;
+  if (count === 0) return "No working orders";
+  const first = state.workingOrders[0]!;
+  return count === 1 ? `1 order still working (${first.symbol})` : `${count} orders still working (${state.workingOrders.map((order) => order.symbol).join(", ")})`;
+}
+
+function checksAreFromToday(state: PlutoState): boolean {
+  return state.lastChecks !== null && easternIsoDate(state.lastChecks.startedAt) === todayInEasternIso();
+}
+
+export function derivePlutoStatus(state: PlutoState, now: Date, crashLoopRestarts: number | null): PlutoStatus {
+  const when = (iso: string | null) => (iso ? formatRelativeTime(iso) ?? formatDateTime(iso) : "");
+  if (state.mode === "off") {
+    const working = state.workingOrders.length;
+    if (working > 0) {
+      const first = state.workingOrders[0]!;
+      return { kind: "off", label: "Off", headline: `Pluto is off — ${working === 1 ? "1 order it placed is" : `${working} orders it placed are`} still working`, subline: `${describeWorkingOrderLine(first, state, now)}`, holdAlert: null };
+    }
+    const by = state.modeChangedBy ? ` by ${state.modeChangedBy}` : "";
+    return { kind: "off", label: "Off", headline: "Pluto is off — it isn't analysing signals or placing orders", subline: state.modeChangedAt ? `Turned off${by} · ${formatDateTime(state.modeChangedAt)}` : "Switch it on to let it analyse and trade the allowed tickers", holdAlert: null };
+  }
+  if (Object.keys(state.breakers).length > 0) {
+    return { kind: "stopped", label: "Stopped", headline: "A safety breaker tripped — Pluto is stopped until someone resets it", subline: workingOrdersPhrase(state), holdAlert: null };
+  }
+  const heartbeatAge = state.agent?.heartbeatAgeSeconds ?? null;
+  if (heartbeatAge === null || heartbeatAge > agentNotRespondingAfterSeconds) {
+    const working = state.workingOrders.length;
+    return {
+      kind: "offline",
+      label: "Not responding",
+      headline: "Pluto's program isn't responding — nothing is being analysed",
+      subline: `${heartbeatAge === null ? "No sign of life yet" : `Last sign of life ${formatRelativeAge(new Date(now.getTime() - heartbeatAge * 1000), now)} (normally every 45 s)`}${working > 0 ? ` · ${working === 1 ? "1 order" : `${working} orders`} still working at IBKR` : ""}`,
+      holdAlert: null,
+    };
+  }
+  if (state.paused) {
+    if (state.pauseReason === "deploy") return { kind: "paused", label: "Paused", headline: "Paused after an update — the new version hasn't traded yet", subline: `Updated ${when(state.pausedAt)} · resume once you're happy with it`, holdAlert: null };
+    if (state.pauseReason === "crash_loop") return { kind: "paused", label: "Paused", headline: `Paused — Pluto restarted ${crashLoopRestarts === null ? "too often" : `${crashLoopRestarts} times`} in the last hour`, subline: "Check what went wrong before resuming", holdAlert: null };
+    const by = state.pausedByDisplayName ? ` by ${state.pausedByDisplayName}` : "";
+    const working = state.workingOrders.length;
+    return { kind: "paused", label: "Paused", headline: `Paused${by} ${when(state.pausedAt)}`.trim(), subline: working > 0 ? `${workingOrdersPhrase(state)} — a plain pause leaves working orders alone` : "Resume when you're ready; working orders were left alone", holdAlert: null };
+  }
+  if (state.agent && !state.agent.connected) {
+    return { kind: "held", label: "Held", headline: "On, but can't place orders right now", subline: "Starts again by itself once the problem below clears", holdAlert: { title: "Pluto's IBKR connection is down", text: "Quotes and orders can't flow until it reconnects." } };
+  }
+  if (checksAreFromToday(state)) {
+    const failing = Object.entries(state.lastChecks!.checks).find(([name, check]) => !check.ok && name in checksThatHoldPluto);
+    if (failing) {
+      const [name, check] = failing;
+      return { kind: "held", label: "Held", headline: "On, but can't place orders right now", subline: "Starts again by itself once the problem below clears", holdAlert: { title: checksThatHoldPluto[name]!, text: check.detail } };
+    }
+  }
+  const session = state.session;
+  const windowStart = new Date(session.windowStartAt).getTime();
+  const windowEnd = new Date(session.windowEndAt).getTime();
+  if (!session.isOpen) return { kind: "waiting", label: "Waiting", headline: "Market closed today — nothing to analyse", subline: `Window ${session.windowStartEt}–${session.windowEndEt} ET on trading days`, holdAlert: null };
+  if (now.getTime() < windowStart) return { kind: "waiting", label: "Waiting", headline: `Outside the trading window — starts analysing at ${session.windowStartEt} ET`, subline: `Window ${session.windowStartEt}–${session.windowEndEt} ET · market closes ${session.closeTimeEt}`, holdAlert: null };
+  if (now.getTime() >= windowEnd) return { kind: "waiting", label: "Waiting", headline: `Trading window closed at ${session.windowEndEt} ET — done for today`, subline: `Starts again tomorrow at ${session.windowStartEt} ET`, holdAlert: null };
+  const tickers = state.enabledTickers.count;
+  return {
+    kind: "running",
+    label: "Running",
+    headline: "Actively evaluating trading signals",
+    subline: `Analyses every Day Signals update on the ${tickers} allowed ${tickers === 1 ? "ticker" : "tickers"} · last analysis ${state.lastPassAt ? formatRelativeAge(state.lastPassAt, now) : "not yet today"}`,
+    holdAlert: null,
+  };
+}
+
+/** SPY's day change and whether it is currently blocking new positions, from the newest analysis's checks. */
+export function spyStressFromState(state: PlutoState): { blocking: boolean; spyDayChangePct: number | null; detail: string } | null {
+  if (!checksAreFromToday(state)) return null;
+  const check = state.lastChecks!.checks.market_stress;
+  if (!check) return null;
+  const match = check.detail.match(/SPY ([-+]?\d+(?:\.\d+)?)%/);
+  return { blocking: !check.ok, spyDayChangePct: match ? Number(match[1]) : null, detail: check.detail };
+}
+
+/** "8 min" / "45 s" / "2 h" — how long ago, the way the boards write it. */
+export function formatAgeInWords(iso: string, now: Date): string {
+  const seconds = Math.max(0, Math.floor((now.getTime() - new Date(iso).getTime()) / 1000));
+  if (seconds < 60) return `${seconds} s`;
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `${minutes} min`;
+  const hours = Math.floor(minutes / 60);
+  return hours < 24 ? `${hours} h` : `${Math.floor(hours / 24)} d`;
+}
+
+/** Gate and check details come from the agent in lower case; the screen starts them with a capital. */
+export function sentenceCase(detail: string): string {
+  return detail.charAt(0).toUpperCase() + detail.slice(1);
+}
+
+/** The pre-model checks in the order the agent runs them (Postgres stores the JSON keys in its own order). */
+export const systemCheckOrder = ["pluto_state", "trading_halt", "market_session", "session_close", "trading_window", "trading_worker", "account_data", "daily_loss", "cost_ceiling", "actions_cap", "reconciliation", "model_failures", "market_stress"];
+
+export function orderedChecks(checks: Record<string, PlutoSystemCheck> | null): [string, PlutoSystemCheck][] {
+  const rank = (name: string) => { const index = systemCheckOrder.indexOf(name); return index === -1 ? systemCheckOrder.length : index; };
+  return Object.entries(checks ?? {}).sort((a, b) => rank(a[0]) - rank(b[0]));
+}
+
+// ---------- Orders ----------
+
+export type PlutoStrategyBadge = { className: "cc" | "csp" | "ns"; label: "CC" | "CSP" | "N/S" };
+
+export function strategyBadgeFor(kind: PlutoActionKind, contract: PlutoActionContract | null): PlutoStrategyBadge {
+  const strategy = contract?.strategyKey ?? (kind === "open_covered_call" ? "covered_call" : kind === "open_cash_secured_put" ? "cash_secured_put" : null);
+  if (kind === "close_shares") return { className: "ns", label: "N/S" };
+  if (strategy === "covered_call") return { className: "cc", label: "CC" };
+  if (strategy === "cash_secured_put") return { className: "csp", label: "CSP" };
+  return { className: "ns", label: "N/S" };
+}
+
+function rightWord(contract: PlutoActionContract | null): string {
+  if (contract?.right) return contract.right === "C" ? "call" : "put";
+  return contract?.strategyKey === "covered_call" ? "call" : "put";
+}
+
+function strikeText(strike: number | undefined): string {
+  return strike === undefined ? "?" : `$${Number.isInteger(strike) ? strike : strike.toFixed(2).replace(/\.?0+$/, "")}`;
+}
+
+/** The contract cell: a title and a sub-line ("$24 put · 17 Oct" / "Sell to open · 11 days"). */
+export function describeOrderContract(action: { kind: PlutoActionKind; contract: PlutoActionContract | null; quantity: number | null; createdAt: string }): { title: string; sub: string | null } {
+  const contract = action.contract;
+  if (action.kind === "close_shares") return { title: `Sell ${action.quantity ?? "?"} shares`, sub: "Close unstructured shares" };
+  if (action.kind === "close_leg") return { title: contract?.expiry ? `Buy back ${strikeText(contract.strike)} ${rightWord(contract)} · ${formatDayMonth(contract.expiry)}` : "Buy back", sub: "Buy back to close" };
+  if (action.kind === "roll") {
+    const title = `Roll ${strikeText(contract?.fromStrike)} → ${strikeText(contract?.strike)} ${rightWord(contract)}`;
+    const sub = contract?.fromExpiry && contract.expiry ? `${formatDayMonth(contract.fromExpiry)} → ${formatDayMonth(contract.expiry)} · net credit` : "net credit";
+    return { title, sub };
+  }
+  if (action.kind === "no_trade") return { title: "No order", sub: null };
+  if (!contract?.expiry) return { title: "—", sub: null };
+  const dte = daysToExpiry(contract.expiry, action.createdAt);
+  return { title: `${strikeText(contract.strike)} ${rightWord(contract)} · ${formatDayMonth(contract.expiry)}`, sub: action.kind === "open_covered_call" ? `Buy-write · with ${(action.quantity ?? 0) * 100} shares` : `Sell to open · ${dte} ${dte === 1 ? "day" : "days"}` };
+}
+
+/** "HOOD sell 2× $24 put" — one line for the status card and the feed. */
+export function describeOrderShort(order: { symbol: string; kind: PlutoActionKind; contract: PlutoActionContract | null; quantity: number | null }): string {
+  const contract = order.contract;
+  const quantity = order.quantity ?? "?";
+  if (order.kind === "close_shares") return `${order.symbol} sell ${quantity} shares`;
+  if (order.kind === "close_leg") return `${order.symbol} buy back ${quantity}× ${strikeText(contract?.strike)} ${rightWord(contract)}`;
+  if (order.kind === "roll") return `${order.symbol} roll ${strikeText(contract?.fromStrike)} → ${strikeText(contract?.strike)} ${rightWord(contract)}`;
+  if (order.kind === "open_covered_call") return `${order.symbol} buy-write ${quantity}× ${strikeText(contract?.strike)} call`;
+  return `${order.symbol} sell ${quantity}× ${strikeText(contract?.strike)} ${rightWord(contract)}`;
+}
+
+/** When the platform's unfilled-order sweep will cancel a working order: creation plus the sweep's minutes, or the session's cancel-by if sooner. */
+export function workingOrderCancelAt(order: { createdAt: string }, state: Pick<PlutoState, "unfilledCancelMinutes" | "session">): Date | null {
+  const sweepAt = state.unfilledCancelMinutes > 0 ? new Date(order.createdAt).getTime() + state.unfilledCancelMinutes * 60_000 : null;
+  const sessionCancelAt = new Date(state.session.closeAt).getTime() - 5 * 60_000;
+  const at = sweepAt === null ? sessionCancelAt : Math.min(sweepAt, sessionCancelAt);
+  return Number.isFinite(at) ? new Date(at) : null;
+}
+
+export function describeWorkingOrderLine(order: PlutoWorkingOrder, state: Pick<PlutoState, "unfilledCancelMinutes" | "session">, now: Date): string {
+  const cancelAt = workingOrderCancelAt(order, state);
+  const age = formatAgeInWords(order.createdAt, now);
+  return `${describeOrderShort(order)} @ ${order.limitPrice?.toFixed(2) ?? "?"} · ${age}${cancelAt ? ` · cancels at ${formatEasternTime(cancelAt.toISOString()).replace(" ET", "")} if unfilled` : ""}`;
+}
+
+export type PlutoBadgeTone = "ok" | "bad" | "warn" | "info" | "neutral";
+
+export interface PlutoOutcomePresentation {
+  tone: PlutoBadgeTone;
+  label: string;
+  /** Second line under the badge (why it was blocked, how a partial fill ended…). */
+  sub: string | null;
+  /** The badge links to the order in the Trade Blotter. */
+  linksToOrder: boolean;
+}
+
+/** Model cost as the screen shows it: four decimals with trailing zeros dropped ("$0.0003", "$0.09"). */
+export function formatModelCost(costUsd: number | null | undefined): string {
+  return formatCurrency(costUsd ?? 0, 4).replace(/0+$/, "").replace(/\.$/, ".00").replace(/\.(\d)$/, ".$10");
+}
+
+export function describeOutcome(action: PlutoAction, now: Date, state: Pick<PlutoState, "unfilledCancelMinutes" | "session"> | null): PlutoOutcomePresentation {
+  const outcome: PlutoActionOutcome = action.outcome;
+  switch (outcome) {
+    case "confirmed":
+    case "order_built": {
+      const cancelAt = state ? workingOrderCancelAt(action, state) : null;
+      return { tone: "info", label: `Working · ${formatAgeInWords(action.createdAt, now)}`, sub: cancelAt ? `Cancels at ${formatEasternTime(cancelAt.toISOString()).replace(" ET", "")} if unfilled` : null, linksToOrder: true };
+    }
+    case "filled":
+      return { tone: "ok", label: "Filled", sub: null, linksToOrder: true };
+    case "partially_filled":
+      return { tone: "ok", label: "Partly filled", sub: "Still working for the rest", linksToOrder: true };
+    case "cancelled_partially_filled":
+      return { tone: "ok", label: "Partly filled", sub: "Rest cancelled", linksToOrder: true };
+    case "cancelled":
+      return { tone: "neutral", label: "Cancelled", sub: action.blockReason ?? "Unfilled", linksToOrder: true };
+    case "rejected":
+      return { tone: "bad", label: "Rejected", sub: action.blockReason ?? "IBKR refused the order", linksToOrder: true };
+    case "error":
+      return { tone: "bad", label: "Error", sub: action.blockReason, linksToOrder: Boolean(action.orderRequestId) };
+    case "blocked":
+      return { tone: "warn", label: "Blocked", sub: describeBlockReason(action), linksToOrder: false };
+    case "validated":
+      return { tone: "info", label: "Sending", sub: null, linksToOrder: false };
+    default:
+      return { tone: "neutral", label: "No order", sub: null, linksToOrder: false };
+  }
+}
+
+/** The failed gates' details in plain words ("Edge moved 1.4 vp after the model decided (limit 1.0)"). */
+export function describeBlockReason(action: PlutoAction): string | null {
+  const failed = action.gateResults.filter((gate) => !gate.ok);
+  if (failed.length > 0) return sentenceCase(failed.map((gate) => gate.detail).join(" · "));
+  return action.blockReason ? sentenceCase(action.blockReason) : null;
+}
+
+export function gatesPassedLabel(action: PlutoAction): { label: string; allPassed: boolean } {
+  if (action.gateResults.length === 0) return { label: action.kind === "close_shares" && action.outcome !== "blocked" ? "auto" : "—", allPassed: true };
+  const passed = action.gateResults.filter((gate) => gate.ok).length;
+  return { label: `${passed}/${action.gateResults.length}`, allPassed: passed === action.gateResults.length };
+}
+
+export function formatExposure(amount: number | null | undefined): string {
+  if (amount === null || amount === undefined) return "—";
+  const rounded = Math.round(amount);
+  return rounded < 0 ? `−${formatCurrency(-rounded, 0)}` : formatCurrency(rounded, 0);
+}
+
+/** Today's orders (Eastern), the Live tab's table; no-trade rows are decisions, not orders. */
+export function isTodaysOrder(action: PlutoAction): boolean {
+  return action.kind !== "no_trade" && easternIsoDate(action.createdAt) === todayInEasternIso();
+}
+
+/** The orders table's columns (Live: today's; History: every order), keyed for the column gear. */
+export type PlutoOrdersVariant = "today" | "history";
+
+export interface PlutoOrderColumn {
+  key: string;
+  header: string;
+  /** Full text for an abbreviated header, shown on hover. */
+  title?: string;
+  align?: "right";
+}
+
+export const plutoOrderColumns: Record<PlutoOrdersVariant, PlutoOrderColumn[]> = {
+  today: [
+    { key: "time", header: "Time" },
+    { key: "ticker", header: "Ticker" },
+    { key: "strategy", header: "Strategy" },
+    { key: "contract", header: "Contract" },
+    { key: "qty", header: "Qty", align: "right" },
+    { key: "limit", header: "Limit", align: "right" },
+    { key: "fill", header: "Fill", align: "right" },
+    { key: "exp", header: "EXP $", title: "Exposure the order adds, as Positions counts it", align: "right" },
+    { key: "status", header: "Status" },
+    { key: "gates", header: "Gates", align: "right" },
+  ],
+  history: [
+    { key: "time", header: "When" },
+    { key: "ticker", header: "Ticker" },
+    { key: "strategy", header: "Strategy" },
+    { key: "contract", header: "Contract" },
+    { key: "qty", header: "Qty", align: "right" },
+    { key: "limit", header: "Limit", align: "right" },
+    { key: "fill", header: "Fill", align: "right" },
+    { key: "exp", header: "EXP $", title: "Exposure the order added (filled quantity), or would add while working, as Positions counts it", align: "right" },
+    { key: "status", header: "Outcome" },
+    { key: "realized", header: "Realized", align: "right" },
+    { key: "pessimistic", header: "Pessimistic", title: "Fills versus the worse side of the market the order was placed into", align: "right" },
+    { key: "gates", header: "Gates", align: "right" },
+  ],
+};
+
+// ---------- Decisions ----------
+
+export function describeCandidateId(candidateId: string | null | undefined): string {
+  if (!candidateId) return "—";
+  // SYM:strategy:expiry:strike | SYM:roll:legId:expiry:strike | SYM:close_leg:legId | SYM:close_shares:positionId
+  const parts = candidateId.split(":");
+  if (parts.length === 4 && (parts[1] === "covered_call" || parts[1] === "cash_secured_put")) {
+    const [symbol, strategy, expiry, strike] = parts;
+    return `${symbol} $${strike} ${strategy === "covered_call" ? "call" : "put"} · ${formatDayMonth(expiry!)}`;
+  }
+  if (parts.length === 5 && parts[1] === "roll") return `${parts[0]} roll → $${parts[4]} ${formatDayMonth(parts[3]!)}`;
+  if (parts[1] === "close_leg") return `${parts[0]} buy back`;
+  if (parts[1] === "close_shares") return `${parts[0]} sell shares`;
+  return candidateId;
+}
+
+/** The model's verdict for a pass: the first schema-valid call's output (Pluto makes one call per decision). */
+export function passVerdict(pass: PlutoPass) {
+  const call = pass.decisions.find((decision) => decision.parsedOutput !== null) ?? pass.decisions[0] ?? null;
+  const output = call?.parsedOutput ?? null;
+  const action = pass.actions.find((entry) => entry.kind !== "no_trade") ?? null;
+  const topPick = pass.actions.find((entry) => entry.deterministicTopPick)?.deterministicTopPick ?? null;
+  const failed = call !== null && call.parsedOutput === null;
+  return { call, output, action, topPick, failed, error: call?.error ?? (failed ? "The model's answer could not be read" : null) };
+}
+
+export type PlutoVerdictKind = "order" | "no_order" | "failed";
+
+export function verdictKind(pass: PlutoPass): PlutoVerdictKind {
+  const { output, failed } = passVerdict(pass);
+  if (failed || !output) return "failed";
+  return output.decision === "trade" ? "order" : "no_order";
+}
+
+/** "Sell 2× HOOD $24 put, 17 Oct" — what the model chose, with the sized quantity once the gates set one. */
+export function describeChosenAction(pass: PlutoPass): string {
+  const { output, action } = passVerdict(pass);
+  if (!output || output.decision !== "trade") return output?.decision === "abstain" ? "Abstained — the data looked unreliable" : "Nothing worth trading";
+  const quantity = action?.quantity ? `${action.quantity}× ` : "";
+  const contractName = (action ? describeOrderContract(action).title : describeCandidateId(output.candidate_id)).replace(" · ", ", ");
+  const symbol = action?.symbol ?? output.candidate_id?.split(":")[0] ?? "";
+  if (action?.kind === "roll") return `${contractName.replace(/^Roll /, `Roll ${quantity}${symbol} `)}`;
+  if (action?.kind === "close_leg") return contractName.replace(/^Buy back /, `Buy back ${quantity}${symbol} `);
+  if (action?.kind === "close_shares") return `${symbol} ${contractName.toLowerCase()}`;
+  if (action?.kind === "open_covered_call") return `Buy-write ${quantity}${symbol} ${contractName}`;
+  return `Sell ${quantity}${symbol} ${contractName}`;
+}
+
+/** How the model's pick compares with the deterministic Edge $ top pick. */
+export function describeTopPickComparison(pass: PlutoPass): { tone: "ok" | "warn" | "muted"; text: string } {
+  const { output, topPick, action } = passVerdict(pass);
+  if (!output || output.decision !== "trade") return { tone: "muted", text: topPick ? `Top was ${describeCandidateId(topPick.id)}, $${Math.round(topPick.edgeDollars)}` : "No top pick" };
+  if (action && (action.kind === "roll" || action.kind === "close_leg" || action.kind === "close_shares")) return { tone: "muted", text: `No open top pick (${action.kind === "roll" ? "roll" : "close"})` };
+  if (!topPick) return { tone: "muted", text: "No top pick" };
+  if (topPick.id === output.candidate_id) return { tone: "ok", text: "Same pick" };
+  return { tone: "warn", text: `Differs · top was ${describeCandidateId(topPick.id).replace(/^[A-Z.]+ /, "")}` };
+}
+
+/** Why the analysis ran, as a short cell ("HOOD Day Signals update") or a clause ("after a Day Signals update on HOOD"). */
+export function describeTrigger(pass: Pick<PlutoPass, "trigger" | "triggerDetail">, form: "short" | "clause"): string {
+  const detail = pass.triggerDetail ?? {};
+  const symbols = Array.isArray(detail.symbols) ? (detail.symbols as string[]) : [];
+  const list = symbols.join(", ");
+  switch (pass.trigger) {
+    case "day_signals_update":
+      return form === "short" ? `Day Signals${list ? ` · ${list}` : " update"}` : `after a Day Signals update${list ? ` on ${list}` : ""}`;
+    case "grade_crossing":
+      return form === "short" ? `${list || "A"} grade changed` : `after a ${list || "contract"} grade changed`;
+    case "held_leg":
+      return form === "short" ? `Held ${list} leg changed` : `because the held ${list} leg's numbers changed`;
+    case "settings_changed":
+      return form === "short" ? "Settings changed" : "after the settings changed";
+    case "order_ended":
+      return form === "short" ? `${list} order ended` : `after its ${list} order ended`;
+    case "cooldown_ended":
+      return form === "short" ? `${list} cooldown ended` : `after the ${list} cooldown ended`;
+    case "position_closed":
+      return form === "short" ? "Position closed" : "after a position closed";
+    case "opening_analysis":
+      return form === "short" ? "Opening analysis" : "at the opening analysis";
+    case "manual":
+      return form === "short" ? "Started by hand" : "when started by hand";
+    default:
+      return form === "short" ? humanizeKey(pass.trigger) : `after ${humanizeKey(pass.trigger).toLowerCase()}`;
+  }
+}
+
+const checkLabels: Record<string, string> = {
+  pluto_state: "Pluto on, not paused",
+  trading_window: "Inside the trading window",
+  market_session: "Market session open",
+  session_close: "Session close known",
+  trading_worker: "Trading worker online",
+  account_data: "Account data fresh",
+  trading_halt: "No trading halt",
+  daily_loss: "Daily loss within limit",
+  actions_cap: "Orders under the daily limit",
+  cost_ceiling: "Model spend under the ceiling",
+  model_failures: "No recent model failures",
+  reconciliation: "Positions reconciled recently",
+  market_stress: "SPY not under stress",
+};
+
+export function checkLabel(name: string): string {
+  return checkLabels[name] ?? humanizeKey(name);
+}
+
+export function checksSummary(checks: Record<string, PlutoSystemCheck> | null): { passed: number; total: number } {
+  const entries = Object.values(checks ?? {});
+  return { passed: entries.filter((check) => check.ok).length, total: entries.length };
+}
+
+const gateLabels: Record<string, string> = {
+  verdict: "Verdict",
+  trade: "Verdict",
+  confidence_floor: "Confidence",
+  candidate_present: "Candidate offered",
+  candidate_fresh: "Still qualifies",
+  offer_fresh: "Still offered",
+  edge_drift: "Edge drift",
+  working_order: "Working order",
+  ticker_cooldown: "Ticker cooldown",
+  open_positions_cap: "Open positions",
+  sizing: "Sizing",
+  limit_price: "Limit price",
+  same_contract: "Same contract",
+  automatic_close: "Automatic close",
+};
+
+export function gateLabel(name: string): string {
+  return gateLabels[name] ?? humanizeKey(name);
+}
+
+export function checksAndGatesSummary(pass: PlutoPass): { checks: { passed: number; total: number }; gates: { passed: number; total: number } } {
+  const { action } = passVerdict(pass);
+  const gates = action?.gateResults ?? [];
+  return { checks: checksSummary(pass.systemChecks), gates: { passed: gates.filter((gate) => gate.ok).length, total: gates.length } };
+}
+
+// ---------- Activity feed and event log ----------
+
+export type PlutoFeedDot = "order" | "fill" | "warn" | "bad" | "model" | "ctl" | "look";
+
+export interface PlutoFeedEntry {
+  dot: PlutoFeedDot;
+  /** The bold lead ("Order sent"). */
+  title: string;
+  /** The rest of the first line, after the separator. */
+  detail: string | null;
+  sub: string | null;
+}
+
+/** Heroku release "v212" stays as is; a bare git SHA is shortened to 7 characters. */
+function shortRelease(value: unknown): string {
+  const release = text(value);
+  return /^[0-9a-f]{40}$/.test(release) ? release.slice(0, 7) : release;
+}
+
+function modelVerdictTitle(payload: Record<string, unknown>): string {
+  const verdict = text(payload.verdict);
+  if (verdict !== "trade") return verdict === "abstain" ? "Model: abstained" : "Model: no order";
+  switch (text(payload.actionKind)) {
+    case "roll":
+      return "Model: roll";
+    case "close_leg":
+      return "Model: buy back";
+    case "close_shares":
+      return "Model: close shares";
+    default:
+      return "Model: place order";
+  }
+}
+
+/** The actions the feed can name in plain words; without them the API's own order descriptions are reworded by pattern. */
+export interface PlutoFeedContext {
+  actionsById: Map<string, PlutoAction>;
+  actionsByPassId: Map<string, PlutoAction>;
+}
+
+export function buildFeedContext(actions: PlutoAction[]): PlutoFeedContext {
+  const actionsById = new Map<string, PlutoAction>();
+  const actionsByPassId = new Map<string, PlutoAction>();
+  for (const action of actions) {
+    actionsById.set(action.id, action);
+    if (action.kind !== "no_trade") actionsByPassId.set(action.passId, action);
+  }
+  return { actionsById, actionsByPassId };
+}
+
+/** "HOOD 2× $24P 2026-10-17 @ 0.62" (the agent's order description) → "HOOD sell 2× $24 put · 17 Oct @ 0.62". */
+export function humanizeOrderDescription(description: string): string {
+  const open = description.match(/^(\S+) (\d+)× \$(\S+?)([CP]) (\d{4}-\d{2}-\d{2}) @ ([\d.]+)$/);
+  if (open) return `${open[1]} ${open[4] === "C" ? "buy-write" : "sell"} ${open[2]}× $${open[3]} ${open[4] === "C" ? "call" : "put"} · ${formatDayMonth(open[5]!)} @ ${open[6]}`;
+  const roll = description.match(/^(\S+) roll (\d+)× \$(\S+) → \$(\S+) (\d{4}-\d{2}-\d{2}) @ ([\d.]+)$/);
+  if (roll) return `${roll[1]} roll ${roll[2]}× $${roll[3]} → $${roll[4]} · ${formatDayMonth(roll[5]!)} @ ${roll[6]}`;
+  const buyback = description.match(/^Buy back (\d+)× (\S+) \$(\S+?)([CP]) (\d{4}-\d{2}-\d{2}) at ~([\d.]+)/);
+  if (buyback) return `${buyback[2]} buy back ${buyback[1]}× $${buyback[3]} ${buyback[4] === "C" ? "call" : "put"} · ${formatDayMonth(buyback[5]!)} @ ${buyback[6]}`;
+  const shares = description.match(/^Sell (\d+) (\S+) shares .*?at ~([\d.]+)/);
+  if (shares) return `${shares[2]} sell ${shares[1]} shares @ ${shares[3]}`;
+  return description;
+}
+
+function orderLine(payload: Record<string, unknown>, context: PlutoFeedContext | undefined, price: number | null): string {
+  const action = context?.actionsById.get(text(payload.actionId));
+  if (action) return `${describeOrderShort(action)}${price !== null ? ` @ ${price.toFixed(2)}` : ""}`;
+  const description = text(payload.description);
+  return description ? humanizeOrderDescription(description) : text(payload.symbol);
+}
+
+export function describeFeedEvent(event: PlutoEvent, context?: PlutoFeedContext): PlutoFeedEntry {
   const payload = event.payload ?? {};
   const symbol = text(payload.symbol);
+  const by = text(payload.by);
   switch (event.type) {
-    case "agent_started":
-      return { badgeClass: "bg-secondary-lt", badgeLabel: "agent started", line: `release ${shortRelease(payload.release) || "unknown"} on ${text(payload.environment) || "unknown"}`, reason: null };
-    case "agent_stopped":
-      return { badgeClass: "bg-secondary-lt", badgeLabel: "agent stopped", line: text(payload.reason) || "clean stop", reason: null };
-    case "pass_started":
-      return { badgeClass: "bg-secondary-lt", badgeLabel: "pass", line: `${humanizeKey(text(payload.trigger))}${Array.isArray(payload.symbols) && payload.symbols.length > 0 ? ` on ${payload.symbols.join(", ")}` : ""}`, reason: null };
-    case "pass_skipped":
-      return { badgeClass: "bg-secondary-lt", badgeLabel: "skipped", line: `${humanizeKey(text(payload.trigger))}: ${text(payload.reason)}`, reason: null };
-    case "model_called": {
-      const served = Array.isArray(payload.servedModelIds) ? [...new Set(payload.servedModelIds.map(String))].join(", ") : "";
-      const verdict = text(payload.verdict);
-      return { badgeClass: "bg-azure-lt", badgeLabel: "model called", line: `2 calls · ${served || "model"} · $${Number(payload.costUsd ?? 0).toFixed(4)} · ${verdict === "trade" ? `trade ${describeCandidateId(text(payload.candidateId))}` : verdict}${payload.agreement ? ` · ${text(payload.agreement)}` : ""}`, reason: joined(payload.reasons) };
-    }
-    case "model_failed":
-      return { badgeClass: "bg-danger-lt", badgeLabel: "model failed", line: text(payload.error), reason: null };
-    case "no_trade": {
-      const topPick = payload.deterministicTopPick as { id?: string; edgeDollars?: number } | null;
-      return { badgeClass: "bg-secondary-lt", badgeLabel: "no trade", line: topPick?.id ? `Edge $ top pick was ${describeCandidateId(topPick.id)} ($${Math.round(topPick.edgeDollars ?? 0)})` : "nothing worth trading", reason: joined(payload.reasons) };
-    }
-    case "action_validated":
-      return { badgeClass: "bg-azure-lt", badgeLabel: "validated", line: `${symbol} ${describeCandidateId(text(payload.candidateId))} · quantity ${text(payload.quantity)} · limit ${Number(payload.limitPrice ?? 0).toFixed(2)}`, reason: joined(payload.reasons) };
-    case "action_blocked": {
-      const failed = Array.isArray(payload.failed) ? (payload.failed as { gate: string; detail: string }[]) : [];
-      return { badgeClass: "bg-warning-lt", badgeLabel: "blocked", line: `${symbol} ${payload.candidateId ? describeCandidateId(text(payload.candidateId)) : ""}: ${failed.length > 0 ? failed.map((gate) => gate.gate).join(", ") : text(payload.reason)}`, reason: failed.length > 0 ? failed.map((gate) => gate.detail).join(" · ") : null };
-    }
-    case "order_built":
-      return { badgeClass: "bg-azure-lt", badgeLabel: "order built", line: text(payload.description) || symbol, reason: null };
     case "order_confirmed":
-      return { badgeClass: "bg-success-lt", badgeLabel: "order confirmed", line: text(payload.description) || symbol, reason: null };
+      return { dot: "order", title: "Order sent", detail: orderLine(payload, context, context?.actionsById.get(text(payload.actionId))?.limitPrice ?? null), sub: null };
+    case "order_built":
+      return { dot: "order", title: "Order built", detail: orderLine(payload, context, context?.actionsById.get(text(payload.actionId))?.limitPrice ?? null), sub: null };
     case "order_outcome": {
       const outcome = text(payload.outcome);
-      const good = outcome === "filled" || outcome === "partially_filled" || outcome === "cancelled_partially_filled";
-      return { badgeClass: good ? "bg-success text-white" : outcome === "cancelled" ? "bg-secondary-lt" : "bg-danger-lt", badgeLabel: humanizeKey(outcome).toLowerCase(), line: `${symbol}${payload.fillPrice ? ` · avg fill ${Number(payload.fillPrice).toFixed(2)}` : ""}`, reason: text(payload.error) || text(payload.reason) || null };
+      const price = payload.fillPrice ? Number(payload.fillPrice) : null;
+      const what = orderLine(payload, context, price);
+      if (outcome === "filled") return { dot: "fill", title: "Filled", detail: what, sub: null };
+      if (outcome === "partially_filled" || outcome === "cancelled_partially_filled") return { dot: "fill", title: "Partly filled", detail: what, sub: outcome === "cancelled_partially_filled" ? "Rest cancelled" : null };
+      if (outcome === "cancelled") return { dot: "look", title: "Cancelled", detail: orderLine(payload, context, null), sub: text(payload.reason) || null };
+      return { dot: "bad", title: outcome === "rejected" ? "Rejected" : "Order error", detail: orderLine(payload, context, null), sub: text(payload.error) || text(payload.reason) || null };
     }
+    case "model_called": {
+      const trigger = describeTrigger({ trigger: text(payload.trigger), triggerDetail: (payload.triggerDetail as Record<string, unknown>) ?? {} }, "clause");
+      const confidence = payload.confidence !== undefined && payload.confidence !== null ? ` · confidence ${Number(payload.confidence).toFixed(2)}` : "";
+      const action = context?.actionsByPassId.get(text(payload.passId));
+      const chosen = action ? `${action.symbol} ${describeOrderContract(action).title.replace(/^Roll /, "").replace(/^Buy back /, "")}` : describeCandidateId(text(payload.candidateId));
+      return { dot: "model", title: modelVerdictTitle(payload), detail: text(payload.verdict) === "trade" ? chosen : null, sub: `Asked ${trigger}${confidence}` };
+    }
+    case "model_failed":
+      return { dot: "bad", title: "Model call failed", detail: null, sub: text(payload.error) || null };
+    case "no_trade": {
+      const topPick = payload.deterministicTopPick as { id?: string; edgeDollars?: number } | null;
+      return { dot: "look", title: "No order", detail: topPick?.id ? `Edge $ top pick was ${describeCandidateId(topPick.id)} ($${Math.round(topPick.edgeDollars ?? 0)})` : "nothing worth trading", sub: Array.isArray(payload.reasons) ? (payload.reasons as string[]).join(" ") : null };
+    }
+    case "action_validated":
+      return { dot: "look", title: "Order checks passed", detail: `${describeCandidateId(text(payload.candidateId))} · ${text(payload.quantity)}× @ ${Number(payload.limitPrice ?? 0).toFixed(2)}`, sub: null };
+    case "action_blocked": {
+      const failed = Array.isArray(payload.failed) ? (payload.failed as { gate: string; detail: string }[]) : [];
+      return { dot: "warn", title: "Blocked", detail: `${symbol}${payload.candidateId ? ` ${describeCandidateId(text(payload.candidateId)).replace(/^[A-Z.]+ /, "")}` : ""}`, sub: failed.length > 0 ? sentenceCase(failed.map((gate) => gate.detail).join(" · ")) : text(payload.reason) || null };
+    }
+    case "pass_started":
+      return { dot: "look", title: "Analysis", detail: describeTrigger({ trigger: text(payload.trigger), triggerDetail: { symbols: payload.symbols } }, "short"), sub: null };
+    case "pass_skipped":
+      return { dot: "look", title: "Analysis skipped", detail: describeTrigger({ trigger: text(payload.trigger), triggerDetail: {} }, "short"), sub: text(payload.reason) || null };
     case "paused":
-      return { badgeClass: "bg-warning text-white", badgeLabel: "paused", line: payload.by ? `by ${text(payload.by)}${payload.cancelWorkingOrders ? ` · cancel requested for ${text(payload.cancelRequested)} working order(s)` : ""}` : text(payload.reason) || humanizeKey(text(payload.kind)), reason: null };
+      if (by && by !== "agent") return { dot: "ctl", title: `Paused by ${by}`, detail: payload.cancelWorkingOrders ? `cancel requested for ${text(payload.cancelRequested)} working order${text(payload.cancelRequested) === "1" ? "" : "s"}` : null, sub: null };
+      if (text(payload.reason) === "deploy") return { dot: "ctl", title: "Paused after an update", detail: `${shortRelease(payload.to)}`, sub: "Resume once you're happy with the new version" };
+      if (text(payload.reason) === "crash_loop") return { dot: "warn", title: "Paused after repeated restarts", detail: `${text(payload.startsInLastHour)} in the last hour`, sub: null };
+      return { dot: "ctl", title: "Paused", detail: text(payload.reason) || null, sub: null };
     case "resumed":
-      return { badgeClass: "bg-success-lt", badgeLabel: "resumed", line: `by ${text(payload.by) || "an operator"}`, reason: null };
+      return { dot: "ctl", title: `Resumed by ${by || "an operator"}`, detail: null, sub: null };
     case "breaker_tripped":
-      return { badgeClass: "bg-danger text-white", badgeLabel: "breaker tripped", line: humanizeKey(text(payload.name)), reason: text(payload.detail) || null };
+      return { dot: "bad", title: `Breaker tripped · ${humanizeKey(text(payload.name)).toLowerCase()}`, detail: null, sub: text(payload.detail) || null };
     case "breaker_reset":
-      return { badgeClass: "bg-secondary-lt", badgeLabel: "breaker reset", line: `${humanizeKey(text(payload.name))} by ${text(payload.by) || "an operator"}`, reason: null };
+      return { dot: "ctl", title: `Breaker reset by ${by || "an operator"}`, detail: humanizeKey(text(payload.name)).toLowerCase(), sub: null };
     case "mode_changed":
-      return { badgeClass: text(payload.mode) === "on" ? "bg-success text-white" : "bg-secondary", badgeLabel: `mode ${text(payload.mode)}`, line: `by ${text(payload.by) || "an operator"}`, reason: null };
+      return { dot: "ctl", title: text(payload.mode) === "on" ? `Switched on by ${by || "an operator"}` : `Switched off by ${by || "an operator"}`, detail: null, sub: null };
     case "settings_changed": {
       const fields = Array.isArray(payload.fields) ? (payload.fields as { field: string; from: unknown; to: unknown }[]) : [];
-      return { badgeClass: "bg-secondary-lt", badgeLabel: "settings", line: `${text(payload.by) || "an operator"} changed ${fields.map((change) => `${change.field} ${text(change.from)} → ${text(change.to)}`).join(", ")}`, reason: null };
+      return { dot: "ctl", title: `Settings changed by ${by || "an operator"}`, detail: null, sub: fields.map((change) => `${plutoParameterLabelByField[change.field] ?? humanizeKey(change.field)} ${text(change.from)} → ${text(change.to)}`).join(" · ") || null };
     }
     case "ticker_enabled":
-      return { badgeClass: "bg-success-lt", badgeLabel: "ticker on", line: `${symbol} enabled by ${text(payload.by)}`, reason: null };
+      return { dot: "ctl", title: `${symbol} allowed`, detail: `by ${by || "an operator"}`, sub: null };
     case "ticker_disabled":
-      return { badgeClass: "bg-secondary-lt", badgeLabel: "ticker off", line: `${symbol} disabled by ${text(payload.by)}`, reason: null };
-    case "lines_changed":
-      return { badgeClass: "bg-secondary-lt", badgeLabel: "lines", line: `${text(payload.held)} IBKR line(s) held${payload.detail ? ` · ${text(payload.detail)}` : ""}${payload.reason ? ` · ${text(payload.reason)}` : ""}`, reason: null };
-    case "order_adopted":
-      return { badgeClass: "bg-warning-lt", badgeLabel: "order adopted", line: `${text(payload.description) || symbol} — still working ${text(payload.ageMinutes)} min after a restart, watch resumed`, reason: null };
+      return { dot: "ctl", title: `${symbol} switched off`, detail: `by ${by || "an operator"}`, sub: null };
     case "stress_override_changed":
-      return { badgeClass: payload.enabled ? "bg-warning text-white" : "bg-secondary-lt", badgeLabel: payload.enabled ? "stress override" : "override off", line: payload.enabled ? `${text(payload.by)} allowed new opens under SPY stress for ${text(payload.dateIso)}` : `${text(payload.by)} removed today's stress override`, reason: null };
+      return { dot: "ctl", title: payload.enabled ? `New positions allowed under SPY stress today by ${by}` : `Stress override removed by ${by}`, detail: null, sub: null };
+    case "lines_changed":
+      return { dot: "look", title: "IBKR market-data lines", detail: `${text(payload.held)} held`, sub: text(payload.detail) || text(payload.reason) || null };
     case "session_schedule":
-      return { badgeClass: "bg-secondary-lt", badgeLabel: "session", line: `closes ${text(payload.closeTimeEt) || "?"} ET today (IBKR liquid hours)`, reason: null };
+      return { dot: "look", title: "Session schedule", detail: `closes ${text(payload.closeTimeEt) || "?"} ET today`, sub: null };
+    case "order_adopted":
+      return { dot: "warn", title: "Order adopted after a restart", detail: orderLine(payload, context, null), sub: `Still working ${text(payload.ageMinutes)} min after the restart; watch resumed` };
+    case "agent_started":
+      return { dot: "ctl", title: "Pluto's program started", detail: `version ${shortRelease(payload.release) || "unknown"}`, sub: null };
+    case "agent_stopped":
+      return { dot: "ctl", title: "Pluto's program stopped", detail: text(payload.reason) || null, sub: null };
     case "warning":
-      return { badgeClass: "bg-warning-lt", badgeLabel: "warning", line: `${symbol ? `${symbol}: ` : ""}${text(payload.message)}`, reason: null };
+      return { dot: "warn", title: "Warning", detail: symbol || null, sub: text(payload.message) || null };
     default:
-      return { badgeClass: "bg-secondary-lt", badgeLabel: humanizeKey(event.type).toLowerCase(), line: JSON.stringify(payload), reason: null };
+      return { dot: "look", title: humanizeKey(event.type), detail: null, sub: JSON.stringify(payload) };
   }
 }
 
-export function plutoActionKindLabel(action: PlutoAction): string {
-  switch (action.kind) {
-    case "open_covered_call":
-      return "CC";
-    case "open_cash_secured_put":
-      return "CSP";
-    case "roll":
-      return "Roll";
-    case "close_shares":
-      return "Close shares";
-    case "close_leg":
-      return "Buy back";
-    default:
-      return "No trade";
-  }
+/** The Live tab's Activity feed leaves out the routine analysis bookkeeping the Event log keeps. */
+const feedHiddenEventTypes = new Set(["pass_started", "pass_skipped", "order_built", "action_validated", "no_trade", "lines_changed", "session_schedule"]);
+
+export function isActivityFeedEvent(event: PlutoEvent): boolean {
+  return !feedHiddenEventTypes.has(event.type);
 }
 
-export function describePlutoActionContract(action: PlutoAction): string {
-  const contract = action.contract;
-  if (!contract) return "—";
-  if (contract.strike !== undefined && contract.expiry) {
-    const right = contract.strategyKey === "covered_call" ? "C" : contract.strategyKey === "cash_secured_put" ? "P" : "";
-    return `$${contract.strike}${right} ${formatExpiryWithDte(contract.expiry)}`;
-  }
-  if (contract.legIds) return `${contract.legIds.length} leg(s)`;
-  return "—";
-}
-
-export function plutoOutcomeBadgeClass(outcome: PlutoActionOutcome): string {
-  switch (outcome) {
-    case "filled":
-    case "partially_filled":
-    case "cancelled_partially_filled":
-      return "bg-success text-white";
-    case "confirmed":
-    case "order_built":
-      return "bg-azure-lt";
-    case "validated":
-      return "bg-azure-lt";
-    case "blocked":
-      return "bg-warning-lt";
-    case "rejected":
-    case "error":
-      return "bg-danger text-white";
-    case "cancelled":
-      return "bg-secondary-lt";
-    default:
-      return "bg-secondary-lt";
-  }
-}
-
-export function plutoOutcomeLabel(outcome: PlutoActionOutcome): string {
-  if (outcome === "confirmed") return "working";
-  if (outcome === "cancelled_partially_filled") return "partly filled, rest cancelled";
-  return humanizeKey(outcome).toLowerCase();
-}
-
-export function gatesPassedLabel(action: PlutoAction): string {
-  if (action.gateResults.length === 0) return action.kind === "close_shares" && action.outcome !== "blocked" ? "auto" : "—";
-  return `${action.gateResults.filter((gate) => gate.ok).length} / ${action.gateResults.length}`;
-}
-
-/** The pass's agreed verdict for the Decisions card: the first schema-valid call's parsed output. */
-export function passVerdict(pass: PlutoPass) {
-  const first = pass.decisions.find((decision) => decision.parsedOutput !== null)?.parsedOutput ?? null;
-  const latencyMs = pass.decisions.reduce((max, decision) => Math.max(max, decision.latencyMs ?? 0), 0);
-  const topPick = pass.actions.find((action) => action.deterministicTopPick)?.deterministicTopPick ?? null;
-  const agreed = pass.decisions.length >= 2 && new Set(pass.decisions.map((decision) => `${decision.parsedOutput?.decision}:${decision.parsedOutput?.candidateId ?? ""}`)).size === 1;
-  return { output: first, latencyMs, topPick, agreed };
-}
-
-export function describePlutoTrigger(pass: PlutoPass): string {
-  const detail = pass.triggerDetail ?? {};
-  if (pass.trigger === "spot_move" && detail.symbol) return `${String(detail.symbol)} spot ${Number(detail.movePct ?? 0) >= 0 ? "+" : ""}${Number(detail.movePct ?? 0).toFixed(1)}%`;
-  if (pass.trigger === "settings_changed") return "settings changed";
-  if ((pass.trigger === "grade_crossing" || pass.trigger === "held_leg") && Array.isArray(detail.symbols) && detail.symbols.length > 0) return `${humanizeKey(pass.trigger).toLowerCase()} on ${(detail.symbols as string[]).join(", ")}`;
-  return humanizeKey(pass.trigger).toLowerCase();
+/** Restarts in the last hour from the newest crash-loop pause event, for the paused headline. */
+export function crashLoopRestartsFromEvents(events: PlutoEvent[]): number | null {
+  const pause = events.find((event) => event.type === "paused" && event.payload?.reason === "crash_loop");
+  return pause && typeof pause.payload.startsInLastHour === "number" ? pause.payload.startsInLastHour : null;
 }
 
 /** Why a two-part order's Fill shows a price implied by the net instead of IBKR's own figure for the option. */

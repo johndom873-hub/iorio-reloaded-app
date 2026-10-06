@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { ApiError } from "../api/client";
 import { openNotificationStream } from "../api/notifications";
 import {
@@ -9,7 +10,6 @@ import {
   fetchPlutoSettings,
   fetchPlutoSettingsAudit,
   fetchPlutoState,
-  fetchPlutoTickers,
   type PlutoAction,
   type PlutoEvent,
   type PlutoPass,
@@ -17,67 +17,83 @@ import {
   type PlutoSettings,
   type PlutoSettingsAuditRow,
   type PlutoState,
-  type PlutoTicker,
 } from "../api/pluto";
-import { PageHeader } from "../components/layout/PageHeader";
-import { PlutoActionsTable } from "../components/pluto/PlutoActionsTable";
-import { PlutoChecksBoard } from "../components/pluto/PlutoChecksBoard";
-import { PlutoScoreboardCard } from "../components/pluto/PlutoScoreboardCard";
-import { CollapsibleCard } from "../components/CollapsibleCard";
-import { describePlutoTrigger } from "../lib/plutoPresentation";
-import { formatFeedTime } from "../lib/formatters";
-import { PlutoControlCard } from "../components/pluto/PlutoControlCard";
-import { PlutoDecisions } from "../components/pluto/PlutoDecisions";
-import { PlutoParametersCard } from "../components/pluto/PlutoParametersCard";
-import { PlutoTickersCard } from "../components/pluto/PlutoTickersCard";
-import { PlutoTiles } from "../components/pluto/PlutoTiles";
-import { PlutoTimeline } from "../components/pluto/PlutoTimeline";
+import { fetchShortlist, type ShortlistRow } from "../api/shortlist";
+import { PlutoHistoryTab, type PlutoHistoryView } from "../components/pluto/PlutoHistoryTab";
+import { PlutoLiveTab } from "../components/pluto/PlutoLiveTab";
+import { PlutoSettingsTab } from "../components/pluto/PlutoSettingsTab";
+import { PlutoStatusCard } from "../components/pluto/PlutoStatusCard";
+import { PlutoTickersTab } from "../components/pluto/PlutoTickersTab";
 import { Spinner } from "../components/Spinner";
+import { useMediaQuery } from "../hooks/useMediaQuery";
 import { useSignalsTickerModal } from "../hooks/useSignalsTickerModal";
-import { todayInEasternIso } from "../lib/formatters";
+import { useTickingNow } from "../hooks/useTickingNow";
+import { crashLoopRestartsFromEvents, derivePlutoStatus } from "../lib/plutoPresentation";
+import "../components/pluto/PlutoPage.css";
+
+// The Pluto screen (redesign approved 2026-10-06): one status card that is always visible, then Live / History /
+// Tickers / Settings tabs. The tab and the History view live in the URL so the cards can link to each other.
+
+type PlutoTab = "live" | "history" | "tickers" | "settings";
+
+const tabs: { key: PlutoTab; label: string }[] = [
+  { key: "live", label: "Live" },
+  { key: "history", label: "History" },
+  { key: "tickers", label: "Tickers" },
+  { key: "settings", label: "Settings" },
+];
 
 const stateRefreshIntervalMs = 30_000;
 const notificationRefreshDebounceMs = 400;
+const actionsPageSize = 100;
+const passesPageSize = 30;
+const eventsPageSize = 200;
 
 function errorMessage(err: unknown, fallback: string): string {
   return err instanceof ApiError ? err.message : fallback;
 }
 
-/** SPY's day change as the agent last saw it: the newest pass today carries it in its market_stress check. */
-function spyDayChangeFromPasses(passes: PlutoPass[]): number | null {
-  const today = todayInEasternIso();
-  for (const pass of passes) {
-    if (!pass.startedAt.startsWith(today)) break;
-    const detail = pass.systemChecks?.market_stress?.detail ?? "";
-    const match = detail.match(/SPY ([-+]?\d+(?:\.\d+)?)%/);
-    if (match) return Number(match[1]);
-  }
-  return null;
+function tabFromParam(value: string | null): PlutoTab {
+  return value === "history" || value === "tickers" || value === "settings" ? value : "live";
+}
+
+function historyViewFromParam(value: string | null): PlutoHistoryView {
+  return value === "decisions" || value === "events" ? value : "orders";
 }
 
 export function PlutoPage() {
+  const [searchParams, setSearchParams] = useSearchParams();
+  const tab = tabFromParam(searchParams.get("tab"));
+  const historyView = historyViewFromParam(searchParams.get("view"));
+  const isPhone = useMediaQuery("(max-width: 767px)");
+  const { open: openTickerModal } = useSignalsTickerModal();
+
   const [state, setState] = useState<PlutoState | null>(null);
   const [stateError, setStateError] = useState<string | null>(null);
   const [events, setEvents] = useState<PlutoEvent[]>([]);
+  const [eventsLimit, setEventsLimit] = useState(eventsPageSize);
   const [eventsLoading, setEventsLoading] = useState(true);
   const [eventsError, setEventsError] = useState<string | null>(null);
   const [passes, setPasses] = useState<PlutoPass[]>([]);
+  const [passesLimit, setPassesLimit] = useState(passesPageSize);
   const [passesLoading, setPassesLoading] = useState(true);
   const [passesError, setPassesError] = useState<string | null>(null);
   const [actions, setActions] = useState<PlutoAction[]>([]);
+  const [actionsLimit, setActionsLimit] = useState(actionsPageSize);
   const [actionsLoading, setActionsLoading] = useState(true);
   const [actionsError, setActionsError] = useState<string | null>(null);
-  const [tickers, setTickers] = useState<PlutoTicker[]>([]);
-  const [tickersMax, setTickersMax] = useState(0);
-  const [tickersLoading, setTickersLoading] = useState(true);
-  const [tickersError, setTickersError] = useState<string | null>(null);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [shortlist, setShortlist] = useState<ShortlistRow[]>([]);
+  const [shortlistLoading, setShortlistLoading] = useState(true);
+  const [shortlistError, setShortlistError] = useState<string | null>(null);
   const [settings, setSettings] = useState<PlutoSettings | null>(null);
   const [settingsLoading, setSettingsLoading] = useState(true);
   const [settingsError, setSettingsError] = useState<string | null>(null);
-  const [lastChange, setLastChange] = useState<PlutoSettingsAuditRow | null>(null);
+  const [audit, setAudit] = useState<PlutoSettingsAuditRow[]>([]);
   const [scoreboard, setScoreboard] = useState<PlutoScoreboard | null>(null);
   const [scoreboardError, setScoreboardError] = useState<string | null>(null);
-  const { open: openTickerModal } = useSignalsTickerModal();
+
+  const now = useTickingNow(state?.lastPassAt ?? state?.updatedAt ?? null);
 
   const loadState = useCallback(async () => {
     try {
@@ -87,74 +103,92 @@ export function PlutoPage() {
       setStateError(errorMessage(err, "Could not load Pluto's state."));
     }
   }, []);
-  const loadEvents = useCallback(async () => {
-    try {
-      setEvents(await fetchPlutoEvents(200));
-      setEventsError(null);
-    } catch (err) {
-      setEventsError(errorMessage(err, "Could not load the timeline."));
-    } finally {
-      setEventsLoading(false);
-    }
-  }, []);
-  const loadPasses = useCallback(async () => {
-    try {
-      setPasses(await fetchPlutoPasses(30));
-      setPassesError(null);
-    } catch (err) {
-      setPassesError(errorMessage(err, "Could not load the decisions."));
-    } finally {
-      setPassesLoading(false);
-    }
-  }, []);
-  const loadActions = useCallback(async () => {
-    try {
-      setActions(await fetchPlutoActions(100));
-      setActionsError(null);
-    } catch (err) {
-      setActionsError(errorMessage(err, "Could not load the actions."));
-    } finally {
-      setActionsLoading(false);
-    }
-  }, []);
+  const loadEvents = useCallback(
+    async (limit = eventsLimit) => {
+      try {
+        setEvents(await fetchPlutoEvents(limit));
+        setEventsError(null);
+      } catch (err) {
+        setEventsError(errorMessage(err, "Could not load the activity."));
+      } finally {
+        setEventsLoading(false);
+      }
+    },
+    [eventsLimit],
+  );
+  const loadPasses = useCallback(
+    async (limit = passesLimit) => {
+      try {
+        setPasses(await fetchPlutoPasses(limit));
+        setPassesError(null);
+      } catch (err) {
+        setPassesError(errorMessage(err, "Could not load the decisions."));
+      } finally {
+        setPassesLoading(false);
+      }
+    },
+    [passesLimit],
+  );
+  const loadActions = useCallback(
+    async (limit = actionsLimit) => {
+      try {
+        setActions(await fetchPlutoActions(limit));
+        setActionsError(null);
+      } catch (err) {
+        setActionsError(errorMessage(err, "Could not load the orders."));
+      } finally {
+        setActionsLoading(false);
+      }
+    },
+    [actionsLimit],
+  );
   const loadScoreboard = useCallback(async () => {
     try {
       setScoreboard(await fetchPlutoScoreboard());
       setScoreboardError(null);
     } catch (err) {
-      setScoreboardError(errorMessage(err, "Could not load the scoreboard."));
+      setScoreboardError(errorMessage(err, "Could not load the track record."));
     }
   }, []);
-  const loadTickers = useCallback(async () => {
+  const loadShortlist = useCallback(async () => {
     try {
-      const result = await fetchPlutoTickers();
-      setTickers(result.tickers);
-      setTickersMax(result.max);
-      setTickersError(null);
+      setShortlist(await fetchShortlist());
+      setShortlistError(null);
     } catch (err) {
-      setTickersError(errorMessage(err, "Could not load the tickers."));
+      setShortlistError(errorMessage(err, "Could not load the tickers."));
     } finally {
-      setTickersLoading(false);
+      setShortlistLoading(false);
     }
   }, []);
   const loadSettings = useCallback(async () => {
     try {
-      const [loaded, audit] = await Promise.all([fetchPlutoSettings(), fetchPlutoSettingsAudit(1)]);
+      const [loaded, auditRows] = await Promise.all([fetchPlutoSettings(), fetchPlutoSettingsAudit(20)]);
       setSettings(loaded);
-      setLastChange(audit[0] ?? null);
+      setAudit(auditRows);
       setSettingsError(null);
     } catch (err) {
-      setSettingsError(errorMessage(err, "Could not load the parameters."));
+      setSettingsError(errorMessage(err, "Could not load the settings."));
     } finally {
       setSettingsLoading(false);
     }
   }, []);
 
   useEffect(() => {
-    void Promise.all([loadState(), loadEvents(), loadPasses(), loadActions(), loadTickers(), loadSettings(), loadScoreboard()]);
+    void Promise.all([loadState(), loadEvents(), loadPasses(), loadActions(), loadShortlist(), loadSettings(), loadScoreboard()]);
     const timer = setInterval(() => void loadState(), stateRefreshIntervalMs);
     return () => clearInterval(timer);
-  }, [loadState, loadEvents, loadPasses, loadActions, loadTickers, loadSettings, loadScoreboard]);
+    // Initial load only; the per-list loaders re-run on their own limit changes below.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  useEffect(() => {
+    if (actionsLimit > actionsPageSize) void loadActions(actionsLimit).finally(() => setLoadingMore(false));
+  }, [actionsLimit, loadActions]);
+  useEffect(() => {
+    if (passesLimit > passesPageSize) void loadPasses(passesLimit).finally(() => setLoadingMore(false));
+  }, [passesLimit, loadPasses]);
+  useEffect(() => {
+    if (eventsLimit > eventsPageSize) void loadEvents(eventsLimit).finally(() => setLoadingMore(false));
+  }, [eventsLimit, loadEvents]);
 
   // Every pluto_events row is pushed as a notification: refresh what it can have changed, coalesced.
   const refreshTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -170,82 +204,154 @@ export function PlutoPage() {
         pendingKinds.current = new Set();
         void loadState();
         void loadEvents();
-        if ([...kinds].some((kind) => kind.startsWith("pass_") || kind.startsWith("model_") || kind === "no_trade" || kind.startsWith("action_") || kind.startsWith("order_"))) {
+        if ([...kinds].some((kind) => kind.startsWith("pass_") || kind.startsWith("model_") || kind === "no_trade" || kind.startsWith("action_") || kind.startsWith("order_") || kind.startsWith("breaker_"))) {
           void loadPasses();
           void loadActions();
           void loadScoreboard();
         }
-        if (kinds.has("ticker_enabled") || kinds.has("ticker_disabled")) void loadTickers();
+        if (kinds.has("ticker_enabled") || kinds.has("ticker_disabled")) void loadShortlist();
         if (kinds.has("settings_changed")) void loadSettings();
       }, notificationRefreshDebounceMs);
     });
-  }, [loadState, loadEvents, loadPasses, loadActions, loadTickers, loadSettings, loadScoreboard]);
+  }, [loadState, loadEvents, loadPasses, loadActions, loadShortlist, loadSettings, loadScoreboard]);
 
-  const workingActions = useMemo(() => actions.filter((action) => action.outcome === "confirmed" || action.outcome === "order_built"), [actions]);
-  const spyDayChangePct = useMemo(() => spyDayChangeFromPasses(passes), [passes]);
+  const status = useMemo(() => (state ? derivePlutoStatus(state, now, crashLoopRestartsFromEvents(events)) : null), [state, now, events]);
+  const enabledCount = state?.enabledTickers.count ?? shortlist.filter((row) => row.botEnabled).length;
+  const maxEnabled = state?.enabledTickers.max ?? settings?.maxEnabledTickers ?? 0;
+
+  function selectTab(next: PlutoTab) {
+    setSearchParams(
+      (previous) => {
+        const params = new URLSearchParams(previous);
+        if (next === "live") params.delete("tab");
+        else params.set("tab", next);
+        if (next !== "history") params.delete("view");
+        return params;
+      },
+      { replace: true },
+    );
+  }
+  function selectHistoryView(view: PlutoHistoryView) {
+    setSearchParams(
+      (previous) => {
+        const params = new URLSearchParams(previous);
+        params.set("tab", "history");
+        if (view === "orders") params.delete("view");
+        else params.set("view", view);
+        return params;
+      },
+      { replace: true },
+    );
+  }
+  function loadMore(view: PlutoHistoryView) {
+    setLoadingMore(true);
+    if (view === "orders") setActionsLimit((limit) => limit + actionsPageSize);
+    else if (view === "decisions") setPassesLimit((limit) => limit + passesPageSize);
+    else setEventsLimit((limit) => limit + eventsPageSize);
+  }
 
   return (
     <div className="page-body">
-      <div className="container-fluid px-3">
-        <PageHeader title="Pluto" subtitle={`Autonomous trading agent · ${state?.agent?.appEnvironment ?? "staging"} paper account${settings ? ` · ${settings.modelId} via OpenRouter` : ""}`} />
+      <div className="container-fluid px-3 pm">
+        <div className="pm-pagehead">
+          <div>
+            <h1 className="pm-title">Pluto</h1>
+            <div className="pm-subtitle">Autonomous trading agent</div>
+          </div>
+        </div>
 
         {stateError ? (
-          <div className="alert alert-danger mt-3">{stateError}</div>
-        ) : state === null ? (
+          <div className="alert alert-danger">{stateError}</div>
+        ) : state === null || status === null ? (
           <div className="py-4"><Spinner label="Loading Pluto" /></div>
         ) : (
-          <>
-            <PlutoControlCard state={state} onStateChanged={(core) => { setState((previous) => (previous ? { ...previous, ...core } : previous)); void loadState(); void loadEvents(); }} />
-            <PlutoTiles state={state} workingActions={workingActions} spyDayChangePct={spyDayChangePct} spyStressPct={settings?.spyStressBreakerPct ?? 3} onStateChanged={(core) => { setState((previous) => (previous ? { ...previous, ...core } : previous)); void loadState(); void loadEvents(); }} />
-          </>
+          <PlutoStatusCard
+            state={state}
+            status={status}
+            settings={settings}
+            now={now}
+            isPhone={isPhone}
+            showKpis={!isPhone || tab === "live"}
+            onStateChanged={(core) => {
+              setState((previous) => (previous ? { ...previous, ...core } : previous));
+              void loadState();
+              void loadEvents();
+            }}
+            onOrdersChanged={() => {
+              void loadState();
+              void loadActions();
+              void loadEvents();
+            }}
+          />
         )}
 
-        {passes[0] && (
-          <CollapsibleCard
-            title="Last pass checks"
-            subtitle={
-              <span className="text-muted fw-normal" style={{ fontSize: "0.78rem" }}>
-                {describePlutoTrigger(passes[0])} · {formatFeedTime(passes[0].startedAt)} · {passes[0].modelCalled ? "model called" : `skipped, ${Object.values(passes[0].systemChecks ?? {}).filter((check) => !check.ok).length} check(s) failed`}
-              </span>
-            }
-            storageKey="pluto-last-pass-checks"
-            defaultOpen={false}
-            className="mb-3"
-          >
-            <PlutoChecksBoard checks={passes[0].systemChecks} />
-          </CollapsibleCard>
+        <nav className="pm-tabs" aria-label="Pluto sections">
+          {tabs.map((entry) => (
+            <button key={entry.key} type="button" role="tab" aria-selected={tab === entry.key} className={`pm-tab${tab === entry.key ? " active" : ""}`} onClick={() => selectTab(entry.key)}>
+              {entry.label}
+              {entry.key === "tickers" && <span className="count">{enabledCount}{isPhone ? "/" : " / "}{maxEnabled}</span>}
+            </button>
+          ))}
+        </nav>
+
+        {tab === "live" && (
+          <PlutoLiveTab state={state} actions={actions} actionsLoading={actionsLoading} actionsError={actionsError} passes={passes} passesLoading={passesLoading} passesError={passesError} events={events} eventsLoading={eventsLoading} eventsError={eventsError} now={now} isPhone={isPhone} onOpenTicker={openTickerModal} />
         )}
-
-        <PlutoScoreboardCard scoreboard={scoreboard} error={scoreboardError} />
-
-        <div className="row g-3 mb-3">
-          <div className="col-12 col-xl-7"><PlutoTimeline events={events} loading={eventsLoading} error={eventsError} /></div>
-          <div className="col-12 col-xl-5"><PlutoDecisions passes={passes} loading={passesLoading} error={passesError} /></div>
-        </div>
-
-        <div className="mb-3">
-          <PlutoActionsTable actions={actions} loading={actionsLoading} error={actionsError} onOpenTickerDetail={openTickerModal} />
-        </div>
-
-        <PlutoTickersCard
-          tickers={tickers}
-          max={tickersMax}
-          loading={tickersLoading}
-          error={tickersError}
-          onChanged={(entryId, enabled) => {
-            setTickers((previous) => previous.map((ticker) => (ticker.entryId === entryId ? { ...ticker, botEnabled: enabled } : ticker)));
-            void loadTickers();
-            void loadState();
-          }}
-          onOpenTickerDetail={openTickerModal}
-        />
-
-        <PlutoParametersCard settings={settings} lastChange={lastChange} loading={settingsLoading} error={settingsError} onSaved={(saved) => { setSettings(saved); void loadSettings(); void loadState(); }} />
-
-        <div className="text-muted mb-3" style={{ fontSize: "0.78rem" }}>
-          Every control writes to the timeline with who did it. Pause is one click; Pause and cancel, Resume, Mode and Save changes confirm first.
-        </div>
-
+        {tab === "history" && (
+          <PlutoHistoryTab
+            view={historyView}
+            onViewChange={selectHistoryView}
+            scoreboard={scoreboard}
+            scoreboardError={scoreboardError}
+            actions={actions}
+            actionsLoading={actionsLoading}
+            actionsError={actionsError}
+            passes={passes}
+            passesLoading={passesLoading}
+            passesError={passesError}
+            events={events}
+            eventsLoading={eventsLoading}
+            eventsError={eventsError}
+            state={state}
+            now={now}
+            isPhone={isPhone}
+            onOpenTicker={openTickerModal}
+            onLoadMore={loadMore}
+            loadingMore={loadingMore}
+          />
+        )}
+        {tab === "tickers" && (
+          <PlutoTickersTab
+            rows={shortlist}
+            loading={shortlistLoading}
+            error={shortlistError}
+            state={state}
+            maxEnabled={maxEnabled}
+            isPhone={isPhone}
+            onOpenTicker={openTickerModal}
+            onToggled={(entryId, enabled) => {
+              setShortlist((previous) => previous.map((row) => (row.id === entryId ? { ...row, botEnabled: enabled } : row)));
+              void loadShortlist();
+              void loadState();
+            }}
+            onPrepRunChange={() => void loadShortlist()}
+          />
+        )}
+        {tab === "settings" && (
+          <PlutoSettingsTab
+            settings={settings}
+            audit={audit}
+            loading={settingsLoading}
+            error={settingsError}
+            state={state}
+            isPhone={isPhone}
+            onSaved={(saved) => {
+              setSettings(saved);
+              void loadSettings();
+              void loadState();
+            }}
+          />
+        )}
       </div>
     </div>
   );
