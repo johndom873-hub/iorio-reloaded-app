@@ -49,7 +49,7 @@ export interface PlutoOrdersToday {
 export interface PlutoStateCore {
   mode: PlutoMode;
   paused: boolean;
-  /** "manual" | "deploy" | "crash_loop" | "breaker:<name>" */
+  /** "manual" | "deploy" | "crash_loop" | "readiness" | "breaker:<name>" */
   pauseReason: string | null;
   pausedByUserId: string | null;
   pausedByDisplayName: string | null;
@@ -60,7 +60,25 @@ export interface PlutoStateCore {
   /** Eastern date on which the SPY stress check is overridden ("allow opens under stress today"), else null. */
   stressOverrideDate: string | null;
   stressOverrideByDisplayName: string | null;
+  /** The latest pre-open readiness run (6:00 ET, re-run every 10 min while failing, final at 9:20 ET). */
+  readiness: PlutoReadinessRecord | null;
   updatedAt: string;
+}
+
+export interface PlutoReadinessResult {
+  name: "IBKR" | "API sign-in" | "OpenRouter";
+  ok: boolean;
+  detail: string;
+}
+
+export interface PlutoReadinessRecord {
+  dateIso: string;
+  lastRunAt: string;
+  lastRunKind: "first" | "recheck" | "final";
+  /** Failing tests' names joined, "" when all passed. */
+  signature: string;
+  finalDone: boolean;
+  results: PlutoReadinessResult[];
 }
 
 /** GET /pluto/state: the row plus everything the screen's header and tiles need. */

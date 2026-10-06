@@ -1,6 +1,6 @@
 import type { PlutoAction, PlutoActionContract, PlutoActionKind, PlutoActionOutcome, PlutoEvent, PlutoPass, PlutoState, PlutoSystemCheck, PlutoWorkingOrder } from "../api/pluto";
 import { plutoParameterLabelByField } from "./plutoParameters";
-import { daysToExpiry, easternIsoDate, formatCurrency, formatDayMonth, formatEasternTime, formatRelativeAge, formatRelativeTime, formatDateTime, todayInEasternIso } from "./formatters";
+import { daysToExpiry, easternIsoDate, formatBrowserClockTime, formatCurrency, formatDayMonth, formatEasternTime, formatRelativeAge, formatRelativeTime, formatDateTime, todayInEasternIso } from "./formatters";
 
 // Presentation rules for the Pluto screen (redesign approved 2026-10-06): one status at a time, plain-language
 // wording for orders, decisions and the activity feed. Pure functions so the components stay declarative.
@@ -83,6 +83,7 @@ export function derivePlutoStatus(state: PlutoState, now: Date, crashLoopRestart
   }
   if (state.paused) {
     if (state.pauseReason === "deploy") return { kind: "paused", label: "Paused", headline: "Paused after an update — the new version hasn't traded yet", subline: `Updated ${when(state.pausedAt)} · resume once you're happy with it`, holdAlert: null };
+    if (state.pauseReason === "readiness") return { kind: "paused", label: "Paused", headline: "Paused — the pre-open check still failed at 9:20 ET", subline: readinessFailureLine(state) ?? "Fix what failed, then resume", holdAlert: null };
     if (state.pauseReason === "crash_loop") return { kind: "paused", label: "Paused", headline: `Paused — Pluto restarted ${crashLoopRestarts === null ? "too often" : `${crashLoopRestarts} times`} in the last hour`, subline: "Check what went wrong before resuming", holdAlert: null };
     const by = state.pausedByDisplayName ? ` by ${state.pausedByDisplayName}` : "";
     const working = state.workingOrders.length;
@@ -93,7 +94,7 @@ export function derivePlutoStatus(state: PlutoState, now: Date, crashLoopRestart
   const windowStart = new Date(session.windowStartAt).getTime();
   const windowEnd = new Date(session.windowEndAt).getTime();
   if (!session.isOpen) return { kind: "waiting", label: "Waiting", headline: "Market closed today — nothing to analyse", subline: `Window ${session.windowStartEt}–${session.windowEndEt} ET on trading days`, holdAlert: null };
-  if (now.getTime() < windowStart) return { kind: "waiting", label: "Waiting", headline: `Outside the trading window — starts analysing at ${session.windowStartEt} ET`, subline: `Window ${session.windowStartEt}–${session.windowEndEt} ET · market closes ${session.closeTimeEt}`, holdAlert: null };
+  if (now.getTime() < windowStart) return { kind: "waiting", label: "Waiting", headline: `Outside the trading window — starts analysing at ${session.windowStartEt} ET`, subline: readinessSummaryLine(state) ?? `Window ${session.windowStartEt}–${session.windowEndEt} ET · market closes ${session.closeTimeEt}`, holdAlert: null };
   if (now.getTime() >= windowEnd) return { kind: "waiting", label: "Waiting", headline: `Trading window closed at ${session.windowEndEt} ET — done for today`, subline: `Starts again tomorrow at ${session.windowStartEt} ET`, holdAlert: null };
   // Inside the window: the agent connects as the window opens and reports it with its next heartbeat (every 45 s), so a
   // connection still missing two minutes in is a real problem.
@@ -115,6 +116,21 @@ export function derivePlutoStatus(state: PlutoState, now: Date, crashLoopRestart
     subline: `Analyses every Day Signals update on the ${tickers} allowed ${tickers === 1 ? "ticker" : "tickers"} · last analysis ${state.lastPassAt ? formatRelativeAge(state.lastPassAt, now) : "not yet today"}`,
     holdAlert: null,
   };
+}
+
+/** "Pre-open check 6:00 AM (browser time): IBKR ✓ · API sign-in ✓ · OpenRouter ✓", for today's run only; null before the first one. */
+export function readinessSummaryLine(state: PlutoState): string | null {
+  const readiness = state.readiness;
+  if (!readiness || readiness.dateIso !== todayInEasternIso()) return null;
+  const marks = readiness.results.map((result) => `${result.name} ${result.ok ? "✓" : "✗"}`).join(" · ");
+  const failing = readiness.signature !== "";
+  return `Pre-open check ${formatBrowserClockTime(readiness.lastRunAt)}: ${marks}${failing && !readiness.finalDone ? " · re-checking every 10 min, pauses at 9:20 ET if still failing" : ""}`;
+}
+
+/** The failing tests of today's readiness run, with their errors. */
+function readinessFailureLine(state: PlutoState): string | null {
+  const failing = state.readiness?.results.filter((result) => !result.ok) ?? [];
+  return failing.length > 0 ? failing.map((result) => `${result.name}: ${result.detail}`).join(" · ") : null;
 }
 
 /** SPY's day change and whether it is currently blocking new positions, from the newest analysis's checks. */
@@ -579,6 +595,7 @@ export function describeFeedEvent(event: PlutoEvent, context?: PlutoFeedContext)
       if (by && by !== "agent") return { dot: "ctl", title: `Paused by ${by}`, detail: payload.cancelWorkingOrders ? `cancel requested for ${text(payload.cancelRequested)} working order${text(payload.cancelRequested) === "1" ? "" : "s"}` : null, sub: null };
       if (text(payload.reason) === "deploy") return { dot: "ctl", title: "Paused after an update", detail: `${shortRelease(payload.to)}`, sub: "Resume once you're happy with the new version" };
       if (text(payload.reason) === "crash_loop") return { dot: "warn", title: "Paused after repeated restarts", detail: `${text(payload.startsInLastHour)} in the last hour`, sub: null };
+      if (text(payload.reason) === "readiness") return { dot: "bad", title: "Paused: pre-open check still failing at 9:20 ET", detail: Array.isArray(payload.failing) ? (payload.failing as string[]).join(", ") : null, sub: "Resume once it is fixed" };
       return { dot: "ctl", title: "Paused", detail: text(payload.reason) || null, sub: null };
     case "resumed":
       return { dot: "ctl", title: `Resumed by ${by || "an operator"}`, detail: null, sub: null };
@@ -608,6 +625,13 @@ export function describeFeedEvent(event: PlutoEvent, context?: PlutoFeedContext)
       return { dot: "ctl", title: "Pluto's program started", detail: `version ${shortRelease(payload.release) || "unknown"}`, sub: null };
     case "agent_stopped":
       return { dot: "ctl", title: "Pluto's program stopped", detail: text(payload.reason) || null, sub: null };
+    case "readiness_check": {
+      const results = Array.isArray(payload.results) ? (payload.results as { name: string; ok: boolean; detail: string }[]) : [];
+      const failing = results.filter((result) => !result.ok);
+      const runLabel = text(payload.kind) === "final" ? "Final pre-open check" : "Pre-open check";
+      if (failing.length === 0) return { dot: "look", title: `${runLabel} passed`, detail: results.map((result) => result.name).join(", "), sub: null };
+      return { dot: "bad", title: `${runLabel} failed`, detail: failing.map((result) => result.name).join(", "), sub: failing.map((result) => `${result.name}: ${result.detail}`).join(" · ") };
+    }
     case "warning":
       return { dot: "warn", title: "Warning", detail: symbol || null, sub: text(payload.message) || null };
     default:
