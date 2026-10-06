@@ -43,7 +43,7 @@ export interface PlutoStateCore {
 export interface PlutoState extends PlutoStateCore {
   blockReason: string | null;
   orders: { working: number; unsent: number };
-  counters: { actionsToday: number; modelCallsToday: number; costTodayUsd: number; maxActionsPerSession: number; maxModelCallsPerSession: number; dailyCostCeilingUsd: number };
+  counters: { actionsToday: number; modelCallsToday: number; costTodayUsd: number; maxActionsPerSession: number; dailyCostCeilingUsd: number };
   enabledTickers: { count: number; max: number };
   session: PlutoSession;
   book: {
@@ -98,7 +98,6 @@ export interface PlutoSettings {
   callTimeoutSeconds: number;
   dailyCostCeilingUsd: number;
   confidenceFloor: number;
-  maxModelCallsPerSession: number;
   consecutiveModelFailuresBreaker: number;
   promptVersion: string;
   spotMoveTriggerPct: number;

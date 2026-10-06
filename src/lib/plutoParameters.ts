@@ -76,7 +76,6 @@ export const plutoParameterGroups: PlutoParameterGroup[] = [
       { field: "callTimeoutSeconds", label: "Call timeout, s", kind: "integer", step: "1", help: "A model call slower than this counts as a failure." },
       { field: "dailyCostCeilingUsd", label: "Daily cost ceiling, $", kind: "number", step: "0.5", help: "No more model calls once today's spend reaches this." },
       { field: "confidenceFloor", label: "Confidence floor", kind: "number", step: "0.05", help: "A trade verdict below this confidence is treated as no trade." },
-      { field: "maxModelCallsPerSession", label: "Max model calls / session", kind: "integer", step: "1", help: "Calls per trading day (two per decision)." },
       { field: "consecutiveModelFailuresBreaker", label: "Consecutive failures breaker", kind: "integer", step: "1", help: "This many model failures in a row trip a breaker." },
       { field: "promptVersion", label: "Prompt version", kind: "text", help: "Recorded with every decision so prompt changes can be compared." },
     ],

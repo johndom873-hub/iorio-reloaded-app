@@ -84,7 +84,7 @@ export function PlutoTiles({ state, workingActions, spyDayChangePct, spyStressPc
   return (
     <div className="row g-3 mb-3">
       <Tile label="Today" value={<>{counters.actionsToday} <span className="text-muted fw-normal" style={{ fontSize: "0.78rem" }}>/ {counters.maxActionsPerSession} actions</span></>}>
-        {counters.modelCallsToday} of {counters.maxModelCallsPerSession} model calls · ${counters.costTodayUsd.toFixed(2)} of ${counters.dailyCostCeilingUsd.toFixed(2)}
+        {counters.modelCallsToday} model calls · ${counters.costTodayUsd.toFixed(2)} of ${counters.dailyCostCeilingUsd.toFixed(2)}
       </Tile>
       <Tile label="Pluto book" value={formatCompactDollars(book.committedDollars)} meterPct={meterPct}>
         {usedPctOfNlv !== null ? `${formatPercentageValue(usedPctOfNlv, 1)} of NLV used of the ${book.capitalBudgetPct}% budget` : "NLV unknown until the nightly snapshot"} · {book.openPositionCount} of {book.maxOpenPositions} positions
