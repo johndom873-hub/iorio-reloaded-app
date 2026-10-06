@@ -130,10 +130,10 @@ export const plutoParameterGroups: PlutoParameterGroup[] = [
   {
     key: "operations",
     title: "Operations & closes",
-    summary: (settings) => `Telegram: ${settings.telegramVerbosity === "actions" ? "actions only" : settings.telegramVerbosity === "all" ? "every analysis" : "off"} · buyback from ${settings.buybackMinDte} DTE`,
+    summary: (settings) => `Telegram: ${settings.telegramVerbosity === "actions" ? "actions" : "off"} · buyback from ${settings.buybackMinDte} DTE`,
     parameters: [
       { field: "crashLoopRestartsPerHour", label: "Crash-loop restarts", unit: "per hour", kind: "integer", step: "1", help: "More agent restarts than this in an hour pause Pluto until a person resumes it." },
-      { field: "telegramVerbosity", label: "Telegram verbosity", kind: "select", options: ["actions", "all", "off"], help: "actions: orders, breakers and pauses. all: every analysis. off: nothing." },
+      { field: "telegramVerbosity", label: "Telegram verbosity", kind: "select", options: ["actions", "off"], help: "actions: every order and close Pluto sends, and how each one ended. off: none of those. Breakers, pauses and switching Pluto on or off are always sent." },
       { field: "unstructuredCloseMinPct", label: "Unstructured close min", unit: "% of cost", kind: "number", step: "0.1", help: "Shares with no call against them are offered for closing only above this cycle profit." },
       { field: "unstructuredCloseMinDollars", label: "Unstructured close min", unit: "$", kind: "number", step: "1", help: "And only above this dollar profit." },
       { field: "buybackMinDte", label: "Buyback min DTE", unit: "days", kind: "integer", step: "1", help: "A short leg closer to expiry than this is left to expire rather than bought back." },

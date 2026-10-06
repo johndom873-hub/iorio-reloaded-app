@@ -96,7 +96,7 @@ export interface PlutoState extends PlutoStateCore {
 }
 
 export type PlutoReasoningEffort = "low" | "medium" | "high";
-export type PlutoTelegramVerbosity = "actions" | "all" | "off";
+export type PlutoTelegramVerbosity = "actions" | "off";
 
 export interface PlutoSettings {
   capitalBudgetPct: number;
