@@ -38,6 +38,7 @@ import {
   formatRelativeDate,
   formatSignedPercentageValue,
   formatSignedPnl,
+  formatUtcClockTimeInBrowserTime,
   pnlTextClass,
 } from "../lib/formatters";
 import { portfolioFromExposure } from "../lib/portfolioFromExposure";
@@ -687,7 +688,7 @@ export function DashboardPage() {
           valueClassName={pnlTextClass(yesterdaysPnl)}
           delta={formatSignedPercentageValue(summary?.dayPnlPercent ?? null, 2)}
           deltaClassName={pnlTextClass(summary?.dayPnlPercent ?? null)}
-          tooltip="Change in account value between the last two nightly snapshots, taken at 22:30 UTC (after the US close, so after-hours moves are included). Blank when the previous session's snapshot is missing."
+          tooltip={`Change in account value between the last two nightly snapshots, taken at about ${formatUtcClockTimeInBrowserTime(22, 30)} (after the US close, so after-hours moves are included). Blank when the previous session's snapshot is missing.`}
         />
         <TopStat
           label="Unrealised P&L"

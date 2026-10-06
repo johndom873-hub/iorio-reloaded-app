@@ -303,6 +303,15 @@ export function formatDateTime(dateInput: string | Date | null | undefined): str
   }).format(date);
 }
 
+// A fixed daily UTC clock time (a scheduled job or restart slot) in the viewer's own browser time with its zone
+// label, e.g. "13:30 GMT+8". Built on today's date, so the viewer's own daylight saving applies.
+export function formatUtcClockTimeInBrowserTime(utcHour: number, utcMinute: number, now: Date = new Date()): string {
+  const slot = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), utcHour, utcMinute));
+  const parts = new Intl.DateTimeFormat("en-US", { hour: "2-digit", minute: "2-digit", hourCycle: "h23", timeZoneName: "short" }).formatToParts(slot);
+  const part = (type: string) => parts.find((entry) => entry.type === type)?.value ?? "";
+  return `${part("hour")}:${part("minute")} ${part("timeZoneName")}`;
+}
+
 // 24-hour local time, e.g. "14:32:05" — matches the clock/event-log
 // convention already used across Iorio Pulse (PulsePage.tsx).
 export function formatLocalTime(dateInput: string | Date | number): string {
