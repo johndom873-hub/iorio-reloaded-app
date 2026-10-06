@@ -88,7 +88,6 @@ export const plutoParameterGroups: PlutoParameterGroup[] = [
       { field: "burstSettleSeconds", label: "Burst settle, s", kind: "integer", step: "1", help: "How long a burst waits for quotes before scoring." },
       { field: "coalescingWindowSeconds", label: "Coalescing window, s", kind: "integer", step: "1", help: "Triggers arriving within this window run as one pass." },
       { field: "perTickerModelCooldownMinutes", label: "Per-ticker model cooldown, min", kind: "integer", step: "1", help: "The model is not asked about the same ticker again within this time." },
-      { field: "globalMinCallIntervalSeconds", label: "Global min call interval, s", kind: "integer", step: "1", help: "Minimum gap between any two model calls." },
       { field: "maxEnabledTickers", label: "Max enabled tickers", kind: "integer", step: "1", help: "Cap on shortlist tickers Pluto may watch; each holds one market-data line." },
       { field: "messageRateLimitPerSecond", label: "Message rate limit / s", kind: "integer", step: "1", help: "Ceiling on IBKR messages per second from Pluto's connection." },
     ],

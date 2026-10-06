@@ -105,7 +105,6 @@ export interface PlutoSettings {
   burstSettleSeconds: number;
   coalescingWindowSeconds: number;
   perTickerModelCooldownMinutes: number;
-  globalMinCallIntervalSeconds: number;
   maxEnabledTickers: number;
   messageRateLimitPerSecond: number;
   crashLoopRestartsPerHour: number;
