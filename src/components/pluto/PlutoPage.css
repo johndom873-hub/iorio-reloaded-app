@@ -95,6 +95,11 @@
 .pm-card-foot { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 11px 18px; border-top: 1px solid var(--border); font-size: 12.5px; color: var(--muted); flex-wrap: wrap; }
 .pm-iconbtn { width: 32px; height: 32px; display: inline-grid; place-items: center; border-radius: 6px; border: 1px solid transparent; background: transparent; color: var(--muted); cursor: pointer; padding: 0; }
 .pm-iconbtn.bordered { border-color: var(--border); }
+/* A header whose whole row opens and closes its card (ToggleHeader); corners follow the card's 8px less its border. */
+.pm-toggle { cursor: pointer; user-select: none; }
+.pm-card-h.pm-toggle { border-radius: 7px 7px 0 0; }
+.pm-card-h.pm-toggle.flat { border-radius: 7px; }
+.pm-toggle:hover { background: var(--surface-2); }
 .pm-iconbtn:hover { background: var(--surface-2); color: var(--strong); }
 .pm-empty { padding: 28px 18px; text-align: center; color: var(--muted); font-size: 13.5px; }
 .pm-error { margin: 14px 18px; }

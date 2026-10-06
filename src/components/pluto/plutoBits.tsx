@@ -62,6 +62,24 @@ export function Meter({ pct, warn = false }: { pct: number; warn?: boolean }) {
   );
 }
 
+/**
+ * A collapsible card's header: a click anywhere on it toggles, except on its own links, buttons and inputs (the
+ * chevron is a button, so it toggles once, and stays the keyboard control).
+ */
+export function ToggleHeader({ className, onToggle, children }: { className: string; onToggle: () => void; children: ReactNode }) {
+  return (
+    <div
+      className={`${className} pm-toggle`}
+      onClick={(event) => {
+        if ((event.target as HTMLElement).closest("a, button, input, select, textarea, label")) return;
+        onToggle();
+      }}
+    >
+      {children}
+    </div>
+  );
+}
+
 export function CollapseButton({ open, onToggle, label }: { open: boolean; onToggle: () => void; label: string }) {
   return (
     <button type="button" className="pm-iconbtn" aria-label={open ? `Collapse ${label}` : `Expand ${label}`} aria-expanded={open} onClick={onToggle}>

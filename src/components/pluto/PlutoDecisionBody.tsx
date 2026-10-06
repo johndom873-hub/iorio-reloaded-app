@@ -49,7 +49,9 @@ export function ComparePanels({ pass, flush = false }: { pass: PlutoPass; flush?
   const { output, action, topPick } = passVerdict(pass);
   const figures = candidateFigures(pass);
   const comparison = describeTopPickComparison(pass);
-  const chosenName = action && action.kind !== "no_trade" ? `${action.symbol} ${describeOrderContract(action).title}` : output?.candidate_id ? describeCandidateId(output.candidate_id) : "Nothing";
+  const chosenTitle = action && action.kind !== "no_trade" ? describeOrderContract(action).title : null;
+  // "MU roll $105 → $100 put", "COIN buy back $300 put · 10 Oct": a verb after the symbol reads in lower case.
+  const chosenName = action && chosenTitle ? `${action.symbol} ${/^[A-Z][a-z]/.test(chosenTitle) ? chosenTitle.charAt(0).toLowerCase() + chosenTitle.slice(1) : chosenTitle}` : output?.candidate_id ? describeCandidateId(output.candidate_id) : "Nothing";
   return (
     <div className={`pm-compare${flush ? " flush" : ""}`}>
       <div>

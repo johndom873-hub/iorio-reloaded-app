@@ -8,7 +8,7 @@ import { useColumnVisibility } from "../DataTable/useColumnVisibility";
 import { PlutoActivityFeed } from "./PlutoActivityFeed";
 import { DecisionDetails, VerdictTag } from "./PlutoDecisionBody";
 import { PlutoOrdersTable } from "./PlutoOrdersTable";
-import { CheckIcon, CollapseButton, SearchIcon, StrategyBadge } from "./plutoBits";
+import { CheckIcon, CollapseButton, SearchIcon, StrategyBadge, ToggleHeader } from "./plutoBits";
 
 export type PlutoHistoryView = "orders" | "decisions" | "events";
 type Period = "today" | "7d" | "30d" | "all";
@@ -75,13 +75,13 @@ function TrackRecordCard({ scoreboard, error }: { scoreboard: PlutoScoreboard | 
   const hitRate = scoreboard && scoreboard.closedActions > 0 ? Math.round((scoreboard.winningActions / scoreboard.closedActions) * 100) : null;
   return (
     <section className="pm-card pm-mb-20">
-      <div className={`pm-card-h${isOpen ? "" : " flat"}`}>
+      <ToggleHeader className={`pm-card-h${isOpen ? "" : " flat"}`} onToggle={() => setIsOpen(!isOpen)}>
         <h2 className="pm-card-t">Track record</h2>
         <div className="pm-card-meta">
           {scoreboard?.since ? <span>Since Pluto started on {formatDate(scoreboard.since)}</span> : <span>No analyses yet</span>}
           <CollapseButton open={isOpen} onToggle={() => setIsOpen(!isOpen)} label="the track record" />
         </div>
-      </div>
+      </ToggleHeader>
       {isOpen && error && <div className="alert alert-danger pm-error">{error}</div>}
       {isOpen && scoreboard && (
         <div className="pm-stats">
@@ -132,7 +132,7 @@ function DecisionRow({ pass, state, open, onToggle }: { pass: PlutoPass; state: 
   const confidence = output?.confidence !== undefined ? ` · conf. ${output.confidence.toFixed(2)}` : "";
   return (
     <div className={`pm-dec${open ? " open" : ""}`}>
-      <div className="pm-dec-row">
+      <ToggleHeader className="pm-dec-row" onToggle={onToggle}>
         <span className="when">
           <span className="medium">{formatDayMonth(easternIsoDate(pass.startedAt))}</span> <span className="muted">{formatEasternTime(pass.startedAt).replace(" ET", "")}</span>
         </span>
@@ -150,7 +150,7 @@ function DecisionRow({ pass, state, open, onToggle }: { pass: PlutoPass; state: 
         </span>
         <span className="num cost">{formatModelCost(pass.costUsd)}</span>
         <CollapseButton open={open} onToggle={onToggle} label="this decision" />
-      </div>
+      </ToggleHeader>
       {open && <DecisionDetails pass={pass} state={state} />}
     </div>
   );

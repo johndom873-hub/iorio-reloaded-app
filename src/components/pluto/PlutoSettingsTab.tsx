@@ -1,11 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ApiError } from "../../api/client";
 import { updatePlutoSettings, type PlutoSettings, type PlutoSettingsAuditRow, type PlutoSettingsField, type PlutoSettingsInput, type PlutoState } from "../../api/pluto";
-import { useCollapsibleCard } from "../../hooks/useCollapsibleCard";
 import { easternIsoDate, formatDayMonth, formatEasternTime } from "../../lib/formatters";
 import { changedSettingsFields, describeSettingsChange, plutoParameterHelp, plutoParameterGroups, plutoParameterLabelByField, plutoParameterSpecByField, settingsInputValue, settingsToFormState, type PlutoParameterGroup, type PlutoParameterSpec, type PlutoSettingsFormState } from "../../lib/plutoParameters";
 import { ConfirmModal } from "../ConfirmModal";
-import { CollapseButton, InfoIcon } from "./plutoBits";
+import { CollapseButton, InfoIcon, ToggleHeader } from "./plutoBits";
 
 interface PlutoSettingsTabProps {
   settings: PlutoSettings | null;
@@ -39,8 +38,20 @@ function FieldInput({ spec, value, onChange, id }: { spec: PlutoParameterSpec; v
   );
 }
 
-function GroupCard({ group, settings, form, changed, state, onChange, forceOpenSignal, anchorRef }: { group: PlutoParameterGroup; settings: PlutoSettings; form: PlutoSettingsFormState; changed: Set<string>; state: PlutoState | null; onChange: (field: PlutoSettingsField, value: string) => void; forceOpenSignal: number; anchorRef: (element: HTMLElement | null) => void }) {
-  const [isOpen, setIsOpen] = useCollapsibleCard(`pluto-settings-${group.key}`, group.key === "capital", forceOpenSignal);
+/** One group open at a time (Marcelo, 2026-10-06); which one is remembered per browser. */
+const openGroupStorageKey = "iorio-pluto-settings-open-group";
+
+function readStoredOpenGroup(): string | null {
+  try {
+    const stored = localStorage.getItem(openGroupStorageKey);
+    if (stored === "") return null;
+    return stored !== null && plutoParameterGroups.some((group) => group.key === stored) ? stored : plutoParameterGroups[0]!.key;
+  } catch {
+    return plutoParameterGroups[0]!.key;
+  }
+}
+
+function GroupCard({ group, settings, form, changed, state, onChange, isOpen, onToggle, anchorRef }: { group: PlutoParameterGroup; settings: PlutoSettings; form: PlutoSettingsFormState; changed: Set<string>; state: PlutoState | null; onChange: (field: PlutoSettingsField, value: string) => void; isOpen: boolean; onToggle: () => void; anchorRef: (element: HTMLElement | null) => void }) {
   const changedCount = group.parameters.filter((parameter) => changed.has(parameter.field)).length;
   const context = { netLiquidationValue: state?.book.netLiquidationValue ?? null, settings };
   const rows: PlutoParameterSpec[][] = [];
@@ -50,14 +61,14 @@ function GroupCard({ group, settings, form, changed, state, onChange, forceOpenS
   }
   return (
     <section className="pm-card" ref={anchorRef} id={`pluto-settings-${group.key}`}>
-      <div className={`pm-card-h${isOpen ? "" : " flat"}`}>
+      <ToggleHeader className={`pm-card-h${isOpen ? "" : " flat"}`} onToggle={onToggle}>
         <h2 className="pm-card-t">
           {group.title}
           {changedCount > 0 && <span className="pm-b warn">{changedCount} unsaved</span>}
           {!isOpen && <span className="pm-group-sum">· {group.parameters.length} settings · {group.summary(settings)}</span>}
         </h2>
-        <CollapseButton open={isOpen} onToggle={() => setIsOpen(!isOpen)} label={group.title} />
-      </div>
+        <CollapseButton open={isOpen} onToggle={onToggle} label={group.title} />
+      </ToggleHeader>
       {isOpen &&
         rows.map((row, index) => {
           const lead = row[0]!;
@@ -93,10 +104,25 @@ export function PlutoSettingsTab({ settings, audit, loading, error, state, isPho
   const [confirming, setConfirming] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
-  const [activeGroup, setActiveGroup] = useState(plutoParameterGroups[0]!.key);
-  const [forceOpen, setForceOpen] = useState<Record<string, number>>({});
+  const [openGroup, setOpenGroup] = useState<string | null>(readStoredOpenGroup);
+  const [scrollTarget, setScrollTarget] = useState<string | null>(null);
   const [showAllAudit, setShowAllAudit] = useState(false);
   const groupRefs = useRef<Record<string, HTMLElement | null>>({});
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(openGroupStorageKey, openGroup ?? "");
+    } catch {
+      // Private window or blocked storage: the open group just isn't remembered.
+    }
+  }, [openGroup]);
+
+  // Scroll once the group has opened and the one above it has closed, so the target lands where the layout settles.
+  useEffect(() => {
+    if (scrollTarget === null) return;
+    groupRefs.current[scrollTarget]?.scrollIntoView({ behavior: "smooth", block: "start" });
+    setScrollTarget(null);
+  }, [scrollTarget, openGroup]);
 
   // Loaded settings seed the form; a reload while the user is mid-edit keeps the edits.
   useEffect(() => {
@@ -120,9 +146,8 @@ export function PlutoSettingsTab({ settings, audit, loading, error, state, isPho
   }
 
   function jumpTo(key: string) {
-    setActiveGroup(key);
-    setForceOpen((previous) => ({ ...previous, [key]: (previous[key] ?? 0) + 1 }));
-    groupRefs.current[key]?.scrollIntoView({ behavior: "smooth", block: "start" });
+    setOpenGroup(key);
+    setScrollTarget(key);
   }
 
   async function save() {
@@ -199,7 +224,7 @@ export function PlutoSettingsTab({ settings, audit, loading, error, state, isPho
           {plutoParameterGroups.map((group) => {
             const pending = group.parameters.some((parameter) => changedFields.has(parameter.field));
             return (
-              <a key={group.key} href={`#pluto-settings-${group.key}`} className={activeGroup === group.key ? "active" : undefined} onClick={(event) => { event.preventDefault(); jumpTo(group.key); }}>
+              <a key={group.key} href={`#pluto-settings-${group.key}`} className={openGroup === group.key ? "active" : undefined} onClick={(event) => { event.preventDefault(); jumpTo(group.key); }}>
                 {group.title}
                 {pending ? <i className="pend" title="Unsaved change" /> : <span>{group.parameters.length}</span>}
               </a>
@@ -209,7 +234,7 @@ export function PlutoSettingsTab({ settings, audit, loading, error, state, isPho
         <div className="pm-stack tight">
           {savebar}
           {plutoParameterGroups.map((group) => (
-            <GroupCard key={group.key} group={group} settings={settings} form={form} changed={changedFields} state={state} onChange={updateField} forceOpenSignal={forceOpen[group.key] ?? 0} anchorRef={(element) => { groupRefs.current[group.key] = element; }} />
+            <GroupCard key={group.key} group={group} settings={settings} form={form} changed={changedFields} state={state} onChange={updateField} isOpen={openGroup === group.key} onToggle={() => setOpenGroup((current) => (current === group.key ? null : group.key))} anchorRef={(element) => { groupRefs.current[group.key] = element; }} />
           ))}
         </div>
         <div className="pm-stack tight">

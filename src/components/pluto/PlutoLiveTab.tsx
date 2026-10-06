@@ -8,7 +8,7 @@ import { useColumnVisibility } from "../DataTable/useColumnVisibility";
 import { PlutoActivityFeed } from "./PlutoActivityFeed";
 import { ChecksGrid, DecisionFacts, DecisionVerdictLine, ComparePanels, GatesList, ReasonsAndRisks, VerdictTag } from "./PlutoDecisionBody";
 import { PlutoOrdersTable } from "./PlutoOrdersTable";
-import { CardLink, CheckIcon, CollapseButton, CrossIcon, StrategyBadge } from "./plutoBits";
+import { CardLink, CheckIcon, CollapseButton, CrossIcon, StrategyBadge, ToggleHeader } from "./plutoBits";
 
 interface PlutoLiveTabProps {
   state: PlutoState | null;
@@ -50,7 +50,7 @@ function LatestDecisionCard({ pass, state, loading, error, isPhone }: { pass: Pl
   const kind = verdictKind(pass);
   return (
     <section className="pm-card">
-      <div className={`pm-card-h${isOpen ? "" : " flat"}`}>
+      <ToggleHeader className={`pm-card-h${isOpen ? "" : " flat"}`} onToggle={() => setIsOpen(!isOpen)}>
         {isPhone && !isOpen ? (
           <div className="pm-min0">
             <h2 className="pm-card-t">Latest model decision</h2>
@@ -70,7 +70,7 @@ function LatestDecisionCard({ pass, state, loading, error, isPhone }: { pass: Pl
           </>
         )}
         {isPhone && !isOpen && <CollapseButton open={false} onToggle={() => setIsOpen(true)} label="the latest decision" />}
-      </div>
+      </ToggleHeader>
       {isOpen && (
         <>
           <div className="pm-card-b">
