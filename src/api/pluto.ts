@@ -217,6 +217,8 @@ export interface PlutoAction {
   pessimisticPnl: number | null;
   /** EXP $ the order adds (negative when a close releases exposure), as Positions counts it; null without an order. */
   exposureDollars: number | null;
+  /** Contracts (shares for a share sale) the order's trades filled so far; null before any fill or without an order. */
+  filledQuantity: number | null;
   /** Derived at read time from the legs this action opened (or closed, when a human opened them); null while none has closed. */
   realizedPnl: number | null;
   closedLegCount: number;

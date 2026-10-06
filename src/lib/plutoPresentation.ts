@@ -232,9 +232,9 @@ export function describeOutcome(action: PlutoAction, now: Date, state: Pick<Plut
     case "filled":
       return { tone: "ok", label: "Filled", sub: null, linksToOrder: true };
     case "partially_filled":
-      return { tone: "ok", label: "Partly filled", sub: "Still working for the rest", linksToOrder: true };
+      return { tone: "ok", label: "Partly filled", sub: `${filledOfOrdered(action)}still working for the rest`, linksToOrder: true };
     case "cancelled_partially_filled":
-      return { tone: "ok", label: "Partly filled", sub: "Rest cancelled", linksToOrder: true };
+      return { tone: "ok", label: "Partly filled", sub: `${filledOfOrdered(action)}rest cancelled`, linksToOrder: true };
     case "cancelled":
       return { tone: "neutral", label: "Cancelled", sub: action.blockReason ?? "Unfilled", linksToOrder: true };
     case "rejected":
@@ -248,6 +248,11 @@ export function describeOutcome(action: PlutoAction, now: Date, state: Pick<Plut
     default:
       return { tone: "neutral", label: "No order", sub: null, linksToOrder: false };
   }
+}
+
+/** "2 of 3 filled, " when the fills are known, for a partly filled order's note. */
+function filledOfOrdered(action: PlutoAction): string {
+  return action.filledQuantity !== null && action.quantity !== null ? `${action.filledQuantity} of ${action.quantity} filled, ` : "";
 }
 
 /** The failed gates' details in plain words ("Edge moved 1.4 vp after the model decided (limit 1.0)"). */
