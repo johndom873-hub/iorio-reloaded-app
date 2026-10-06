@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { PageHeader } from "../components/layout/PageHeader";
 import { DataTable, type DataTableColumn } from "../components/DataTable/DataTable";
 import { Pagination } from "../components/Pagination";
@@ -91,6 +92,17 @@ export function TradeBlotterPage() {
   const lastPage = Math.max(1, Math.ceil(rows.length / rowsPerPage));
   const currentPage = Math.min(page, lastPage);
   const visibleRows = rows.slice((currentPage - 1) * rowsPerPage, currentPage * rowsPerPage);
+
+  // ?order=<order request id> (linked from the Pluto screen): jump to the page holding that order's
+  // rows (its fills once filled, the order itself while working or cancelled) and highlight them.
+  const [searchParams] = useSearchParams();
+  const linkedOrderId = searchParams.get("order");
+  const belongsToLinkedOrder = (row: BlotterRow) => (linkedOrderId !== null && (row.kind === "order" ? row.id.split(":")[0] === linkedOrderId : row.sourceOrderRequestId === linkedOrderId));
+  useEffect(() => {
+    if (!linkedOrderId || rows.length === 0) return;
+    const index = rows.findIndex(belongsToLinkedOrder);
+    if (index >= 0) setPage(Math.floor(index / rowsPerPage) + 1);
+  }, [linkedOrderId, rows]);
 
   useEffect(() => {
     setLoading(true);
@@ -302,6 +314,7 @@ export function TradeBlotterPage() {
         columns={columns}
         rows={visibleRows}
         rowKey={(row) => row.id}
+        rowClassName={(row) => (belongsToLinkedOrder(row) ? "table-active" : undefined)}
         loading={loading}
         emptyMessage="No trades or orders yet."
       />

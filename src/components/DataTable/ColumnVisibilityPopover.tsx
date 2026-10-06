@@ -7,6 +7,8 @@ interface ColumnVisibilityPopoverProps {
   columns: { key: string; header: string }[];
   isColumnVisible: (columnKey: string) => boolean;
   onToggleColumn: (columnKey: string) => void;
+  /** "toolbar": a 32px bordered button for a card header or toolbar (the Pluto screen); default is the small in-header gear. */
+  variant?: "header" | "toolbar";
 }
 
 // Bootstrap's data-bs-toggle="dropdown" needs Bootstrap's JS bundle, which
@@ -22,7 +24,7 @@ interface ColumnVisibilityPopoverProps {
 // moving the gear from the card header into the header row). Portal it to
 // <body> with fixed positioning instead, so it escapes any scrollable/clipped
 // ancestor.
-export function ColumnVisibilityPopover({ columns, isColumnVisible, onToggleColumn }: ColumnVisibilityPopoverProps) {
+export function ColumnVisibilityPopover({ columns, isColumnVisible, onToggleColumn, variant = "header" }: ColumnVisibilityPopoverProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [menuPosition, setMenuPosition] = useState<{ top: number; right: number } | null>(null);
   const buttonRef = useRef<HTMLButtonElement>(null);
@@ -67,12 +69,12 @@ export function ColumnVisibilityPopover({ columns, isColumnVisible, onToggleColu
           tooltipRef.current = el;
         }}
         type="button"
-        className="btn btn-icon"
+        className={variant === "toolbar" ? "pm-iconbtn bordered" : "btn btn-icon"}
         aria-label="Choose visible columns"
         onClick={() => setIsOpen((open) => !open)}
-        style={{ width: "1.4rem", height: "1.4rem", padding: 0, minWidth: 0 }}
+        style={variant === "toolbar" ? undefined : { width: "1.4rem", height: "1.4rem", padding: 0, minWidth: 0 }}
       >
-        <IconSettings size={14} />
+        <IconSettings size={variant === "toolbar" ? 16 : 14} />
       </button>
       {isOpen &&
         menuPosition &&

@@ -12,6 +12,7 @@ import { ShortlistPage } from "./pages/ShortlistPage";
 import { PricePerformancePage } from "./pages/PricePerformancePage";
 import { TradeBlotterPage } from "./pages/TradeBlotterPage";
 import { RiskLimitsPage } from "./pages/RiskLimitsPage";
+import { PlutoPage } from "./pages/PlutoPage";
 import { SystemHealthPage } from "./pages/SystemHealthPage";
 import { CalendarEventsPage } from "./pages/CalendarEventsPage";
 import { PulsePage } from "./pages/PulsePage";
@@ -38,6 +39,7 @@ function App() {
                   <Route path="/price-performance" element={<PricePerformancePage />} />
                   <Route path="/trade-blotter" element={<TradeBlotterPage />} />
                   <Route path="/risk-limits" element={<RiskLimitsPage />} />
+                  <Route path="/pluto" element={<PlutoPage />} />
                   <Route path="/system-health" element={<SystemHealthPage />} />
                   <Route path="/calendar" element={<CalendarEventsPage />} />
                   <Route path="*" element={<NotFoundPage />} />

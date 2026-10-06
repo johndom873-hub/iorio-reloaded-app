@@ -118,6 +118,25 @@ export function formatCompactDollars(amountInDollars: number | null | undefined)
   return `${sign}$${abs.toFixed(0)}`;
 }
 
+/** "$64.7k" / "$500k" / "$1.2M" — compact dollars with a trailing ".0" dropped, for the Pluto status figures. */
+export function formatCompactDollarsTrimmed(amountInDollars: number | null | undefined): string {
+  if (amountInDollars === null || amountInDollars === undefined || Number.isNaN(amountInDollars)) return "—";
+  const abs = Math.abs(amountInDollars);
+  const sign = amountInDollars < 0 ? "−" : "";
+  const trimmed = (value: number) => value.toFixed(1).replace(/\.0$/, "");
+  if (abs >= 1_000_000) return `${sign}$${trimmed(abs / 1_000_000)}M`;
+  if (abs >= 1000) return `${sign}$${trimmed(abs / 1000)}k`;
+  return `${sign}$${abs.toFixed(0)}`;
+}
+
+/** "4 h 10 min" / "25 min" — the time until an instant, in words; "0 min" once it has passed. */
+export function formatHoursMinutesUntil(targetIso: string, now: Date = new Date()): string {
+  const totalMinutes = Math.max(0, Math.round((new Date(targetIso).getTime() - now.getTime()) / 60_000));
+  const hours = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
+  return hours > 0 ? `${hours} h ${minutes} min` : `${minutes} min`;
+}
+
 export function formatPercentage(fractionOrNull: number | null | undefined, decimalPlaces = 1): string {
   if (fractionOrNull === null || fractionOrNull === undefined) return "—";
   if (Number.isNaN(fractionOrNull)) return "—";
@@ -222,6 +241,13 @@ export function formatMonthDay(dateIso: string): string {
   if (!plainIsoDatePattern.test(dateIso)) return "—";
   const [year, month, day] = dateIso.split("-").map(Number);
   return new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric" }).format(new Date(year, month - 1, day));
+}
+
+/** A plain "YYYY-MM-DD" as day then short month, no year: "17 Oct" (the Pluto screen's contract and audit dates). */
+export function formatDayMonth(dateIso: string): string {
+  if (!plainIsoDatePattern.test(dateIso)) return "—";
+  const [year, month, day] = dateIso.split("-").map(Number);
+  return `${day} ${new Intl.DateTimeFormat("en-US", { month: "short" }).format(new Date(year, month - 1, day))}`;
 }
 
 export function formatExpiryWithDte(expiryIsoDate: string | null | undefined, asOf?: string | Date): string {

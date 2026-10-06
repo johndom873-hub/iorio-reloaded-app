@@ -11,7 +11,7 @@ import { RollSignalOrderSetupForm } from "./RollSignalOrderSetupForm";
 import { SignalOrderSetupForm } from "./SignalOrderSetupForm";
 import { ChainContractOrderSetupForm } from "./ChainContractOrderSetupForm";
 import { SignalsOptionChainCard, type ChainContractRef } from "./signals/SignalsOptionChainCard";
-import { formatCurrency, formatCurrencyTrimmed, formatDate, formatDateTime, formatNumber, formatPercentage, formatPercentageValue, formatSignedPercentageValue, formatSignedPnl, formatVolatilityPoints, pnlTextClass } from "../lib/formatters";
+import { formatCompactNumber, formatCurrency, formatCurrencyTrimmed, formatDate, formatDateTime, formatNumber, formatPercentage, formatPercentageValue, formatSignedPercentageValue, formatSignedPnl, formatVolatilityPoints, pnlTextClass } from "../lib/formatters";
 import { candidateContractKey, describeHeldLeg, describeSupportResistanceLevel, describeNoCandidatesMessage, describeQuoteAgeRange, describeRollSignalFlag, describeSignalFlag, gradeBadgeClass, gradeExplanation, gradeLabel, heldLegUnscoredReasonLabel, netRollEdgeExplanation, quoteSourceLabel, rollFlagLetter, signalContractKey, signalFlagLetter, surfaceIvTrustClass, describeNoSignalBadge, restScoresFallbackMs } from "../lib/signalsPresentation";
 import { IvHistoryChart } from "./charts/IvHistoryChart";
 import { TickerPriceChart } from "./charts/TickerPriceChart";
@@ -822,6 +822,17 @@ export function SignalsTickerModal({ symbol, initialRollLegId = null, focusPosit
           <TooltipSpan className={`font-mono ${row.quoteSource === "snapshot" ? "text-secondary" : ""}`} text={quoteSourceLabel[row.quoteSource]}>
             {formatPercentageValue(row.spreadPercent, 1)}
             {row.quoteSource === "snapshot" ? "*" : ""}
+          </TooltipSpan>
+        ),
+      },
+      {
+        key: "liquidity",
+        header: "OI / Vol",
+        align: "right",
+        headerTitle: "Open interest / session volume at the 10:00 ET capture (bid × ask sizes in the tooltip). Shown for judgement, not filtered on.",
+        render: (row) => (
+          <TooltipSpan className="font-mono text-secondary text-nowrap" text={`Bid size ${row.bidSize ?? "—"} × ask size ${row.askSize ?? "—"} at the capture`}>
+            {formatCompactNumber(row.openInterest)} / {formatCompactNumber(row.volume)}
           </TooltipSpan>
         ),
       },

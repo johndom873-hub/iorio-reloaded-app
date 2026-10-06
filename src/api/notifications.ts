@@ -19,6 +19,8 @@ export type AppNotification =
   | { type: "genosuke_reply"; preview: string }
   // The operator kill switch was flipped (Risk & Limits → Trading halt).
   | { type: "trading_halt_changed"; enabled: boolean; reason: string | null; byDisplayName: string | null }
+  // Pluto's timeline: one per pluto_events row (the Pluto screen refreshes from these).
+  | { type: "pluto_event"; eventId: number; eventType: string; occurredAt: string; payload: Record<string, unknown> }
   | { type: "presence"; onlineUserIds: string[] }
   // Animation-only signal for Pulse's topology lines; only sent to the /pulse tab.
   | { type: "pulse"; edgeId: "ibkr-gateway" | "heroku-browser" | "heroku-db" | "genosuke-db" | "genosuke-llm" }
