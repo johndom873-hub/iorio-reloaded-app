@@ -31,6 +31,9 @@ export interface PlutoStatus {
 /** Heartbeat rows are written every 45 s; three missed beats means the program is not responding. */
 export const agentNotRespondingAfterSeconds = 150;
 
+/** Time after the window opens before a missing IBKR connection counts as a problem (connect + one heartbeat). */
+const agentConnectGraceMs = 2 * 60_000;
+
 const checksThatHoldPluto: Record<string, string> = {
   trading_worker: "The trading worker is offline",
   account_data: "Account data is unavailable",
@@ -85,7 +88,16 @@ export function derivePlutoStatus(state: PlutoState, now: Date, crashLoopRestart
     const working = state.workingOrders.length;
     return { kind: "paused", label: "Paused", headline: `Paused${by} ${when(state.pausedAt)}`.trim(), subline: working > 0 ? `${workingOrdersPhrase(state)} — a plain pause leaves working orders alone` : "Resume when you're ready; working orders were left alone", holdAlert: null };
   }
-  if (state.agent && !state.agent.connected) {
+  // Outside the window Pluto holds no IBKR lines and runs no checks by design, so it is waiting, never held.
+  const session = state.session;
+  const windowStart = new Date(session.windowStartAt).getTime();
+  const windowEnd = new Date(session.windowEndAt).getTime();
+  if (!session.isOpen) return { kind: "waiting", label: "Waiting", headline: "Market closed today — nothing to analyse", subline: `Window ${session.windowStartEt}–${session.windowEndEt} ET on trading days`, holdAlert: null };
+  if (now.getTime() < windowStart) return { kind: "waiting", label: "Waiting", headline: `Outside the trading window — starts analysing at ${session.windowStartEt} ET`, subline: `Window ${session.windowStartEt}–${session.windowEndEt} ET · market closes ${session.closeTimeEt}`, holdAlert: null };
+  if (now.getTime() >= windowEnd) return { kind: "waiting", label: "Waiting", headline: `Trading window closed at ${session.windowEndEt} ET — done for today`, subline: `Starts again tomorrow at ${session.windowStartEt} ET`, holdAlert: null };
+  // Inside the window: the agent connects as the window opens and reports it with its next heartbeat (every 45 s), so a
+  // connection still missing two minutes in is a real problem.
+  if (state.agent && !state.agent.connected && now.getTime() - windowStart > agentConnectGraceMs) {
     return { kind: "held", label: "Held", headline: "On, but can't place orders right now", subline: "Starts again by itself once the problem below clears", holdAlert: { title: "Pluto's IBKR connection is down", text: "Quotes and orders can't flow until it reconnects." } };
   }
   if (checksAreFromToday(state)) {
@@ -95,12 +107,6 @@ export function derivePlutoStatus(state: PlutoState, now: Date, crashLoopRestart
       return { kind: "held", label: "Held", headline: "On, but can't place orders right now", subline: "Starts again by itself once the problem below clears", holdAlert: { title: checksThatHoldPluto[name]!, text: check.detail } };
     }
   }
-  const session = state.session;
-  const windowStart = new Date(session.windowStartAt).getTime();
-  const windowEnd = new Date(session.windowEndAt).getTime();
-  if (!session.isOpen) return { kind: "waiting", label: "Waiting", headline: "Market closed today — nothing to analyse", subline: `Window ${session.windowStartEt}–${session.windowEndEt} ET on trading days`, holdAlert: null };
-  if (now.getTime() < windowStart) return { kind: "waiting", label: "Waiting", headline: `Outside the trading window — starts analysing at ${session.windowStartEt} ET`, subline: `Window ${session.windowStartEt}–${session.windowEndEt} ET · market closes ${session.closeTimeEt}`, holdAlert: null };
-  if (now.getTime() >= windowEnd) return { kind: "waiting", label: "Waiting", headline: `Trading window closed at ${session.windowEndEt} ET — done for today`, subline: `Starts again tomorrow at ${session.windowStartEt} ET`, holdAlert: null };
   const tickers = state.enabledTickers.count;
   return {
     kind: "running",
