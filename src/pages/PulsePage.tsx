@@ -37,7 +37,7 @@ import {
   type GatewayHealth,
   type MarketSessionState,
 } from "../api/systemHealth";
-import { daysToExpiry, todayInEasternIso, formatSignedPnl, formatSignedPercentageValue, formatCompactDollars, formatDateTime, formatFeedTime, formatNumber, formatPercentageValue, formatRelativeDate, formatOptionContractShort, ibkrExpiryToIsoDate, orderRequestStatusLabel } from "../lib/formatters";
+import { daysToExpiry, todayInEasternIso, formatSignedPnl, formatSignedPercentageValue, formatCompactDollars, formatDateTime, formatFeedTime, formatNumber, formatPercentageValue, formatRelativeDate, formatOptionContractShort, formatUtcClockTimeInBrowserTime, ibkrExpiryToIsoDate, orderRequestStatusLabel } from "../lib/formatters";
 import { formatSuccessProbability, successProbabilityFromDelta, SUCCESS_PROBABILITY_HEADER } from "../lib/successProbability";
 import { positionExpiryDate, strategyAbbrev as positionStrategyAbbrev, strategyTooltip } from "../lib/positionPnl";
 import { FlashingNumber } from "../components/FlashingNumber";
@@ -1189,7 +1189,7 @@ export function PulsePage() {
                   {formatDurationShort(gatewayHealth?.uptimeMs)}
                 </span>
                 {gatewayHealth?.unplannedDropsLast24h != null && (
-                  <span className="sub-unit" title="Connection drops in the last 24 hours, not counting the Gateway's daily 05:30 UTC restart">
+                  <span className="sub-unit" title={`Connection drops in the last 24 hours, not counting the Gateway's daily restart (${formatUtcClockTimeInBrowserTime(5, 30)})`}>
                     {" ("}
                     <FlashingNumber value={gatewayHealth.unplannedDropsLast24h} className={`sub-value ${higherIsWorseStatus(gatewayHealth.unplannedDropsLast24h, ...GATEWAY_UNPLANNED_DROP_BANDS)}`}>
                       {gatewayHealth.unplannedDropsLast24h}
