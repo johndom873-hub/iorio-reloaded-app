@@ -6,10 +6,12 @@ interface PlutoCheckboxFilterProps {
   options: { key: string; label: string }[];
   selectedKeys: string[];
   onToggle: (key: string) => void;
+  /** Replaces the whole selection: the menu's All / None. */
+  onSelectKeys: (keys: string[]) => void;
 }
 
-/** A dropdown button whose menu is a checkbox list ("Categories · 5 of 6"). The menu is portalled to <body> so no clipped ancestor hides it, like ColumnVisibilityPopover. */
-export function PlutoCheckboxFilter({ label, options, selectedKeys, onToggle }: PlutoCheckboxFilterProps) {
+/** A dropdown button whose menu is a checkbox list ("Categories · 5 of 6") under All / None. The menu is portalled to <body> so no clipped ancestor hides it, like ColumnVisibilityPopover. */
+export function PlutoCheckboxFilter({ label, options, selectedKeys, onToggle, onSelectKeys }: PlutoCheckboxFilterProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [menuPosition, setMenuPosition] = useState<{ top: number; left: number } | null>(null);
   const buttonRef = useRef<HTMLButtonElement>(null);
@@ -55,6 +57,15 @@ export function PlutoCheckboxFilter({ label, options, selectedKeys, onToggle }: 
         menuPosition &&
         createPortal(
           <div ref={menuRef} className="dropdown-menu p-2 show pm-filter-menu" style={{ position: "fixed", top: menuPosition.top, left: menuPosition.left, zIndex: 1101, minWidth: 0, width: "max-content" }}>
+            <div className="pm-filter-quick">
+              <button type="button" className="pm-link-btn" disabled={selectedKeys.length === options.length} onClick={() => onSelectKeys(options.map((option) => option.key))}>
+                All
+              </button>
+              <span aria-hidden="true">·</span>
+              <button type="button" className="pm-link-btn" disabled={selectedKeys.length === 0} onClick={() => onSelectKeys([])}>
+                None
+              </button>
+            </div>
             {options.map((option) => (
               <label key={option.key}>
                 <input type="checkbox" className="form-check-input m-0" checked={selectedKeys.includes(option.key)} onChange={() => onToggle(option.key)} />

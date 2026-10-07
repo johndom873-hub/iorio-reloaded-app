@@ -269,6 +269,95 @@ export interface PlutoPassDecision {
   tokensOut: number | null;
   costUsd: number | null;
   error: string | null;
+  /** Only on GET /pluto/passes/:id: what the model was shown. */
+  inputPayload?: PlutoModelInput;
+}
+
+/** One option as the model saw it (the prompt's compact candidate; every field optional because the payload drops nulls). */
+export interface PlutoModelInputContract {
+  id: string;
+  kind: string;
+  expiry?: string;
+  dte?: number;
+  strike?: number;
+  delta?: number;
+  bid?: number;
+  ask?: number;
+  spread_pct?: number;
+  surface_iv?: number;
+  mid_iv?: number;
+  edge_vp?: number;
+  net_edge_vp?: number;
+  edge_dollars?: number;
+  ann_yield_pct?: number;
+  dollar_risk?: number;
+  oi?: number;
+  vol?: number;
+  grade?: string;
+  quote_source?: string;
+  quote_age_min?: number;
+  flags?: string[];
+}
+
+export interface PlutoModelInputRoll {
+  id: string;
+  quantity?: number;
+  net_roll_edge_vp?: number;
+  net_roll_edge_dollars?: number;
+  net_credit_per_share?: number;
+  delta_change?: number;
+  grade?: string;
+  flags?: string[];
+  replacement: PlutoModelInputContract;
+}
+
+/** A close offer (Formulas P1/P2): close_leg carries the buyback figures, close_shares the share figures. */
+export interface PlutoModelInputCloseAction {
+  id: string;
+  kind: "close_leg" | "close_shares";
+  description: string;
+  cycle_pnl?: number;
+  dte?: number;
+  ask?: number;
+  entry_credit?: number;
+  hold_edge_dollars?: number;
+  close_cost_dollars?: number;
+  pnl_at_ask?: number;
+  shares?: number;
+  entry_price?: number;
+  cycle_pnl_pct_of_capital?: number | null;
+  odd_lot?: boolean;
+}
+
+export interface PlutoModelInputTicker {
+  symbol: string;
+  sector?: string;
+  spot?: number;
+  day_change_pct?: number;
+  atm_iv?: number;
+  forecast_rv?: number;
+  momentum_12_1?: number;
+  skew_vp?: number;
+  elevated_vol?: boolean;
+  next_earnings?: string;
+  macro_events?: { date: string; title: string }[];
+  open_positions?: string[];
+  move_context?: { day_move_sigmas?: number; expected_daily_move_pct?: number; change_1w_pct?: number; change_1m_pct?: number; change_3m_pct?: number; realized_vol_21d?: number; realized_vol_126d?: number; iv_rank?: number };
+  candidates?: PlutoModelInputContract[];
+  rolls?: PlutoModelInputRoll[];
+  close_actions?: PlutoModelInputCloseAction[];
+}
+
+/** The user message of one model call: exactly what the model was shown (pluto/prompt.ts on the API). */
+export interface PlutoModelInput {
+  as_of: string;
+  session?: { date: string; minutes_to_window_end: number };
+  trigger?: { kind: string; detail: Record<string, unknown> };
+  market?: { spy_day_change_pct?: number };
+  account?: { nlv?: number; free_cash?: number; pluto_budget_pct?: number; pluto_budget_used_pct?: number; open_pluto_positions?: number; max_open_positions?: number; actions_today?: number; max_actions_per_session?: number };
+  parameters?: { min_grade?: string; max_abs_delta?: number; dte_range?: [number, number]; max_ticker_exposure_pct?: number; order_size_pct_of_budget?: number; confidence_floor?: number; spread_cost_share_pct?: number };
+  tickers?: PlutoModelInputTicker[];
+  recent_decisions?: { at: string; verdict: string; candidate_id?: string; outcome?: string; outcome_detail?: string; reason?: string }[];
 }
 
 export interface PlutoPass {
@@ -298,6 +387,8 @@ export interface PlutoEvent {
   occurredAt: string;
   type: string;
   category: PlutoEventCategory;
+  /** Names no ticker and belongs to no pass (settings, pauses, breakers): part of every ticker's trace. */
+  appliesToAllTickers?: boolean;
   payload: Record<string, unknown>;
 }
 
@@ -392,6 +483,11 @@ export function fetchPlutoLatestModelPass(): Promise<PlutoPass[]> {
 
 export function fetchPlutoActions(limit = 100): Promise<PlutoAction[]> {
   return apiRequest<PlutoAction[]>(`/pluto/actions?limit=${limit}`);
+}
+
+/** One pass with its model calls' full inputs (the Event log's "What the model saw"). */
+export function fetchPlutoPass(passId: string): Promise<PlutoPass> {
+  return apiRequest<PlutoPass>(`/pluto/passes/${encodeURIComponent(passId)}`);
 }
 
 /** One page of the Event log, newest first, with the total number of events matching the filters. */

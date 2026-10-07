@@ -593,6 +593,14 @@ export function formatSignedPercentageValue(percentOrNull: number | null | undef
   return formatted;
 }
 
+/** A plain number with its sign: "+0.23", "-0.33", "0.00" (sigmas, skew, momentum). */
+export function formatSignedNumber(valueOrNull: number | null | undefined, decimalPlaces = 2): string {
+  if (valueOrNull === null || valueOrNull === undefined || Number.isNaN(valueOrNull)) return "—";
+  const formatted = Math.abs(valueOrNull).toFixed(decimalPlaces);
+  if (Number(formatted) === 0) return formatted;
+  return `${valueOrNull > 0 ? "+" : "-"}${formatted}`;
+}
+
 // Global UI/UX standard: badge-change-pos/neg/flat for any price/change
 // value, never inline colors — see Trade Blotter/Positions P&L columns.
 export function pnlBadgeClass(pnl: number): string {

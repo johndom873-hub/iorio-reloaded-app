@@ -552,6 +552,12 @@ function orderLine(payload: Record<string, unknown>, context: PlutoFeedContext |
   return description ? humanizeOrderDescription(description) : text(payload.symbol);
 }
 
+/** The tickers an event lists: plain symbols, or objects carrying a `symbol` (a skipped pass's per-ticker summary). */
+function eventSymbols(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return value.map((item) => (typeof item === "string" ? item : item && typeof item === "object" ? text((item as Record<string, unknown>).symbol) : "")).filter(Boolean);
+}
+
 export function describeFeedEvent(event: PlutoEvent, context?: PlutoFeedContext): PlutoFeedEntry {
   const payload = event.payload ?? {};
   const symbol = text(payload.symbol);
@@ -590,9 +596,9 @@ export function describeFeedEvent(event: PlutoEvent, context?: PlutoFeedContext)
       return { dot: "warn", title: "Blocked", detail: `${symbol}${payload.candidateId ? ` ${describeCandidateId(text(payload.candidateId)).replace(/^[A-Z.]+ /, "")}` : ""}`, sub: failed.length > 0 ? sentenceCase(failed.map((gate) => gate.detail).join(" · ")) : text(payload.reason) || null };
     }
     case "pass_started":
-      return { dot: "look", title: "Analysis", detail: describeTrigger({ trigger: text(payload.trigger), triggerDetail: { symbols: payload.symbols } }, "short"), sub: null };
+      return { dot: "look", title: "Pass started", detail: eventSymbols(payload.symbols).join(", ") || null, sub: null };
     case "pass_skipped":
-      return { dot: "look", title: "Analysis skipped", detail: describeTrigger({ trigger: text(payload.trigger), triggerDetail: {} }, "short"), sub: text(payload.reason) || null };
+      return { dot: "look", title: "Pass skipped", detail: eventSymbols(payload.tickers).join(", ") || null, sub: text(payload.reason) || null };
     case "paused":
       if (by && by !== "agent") return { dot: "ctl", title: `Paused by ${by}`, detail: payload.cancelWorkingOrders ? `cancel requested for ${text(payload.cancelRequested)} working order${text(payload.cancelRequested) === "1" ? "" : "s"}` : null, sub: null };
       if (text(payload.reason) === "deploy") return { dot: "ctl", title: "Paused after an update", detail: `${shortRelease(payload.to)}`, sub: "Resume once you're happy with the new version" };
@@ -700,4 +706,57 @@ export function describeImpliedFill(reportedFillPrice: number, impliedFillPrice:
     `reporting this option at ${reportedFillPrice.toFixed(2)}. The Fill shown (${impliedFillPrice.toFixed(2)}) is the option's price implied by the total, ` +
     `with the other part counted at the price Pluto set. Both figures are stored.`
   );
+}
+
+/** A buyback offer's description ("Buy back 10× SMCI $42.5P 2026-10-09 at ~0.65 …") as its contract; null for anything else. */
+export function parseBuybackDescription(description: string): { quantity: number; strike: string; right: "C" | "P"; expiry: string } | null {
+  const match = description.match(/^Buy back (\d+)× \S+ \$(\S+?)([CP]) (\d{4}-\d{2}-\d{2})/);
+  return match ? { quantity: Number(match[1]), strike: match[2]!, right: match[3] as "C" | "P", expiry: match[4]! } : null;
+}
+
+/** A ticker's macro calendar by day, in date order: one entry per date with every release on it. */
+export function groupMacroEventsByDate(events: { date: string; title: string }[]): { date: string; titles: string[] }[] {
+  const byDate = new Map<string, string[]>();
+  for (const event of [...events].sort((a, b) => a.date.localeCompare(b.date))) byDate.set(event.date, [...(byDate.get(event.date) ?? []), event.title]);
+  return [...byDate.entries()].map(([date, titles]) => ({ date, titles }));
+}
+
+/** A recent decision's verdict as the model's input lists it, in words. */
+export function describeRecentDecisionVerdict(verdict: string): string {
+  if (verdict === "trade") return "Trade";
+  if (verdict === "no_trade") return "No order";
+  if (verdict === "abstain" || verdict === "abstain_system_concern") return "Abstained";
+  if (verdict === "invalid") return "Unreadable answer";
+  return humanizeKey(verdict);
+}
+
+/** What became of a traded decision (the action's outcome, or "not_executed"), with the badge tone it reads in. */
+export function describeTradeOutcome(outcome: string): { label: string; tone: "ok" | "warn" | "bad" | "info" | "neutral" } {
+  switch (outcome) {
+    case "blocked":
+      return { label: "Blocked", tone: "warn" };
+    case "validated":
+    case "order_built":
+    case "confirmed":
+      return { label: "Order working", tone: "info" };
+    case "filled":
+      return { label: "Filled", tone: "ok" };
+    case "partially_filled":
+      return { label: "Partly filled", tone: "ok" };
+    case "cancelled":
+      return { label: "Cancelled", tone: "neutral" };
+    case "rejected":
+      return { label: "Rejected", tone: "bad" };
+    case "error":
+      return { label: "Order error", tone: "bad" };
+    case "not_executed":
+      return { label: "Not executed", tone: "neutral" };
+    default:
+      return { label: humanizeKey(outcome), tone: "neutral" };
+  }
+}
+
+/** A candidate flag in words: "macro_event_before_expiry" → "macro event before expiry". */
+export function describeCandidateFlag(flag: string): string {
+  return flag.replace(/_/g, " ");
 }

@@ -15,7 +15,7 @@ function loadStoredCategories(): PlutoEventCategory[] {
   }
 }
 
-/** Which Event log categories are ticked: Info starts unticked, and every change is saved to localStorage as it is made. */
+/** Which Event log categories are ticked: Info starts unticked, and every change (a tick, All, None) is saved to localStorage as it is made. */
 export function usePlutoEventCategories() {
   const [categories, setCategories] = useState<PlutoEventCategory[]>(loadStoredCategories);
 
@@ -31,5 +31,9 @@ export function usePlutoEventCategories() {
     setCategories((previous) => (previous.includes(key as PlutoEventCategory) ? previous.filter((category) => category !== key) : plutoEventCategoryOptions.map((option) => option.key).filter((category) => category === key || previous.includes(category))));
   }, []);
 
-  return { categories, toggleCategory };
+  const selectCategories = useCallback((keys: string[]) => {
+    setCategories(plutoEventCategoryOptions.map((option) => option.key).filter((category) => keys.includes(category)));
+  }, []);
+
+  return { categories, toggleCategory, selectCategories };
 }

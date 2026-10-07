@@ -61,5 +61,6 @@ export function PlutoEventLog({ filters, refreshToken, context, onPageInfo }: Pl
     onPageInfo({ page, pageCount, total, firstShown: total === 0 ? 0 : (page - 1) * eventLogPageSize + 1, lastShown: Math.min(page * eventLogPageSize, total), goToPage: (next) => setPage(Math.min(Math.max(1, next), pageCount)), loading });
   }, [page, pageCount, total, loading, onPageInfo]);
 
-  return <PlutoActivityFeed events={events} loading={loading && events.length === 0} error={error} emptyMessage="No events match these filters." context={context} showAllFields />;
+  const emptyMessage = filters.categories.length === 0 ? "No categories selected. Tick one under Categories to see events." : "No events match these filters.";
+  return <PlutoActivityFeed events={events} loading={loading && events.length === 0} error={error} emptyMessage={emptyMessage} context={context} showAllFields tickerFilter={filters.ticker} />;
 }

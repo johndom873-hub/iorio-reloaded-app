@@ -175,7 +175,7 @@ export function PlutoHistoryTab({ view, onViewChange, scoreboard, scoreboardErro
   const [verdictFilter, setVerdictFilter] = useState<VerdictFilter>("all");
   const [shown, setShown] = useState(pageSize);
   const [session, setSession] = useState("");
-  const { categories: eventCategories, toggleCategory: toggleEventCategory } = usePlutoEventCategories();
+  const { categories: eventCategories, toggleCategory: toggleEventCategory, selectCategories: selectEventCategories } = usePlutoEventCategories();
   const [eventPage, setEventPage] = useState<EventPageInfo | null>(null);
   const [openPassId, setOpenPassId] = useState<string | null>(null);
   const orderColumns = plutoOrderColumns.history;
@@ -250,7 +250,7 @@ export function PlutoHistoryTab({ view, onViewChange, scoreboard, scoreboardErro
           </label>
           {view === "events" && (
             <>
-              <PlutoCheckboxFilter label="Categories" options={plutoEventCategoryOptions} selectedKeys={eventCategories} onToggle={toggleEventCategory} />
+              <PlutoCheckboxFilter label="Categories" options={plutoEventCategoryOptions} selectedKeys={eventCategories} onToggle={toggleEventCategory} onSelectKeys={selectEventCategories} />
               <span className="pm-session-filter">
                 <input type="date" className="pm-date" aria-label="Session date (Eastern trading day)" title="Session: an Eastern (market) trading day" value={session} onChange={(event) => setSession(event.target.value)} />
                 <button type="button" className={`pm-btn sm${session === "" ? " primary" : ""}`} aria-pressed={session === ""} onClick={() => setSession("")}>
