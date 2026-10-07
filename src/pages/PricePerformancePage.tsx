@@ -87,6 +87,15 @@ function MaTrendBadge({ trend }: { trend: MaTrend | null }) {
   );
 }
 
+// A Signals-off ticker gets no nightly IV snapshot: the add-day value would be stale, so the server sends none.
+function SignalsOffDash() {
+  return (
+    <TooltipSpan className="text-muted" text="Signals is off for this ticker: no daily implied-volatility snapshot is captured.">
+      —
+    </TooltipSpan>
+  );
+}
+
 // How long to wait for the first live price before saying so, instead of an
 // endless spinner (market closed, IBKR slow or unreachable).
 const LIVE_PRICE_WAIT_MS = 8_000;
@@ -293,6 +302,20 @@ export function PricePerformancePage() {
       render: (row) => <ChangeBadge value={changeFor(row, livePrices[row.symbol], "close1mAgo", row.change1m)} />,
     },
     {
+      key: "change3m",
+      header: "3M",
+      headerTitle: "vs. ~91 calendar days back — live once the price stream connects",
+      align: "right",
+      render: (row) => <ChangeBadge value={changeFor(row, livePrices[row.symbol], "close3mAgo", row.change3m)} />,
+    },
+    {
+      key: "change1y",
+      header: "1Y",
+      headerTitle: "vs. ~365 calendar days back — live once the price stream connects",
+      align: "right",
+      render: (row) => <ChangeBadge value={changeFor(row, livePrices[row.symbol], "close1yAgo", row.change1y)} />,
+    },
+    {
       key: "macdTrend",
       header: "MACD Trend",
       headerTitle: "As of the last completed close: EMA12/EMA26 MACD line vs. its 9-period signal line",
@@ -311,7 +334,7 @@ export function PricePerformancePage() {
       header: "IV %",
       headerTitle: "Implied Volatility",
       align: "right",
-      render: (row) => formatPercentage(row.impliedVolatility === null ? null : Number(row.impliedVolatility)),
+      render: (row) => (row.signalsEnabled ? formatPercentage(row.impliedVolatility === null ? null : Number(row.impliedVolatility)) : <SignalsOffDash />),
     },
     {
       key: "ivRank",
@@ -346,7 +369,7 @@ export function PricePerformancePage() {
       header: "Avg Vol",
       headerTitle: "Average Option Volume",
       align: "right",
-      render: (row) => formatNumber(row.avgOptionVolume),
+      render: (row) => (row.signalsEnabled ? formatNumber(row.avgOptionVolume) : <SignalsOffDash />),
     },
   ];
 

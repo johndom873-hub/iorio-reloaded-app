@@ -1,18 +1,20 @@
 import { useState } from "react";
 import { ApiError } from "../../api/client";
 import { updateShortlistBotEnabled } from "../../api/pluto";
-import { Spinner } from "../Spinner";
+import { ToggleSwitch } from "../ToggleSwitch";
 
 interface PlutoBotToggleProps {
   entryId: string;
   symbol: string;
   enabled: boolean;
+  /** Pluto only trades Signals tickers: the switch is disabled while Signals is off (the API refuses too). */
+  disabledReason?: string | null;
   onChanged: (enabled: boolean) => void;
   onError?: (message: string) => void;
 }
 
-/** The per-ticker "Pluto may trade this" switch, shared by the Shortlist tab and the Pluto screen. Saves on click; the cap error comes back from the API. */
-export function PlutoBotToggle({ entryId, symbol, enabled, onChanged, onError }: PlutoBotToggleProps) {
+/** The per-ticker "Pluto may trade this" switch on the Shortlist tab. Saves on click; the cap error comes back from the API. */
+export function PlutoBotToggle({ entryId, symbol, enabled, disabledReason, onChanged, onError }: PlutoBotToggleProps) {
   const [saving, setSaving] = useState(false);
 
   async function toggle() {
@@ -29,9 +31,13 @@ export function PlutoBotToggle({ entryId, symbol, enabled, onChanged, onError }:
   }
 
   return (
-    <label className="form-check form-switch m-0 d-inline-flex align-items-center gap-2" style={{ cursor: saving ? "wait" : "pointer" }}>
-      <input className="form-check-input m-0" type="checkbox" role="switch" checked={enabled} disabled={saving} onChange={() => void toggle()} aria-label={`Pluto ${enabled ? "enabled" : "disabled"} for ${symbol}`} />
-      {saving && <Spinner size="sm" />}
-    </label>
+    <ToggleSwitch
+      checked={enabled}
+      saving={saving}
+      disabled={Boolean(disabledReason)}
+      disabledReason={disabledReason ?? undefined}
+      ariaLabel={`Pluto ${enabled ? "enabled" : "disabled"} for ${symbol}`}
+      onToggle={() => void toggle()}
+    />
   );
 }

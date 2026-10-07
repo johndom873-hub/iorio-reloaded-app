@@ -38,7 +38,6 @@ const columns = [
   { key: "expiries", header: "Chain expiries", title: "Expiries with strikes captured", align: "right" },
   { key: "surface", header: "Surface fit", title: "Fitted vs total expiries; click to open the surface", align: "right" },
   { key: "status", header: "Status" },
-  { key: "notes", header: "Notes" },
 ] as const;
 
 /** The per-ticker switch in the mockup's own style; saves on click, the cap error comes back from the API. */
@@ -119,7 +118,7 @@ export function PlutoTickersTab({ rows, loading, error, state, maxEnabled, isPho
   let body: React.ReactNode;
   if (error) body = <div className="alert alert-danger pm-error mb-0">{error}</div>;
   else if (loading) body = <div className="pm-empty"><Spinner size="sm" label="Loading tickers" /></div>;
-  else if (visibleRows.length === 0) body = <div className="pm-empty">{rows.length === 0 ? "The Shortlist is empty — add tickers there first." : "No tickers match."}</div>;
+  else if (visibleRows.length === 0) body = <div className="pm-empty">{rows.length === 0 ? "No Signals tickers yet — turn Signals on for a ticker on the Shortlist first." : "No tickers match."}</div>;
   else if (isPhone) {
     body = (
       <ul className="pm-mlist">
@@ -187,7 +186,6 @@ export function PlutoTickersTab({ rows, loading, error, state, maxEnabled, isPho
                 expiries: <OptionChainExpiriesCell expiries={row.optionChainExpiries} />,
                 surface: <SurfaceFitCell row={row} onOpenSurface={() => setSurfaceSymbol(row.symbol)} linkClassName="pm-link num" />,
                 status: row.backfillStatus === "preparing" ? <PreparingStatusBadge progressPercent={row.backfillProgressPercent ?? 0} onClick={() => setPrepTicker({ tickerId: row.tickerId, symbol: row.symbol, companyName: row.companyName })} /> : <span className="muted">—</span>,
-                notes: row.notes ? <span>{row.notes}</span> : <span className="muted">—</span>,
               };
               return (
                 <tr key={row.id} className={row.botEnabled ? "on" : undefined}>
@@ -211,7 +209,7 @@ export function PlutoTickersTab({ rows, loading, error, state, maxEnabled, isPho
         <div className="pm-card-h">
           <div className="pm-min0">
             <h2 className="pm-card-t">Tickers Pluto may trade</h2>
-            {!isPhone && <div className="pm-card-meta pm-meta-top">Every Shortlist ticker. Switch one on to let Pluto trade it; the same switch is in the Shortlist's Pluto column.</div>}
+            {!isPhone && <div className="pm-card-meta pm-meta-top">Every Shortlist ticker with Signals on. Switch one on to let Pluto trade it; the same switch is in the Shortlist's Pluto column.</div>}
           </div>
           {isPhone ? (
             <span className="pm-card-meta">

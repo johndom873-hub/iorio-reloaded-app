@@ -161,7 +161,8 @@ export function PlutoPage() {
   }, []);
   const loadShortlist = useCallback(async () => {
     try {
-      setShortlist(await fetchShortlist());
+      // Pluto only trades Signals tickers: a Signals-off (price-only) ticker is not listed here at all.
+      setShortlist((await fetchShortlist()).filter((row) => row.signalsEnabled));
       setShortlistError(null);
     } catch (err) {
       setShortlistError(errorMessage(err, "Could not load the tickers."));

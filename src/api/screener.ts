@@ -49,9 +49,7 @@ export function fetchScreenerSectors(): Promise<string[]> {
   return apiRequest<string[]>("/screener/sectors");
 }
 
-export function addScreenerResultToShortlist(symbol: string, notes?: string): Promise<void> {
-  return apiRequest<void>(`/screener/${symbol}/shortlist`, {
-    method: "POST",
-    body: JSON.stringify({ notes }),
-  });
+/** Added with Signals off, like every add; turn it on from the Shortlist. */
+export function addScreenerResultToShortlist(symbol: string): Promise<void> {
+  return apiRequest<void>(`/screener/${symbol}/shortlist`, { method: "POST", body: JSON.stringify({}) });
 }

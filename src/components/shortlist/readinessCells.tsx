@@ -2,6 +2,7 @@ import type { ShortlistRow } from "../../api/shortlist";
 import { useTooltip } from "../../hooks/useTooltip";
 import { daysToExpiry, formatBarsAsYears, formatDate, formatDaysToExpiry, ibkrExpiryToIsoDate } from "../../lib/formatters";
 import { DottedLabelTooltip } from "../HelpTooltip";
+import { TooltipSpan } from "../TooltipSpan";
 import { WarningTriangle } from "./WarningTriangle";
 
 // The data-readiness cells (redesigned 2026-09-23): exactly what the Signals pipeline reads before it can score a
@@ -69,6 +70,15 @@ export function DividendCell({ row }: { row: ShortlistRow }) {
     );
   }
   return <>Known</>;
+}
+
+/** The option-chain cells of a Signals-off ticker: nothing is captured for it, so there is nothing to warn about. */
+export function SignalsOffCell() {
+  return (
+    <TooltipSpan className="text-muted" text="Signals is off: no option chain is captured for this ticker.">
+      —
+    </TooltipSpan>
+  );
 }
 
 export function SnapshotsCell({ row }: { row: ShortlistRow }) {

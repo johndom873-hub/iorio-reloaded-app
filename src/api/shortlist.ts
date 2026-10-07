@@ -3,7 +3,8 @@ import { apiRequest, apiBaseUrl, apiStreamedRequest } from "./client";
 export interface ShortlistRow {
   id: string;
   addedAt: string;
-  notes: string | null;
+  /** Off: price-only (Price Performance); left out of option-chain capture, Signals and Pluto. New tickers start off. */
+  signalsEnabled: boolean;
   tickerId: string;
   symbol: string;
   companyName: string | null;
@@ -55,10 +56,10 @@ export function fetchShortlist(): Promise<ShortlistRow[]> {
   return apiRequest<ShortlistRow[]>("/shortlist");
 }
 
-export function addToShortlist(symbol: string, notes?: string): Promise<AddToShortlistResult> {
+export function addToShortlist(symbol: string): Promise<AddToShortlistResult> {
   return apiRequest<AddToShortlistResult>("/shortlist", {
     method: "POST",
-    body: JSON.stringify({ symbol, notes }),
+    body: JSON.stringify({ symbol }),
   });
 }
 
@@ -66,11 +67,16 @@ export function removeFromShortlist(entryId: string): Promise<void> {
   return apiRequest<void>(`/shortlist/${entryId}`, { method: "DELETE" });
 }
 
-export function updateShortlistNotes(entryId: string, notes: string): Promise<{ notes: string | null }> {
-  return apiRequest<{ notes: string | null }>(`/shortlist/${entryId}`, {
-    method: "PATCH",
-    body: JSON.stringify({ notes: notes.trim() || null }),
-  });
+export interface SignalsEnabledResult {
+  signalsEnabled: boolean;
+  /** Turning Signals off turns Pluto off too. */
+  botEnabled: boolean;
+  /** The option-chain setup started by turning Signals on, or null. */
+  backfillRun: TickerBackfillRun | null;
+}
+
+export function updateShortlistSignalsEnabled(entryId: string, enabled: boolean): Promise<SignalsEnabledResult> {
+  return apiRequest<SignalsEnabledResult>(`/shortlist/${entryId}/signals-enabled`, { method: "PATCH", body: JSON.stringify({ enabled }) });
 }
 
 export interface TickerSearchResult {

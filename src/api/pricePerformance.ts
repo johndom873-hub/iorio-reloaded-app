@@ -10,6 +10,8 @@ export interface ReferenceCloses {
   close72hAgo: number | null;
   close1wAgo: number | null;
   close1mAgo: number | null;
+  close3mAgo: number | null;
+  close1yAgo: number | null;
 }
 
 export interface PricePerformanceRow {
@@ -30,11 +32,15 @@ export interface PricePerformanceRow {
   change72h: number | null;
   change1w: number | null;
   change1m: number | null;
+  change3m: number | null;
+  change1y: number | null;
   /** The closes those changes are measured against, so the live price can be applied in the browser. */
   referenceCloses: ReferenceCloses;
   /** As of the last completed daily close — computed on the server from stored daily bars. */
   macdTrend: MacdSignal | null;
   maTrend: MaTrend | null;
+  /** Off: no nightly IV snapshot, so impliedVolatility and avgOptionVolume are null. */
+  signalsEnabled: boolean;
   impliedVolatility: string | null;
   avgOptionVolume: string | null;
   ivRank: number | null;

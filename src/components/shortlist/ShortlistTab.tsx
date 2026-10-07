@@ -3,10 +3,11 @@ import { DataTable, type DataTableColumn } from "../DataTable/DataTable";
 import { Spinner } from "../Spinner";
 import { ConfirmModal } from "../ConfirmModal";
 import { TickerPrepModal } from "./TickerPrepModal";
-import { DailyBarsCell, DividendCell, EarningsCell, OptionChainExpiriesCell, PreparingStatusBadge, SnapshotsCell, SurfaceFitCell, quartersForEarningsAdjustment } from "./readinessCells";
+import { DailyBarsCell, DividendCell, EarningsCell, OptionChainExpiriesCell, PreparingStatusBadge, SignalsOffCell, SnapshotsCell, SurfaceFitCell, quartersForEarningsAdjustment } from "./readinessCells";
 import { VolatilitySurfaceModal } from "../VolatilitySurfaceModal";
 import { ActionsMenu, type ActionsMenuItem } from "./ActionsMenu";
 import { PlutoBotToggle } from "../pluto/PlutoBotToggle";
+import { SignalsToggle } from "./SignalsToggle";
 import { ApiError } from "../../api/client";
 import {
   addToShortlist,
@@ -17,8 +18,8 @@ import {
   removeFromShortlist,
   retryTickerBackfill,
   searchTickers,
-  updateShortlistNotes,
   type ShortlistRow,
+  type SignalsEnabledResult,
   type TickerBackfillRun,
   type TickerSearchResult,
 } from "../../api/shortlist";
@@ -27,77 +28,6 @@ import { pluralize } from "../../lib/formatters";
 const searchDebounceMs = 400;
 
 const preparingRefreshMs = 4_000;
-
-interface NotesCellProps {
-  row: ShortlistRow;
-  onSave: (entryId: string, notes: string) => Promise<void>;
-}
-
-// Click-to-edit: click the notes text to turn it into an input, blur/Enter
-// saves, Escape cancels. Reverts the draft if the save request fails.
-function NotesCell({ row, onSave }: NotesCellProps) {
-  const [isEditing, setIsEditing] = useState(false);
-  const [draft, setDraft] = useState(row.notes ?? "");
-  const [isSaving, setIsSaving] = useState(false);
-  const inputRef = useRef<HTMLInputElement>(null);
-
-  useEffect(() => {
-    if (!isEditing) setDraft(row.notes ?? "");
-  }, [row.notes, isEditing]);
-
-  useEffect(() => {
-    if (isEditing) inputRef.current?.focus();
-  }, [isEditing]);
-
-  async function commit() {
-    const trimmed = draft.trim();
-    setIsEditing(false);
-    if (trimmed === (row.notes ?? "").trim()) return;
-
-    setIsSaving(true);
-    try {
-      await onSave(row.id, trimmed);
-    } catch {
-      setDraft(row.notes ?? "");
-    } finally {
-      setIsSaving(false);
-    }
-  }
-
-  if (isSaving) {
-    return <Spinner size="sm" label="Saving" />;
-  }
-
-  if (isEditing) {
-    return (
-      <input
-        ref={inputRef}
-        type="text"
-        className="form-control form-control-sm"
-        value={draft}
-        onChange={(event) => setDraft(event.target.value)}
-        onBlur={commit}
-        onKeyDown={(event) => {
-          if (event.key === "Enter") commit();
-          if (event.key === "Escape") {
-            setDraft(row.notes ?? "");
-            setIsEditing(false);
-          }
-        }}
-      />
-    );
-  }
-
-  return (
-    <button
-      type="button"
-      className="btn btn-link text-body text-decoration-none d-block w-100 text-start px-2 py-2"
-      onClick={() => setIsEditing(true)}
-    >
-      {row.notes ?? "—"}
-    </button>
-  );
-}
 
 interface ShortlistTabProps {
   onOpenTickerModal: (symbol: string) => void;
@@ -271,14 +201,13 @@ export function ShortlistTab({ onOpenTickerModal }: ShortlistTabProps) {
     }
   }
 
-  async function handleUpdateNotes(entryId: string, notes: string) {
-    try {
-      setError(null);
-      const result = await updateShortlistNotes(entryId, notes);
-      setRows((prev) => prev.map((row) => (row.id === entryId ? { ...row, notes: result.notes } : row)));
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Failed to update notes.");
-      throw err;
+  // Signals on starts the option-chain setup in the background: open its progress modal, like an add does.
+  function handleSignalsChanged(row: ShortlistRow, result: SignalsEnabledResult) {
+    setError(null);
+    setRows((prev) => prev.map((entry) => (entry.id === row.id ? { ...entry, signalsEnabled: result.signalsEnabled, botEnabled: result.botEnabled } : entry)));
+    if (result.backfillRun) {
+      setPrepTicker({ tickerId: row.tickerId, symbol: row.symbol, companyName: row.companyName });
+      void loadRows();
     }
   }
 
@@ -313,21 +242,6 @@ export function ShortlistTab({ onOpenTickerModal }: ShortlistTabProps) {
     { key: "companyName", header: "Name", render: (row) => row.companyName ?? "—" },
     { key: "sector", header: "Sector", render: (row) => (row.isEtf ? <span className="text-muted fst-italic">ETF</span> : row.sector ?? "—") },
     {
-      key: "pluto",
-      header: "Pluto",
-      headerTitle: "Pluto may trade this ticker on its own (default off). The same toggle is on the Pluto screen.",
-      align: "center",
-      render: (row) => (
-        <PlutoBotToggle
-          entryId={row.id}
-          symbol={row.symbol}
-          enabled={row.botEnabled}
-          onChanged={(enabled) => setRows((prev) => prev.map((entry) => (entry.id === row.id ? { ...entry, botEnabled: enabled } : entry)))}
-          onError={setError}
-        />
-      ),
-    },
-    {
       key: "dailyBars",
       header: "Daily Bars",
       headerTitle: "Daily price/IV history — momentum needs 253 bars, the own-volatility threshold needs 377; warns when the latest bar is behind the last completed session",
@@ -352,7 +266,7 @@ export function ShortlistTab({ onOpenTickerModal }: ShortlistTabProps) {
       header: "Snapshots",
       headerTitle: "Nightly option-chain captures on record — the only source, nothing to manually backfill",
       align: "right",
-      render: (row) => <SnapshotsCell row={row} />,
+      render: (row) => (row.signalsEnabled ? <SnapshotsCell row={row} /> : <SignalsOffCell />),
     },
     {
       key: "optionChainExpiries",
@@ -362,8 +276,10 @@ export function ShortlistTab({ onOpenTickerModal }: ShortlistTabProps) {
       render: (row) =>
         populatingOptionChainTickerId === row.tickerId ? (
           <Spinner size="sm" label={`Populating option chain for ${row.symbol}`} />
-        ) : (
+        ) : row.signalsEnabled ? (
           <OptionChainExpiriesCell expiries={row.optionChainExpiries} />
+        ) : (
+          <SignalsOffCell />
         ),
     },
     {
@@ -371,7 +287,7 @@ export function ShortlistTab({ onOpenTickerModal }: ShortlistTabProps) {
       header: "Surface Fit",
       headerTitle: "Fitted vs. total expiries on the most recent option-chain snapshot",
       align: "right",
-      render: (row) => <SurfaceFitCell row={row} onOpenSurface={() => setSurfaceModalSymbol(row.symbol)} />,
+      render: (row) => (row.signalsEnabled ? <SurfaceFitCell row={row} onOpenSurface={() => setSurfaceModalSymbol(row.symbol)} /> : <SignalsOffCell />),
     },
     {
       key: "status",
@@ -386,7 +302,29 @@ export function ShortlistTab({ onOpenTickerModal }: ShortlistTabProps) {
           <span className="text-muted">—</span>
         ),
     },
-    { key: "notes", header: "Notes", render: (row) => <NotesCell row={row} onSave={handleUpdateNotes} /> },
+    {
+      key: "signals",
+      header: "Signals",
+      headerTitle: "Off (default for new tickers): price-only, shown on Price Performance. On: scored on Signals with a nightly option-chain capture; turning it on sets up the option chain.",
+      align: "center",
+      render: (row) => <SignalsToggle entryId={row.id} symbol={row.symbol} enabled={row.signalsEnabled} onChanged={(result) => handleSignalsChanged(row, result)} onError={setError} />,
+    },
+    {
+      key: "pluto",
+      header: "Pluto",
+      headerTitle: "Pluto may trade this ticker on its own (default off). Needs Signals on; turning Signals off turns Pluto off. The same toggle is on the Pluto screen.",
+      align: "center",
+      render: (row) => (
+        <PlutoBotToggle
+          entryId={row.id}
+          symbol={row.symbol}
+          enabled={row.botEnabled}
+          disabledReason={row.signalsEnabled ? null : "Turn Signals on first: Pluto only trades Signals tickers."}
+          onChanged={(enabled) => setRows((prev) => prev.map((entry) => (entry.id === row.id ? { ...entry, botEnabled: enabled } : entry)))}
+          onError={setError}
+        />
+      ),
+    },
     {
       key: "actions",
       header: "",
@@ -420,8 +358,10 @@ export function ShortlistTab({ onOpenTickerModal }: ShortlistTabProps) {
             label: "Populate Option Chain",
             onClick: () => setConfirmPopulateOptionChainRow(row),
             loading: populatingOptionChainTickerId === row.tickerId,
-            disabled: populatingOptionChainTickerId !== null,
-            disabledReason: "Another option-chain population is already running. One at a time.",
+            disabled: !row.signalsEnabled || populatingOptionChainTickerId !== null,
+            disabledReason: !row.signalsEnabled
+              ? "Signals is off: turning Signals on sets up the option chain."
+              : "Another option-chain population is already running. One at a time.",
           },
           {
             key: "retry-full-setup",
