@@ -83,7 +83,7 @@ export const plutoParameterGroups: PlutoParameterGroup[] = [
       { field: "minSlicePointCount", label: "Min slice points", unit: "quotes", kind: "integer", step: "1", help: "Fewest quotes the expiry's fit must rest on." },
       { field: "maxMidVsSurfaceIvVp", label: "Max mid vs surface IV", unit: "vp", kind: "number", step: "0.1", help: "Largest gap between the market's mid IV and the surface before the candidate is suspect." },
       { field: "maxIvShiftVp", label: "Max IV shift", unit: "vp", kind: "number", step: "0.1", help: "Largest move of the ticker's IV since the 10:00 fit before Pluto stands aside." },
-      { field: "maxDayMoveMultiple", label: "Max day move", unit: "× normal", kind: "number", step: "0.1", help: "Pluto ignores a ticker whose move today is more than this many times its normal day (its forecast volatility ÷ √252). At 3×, a stock whose normal day is 4.2% is ignored beyond 12.7%." },
+      { field: "maxDayMoveMultiple", label: "Max day move", unit: "× normal", kind: "number", step: "0.1", help: "Pluto ignores a ticker whose move today is more than this many times its normal day (its forecast volatility ÷ √252). At 3×, a stock whose normal day is 4.2% is ignored beyond 12.6%." },
     ],
   },
   {
@@ -155,7 +155,11 @@ export function settingsInputValue(field: PlutoSettingsField, value: string): st
   return kind === "number" || kind === "integer" ? Number(value) : value;
 }
 
-export const plutoParameterLabelByField: Record<string, string> = Object.fromEntries(plutoParameterGroups.flatMap((group) => group.parameters.map((parameter) => [parameter.field, parameter.field === "maxDte" ? "Max DTE" : parameter.field === "minDte" ? "Min DTE" : parameter.label])));
+export const plutoParameterLabelByField: Record<string, string> = {
+  // Renamed fields, still named in older settings audit rows and events.
+  maxAbsDayChangePct: "Max day move (old, % of price)",
+  ...Object.fromEntries(plutoParameterGroups.flatMap((group) => group.parameters.map((parameter) => [parameter.field, parameter.field === "maxDte" ? "Max DTE" : parameter.field === "minDte" ? "Min DTE" : parameter.label]))),
+};
 
 export type PlutoSettingsFormState = Record<PlutoSettingsField, string>;
 

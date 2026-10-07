@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { fetchPlutoEventsPage, type PlutoEvent, type PlutoEventFilters } from "../../api/pluto";
 import { errorMessage } from "../../api/client";
 import type { PlutoFeedContext } from "../../lib/plutoPresentation";
@@ -29,13 +29,11 @@ export function PlutoEventLog({ filters, refreshToken, context, onPageInfo }: Pl
   }, [filterKey]);
 
   const pageCount = Math.max(1, Math.ceil(total / eventLogPageSize));
-  const handledRefreshToken = useRef(refreshToken);
+  // A reload for a new event only matters on the first page; later pages would shift under the reader. Keeping the token out
+  // of a later page's dependencies also leaves that page's own fetch running when an event arrives mid-load.
+  const liveRefreshToken = page === 1 ? refreshToken : null;
   useEffect(() => {
     let cancelled = false;
-    // A reload for a new event only matters on the first page; later pages would shift under the reader.
-    const isLiveRefresh = handledRefreshToken.current !== refreshToken;
-    handledRefreshToken.current = refreshToken;
-    if (isLiveRefresh && page !== 1) return;
     setLoading(true);
     fetchPlutoEventsPage(filters, eventLogPageSize, (page - 1) * eventLogPageSize)
       .then((result) => {
@@ -53,9 +51,9 @@ export function PlutoEventLog({ filters, refreshToken, context, onPageInfo }: Pl
     return () => {
       cancelled = true;
     };
-    // filterKey stands for the filters' content; refreshToken re-runs this for live events.
+    // filterKey stands for the filters' content; liveRefreshToken re-runs page 1 for live events.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filterKey, page, refreshToken]);
+  }, [filterKey, page, liveRefreshToken]);
 
   useEffect(() => {
     onPageInfo({ page, pageCount, total, firstShown: total === 0 ? 0 : (page - 1) * eventLogPageSize + 1, lastShown: Math.min(page * eventLogPageSize, total), goToPage: (next) => setPage(Math.min(Math.max(1, next), pageCount)), loading });

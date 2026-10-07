@@ -193,7 +193,8 @@ export interface PlutoGateResult {
   detail: string;
 }
 
-export type PlutoActionKind = "open_covered_call" | "open_cash_secured_put" | "roll" | "close_shares" | "close_leg" | "no_trade";
+/** close_position: a whole covered call (call bought back, shares sold) closed by code before earnings, never by the model. */
+export type PlutoActionKind = "open_covered_call" | "open_cash_secured_put" | "roll" | "close_shares" | "close_leg" | "close_position" | "no_trade";
 export type PlutoActionOutcome = "validated" | "blocked" | "order_built" | "confirmed" | "filled" | "partially_filled" | "cancelled" | "cancelled_partially_filled" | "rejected" | "error" | "no_trade";
 
 /** What an action trades: an open's contract, a roll's replacement (plus the held leg it replaces), a close's leg or shares. */
@@ -254,7 +255,8 @@ export interface PlutoDecisionOutput {
   reasons?: string[];
   risks_acknowledged?: string[];
   /** One per data problem: a ticker of the round, or null for the whole message (prompt v3.3; older decisions arrive as null). */
-  system_concerns?: { symbol: string | null; concern: string }[];
+  /** Plain strings from an API older than the {symbol, concern} shape. */
+  system_concerns?: ({ symbol: string | null; concern: string } | string)[];
 }
 
 export interface PlutoPassDecision {

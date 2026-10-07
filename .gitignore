@@ -11,6 +11,9 @@ logs
 *.log
 npm-debug.log*
 
+# One-off scripts (diagnostics, ad-hoc checks)
+tmp/
+
 # Playwright MCP test artifacts (snapshots, screenshots, console logs)
 .playwright-mcp/
 

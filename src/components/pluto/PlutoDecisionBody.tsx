@@ -105,11 +105,16 @@ export function ReasonsAndRisks({ pass, firstHeading = false }: { pass: PlutoPas
         <>
           <div className="pm-h4">Data it distrusted</div>
           <ul className="pm-reasons muted">
-            {concerns.map((entry, index) => (
-              <li key={index}>
-                <strong>{entry.symbol ?? "All data"}</strong> — {entry.concern}
-              </li>
-            ))}
+            {concerns.map((entry, index) =>
+              // An API older than the {symbol, concern} shape sends each concern as plain text.
+              typeof entry === "string" ? (
+                <li key={index}>{entry}</li>
+              ) : (
+                <li key={index}>
+                  <strong>{entry.symbol ?? "All data"}</strong> — {entry.concern}
+                </li>
+              ),
+            )}
           </ul>
         </>
       )}

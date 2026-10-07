@@ -124,9 +124,11 @@ export function readinessSummaryLine(state: PlutoState): string | null {
   if (!readiness || readiness.dateIso !== todayInEasternIso()) return null;
   const marks = readiness.results.map((result) => `${result.name} ${result.ok ? "✓" : "✗"}`).join(" · ");
   const failing = readiness.signature !== "";
-  // "Pluto running" failing means Pluto is already off or paused, so only a failing probe leads to a pause at 9:20 ET.
+  // Only a failing probe leads to a pause at 9:20 ET, and only while Pluto is running: "Pluto running" failing means it is
+  // already off or paused, so the API does not pause it again.
+  const plutoRunning = readiness.results.every((result) => result.ok || result.name !== "Pluto running");
   const probeFailing = readiness.results.some((result) => !result.ok && result.name !== "Pluto running");
-  return `Pre-open check ${formatEasternTime(readiness.lastRunAt)}: ${marks}${failing && !readiness.finalDone ? ` · re-checking every 10 min${probeFailing ? ", pauses at 9:20 ET if still failing" : ""}` : ""}`;
+  return `Pre-open check ${formatEasternTime(readiness.lastRunAt)}: ${marks}${failing && !readiness.finalDone ? ` · re-checking every 10 min${probeFailing && plutoRunning ? ", pauses at 9:20 ET if still failing" : ""}` : ""}`;
 }
 
 /** The failing tests of today's readiness run, with their errors. */
@@ -193,6 +195,7 @@ export function describeOrderContract(action: { kind: PlutoActionKind; contract:
   const contract = action.contract;
   if (action.kind === "close_shares") return { title: `Sell ${action.quantity ?? "?"} shares`, sub: "Close unstructured shares" };
   if (action.kind === "close_leg") return { title: contract?.expiry ? `Buy back ${strikeText(contract.strike)} ${rightWord(contract)} · ${formatDayMonth(contract.expiry)}` : "Buy back", sub: "Buy back to close" };
+  if (action.kind === "close_position") return { title: contract?.expiry ? `Close ${strikeText(contract.strike)} call · ${formatDayMonth(contract.expiry)}` : "Close covered call", sub: `Buy back the call, sell ${action.quantity ?? "?"} shares` };
   if (action.kind === "roll") {
     const title = `Roll ${strikeText(contract?.fromStrike)} → ${strikeText(contract?.strike)} ${rightWord(contract)}`;
     const sub = contract?.fromExpiry && contract.expiry ? `${formatDayMonth(contract.fromExpiry)} → ${formatDayMonth(contract.expiry)} · net credit` : "net credit";
@@ -210,6 +213,7 @@ export function describeOrderShort(order: { symbol: string; kind: PlutoActionKin
   const quantity = order.quantity ?? "?";
   if (order.kind === "close_shares") return `${order.symbol} sell ${quantity} shares`;
   if (order.kind === "close_leg") return `${order.symbol} buy back ${quantity}× ${strikeText(contract?.strike)} ${rightWord(contract)}`;
+  if (order.kind === "close_position") return `${order.symbol} close covered call ${strikeText(contract?.strike)} (${quantity} shares)`;
   if (order.kind === "roll") return `${order.symbol} roll ${strikeText(contract?.fromStrike)} → ${strikeText(contract?.strike)} ${rightWord(contract)}`;
   if (order.kind === "open_covered_call") return `${order.symbol} buy-write ${quantity}× ${strikeText(contract?.strike)} call`;
   return `${order.symbol} sell ${quantity}× ${strikeText(contract?.strike)} ${rightWord(contract)}`;
@@ -346,7 +350,7 @@ export const plutoOrderColumns: Record<PlutoOrdersVariant, PlutoOrderColumn[]> =
 
 export function describeCandidateId(candidateId: string | null | undefined): string {
   if (!candidateId) return "—";
-  // SYM:strategy:expiry:strike | SYM:roll:legId:expiry:strike | SYM:close_leg:legId | SYM:close_shares:positionId
+  // SYM:strategy:expiry:strike | SYM:roll:legId:expiry:strike | SYM:close_leg:legId | SYM:close_shares:positionId | SYM:close_position:positionId
   const parts = candidateId.split(":");
   if (parts.length === 4 && (parts[1] === "covered_call" || parts[1] === "cash_secured_put")) {
     const [symbol, strategy, expiry, strike] = parts;
@@ -355,6 +359,7 @@ export function describeCandidateId(candidateId: string | null | undefined): str
   if (parts.length === 5 && parts[1] === "roll") return `${parts[0]} roll → $${parts[4]} ${formatDayMonth(parts[3]!)}`;
   if (parts[1] === "close_leg") return `${parts[0]} buy back`;
   if (parts[1] === "close_shares") return `${parts[0]} sell shares`;
+  if (parts[1] === "close_position") return `${parts[0]} close covered call`;
   return candidateId;
 }
 
@@ -593,7 +598,8 @@ export function describeFeedEvent(event: PlutoEvent, context?: PlutoFeedContext)
       return { dot: "bad", title: "Model call failed", detail: null, sub: text(payload.error) || null };
     case "no_trade": {
       const topPick = payload.deterministicTopPick as { id?: string; edgeDollars?: number } | null;
-      return { dot: "look", title: "No order", detail: topPick?.id ? `Edge $ top pick was ${describeCandidateId(topPick.id)} ($${Math.round(topPick.edgeDollars ?? 0)})` : "nothing worth trading", sub: Array.isArray(payload.reasons) ? (payload.reasons as string[]).join(" ") : null };
+      const fallback = isAbstainVerdict(text(payload.verdict)) ? "the model abstained" : "nothing worth trading";
+      return { dot: "look", title: "No order", detail: topPick?.id ? `Edge $ top pick was ${describeCandidateId(topPick.id)} ($${Math.round(topPick.edgeDollars ?? 0)})` : fallback, sub: Array.isArray(payload.reasons) ? (payload.reasons as string[]).join(" ") : null };
     }
     case "action_validated":
       return { dot: "look", title: "Order checks passed", detail: `${describeCandidateId(text(payload.candidateId))} · ${text(payload.quantity)}× @ ${Number(payload.limitPrice ?? 0).toFixed(2)}`, sub: null };
@@ -781,14 +787,14 @@ export function describeDaySignalsWatch(status: DaySignalsWatchStatus, sessionOp
       return { tone: "ok", label: "Watched", detail: `${pluralize(status.pooledExpiries.length, "expiry", "expiries")} quoted (${expiries})${look}`, phoneNote: null };
     }
     case "not_watched": {
-      const why = lookedAt ? `Re-checked ${lookedAt}${status.lastLookKind === "timed" ? "" : " after a price move"}: still nothing worth selling.` : "No contract had positive edge at 10:00.";
+      const why = lookedAt ? `Re-checked ${lookedAt}${status.lastLookKind === "timed" ? "" : " after a price move"}: still nothing worth selling.` : "No contract had positive edge at 10:00 ET.";
       const next = !sessionOpen ? "" : status.nextTimedCheckAt ? ` Next re-check ${formatBrowserClockTime(status.nextTimedCheckAt)}${triggers ? `, or at once at ${triggers}` : ""}.` : triggers ? ` Re-checked hourly, or at once at ${triggers}.` : " Re-checked hourly.";
       return { tone: "warn", label: "Not watched today", detail: `${why}${next}`, phoneNote: `Not watched today${sessionOpen && status.nextTimedCheckAt ? ` · next re-check ${formatBrowserClockTime(status.nextTimedCheckAt)}` : ""}` };
     }
     case "no_surface":
       return { tone: "bad", label: "No surface today", detail: "Today's capture gave no usable surface, so Day Signals cannot quote it. Watched again after the next capture.", phoneNote: "No surface today: not watched until the next capture" };
     case "waiting_for_capture":
-      return { tone: "neutral", label: "Waiting for today's capture", detail: "Day Signals starts once the 10:00 capture and its fits are done.", phoneNote: null };
+      return { tone: "neutral", label: "Waiting for today's capture", detail: "Day Signals starts once the 10:00 ET capture and its fits are done.", phoneNote: null };
     case "market_closed":
       return { tone: "neutral", label: "Market closed today", detail: null, phoneNote: null };
   }
