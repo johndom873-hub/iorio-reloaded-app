@@ -34,8 +34,10 @@ export interface PricePerformanceRow {
   change1m: number | null;
   change3m: number | null;
   change1y: number | null;
-  /** The closes those changes are measured against, so the live price can be applied in the browser. */
+  /** The closes those changes are measured against, counted back from the latest completed close. */
   referenceCloses: ReferenceCloses;
+  /** The closes a live price is measured against, counted back from meta.liveSessionDate (absent from an older API). */
+  liveReferenceCloses?: ReferenceCloses;
   /** As of the last completed daily close — computed on the server from stored daily bars. */
   macdTrend: MacdSignal | null;
   maTrend: MaTrend | null;
@@ -56,6 +58,8 @@ export interface PricePerformanceMeta {
   expectedSessionDate: string;
   isDataCurrent: boolean;
   behindSymbols: string[];
+  /** The session a live price belongs to: today from 09:30 ET on an open day, else the last completed session. */
+  liveSessionDate?: string;
 }
 
 export interface PricePerformanceData {

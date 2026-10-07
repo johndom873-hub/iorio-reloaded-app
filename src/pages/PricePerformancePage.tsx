@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { IconAlertTriangle } from "@tabler/icons-react";
 import { PageHeader } from "../components/layout/PageHeader";
 import { DataTable, type DataTableColumn } from "../components/DataTable/DataTable";
@@ -17,7 +17,8 @@ import {
   type PricePerformanceRow,
   type ReferenceCloses,
 } from "../api/pricePerformance";
-import { formatCurrency, formatDate, formatEasternTime, formatNumber, formatPercentage, formatPercentageValue, pnlBadgeClass } from "../lib/formatters";
+import { formatCurrency, formatDate, formatEasternTime, formatNumber, formatPercentage, formatPercentageValue, pnlBadgeClass, todayInEasternIso } from "../lib/formatters";
+import { useMarketStatus } from "../hooks/useMarketStatus";
 import { percentChange } from "../lib/priceChange";
 import { useSignalsTickerModal } from "../hooks/useSignalsTickerModal";
 import { useTooltip } from "../hooks/useTooltip";
@@ -107,9 +108,11 @@ type LiveConnection = "connecting" | "live" | "unavailable";
 
 // The live change against a reference close if a live price is known, else the
 // static change vs. the last completed close the server computed.
+// A live price is measured back from the session it belongs to (liveReferenceCloses, Marcelo 2026-10-07): during the
+// session 24hr is live vs the last close, not vs the close before it. `?? referenceCloses` covers an API without them.
 function changeFor(row: PricePerformanceRow, livePrice: number | null | undefined, key: keyof ReferenceCloses, staticChange: number | null): number | null {
   if (livePrice === undefined || livePrice === null) return staticChange;
-  return percentChange(livePrice, row.referenceCloses[key]);
+  return percentChange(livePrice, (row.liveReferenceCloses ?? row.referenceCloses)[key]);
 }
 
 export function PricePerformancePage() {
@@ -165,6 +168,16 @@ export function PricePerformancePage() {
       closeStream();
     };
   }, [symbolsKey]);
+
+  // A tab open across the 09:30 ET open: the live references must move to today's session. Checked on each market-status
+  // poll (about once a minute), so a snapshot the server computed just before the open is replaced within a minute.
+  const marketStatus = useMarketStatus();
+  const liveSessionDateRef = useRef<string | null>(null);
+  liveSessionDateRef.current = data?.meta.liveSessionDate ?? null;
+  useEffect(() => {
+    if (marketStatus?.state !== "open" || liveSessionDateRef.current === null) return;
+    if (liveSessionDateRef.current !== todayInEasternIso()) void load();
+  }, [marketStatus, load]);
 
   // The nightly capture finished: reload the stored data.
   useEffect(() => {
