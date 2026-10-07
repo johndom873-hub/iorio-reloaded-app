@@ -293,6 +293,12 @@ export function formatDayMonth(dateIso: string): string {
   return `${day} ${new Intl.DateTimeFormat("en-US", { month: "short" }).format(new Date(year, month - 1, day))}`;
 }
 
+/** A plain "YYYY-MM-DD" as day, short month and year: "7 Oct 2026". */
+export function formatDayMonthYear(dateIso: string): string {
+  if (!plainIsoDatePattern.test(dateIso)) return "—";
+  return `${formatDayMonth(dateIso)} ${dateIso.slice(0, 4)}`;
+}
+
 export function formatExpiryWithDte(expiryIsoDate: string | null | undefined, asOf?: string | Date): string {
   if (!expiryIsoDate) return "—";
   return `${formatDate(expiryIsoDate)} (${daysToExpiry(expiryIsoDate, asOf)} DTE)`;

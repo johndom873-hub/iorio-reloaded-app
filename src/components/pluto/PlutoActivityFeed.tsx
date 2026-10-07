@@ -1,5 +1,5 @@
 import type { PlutoEvent } from "../../api/pluto";
-import { browserLocalIsoDate, browserUsesTwelveHourClock, formatBrowserClockTime, formatBrowserClockTimeWithSeconds, formatBrowserDateTimeWithZone, formatDayMonth } from "../../lib/formatters";
+import { browserLocalIsoDate, browserUsesTwelveHourClock, formatBrowserClockTime, formatBrowserClockTimeWithSeconds, formatBrowserDateTimeWithZone, formatDayMonth, formatDayMonthYear } from "../../lib/formatters";
 import { describeEventPayloadFields, describeFeedEvent, plutoEventCategoryLabel, type PlutoFeedContext } from "../../lib/plutoPresentation";
 import { Spinner } from "../Spinner";
 
@@ -11,7 +11,7 @@ interface PlutoActivityFeedProps {
   /** Scrolls inside the card past this many entries' worth of height (the Live tab); the Event log grows. */
   scroll?: boolean;
   context?: PlutoFeedContext;
-  /** The Event log: time to the second, and under each entry its category, type, id and every stored field. */
+  /** The Event log: a date on every row, time to the second, and under each entry its category, type, id and every stored field. */
   showAllFields?: boolean;
 }
 
@@ -27,12 +27,21 @@ export function PlutoActivityFeed({ events, loading, error, emptyMessage, scroll
       {events.map((event) => {
         const entry = describeFeedEvent(event, context);
         const day = browserLocalIsoDate(event.occurredAt);
-        const showDay = day !== today && day !== currentDay;
+        // The Event log dates every row, so it needs no day separators.
+        const showDay = !showAllFields && day !== today && day !== currentDay;
         currentDay = day;
+        const time = <time dateTime={event.occurredAt} title={formatBrowserDateTimeWithZone(event.occurredAt)}>{showAllFields ? formatBrowserClockTimeWithSeconds(event.occurredAt) : formatBrowserClockTime(event.occurredAt)}</time>;
         return (
           <li key={event.id}>
             {showDay && <span className="ev-day">{formatDayMonth(day)}</span>}
-            <time dateTime={event.occurredAt} title={formatBrowserDateTimeWithZone(event.occurredAt)}>{showAllFields ? formatBrowserClockTimeWithSeconds(event.occurredAt) : formatBrowserClockTime(event.occurredAt)}</time>
+            {showAllFields ? (
+              <div className="ev-when">
+                <span className="ev-date">{formatDayMonthYear(day)}</span>
+                {time}
+              </div>
+            ) : (
+              time
+            )}
             <i className={`ev-dot ${entry.dot}`} aria-hidden="true" />
             <div>
               <div className="ev-t">

@@ -240,8 +240,16 @@ a.pm-b:hover, button.pm-b.link:hover { text-decoration: underline; }
 .pm-feed time { font-size: 12.5px; color: var(--muted); font-variant-numeric: tabular-nums; padding-top: 1px; }
 /* "12:59 PM" needs more room than "12:59"; the column stays one width per feed so the dots line up. */
 .pm-feed.h12 li { grid-template-columns: 64px 10px minmax(0, 1fr); }
-.pm-feed.seconds li { grid-template-columns: 4.5rem 10px minmax(0, 1fr); }
-.pm-feed.seconds.h12 li { grid-template-columns: 6rem 10px minmax(0, 1fr); }
+.pm-feed.seconds li { grid-template-columns: 5.5rem 4.5rem 10px minmax(0, 1fr); }
+.pm-feed.seconds.h12 li { grid-template-columns: 5.5rem 6rem 10px minmax(0, 1fr); }
+.pm-feed .ev-when { display: contents; }
+.pm-feed .ev-date { font-size: 0.78rem; color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; padding-top: 1px; }
+@media (max-width: 767px) {
+  .pm-feed.seconds li { grid-template-columns: 4.75rem 10px minmax(0, 1fr); }
+  .pm-feed.seconds.h12 li { grid-template-columns: 6rem 10px minmax(0, 1fr); }
+  .pm-feed .ev-when { display: flex; flex-direction: column; }
+  .pm-feed .ev-when time { padding-top: 0; }
+}
 .pm-feed .ev-fields { margin: 0.35rem 0 0; display: grid; gap: 0.1rem; font-size: 0.75rem; }
 .pm-feed .ev-fields > div { display: grid; grid-template-columns: minmax(5.5rem, 9rem) minmax(0, 1fr); gap: 0.6rem; }
 .pm-feed .ev-fields dt { font-weight: 500; color: var(--muted); }
