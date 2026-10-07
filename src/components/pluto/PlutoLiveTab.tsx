@@ -1,8 +1,8 @@
 import { useMemo, useState } from "react";
 import type { PlutoAction, PlutoEvent, PlutoPass, PlutoState } from "../../api/pluto";
 import { useCollapsibleCard } from "../../hooks/useCollapsibleCard";
-import { formatEasternTime } from "../../lib/formatters";
-import { buildFeedContext, checksAndGatesSummary, describeOrderContract, describeTrigger, isActivityFeedEvent, isTodaysOrder, passVerdict, plutoOrderColumns, verdictKind } from "../../lib/plutoPresentation";
+import { browserLocalIsoDate, formatBrowserClockTime, formatBrowserDayMonth } from "../../lib/formatters";
+import { buildFeedContext, checksAndGatesSummary, describeOrderContract, describeTrigger, isTodaysOrder, passVerdict, plutoOrderColumns, verdictKind } from "../../lib/plutoPresentation";
 import { ColumnVisibilityPopover } from "../DataTable/ColumnVisibilityPopover";
 import { useColumnVisibility } from "../DataTable/useColumnVisibility";
 import { PlutoActivityFeed } from "./PlutoActivityFeed";
@@ -15,18 +15,21 @@ interface PlutoLiveTabProps {
   actions: PlutoAction[];
   actionsLoading: boolean;
   actionsError: string | null;
-  passes: PlutoPass[];
-  passesLoading: boolean;
-  passesError: string | null;
-  events: PlutoEvent[];
-  eventsLoading: boolean;
-  eventsError: string | null;
+  /** The newest pass that asked the model, loaded on its own so skipped passes cannot bury it. */
+  latestModelPass: PlutoPass | null;
+  latestModelPassLoading: boolean;
+  latestModelPassError: string | null;
+  /** The newest events without the routine ones the Activity feed hides, loaded on their own for the same reason. */
+  feedEvents: PlutoEvent[];
+  feedEventsLoading: boolean;
+  feedEventsError: string | null;
   now: Date;
   isPhone: boolean;
   onOpenTicker: (symbol: string) => void;
 }
 
-const activityFeedLength = 40;
+/** How many feed events the Live tab asks for and shows (a phone shows fewer). */
+export const activityFeedLength = 40;
 const activityFeedLengthPhone = 12;
 
 function LatestDecisionCard({ pass, state, loading, error, isPhone }: { pass: PlutoPass | null; state: PlutoState | null; loading: boolean; error: string | null; isPhone: boolean }) {
@@ -46,7 +49,9 @@ function LatestDecisionCard({ pass, state, loading, error, isPhone }: { pass: Pl
   }
   const { action } = passVerdict(pass);
   const summary = checksAndGatesSummary(pass);
-  const when = `${formatEasternTime(pass.startedAt)} · ${describeTrigger(pass, "clause")}`;
+  // The newest model call can be from an earlier day (weekend, holiday), so a day label appears whenever it is not today.
+  const startedStamp = `${browserLocalIsoDate(pass.startedAt) === browserLocalIsoDate(new Date()) ? "" : `${formatBrowserDayMonth(pass.startedAt)} `}${formatBrowserClockTime(pass.startedAt)}`;
+  const when = `${startedStamp} · ${describeTrigger(pass, "clause")}`;
   const kind = verdictKind(pass);
   return (
     <section className="pm-card">
@@ -57,7 +62,7 @@ function LatestDecisionCard({ pass, state, loading, error, isPhone }: { pass: Pl
             <div className="pm-card-meta mt-1">
               <VerdictTag pass={pass} size="xs" />
               {kind === "order" && action && <StrategyBadge kind={action.kind} contract={action.contract} />}
-              <span>{kind === "order" && action ? `${action.symbol} ${describeOrderContract(action).title}` : kind === "failed" ? "Model call failed" : "Nothing worth trading"} · {formatEasternTime(pass.startedAt).replace(" ET", "")}</span>
+              <span>{kind === "order" && action ? `${action.symbol} ${describeOrderContract(action).title}` : kind === "failed" ? "Model call failed" : "Nothing worth trading"} · {startedStamp}</span>
             </div>
           </div>
         ) : (
@@ -112,12 +117,11 @@ function LatestDecisionCard({ pass, state, loading, error, isPhone }: { pass: Pl
   );
 }
 
-export function PlutoLiveTab({ state, actions, actionsLoading, actionsError, passes, passesLoading, passesError, events, eventsLoading, eventsError, now, isPhone, onOpenTicker }: PlutoLiveTabProps) {
+export function PlutoLiveTab({ state, actions, actionsLoading, actionsError, latestModelPass, latestModelPassLoading, latestModelPassError, feedEvents, feedEventsLoading, feedEventsError, now, isPhone, onOpenTicker }: PlutoLiveTabProps) {
   const todaysOrders = actions.filter(isTodaysOrder);
   const sent = todaysOrders.filter((action) => action.outcome !== "blocked" && action.outcome !== "validated").length;
   const blocked = todaysOrders.filter((action) => action.outcome === "blocked").length;
-  const latestPass = passes.find((pass) => pass.modelCalled) ?? null;
-  const feedEvents = events.filter(isActivityFeedEvent).slice(0, isPhone ? activityFeedLengthPhone : activityFeedLength);
+  const shownFeedEvents = feedEvents.slice(0, isPhone ? activityFeedLengthPhone : activityFeedLength);
   const feedContext = useMemo(() => buildFeedContext(actions), [actions]);
   const columns = plutoOrderColumns.today;
   const { isColumnVisible, toggleColumn } = useColumnVisibility("pluto-orders-today", columns.map((column) => column.key));
@@ -148,7 +152,7 @@ export function PlutoLiveTab({ state, actions, actionsLoading, actionsError, pas
         </h2>
         {isPhone ? <CardLink to="/pluto?tab=history&view=events" small>Full log</CardLink> : <div className="pm-card-meta"><CardLink to="/pluto?tab=history&view=events">Full log</CardLink></div>}
       </div>
-      <PlutoActivityFeed events={feedEvents} loading={eventsLoading} error={eventsError} emptyMessage="Nothing has happened yet." scroll={!isPhone} context={feedContext} />
+      <PlutoActivityFeed events={shownFeedEvents} loading={feedEventsLoading} error={feedEventsError} emptyMessage="Nothing has happened yet." scroll={!isPhone} context={feedContext} />
     </section>
   );
 
@@ -156,7 +160,7 @@ export function PlutoLiveTab({ state, actions, actionsLoading, actionsError, pas
     return (
       <div className="pm-stack tight">
         {ordersCard}
-        <LatestDecisionCard pass={latestPass} state={state} loading={passesLoading} error={passesError} isPhone />
+        <LatestDecisionCard pass={latestModelPass} state={state} loading={latestModelPassLoading} error={latestModelPassError} isPhone />
         {activityCard}
       </div>
     );
@@ -165,7 +169,7 @@ export function PlutoLiveTab({ state, actions, actionsLoading, actionsError, pas
     <div className="pm-grid-live">
       <div className="pm-stack">
         {ordersCard}
-        <LatestDecisionCard pass={latestPass} state={state} loading={passesLoading} error={passesError} isPhone={false} />
+        <LatestDecisionCard pass={latestModelPass} state={state} loading={latestModelPassLoading} error={latestModelPassError} isPhone={false} />
       </div>
       {activityCard}
     </div>

@@ -1,5 +1,5 @@
 import type { PlutoAction, PlutoState } from "../../api/pluto";
-import { easternIsoDate, formatDayMonth, formatEasternTime, formatSignedPnl } from "../../lib/formatters";
+import { formatBrowserClockTime, formatBrowserDayMonth, formatSignedPnl } from "../../lib/formatters";
 import { describeImpliedFill, describeOrderContract, describeOutcome, formatExposure, gatesPassedLabel, plutoOrderColumns, type PlutoOrdersVariant } from "../../lib/plutoPresentation";
 import { Spinner } from "../Spinner";
 import { TooltipSpan } from "../TooltipSpan";
@@ -20,10 +20,6 @@ interface PlutoOrdersTableProps {
   onOpenTicker: (symbol: string) => void;
   /** Phone: a list instead of the table. */
   isPhone: boolean;
-}
-
-function clockTime(iso: string): string {
-  return formatEasternTime(iso).replace(" ET", "");
 }
 
 function priceText(value: number | null): string {
@@ -63,7 +59,7 @@ export function PlutoOrdersTable({ variant, rows, now, state, loading, error, em
           const outcome = describeOutcome(action, now, state);
           const contract = describeOrderContract(action);
           const working = action.outcome === "confirmed" || action.outcome === "order_built";
-          const metaParts: string[] = [variant === "history" ? `${formatDayMonth(easternIsoDate(action.createdAt))} ${clockTime(action.createdAt)}` : clockTime(action.createdAt)];
+          const metaParts: string[] = [variant === "history" ? `${formatBrowserDayMonth(action.createdAt)} ${formatBrowserClockTime(action.createdAt)}` : formatBrowserClockTime(action.createdAt)];
           if (action.outcome === "blocked") metaParts.push(outcome.sub ?? "Blocked");
           else {
             if (action.quantity !== null) metaParts.push(`${action.kind === "open_covered_call" ? "buy-write " : ""}${action.quantity} × ${action.fillPrice === null ? `limit ${priceText(action.limitPrice)}` : `filled ${(action.impliedFillPrice ?? action.fillPrice).toFixed(2)}${action.impliedFillPrice !== null && Math.abs(action.impliedFillPrice - action.fillPrice) > 0.004 ? ` (IBKR split ${action.fillPrice.toFixed(2)})` : ""}`}`);
@@ -111,10 +107,10 @@ export function PlutoOrdersTable({ variant, rows, now, state, loading, error, em
               time:
                 variant === "history" ? (
                   <>
-                    <span className="medium">{formatDayMonth(easternIsoDate(action.createdAt))}</span> <span className="muted">{clockTime(action.createdAt)}</span>
+                    <span className="medium">{formatBrowserDayMonth(action.createdAt)}</span> <span className="muted">{formatBrowserClockTime(action.createdAt)}</span>
                   </>
                 ) : (
-                  <span className="muted">{clockTime(action.createdAt)}</span>
+                  <span className="muted">{formatBrowserClockTime(action.createdAt)}</span>
                 ),
               ticker: <TickerButton symbol={action.symbol} onOpen={onOpenTicker} />,
               strategy: <StrategyBadge kind={action.kind} contract={action.contract} />,

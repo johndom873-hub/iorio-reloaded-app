@@ -235,6 +235,12 @@ export function formatBrowserClockTime(dateInput: string | Date): string {
   return new Intl.DateTimeFormat(undefined, { hour: "numeric", minute: "2-digit" }).format(date);
 }
 
+/** Clock time to the second in the viewer's own timezone and locale style, e.g. "8:23:05 PM" or "20:23:05". */
+export function formatBrowserClockTimeWithSeconds(dateInput: string | Date): string {
+  const date = typeof dateInput === "string" ? new Date(dateInput) : dateInput;
+  return new Intl.DateTimeFormat(undefined, { hour: "numeric", minute: "2-digit", second: "2-digit" }).format(date);
+}
+
 /** Date and time in the viewer's own timezone and locale style, with the zone named, e.g. "Oct 6, 2026, 8:23 PM GMT+8". */
 export function formatBrowserDateTimeWithZone(dateInput: string | Date): string {
   const date = typeof dateInput === "string" ? new Date(dateInput) : dateInput;
@@ -251,6 +257,11 @@ export function browserUsesTwelveHourClock(): boolean {
 export function browserLocalIsoDate(dateInput: string | Date): string {
   const date = typeof dateInput === "string" ? new Date(dateInput) : dateInput;
   return new Intl.DateTimeFormat("en-CA", { year: "numeric", month: "2-digit", day: "2-digit" }).format(date);
+}
+
+/** The viewer's own calendar day an instant falls on, as a short day and month: "Oct 6". */
+export function formatBrowserDayMonth(dateInput: string | Date): string {
+  return formatDayMonth(browserLocalIsoDate(dateInput));
 }
 
 /** When a snapshot was captured, as short as the day allows: the Eastern clock time ("10:03 ET") if it was today, else the Eastern date ("Sep 30"). */

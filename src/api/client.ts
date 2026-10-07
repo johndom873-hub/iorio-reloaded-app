@@ -20,6 +20,11 @@ export class ApiError extends Error {
   }
 }
 
+/** The API's own message when it sent one, else the screen's fallback wording. */
+export function errorMessage(err: unknown, fallback: string): string {
+  return err instanceof ApiError ? err.message : fallback;
+}
+
 export async function apiRequest<TResponse>(path: string, options: RequestInit = {}): Promise<TResponse> {
   const response = await fetch(`${apiBaseUrl}${path}`, {
     ...options,

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ApiError } from "../../api/client";
 import { updatePlutoSettings, type PlutoSettings, type PlutoSettingsAuditRow, type PlutoSettingsField, type PlutoSettingsInput, type PlutoState } from "../../api/pluto";
-import { easternIsoDate, formatDayMonth, formatEasternTime } from "../../lib/formatters";
+import { formatBrowserClockTime, formatBrowserDayMonth } from "../../lib/formatters";
 import { changedSettingsFields, describeSettingsChange, plutoParameterHelp, plutoParameterGroups, plutoParameterLabelByField, plutoParameterSpecByField, settingsInputValue, settingsToFormState, type PlutoParameterGroup, type PlutoParameterSpec, type PlutoSettingsFormState } from "../../lib/plutoParameters";
 import { ConfirmModal } from "../ConfirmModal";
 import { CollapseButton, InfoIcon, ToggleHeader } from "./plutoBits";
@@ -191,7 +191,7 @@ export function PlutoSettingsTab({ settings, audit, loading, error, state, isPho
               <li key={row.id}>
                 {plutoParameterLabelByField[row.field] ?? row.field} <code>{row.oldValue ?? "—"} → {row.newValue ?? "—"}</code>{unit}
                 <div className="who">
-                  {row.userDisplayName ?? "—"} · {formatDayMonth(easternIsoDate(row.changedAt))} {formatEasternTime(row.changedAt).replace(" ET", "")}
+                  {row.userDisplayName ?? "—"} · {formatBrowserDayMonth(row.changedAt)} {formatBrowserClockTime(row.changedAt)}
                 </div>
               </li>
             );

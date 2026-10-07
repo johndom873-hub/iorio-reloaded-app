@@ -240,6 +240,14 @@ a.pm-b:hover, button.pm-b.link:hover { text-decoration: underline; }
 .pm-feed time { font-size: 12.5px; color: var(--muted); font-variant-numeric: tabular-nums; padding-top: 1px; }
 /* "12:59 PM" needs more room than "12:59"; the column stays one width per feed so the dots line up. */
 .pm-feed.h12 li { grid-template-columns: 64px 10px minmax(0, 1fr); }
+.pm-feed.seconds li { grid-template-columns: 4.5rem 10px minmax(0, 1fr); }
+.pm-feed.seconds.h12 li { grid-template-columns: 6rem 10px minmax(0, 1fr); }
+.pm-feed .ev-fields { margin: 0.35rem 0 0; display: grid; gap: 0.1rem; font-size: 0.75rem; }
+.pm-feed .ev-fields > div { display: grid; grid-template-columns: minmax(5.5rem, 9rem) minmax(0, 1fr); gap: 0.6rem; }
+.pm-feed .ev-fields dt { font-weight: 500; color: var(--muted); }
+.pm-feed .ev-fields dd { margin: 0; color: var(--text); overflow-wrap: anywhere; }
+.pm-feed .ev-fields dd.mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.7rem; }
+@media (max-width: 767px) { .pm-feed .ev-fields > div { grid-template-columns: minmax(0, 1fr); gap: 0; } }
 .pm-feed time { white-space: nowrap; }
 .pm-feed .ev-dot { width: 8px; height: 8px; border-radius: 50%; margin-top: 6px; background: var(--muted); display: block; }
 .ev-dot.order { background: #0ea5e9; }
@@ -491,3 +499,11 @@ a.pm-b:hover, button.pm-b.link:hover { text-decoration: underline; }
   .pm-th-row { grid-template-columns: 112px 150px 92px minmax(0, 1fr) 64px 28px; }
   .pm-dec-body { padding-left: 18px; }
 }
+
+.pm-pager { display: inline-flex; align-items: center; gap: 0.5rem; }
+.pm-pager .pm-pager-status { font-size: 0.8rem; color: var(--muted); white-space: nowrap; }
+.pm-filter-trigger { cursor: pointer; text-align: left; }
+.pm-filter-menu label { display: flex; align-items: center; gap: 0.5rem; padding: 0.2rem 0.35rem; margin: 0; cursor: pointer; font-size: 0.8rem; white-space: nowrap; }
+.pm-date { height: 34px; border: 1px solid var(--border-strong); border-radius: 6px; background: var(--input-bg); color: var(--strong); font: inherit; font-size: 0.8rem; padding: 0 0.6rem; }
+:root[data-bs-theme="dark"] .pm-date { color-scheme: dark; }
+.pm-session-filter { display: inline-flex; align-items: center; gap: 0.5rem; }

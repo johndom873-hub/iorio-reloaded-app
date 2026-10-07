@@ -291,11 +291,28 @@ export interface PlutoPass {
   actions: PlutoAction[];
 }
 
+export type PlutoEventCategory = "system" | "config" | "safety" | "analysis" | "trading" | "info";
+
 export interface PlutoEvent {
   id: number;
   occurredAt: string;
   type: string;
+  category: PlutoEventCategory;
   payload: Record<string, unknown>;
+}
+
+/** What the Event log narrows by; an empty `categories` list matches nothing, `ticker` / `session` empty match everything. */
+export interface PlutoEventFilters {
+  categories: PlutoEventCategory[];
+  ticker: string;
+  /** An Eastern trading day, "YYYY-MM-DD", or "" for every day. */
+  session: string;
+}
+
+export interface PlutoEventsPage {
+  events: PlutoEvent[];
+  /** Every event matching the filters, not only this page. */
+  total: number;
 }
 
 export interface PlutoTicker {
@@ -363,16 +380,36 @@ export function fetchPlutoSettingsAudit(limit = 20): Promise<PlutoSettingsAuditR
   return apiRequest<PlutoSettingsAuditRow[]>(`/pluto/settings/audit?limit=${limit}`);
 }
 
+/** The newest passes that asked the model (the only ones the Model decisions list shows), so skipped passes cannot crowd them out of the limit. */
 export function fetchPlutoPasses(limit = 30): Promise<PlutoPass[]> {
-  return apiRequest<PlutoPass[]>(`/pluto/passes?limit=${limit}`);
+  return apiRequest<PlutoPass[]>(`/pluto/passes?modelCalled=true&limit=${limit}`);
+}
+
+/** The newest pass that asked the model, however many skipped passes came after it (the Live tab's latest decision). */
+export function fetchPlutoLatestModelPass(): Promise<PlutoPass[]> {
+  return apiRequest<PlutoPass[]>("/pluto/passes?modelCalled=true&limit=1");
 }
 
 export function fetchPlutoActions(limit = 100): Promise<PlutoAction[]> {
   return apiRequest<PlutoAction[]>(`/pluto/actions?limit=${limit}`);
 }
 
-export function fetchPlutoEvents(limit = 200): Promise<PlutoEvent[]> {
-  return apiRequest<PlutoEvent[]>(`/pluto/events?limit=${limit}`);
+/** One page of the Event log, newest first, with the total number of events matching the filters. */
+export function fetchPlutoEventsPage(filters: PlutoEventFilters, limit: number, offset: number): Promise<PlutoEventsPage> {
+  const query = new URLSearchParams({ limit: String(limit), offset: String(offset), categories: filters.categories.join(",") });
+  if (filters.ticker.trim() !== "") query.set("ticker", filters.ticker.trim());
+  if (filters.session !== "") query.set("session", filters.session);
+  return apiRequest<PlutoEventsPage>(`/pluto/events?${query}`);
+}
+
+/** The newest events with the given types left out in the query, so routine ones cannot crowd the rest out of the limit. */
+export function fetchPlutoEventsExcludingTypes(excludedTypes: string[], limit: number): Promise<PlutoEvent[]> {
+  return apiRequest<PlutoEventsPage>(`/pluto/events?limit=${limit}&excludeTypes=${encodeURIComponent(excludedTypes.join(","))}`).then((page) => page.events);
+}
+
+/** The newest events of just the given types, however many other events came after them. */
+export function fetchPlutoEventsOfTypes(types: string[], limit: number): Promise<PlutoEvent[]> {
+  return apiRequest<PlutoEventsPage>(`/pluto/events?limit=${limit}&types=${encodeURIComponent(types.join(","))}`).then((page) => page.events);
 }
 
 export function fetchPlutoTickers(): Promise<{ max: number; tickers: PlutoTicker[] }> {

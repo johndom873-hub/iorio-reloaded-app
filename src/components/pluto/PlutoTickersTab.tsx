@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import { ApiError } from "../../api/client";
 import { updateShortlistBotEnabled, type PlutoState } from "../../api/pluto";
 import type { ShortlistRow, TickerBackfillRun } from "../../api/shortlist";
-import { easternIsoDate, formatDayMonth, pluralize } from "../../lib/formatters";
+import { formatBrowserDayMonth, pluralize } from "../../lib/formatters";
 import { ColumnVisibilityPopover } from "../DataTable/ColumnVisibilityPopover";
 import { useColumnVisibility } from "../DataTable/useColumnVisibility";
 import { Spinner } from "../Spinner";
@@ -74,7 +74,7 @@ function plutoNow(row: ShortlistRow, state: PlutoState | null): { tone: "neutral
 
 function changedBy(row: ShortlistRow): string | null {
   if (!row.botEnabledChangedAt) return null;
-  return `${row.botEnabledChangedBy ?? "—"} · ${formatDayMonth(easternIsoDate(row.botEnabledChangedAt))}`;
+  return `${row.botEnabledChangedBy ?? "—"} · ${formatBrowserDayMonth(row.botEnabledChangedAt)}`;
 }
 
 export function PlutoTickersTab({ rows, loading, error, state, maxEnabled, isPhone, onOpenTicker, onToggled, onPrepRunChange }: PlutoTickersTabProps) {

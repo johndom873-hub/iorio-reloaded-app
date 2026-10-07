@@ -1,4 +1,4 @@
-import type { PlutoAction, PlutoActionContract, PlutoActionKind, PlutoActionOutcome, PlutoEvent, PlutoPass, PlutoState, PlutoSystemCheck, PlutoWorkingOrder } from "../api/pluto";
+import type { PlutoAction, PlutoActionContract, PlutoActionKind, PlutoActionOutcome, PlutoEvent, PlutoEventCategory, PlutoPass, PlutoState, PlutoSystemCheck, PlutoWorkingOrder } from "../api/pluto";
 import { plutoParameterLabelByField } from "./plutoParameters";
 import { daysToExpiry, easternIsoDate, formatBrowserClockTime, formatCurrency, formatDayMonth, formatEasternTime, formatRelativeAge, formatRelativeTime, formatDateTime, todayInEasternIso } from "./formatters";
 
@@ -118,13 +118,13 @@ export function derivePlutoStatus(state: PlutoState, now: Date, crashLoopRestart
   };
 }
 
-/** "Pre-open check 6:00 AM (browser time): IBKR ✓ · API sign-in ✓ · OpenRouter ✓", for today's run only; null before the first one. */
+/** "Pre-open check 06:00 ET: IBKR ✓ · API sign-in ✓ · OpenRouter ✓", for today's run only; null before the first one. */
 export function readinessSummaryLine(state: PlutoState): string | null {
   const readiness = state.readiness;
   if (!readiness || readiness.dateIso !== todayInEasternIso()) return null;
   const marks = readiness.results.map((result) => `${result.name} ${result.ok ? "✓" : "✗"}`).join(" · ");
   const failing = readiness.signature !== "";
-  return `Pre-open check ${formatBrowserClockTime(readiness.lastRunAt)}: ${marks}${failing && !readiness.finalDone ? " · re-checking every 10 min, pauses at 9:20 ET if still failing" : ""}`;
+  return `Pre-open check ${formatEasternTime(readiness.lastRunAt)}: ${marks}${failing && !readiness.finalDone ? " · re-checking every 10 min, pauses at 9:20 ET if still failing" : ""}`;
 }
 
 /** The failing tests of today's readiness run, with their errors. */
@@ -249,7 +249,7 @@ export function describeOutcome(action: PlutoAction, now: Date, state: Pick<Plut
     case "confirmed":
     case "order_built": {
       const cancelAt = state ? workingOrderCancelAt(action, state) : null;
-      return { tone: "info", label: `Working · ${formatAgeInWords(action.createdAt, now)}`, sub: cancelAt ? `Cancels at ${formatEasternTime(cancelAt.toISOString()).replace(" ET", "")} if unfilled` : null, linksToOrder: true };
+      return { tone: "info", label: `Working · ${formatAgeInWords(action.createdAt, now)}`, sub: cancelAt ? `Cancels at ${formatBrowserClockTime(cancelAt)} if unfilled` : null, linksToOrder: true };
     }
     case "filled":
       return { tone: "ok", label: "Filled", sub: null, linksToOrder: true };
@@ -639,12 +639,51 @@ export function describeFeedEvent(event: PlutoEvent, context?: PlutoFeedContext)
   }
 }
 
-/** The Live tab's Activity feed leaves out the routine analysis bookkeeping the Event log keeps. */
-const feedHiddenEventTypes = new Set(["pass_started", "pass_skipped", "order_built", "action_validated", "no_trade", "lines_changed", "session_schedule"]);
+/** The Event log's category choices, in the order the dropdown lists them. Which category an event belongs to comes from the API. */
+export const plutoEventCategoryOptions: { key: PlutoEventCategory; label: string }[] = [
+  { key: "system", label: "System" },
+  { key: "config", label: "Config" },
+  { key: "safety", label: "Safety" },
+  { key: "analysis", label: "Analysis" },
+  { key: "trading", label: "Trading" },
+  { key: "info", label: "Info" },
+];
 
-export function isActivityFeedEvent(event: PlutoEvent): boolean {
-  return !feedHiddenEventTypes.has(event.type);
+/** Info is the routine analysis bookkeeping (thousands of rows a day), so it starts unticked. */
+export const defaultPlutoEventCategories: PlutoEventCategory[] = ["system", "config", "safety", "analysis", "trading"];
+
+export function plutoEventCategoryLabel(category: PlutoEventCategory): string {
+  return plutoEventCategoryOptions.find((option) => option.key === category)?.label ?? humanizeKey(category);
 }
+
+export interface PlutoEventField {
+  label: string;
+  value: string;
+  /** A structured value (a list of objects, a nested object) shown as compact JSON in a monospaced font. */
+  structured: boolean;
+}
+
+const fieldLabelWordFixes: Record<string, string> = { id: "ID", ids: "IDs", usd: "USD" };
+
+function fieldLabel(key: string): string {
+  const words = humanizeKey(key.replace(/([a-z])([A-Z])/g, "$1_$2").toLowerCase()).split(" ");
+  return words.map((word) => fieldLabelWordFixes[word.toLowerCase()] ?? word).join(" ");
+}
+
+/** Every field stored on an event, in stored order, as label + text, so nothing the agent recorded is hidden. */
+export function describeEventPayloadFields(payload: Record<string, unknown> | null): PlutoEventField[] {
+  if (!payload) return [];
+  return Object.entries(payload).map(([key, value]) => {
+    const label = fieldLabel(key);
+    if (value === null || value === undefined || value === "") return { label, value: "—", structured: false };
+    if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") return { label, value: String(value), structured: false };
+    if (Array.isArray(value) && value.every((item) => item === null || ["string", "number", "boolean"].includes(typeof item))) return { label, value: value.length === 0 ? "—" : value.join(value.every((item) => !/\s/.test(String(item))) ? ", " : " "), structured: false };
+    return { label, value: JSON.stringify(value), structured: true };
+  });
+}
+
+/** The Live tab's Activity feed leaves out the routine analysis bookkeeping the Event log keeps. */
+export const activityFeedHiddenEventTypes = ["pass_started", "pass_skipped", "order_built", "action_validated", "no_trade", "lines_changed", "session_schedule"];
 
 /** Restarts in the last hour from the newest crash-loop pause event, for the paused headline. */
 export function crashLoopRestartsFromEvents(events: PlutoEvent[]): number | null {
