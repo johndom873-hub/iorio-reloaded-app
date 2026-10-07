@@ -261,7 +261,9 @@ function AccountSection({ account }: { account: NonNullable<PlutoModelInput["acc
     account.nlv !== undefined ? `NLV ${formatCurrency(account.nlv, 0)}` : null,
     account.free_cash !== undefined ? `free cash ${formatCurrency(account.free_cash, 0)}` : null,
     account.pluto_budget_pct !== undefined ? `Pluto budget ${account.pluto_budget_pct}% of NLV${account.pluto_budget_used_pct !== undefined ? `, ${account.pluto_budget_used_pct.toFixed(0)}% used` : ""}` : null,
-    account.open_pluto_positions !== undefined && account.max_open_positions !== undefined ? `Pluto positions ${account.open_pluto_positions} of ${account.max_open_positions}` : null,
+    // Prompt v3.3 sends managed_positions (every position on an enabled ticker); older payloads only Pluto's own.
+    account.managed_positions !== undefined && account.max_open_positions !== undefined ? `managed positions ${account.managed_positions} of ${account.max_open_positions}` : null,
+    account.managed_positions === undefined && account.open_pluto_positions !== undefined && account.max_open_positions !== undefined ? `Pluto positions ${account.open_pluto_positions} of ${account.max_open_positions}` : null,
     account.actions_today !== undefined && account.max_actions_per_session !== undefined ? `actions today ${account.actions_today} of ${account.max_actions_per_session}` : null,
   ].filter((piece): piece is string => Boolean(piece));
   return (

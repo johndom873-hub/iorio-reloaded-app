@@ -401,6 +401,12 @@ a.pm-b:hover, button.pm-b.link:hover { text-decoration: underline; }
 /* Tickers */
 .pm-tk-name { display: flex; flex-direction: column; align-items: flex-start; }
 .pm-tk-name .co { font-size: 12.5px; color: var(--muted); }
+/* Day Signals column (mockup approved 2026-10-07): the badge's reason wraps under it; on a phone a one-line note under the company. */
+.pm-table td.pm-ds { min-width: 280px; }
+.pm-ds-why { max-width: 360px; white-space: normal; margin-top: 4px; }
+.pm-ds-note { display: block; font-size: 0.75rem; margin-top: 3px; }
+.pm-ds-note.warn { color: var(--warning-text); }
+.pm-ds-note.bad { color: var(--danger-text); }
 .pm-cap { display: flex; align-items: center; gap: 10px; font-size: 12.5px; color: var(--muted); }
 .pm-cap .pm-meter { width: 120px; margin-top: 0; }
 .pm-tk-who { margin-left: 46px; }

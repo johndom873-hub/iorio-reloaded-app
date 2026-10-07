@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import type { PlutoAction, PlutoEvent, PlutoPass, PlutoState } from "../../api/pluto";
 import { useCollapsibleCard } from "../../hooks/useCollapsibleCard";
 import { browserLocalIsoDate, formatBrowserClockTime, formatBrowserDayMonth } from "../../lib/formatters";
-import { buildFeedContext, checksAndGatesSummary, describeOrderContract, describeTrigger, isTodaysOrder, passVerdict, plutoOrderColumns, verdictKind } from "../../lib/plutoPresentation";
+import { buildFeedContext, checksAndGatesSummary, describeChosenAction, describeOrderContract, describeTrigger, isTodaysOrder, passVerdict, plutoOrderColumns, verdictKind } from "../../lib/plutoPresentation";
 import { ColumnVisibilityPopover } from "../DataTable/ColumnVisibilityPopover";
 import { useColumnVisibility } from "../DataTable/useColumnVisibility";
 import { PlutoActivityFeed } from "./PlutoActivityFeed";
@@ -62,7 +62,7 @@ function LatestDecisionCard({ pass, state, loading, error, isPhone }: { pass: Pl
             <div className="pm-card-meta mt-1">
               <VerdictTag pass={pass} size="xs" />
               {kind === "order" && action && <StrategyBadge kind={action.kind} contract={action.contract} />}
-              <span>{kind === "order" && action ? `${action.symbol} ${describeOrderContract(action).title}` : kind === "failed" ? "Model call failed" : "Nothing worth trading"} · {startedStamp}</span>
+              <span>{kind === "order" && action ? `${action.symbol} ${describeOrderContract(action).title}` : kind === "failed" ? "Model call failed" : describeChosenAction(pass)} · {startedStamp}</span>
             </div>
           </div>
         ) : (

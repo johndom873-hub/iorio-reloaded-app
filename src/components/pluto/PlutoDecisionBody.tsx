@@ -33,14 +33,13 @@ export function VerdictTag({ pass, size }: { pass: PlutoPass; size?: "sm" | "xs"
 }
 
 export function DecisionVerdictLine({ pass }: { pass: PlutoPass }) {
-  const { action, output } = passVerdict(pass);
+  const { action } = passVerdict(pass);
   const kind = verdictKind(pass);
   return (
     <div className="pm-verdict">
       <VerdictTag pass={pass} />
       {kind === "order" && action && <StrategyBadge kind={action.kind} contract={action.contract} />}
       <span className="pm-verdict-what">{kind === "failed" ? passVerdict(pass).error : describeChosenAction(pass)}</span>
-      {kind === "no_order" && output?.decision === "abstain" && <span className="muted">abstained</span>}
     </div>
   );
 }
@@ -106,8 +105,10 @@ export function ReasonsAndRisks({ pass, firstHeading = false }: { pass: PlutoPas
         <>
           <div className="pm-h4">Data it distrusted</div>
           <ul className="pm-reasons muted">
-            {concerns.map((concern, index) => (
-              <li key={index}>{concern}</li>
+            {concerns.map((entry, index) => (
+              <li key={index}>
+                <strong>{entry.symbol ?? "All data"}</strong> — {entry.concern}
+              </li>
             ))}
           </ul>
         </>

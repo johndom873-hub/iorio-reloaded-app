@@ -379,7 +379,7 @@ export function PlutoStatusCard({ state, status, settings, now, isPhone, showKpi
               </div>
               <Meter pct={budget ? (state.book.committedDollars / budget) * 100 : 0} />
               <div className="pm-kpi-s">
-                {pluralize(state.book.openPositionCount, "position")}
+                {pluralize(state.book.openPositionCount, "managed position")}
                 {!isPhone && orderSize !== null ? ` · order size ${formatCompactDollarsTrimmed(orderSize)}` : ""}
               </div>
             </div>

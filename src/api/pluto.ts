@@ -248,13 +248,14 @@ export interface PlutoAction {
 
 /** The model's parsed answer, stored as the schema names it (snake_case). */
 export interface PlutoDecisionOutput {
-  decision: "trade" | "no_trade" | "abstain";
+  decision: "trade" | "no_trade" | "abstain_system_concern" | "abstain";
   action_kind?: string | null;
   candidate_id?: string | null;
   confidence?: number;
   reasons?: string[];
   risks_acknowledged?: string[];
-  system_concerns?: string[];
+  /** One per data problem: a ticker of the round, or null for the whole message (prompt v3.3; older decisions arrive as null). */
+  system_concerns?: { symbol: string | null; concern: string }[];
 }
 
 export interface PlutoPassDecision {
@@ -354,7 +355,7 @@ export interface PlutoModelInput {
   session?: { date: string; minutes_to_window_end: number };
   trigger?: { kind: string; detail: Record<string, unknown> };
   market?: { spy_day_change_pct?: number };
-  account?: { nlv?: number; free_cash?: number; pluto_budget_pct?: number; pluto_budget_used_pct?: number; open_pluto_positions?: number; max_open_positions?: number; actions_today?: number; max_actions_per_session?: number };
+  account?: { nlv?: number; free_cash?: number; pluto_budget_pct?: number; pluto_budget_used_pct?: number; open_pluto_positions?: number; managed_positions?: number; max_open_positions?: number; actions_today?: number; max_actions_per_session?: number };
   parameters?: { min_grade?: string; max_abs_delta?: number; dte_range?: [number, number]; max_ticker_exposure_pct?: number; order_size_pct_of_budget?: number; confidence_floor?: number; spread_cost_share_pct?: number };
   tickers?: PlutoModelInputTicker[];
   recent_decisions?: { at: string; verdict: string; candidate_id?: string; outcome?: string; outcome_detail?: string; reason?: string }[];
@@ -415,6 +416,27 @@ export interface PlutoTicker {
   botEnabled: boolean;
   botEnabledChangedAt: string | null;
   botEnabledChangedBy: string | null;
+}
+
+/** Whether Day Signals is watching a Pluto-enabled ticker today, and when it looks again (API daySignalsWatchStatus.ts). */
+export interface DaySignalsWatchStatus {
+  kind: "watched" | "not_watched" | "no_surface" | "waiting_for_capture" | "market_closed";
+  pooledExpiries: string[];
+  lastLookAt: string | null;
+  lastLookKind: "price" | "timed" | null;
+  nextTimedCheckAt: string | null;
+  triggerLowPrice: number | null;
+  triggerHighPrice: number | null;
+}
+
+export interface DaySignalsWatch {
+  tradingDateIso: string;
+  sessionOpen: boolean;
+  tickers: Record<string, DaySignalsWatchStatus>;
+}
+
+export function fetchDaySignalsWatch(): Promise<DaySignalsWatch> {
+  return apiRequest<DaySignalsWatch>("/pluto/day-signals-watch");
 }
 
 export function fetchPlutoState(): Promise<PlutoState> {

@@ -1,6 +1,6 @@
-import type { PlutoAction, PlutoActionContract, PlutoActionKind, PlutoActionOutcome, PlutoEvent, PlutoEventCategory, PlutoPass, PlutoState, PlutoSystemCheck, PlutoWorkingOrder } from "../api/pluto";
+import type { DaySignalsWatchStatus, PlutoAction, PlutoActionContract, PlutoActionKind, PlutoActionOutcome, PlutoEvent, PlutoEventCategory, PlutoPass, PlutoState, PlutoSystemCheck, PlutoWorkingOrder } from "../api/pluto";
 import { plutoParameterLabelByField } from "./plutoParameters";
-import { daysToExpiry, easternIsoDate, formatBrowserClockTime, formatCurrency, formatDayMonth, formatEasternTime, formatRelativeAge, formatRelativeTime, formatDateTime, todayInEasternIso } from "./formatters";
+import { daysToExpiry, easternIsoDate, formatBrowserClockTime, formatCurrency, formatDayMonth, formatEasternTime, formatRelativeAge, formatRelativeTime, formatDateTime, pluralize, todayInEasternIso } from "./formatters";
 
 // Presentation rules for the Pluto screen (redesign approved 2026-10-06): one status at a time, plain-language
 // wording for orders, decisions and the activity feed. Pure functions so the components stay declarative.
@@ -377,10 +377,15 @@ export function verdictKind(pass: PlutoPass): PlutoVerdictKind {
   return output.decision === "trade" ? "order" : "no_order";
 }
 
+/** The model answers an abstention as "abstain_system_concern"; "abstain" is accepted too. */
+export function isAbstainVerdict(verdict: string | null | undefined): boolean {
+  return verdict === "abstain" || verdict === "abstain_system_concern";
+}
+
 /** "Sell 2× HOOD $24 put, 17 Oct" — what the model chose, with the sized quantity once the gates set one. */
 export function describeChosenAction(pass: PlutoPass): string {
   const { output, action } = passVerdict(pass);
-  if (!output || output.decision !== "trade") return output?.decision === "abstain" ? "Abstained — the data looked unreliable" : "Nothing worth trading";
+  if (!output || output.decision !== "trade") return isAbstainVerdict(output?.decision) ? "Abstained — the data looked unreliable" : "Nothing worth trading";
   const quantity = action?.quantity ? `${action.quantity}× ` : "";
   const contractName = (action ? describeOrderContract(action).title : describeCandidateId(output.candidate_id)).replace(" · ", ", ");
   const symbol = action?.symbol ?? output.candidate_id?.split(":")[0] ?? "";
@@ -422,6 +427,8 @@ export function describeTrigger(pass: Pick<PlutoPass, "trigger" | "triggerDetail
     case "position_closed":
       return form === "short" ? "Position closed" : "after a position closed";
     case "opening_analysis":
+      if (detail.dataIncomplete === true) return form === "short" ? "Opening analysis · data incomplete" : "at the opening analysis, before today's data was complete";
+      if (detail.afterLateSeed === true) return form === "short" ? "Opening analysis · data now complete" : "once today's data was complete, after an early opening analysis";
       return form === "short" ? "Opening analysis" : "at the opening analysis";
     case "manual":
       return form === "short" ? "Started by hand" : "when started by hand";
@@ -503,7 +510,7 @@ function shortRelease(value: unknown): string {
 
 function modelVerdictTitle(payload: Record<string, unknown>): string {
   const verdict = text(payload.verdict);
-  if (verdict !== "trade") return verdict === "abstain" ? "Model: abstained" : "Model: no order";
+  if (verdict !== "trade") return isAbstainVerdict(verdict) ? "Model: abstained" : "Model: no order";
   switch (text(payload.actionKind)) {
     case "roll":
       return "Model: roll";
@@ -725,7 +732,7 @@ export function groupMacroEventsByDate(events: { date: string; title: string }[]
 export function describeRecentDecisionVerdict(verdict: string): string {
   if (verdict === "trade") return "Trade";
   if (verdict === "no_trade") return "No order";
-  if (verdict === "abstain" || verdict === "abstain_system_concern") return "Abstained";
+  if (isAbstainVerdict(verdict)) return "Abstained";
   if (verdict === "invalid") return "Unreadable answer";
   return humanizeKey(verdict);
 }
@@ -760,3 +767,31 @@ export function describeTradeOutcome(outcome: string): { label: string; tone: "o
 export function describeCandidateFlag(flag: string): string {
   return flag.replace(/_/g, " ");
 }
+
+/**
+ * The Day Signals column (mockup approved 2026-10-07): whether Day Signals is quoting the ticker today and, when not, why and
+ * when it looks again. `sessionOpen` false drops the "next re-check" promises, since nothing runs outside the session.
+ */
+export function describeDaySignalsWatch(status: DaySignalsWatchStatus, sessionOpen: boolean): { tone: PlutoBadgeTone; label: string; detail: string | null; phoneNote: string | null } {
+  const lookedAt = status.lastLookAt ? formatBrowserClockTime(status.lastLookAt) : null;
+  const triggers = status.triggerLowPrice !== null && status.triggerHighPrice !== null ? `${formatCurrency(status.triggerLowPrice)} or ${formatCurrency(status.triggerHighPrice)}` : null;
+  switch (status.kind) {
+    case "watched": {
+      const expiries = status.pooledExpiries.map(formatDayMonth).join(", ");
+      const look = lookedAt ? ` · ${status.lastLookKind === "timed" ? `re-checked ${lookedAt}` : `re-ranked ${lookedAt} after a price move`}` : "";
+      return { tone: "ok", label: "Watched", detail: `${pluralize(status.pooledExpiries.length, "expiry", "expiries")} quoted (${expiries})${look}`, phoneNote: null };
+    }
+    case "not_watched": {
+      const why = lookedAt ? `Re-checked ${lookedAt}${status.lastLookKind === "timed" ? "" : " after a price move"}: still nothing worth selling.` : "No contract had positive edge at 10:00.";
+      const next = !sessionOpen ? "" : status.nextTimedCheckAt ? ` Next re-check ${formatBrowserClockTime(status.nextTimedCheckAt)}${triggers ? `, or at once at ${triggers}` : ""}.` : triggers ? ` Re-checked hourly, or at once at ${triggers}.` : " Re-checked hourly.";
+      return { tone: "warn", label: "Not watched today", detail: `${why}${next}`, phoneNote: `Not watched today${sessionOpen && status.nextTimedCheckAt ? ` · next re-check ${formatBrowserClockTime(status.nextTimedCheckAt)}` : ""}` };
+    }
+    case "no_surface":
+      return { tone: "bad", label: "No surface today", detail: "Today's capture gave no usable surface, so Day Signals cannot quote it. Watched again after the next capture.", phoneNote: "No surface today: not watched until the next capture" };
+    case "waiting_for_capture":
+      return { tone: "neutral", label: "Waiting for today's capture", detail: "Day Signals starts once the 10:00 capture and its fits are done.", phoneNote: null };
+    case "market_closed":
+      return { tone: "neutral", label: "Market closed today", detail: null, phoneNote: null };
+  }
+}
+

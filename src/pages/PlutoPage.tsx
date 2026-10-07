@@ -12,6 +12,8 @@ import {
   fetchPlutoSettings,
   fetchPlutoSettingsAudit,
   fetchPlutoState,
+  fetchDaySignalsWatch,
+  type DaySignalsWatch,
   type PlutoAction,
   type PlutoEvent,
   type PlutoPass,
@@ -159,6 +161,15 @@ export function PlutoPage() {
       setScoreboardError(errorMessage(err, "Could not load the track record."));
     }
   }, []);
+  const [daySignalsWatch, setDaySignalsWatch] = useState<DaySignalsWatch | null>(null);
+  const loadDaySignalsWatch = useCallback(async () => {
+    try {
+      setDaySignalsWatch(await fetchDaySignalsWatch());
+    } catch {
+      // The column then shows "—"; the rest of the tab does not depend on it.
+      setDaySignalsWatch(null);
+    }
+  }, []);
   const loadShortlist = useCallback(async () => {
     try {
       // Pluto only trades Signals tickers: a Signals-off (price-only) ticker is not listed here at all.
@@ -184,8 +195,11 @@ export function PlutoPage() {
   }, []);
 
   useEffect(() => {
-    void Promise.all([loadState(), loadPasses(), loadLatestModelPass(), loadFeedEvents(), loadActions(), loadShortlist(), loadSettings(), loadScoreboard()]);
-    const timer = setInterval(() => void loadState(), stateRefreshIntervalMs);
+    void Promise.all([loadState(), loadPasses(), loadLatestModelPass(), loadFeedEvents(), loadActions(), loadShortlist(), loadSettings(), loadScoreboard(), loadDaySignalsWatch()]);
+    const timer = setInterval(() => {
+      void loadState();
+      void loadDaySignalsWatch();
+    }, stateRefreshIntervalMs);
     return () => clearInterval(timer);
     // Initial load only; the per-list loaders re-run on their own limit changes below.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -341,6 +355,7 @@ export function PlutoPage() {
             loading={shortlistLoading}
             error={shortlistError}
             state={state}
+            daySignalsWatch={daySignalsWatch}
             maxEnabled={maxEnabled}
             isPhone={isPhone}
             onOpenTicker={openTickerModal}
@@ -348,6 +363,7 @@ export function PlutoPage() {
               setShortlist((previous) => previous.map((row) => (row.id === entryId ? { ...row, botEnabled: enabled } : row)));
               void loadShortlist();
               void loadState();
+              void loadDaySignalsWatch();
             }}
             onPrepRunChange={() => void loadShortlist()}
           />
