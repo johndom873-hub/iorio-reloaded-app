@@ -324,7 +324,7 @@ a.pm-b:hover, button.pm-b.link:hover { text-decoration: underline; }
 .pm-check small { display: block; color: var(--muted); font-size: 12px; }
 
 /* Stats (track record) */
-.pm-stats { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); }
+.pm-stats { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); }
 .pm-stat { padding: 14px 20px 16px; border-left: 1px solid var(--border); min-width: 0; }
 .pm-stat:first-child { border-left: 0; }
 

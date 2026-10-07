@@ -131,7 +131,6 @@ export function PlutoOrdersTable({ variant, rows, now, state, loading, error, em
                 </>
               ),
               realized: <RealizedCell action={action} />,
-              pessimistic: action.pessimisticPnl === null ? <span className="muted">—</span> : <span className={`num ${action.pessimisticPnl >= 0 ? "t-ok" : "t-bad"}`}>{formatSignedPnl(action.pessimisticPnl, 0)}</span>,
               gates: <span className={gates.allPassed ? "muted" : "t-warn strong"}>{gates.label}</span>,
             };
             return (

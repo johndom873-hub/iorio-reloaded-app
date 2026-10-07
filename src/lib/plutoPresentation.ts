@@ -338,7 +338,6 @@ export const plutoOrderColumns: Record<PlutoOrdersVariant, PlutoOrderColumn[]> =
     { key: "exp", header: "EXP $", title: "Exposure the order added (filled quantity), or would add while working, as Positions counts it", align: "right" },
     { key: "status", header: "Outcome" },
     { key: "realized", header: "Realized", align: "right" },
-    { key: "pessimistic", header: "Pessimistic", title: "Fills versus the worse side of the market the order was placed into", align: "right" },
     { key: "gates", header: "Gates", align: "right" },
   ],
 };

@@ -108,11 +108,6 @@ function TrackRecordCard({ scoreboard, error }: { scoreboard: PlutoScoreboard | 
             <div className="pm-kpi-s">{scoreboard.closedActions === 0 ? "Nothing closed yet" : `${scoreboard.winningActions} of ${scoreboard.closedActions} closed made money`}</div>
           </div>
           <div className="pm-stat">
-            <div className="pm-kpi-l">Pessimistic</div>
-            <div className={`pm-kpi-v ${scoreboard.pessimisticPnl > 0 ? "t-ok" : scoreboard.pessimisticPnl < 0 ? "t-bad" : ""}`}>{formatSignedPnl(scoreboard.pessimisticPnl, 0)}</div>
-            <div className="pm-kpi-s">Fills vs the worse side of the market</div>
-          </div>
-          <div className="pm-stat">
             <div className="pm-kpi-l">Orders filled</div>
             <div className="pm-kpi-v">
               {filled} <small>/ {sent} sent</small>

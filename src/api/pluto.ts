@@ -232,7 +232,6 @@ export interface PlutoAction {
   fillPrice: number | null;
   /** Two-part orders only: the option's price implied by the net fill, with the other part at the price Pluto set. */
   impliedFillPrice: number | null;
-  pessimisticPnl: number | null;
   /** EXP $ the order adds (negative when a close releases exposure), as Positions counts it; null without an order. */
   exposureDollars: number | null;
   /** Contracts (shares for a share sale) the order's trades filled so far; null before any fill or without an order. */
@@ -470,7 +469,6 @@ export interface PlutoScoreboard {
   costUsd: number;
   outcomes: Record<string, number>;
   realizedPnl: number;
-  pessimisticPnl: number;
   closedActions: number;
   winningActions: number;
   openActions: number;
