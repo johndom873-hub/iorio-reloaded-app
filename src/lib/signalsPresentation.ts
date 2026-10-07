@@ -226,7 +226,7 @@ export const signalFlagExplanation: Record<SignalFlag, string> = {
   outside_fitted_range: "Strike is outside the fitted curve — extrapolated",
   wide_spread: "Spread wider than 50% of the mid",
   insufficient_cash: "Not enough free cash to secure this put",
-  macro_event_before_expiry: "A major US macro release (FOMC, CPI, PPI, jobs report, PCE or GDP) lands before expiry — a short-dated IV spike may be an event premium, not mispricing",
+  macro_event_before_expiry: "A major US macro event (Fed rate decision, CPI, GDP or a US federal election) lands before expiry — a short-dated IV spike may be an event premium, not mispricing",
 };
 
 /** The flag's explanation, naming the actual releases for the macro flag: "… — CPI: Inflation Rate MoM (Oct 14)". */

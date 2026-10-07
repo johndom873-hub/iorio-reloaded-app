@@ -1,4 +1,5 @@
 import { apiRequest } from "./client";
+import type { MacroEvent } from "./signals";
 
 export interface TickerCalendarEvent {
   id: string;
@@ -9,21 +10,10 @@ export interface TickerCalendarEvent {
   amount: string | null;
 }
 
-export interface EconomicCalendarEvent {
-  id: string;
-  title: string;
-  country: string;
-  category: string | null;
-  importance: number | null;
-  actual: string | null;
-  forecast: string | null;
-  previous: string | null;
-  eventAt: string;
-}
-
 export interface CalendarEventsData {
   tickerEvents: TickerCalendarEvent[];
-  economicEvents: EconomicCalendarEvent[];
+  /** The major US macro events (Fed rate decision, CPI, GDP, US federal elections), the same list the Signals flag and Pluto read. */
+  macroEvents: MacroEvent[];
 }
 
 export function fetchCalendarEvents(): Promise<CalendarEventsData> {

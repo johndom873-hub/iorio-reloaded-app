@@ -9,9 +9,10 @@ export type SignalStrategyKey = "covered_call" | "cash_secured_put";
 export type SignalGrade = "strong" | "good" | "weak" | "avoid";
 export type SignalFlag = "earnings_calendar_unresolved" | "outside_fitted_range" | "wide_spread" | "insufficient_cash" | "macro_event_before_expiry";
 
-/** A major US macro release (FOMC, CPI, jobs report, PCE, GDP) the macro_event_before_expiry flag was judged against. */
+/** A major US macro event (Fed rate decision, CPI, GDP, US federal election) the macro_event_before_expiry flag was judged against. */
 export interface MacroEvent {
-  dateIso: string;
+  dateIso: string; // Eastern date
+  eventAtIso: string; // the release instant (UTC ISO)
   title: string;
 }
 /** "analysing": today's snapshot is saved but its surface fit has not finished yet (pending, not a problem). */

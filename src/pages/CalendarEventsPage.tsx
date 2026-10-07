@@ -2,12 +2,9 @@ import { useCallback, useEffect, useState } from "react";
 import { PageHeader } from "../components/layout/PageHeader";
 import { DataTable, type DataTableColumn } from "../components/DataTable/DataTable";
 import { ApiError } from "../api/client";
-import {
-  fetchCalendarEvents,
-  type EconomicCalendarEvent,
-  type TickerCalendarEvent,
-} from "../api/calendarEvents";
-import { daysToExpiry, formatCurrency, formatDate, formatDaysToExpiry, formatNumber, todayInEasternIso } from "../lib/formatters";
+import { fetchCalendarEvents, type TickerCalendarEvent } from "../api/calendarEvents";
+import type { MacroEvent } from "../api/signals";
+import { daysToExpiry, formatCurrency, formatDate, formatDaysToExpiry, formatEasternTime, todayInEasternIso } from "../lib/formatters";
 import { useSignalsTickerModal } from "../hooks/useSignalsTickerModal";
 
 function DateWithCountdown({ isoDate }: { isoDate: string }) {
@@ -31,26 +28,9 @@ function formatEarningsTime(eventTime: string | null): string {
   return "—";
 }
 
-// TradingView's economic-calendar importance scale runs -1 (unrated, e.g.
-// bill auctions) through 2 (High) -- not documented, inferred from observed
-// data (found 2026-08-30: -1 rows exist and aren't just "0 = Low").
-const importanceBadgeClass: Record<number, string> = {
-  "-1": "bg-secondary-lt",
-  0: "bg-secondary-lt",
-  1: "bg-yellow-lt",
-  2: "bg-danger-lt",
-};
-
-const importanceLabel: Record<number, string> = {
-  "-1": "Unrated",
-  0: "Low",
-  1: "Medium",
-  2: "High",
-};
-
 export function CalendarEventsPage() {
   const [tickerEvents, setTickerEvents] = useState<TickerCalendarEvent[]>([]);
-  const [economicEvents, setEconomicEvents] = useState<EconomicCalendarEvent[]>([]);
+  const [macroEvents, setMacroEvents] = useState<MacroEvent[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const { open: openTickerModal } = useSignalsTickerModal();
@@ -60,7 +40,7 @@ export function CalendarEventsPage() {
       setError(null);
       const result = await fetchCalendarEvents();
       setTickerEvents(result.tickerEvents);
-      setEconomicEvents(result.economicEvents);
+      setMacroEvents(result.macroEvents);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Failed to load calendar events.");
     }
@@ -112,44 +92,14 @@ export function CalendarEventsPage() {
     },
   ];
 
-  const economicColumns: DataTableColumn<EconomicCalendarEvent>[] = [
+  const macroColumns: DataTableColumn<MacroEvent>[] = [
     {
       key: "date",
       header: "Date",
-      render: (row) => <DateWithCountdown isoDate={row.eventAt} />,
+      render: (row) => <DateWithCountdown isoDate={row.dateIso} />,
     },
+    { key: "time", header: "Time", render: (row) => <span className="text-nowrap">{formatEasternTime(row.eventAtIso)}</span> },
     { key: "title", header: "Event", render: (row) => row.title },
-    { key: "country", header: "Country", render: (row) => row.country },
-    {
-      key: "importance",
-      header: "Importance",
-      render: (row) =>
-        row.importance === null ? (
-          "—"
-        ) : (
-          <span className={`badge ${importanceBadgeClass[row.importance] ?? "bg-secondary-lt"}`}>
-            {importanceLabel[row.importance] ?? row.importance}
-          </span>
-        ),
-    },
-    {
-      key: "actual",
-      header: "Actual",
-      align: "right",
-      render: (row) => (row.actual === null ? "—" : formatNumber(row.actual, 2)),
-    },
-    {
-      key: "forecast",
-      header: "Forecast",
-      align: "right",
-      render: (row) => (row.forecast === null ? "—" : formatNumber(row.forecast, 2)),
-    },
-    {
-      key: "previous",
-      header: "Previous",
-      align: "right",
-      render: (row) => (row.previous === null ? "—" : formatNumber(row.previous, 2)),
-    },
   ];
 
   return (
@@ -161,6 +111,7 @@ export function CalendarEventsPage() {
       <h3 className="mb-2">Ticker Events</h3>
       <DataTable
         tableId="calendar-ticker-events"
+        dense
         columns={tickerColumns}
         rows={tickerEvents}
         rowKey={(row) => row.id}
@@ -168,14 +119,15 @@ export function CalendarEventsPage() {
         emptyMessage="No upcoming earnings or ex-dividend dates for your shortlist or open positions."
       />
 
-      <h3 className="mb-2 mt-4">Economic Events</h3>
+      <h3 className="mb-2 mt-4">Major Macro Events</h3>
       <DataTable
-        tableId="calendar-economic-events"
-        columns={economicColumns}
-        rows={economicEvents}
-        rowKey={(row) => row.id}
+        tableId="calendar-macro-events"
+        dense
+        columns={macroColumns}
+        rows={macroEvents}
+        rowKey={(row) => `${row.eventAtIso}-${row.title}`}
         loading={loading}
-        emptyMessage="No upcoming economic events."
+        emptyMessage="No upcoming major macro events."
       />
 
     </>
