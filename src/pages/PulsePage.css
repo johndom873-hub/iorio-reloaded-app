@@ -1680,3 +1680,7 @@
 .iorio-pulse-page.pulse-phone .phone-systems .avatar-row {
   gap: 2px;
 }
+/* Pulse is dark whatever the app theme: the Pluto mark keeps its dark-theme shade (theme.css). */
+.iorio-pulse-page .pluto-managed-mark {
+  color: #9fb0ff;
+}

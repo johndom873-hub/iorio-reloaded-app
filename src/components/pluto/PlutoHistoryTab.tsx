@@ -2,7 +2,7 @@ import { useCallback, useMemo, useState } from "react";
 import type { PlutoAction, PlutoPass, PlutoScoreboard, PlutoState } from "../../api/pluto";
 import { useCollapsibleCard } from "../../hooks/useCollapsibleCard";
 import { useDebouncedValue } from "../../hooks/useDebouncedValue";
-import { easternIsoDate, formatBrowserClockTime, formatBrowserDayMonth, formatCurrency, formatDate, formatNumber, formatSignedPnl } from "../../lib/formatters";
+import { easternIsoDate, formatBrowserClockTime, formatBrowserDayMonth, formatCurrency, formatDate, formatDayMonthYear, formatNumber, formatSignedPnl } from "../../lib/formatters";
 import { buildFeedContext, describeChosenAction, formatModelCost, describeTopPickComparison, describeTrigger, passVerdict, plutoEventCategoryOptions, plutoOrderColumns, verdictKind } from "../../lib/plutoPresentation";
 import { ColumnVisibilityPopover } from "../DataTable/ColumnVisibilityPopover";
 import { useColumnVisibility } from "../DataTable/useColumnVisibility";
@@ -220,7 +220,7 @@ export function PlutoHistoryTab({ view, onViewChange, scoreboard, scoreboardErro
         ? `Showing ${visibleCount} of ${total} · only analyses where the model was asked; routine analyses are in the Event log`
         : eventPage === null
           ? "Loading events…"
-          : `Showing ${formatNumber(eventPage.firstShown)}–${formatNumber(eventPage.lastShown)} of ${formatNumber(eventPage.total)} events`;
+          : `Showing ${formatNumber(eventPage.firstShown)}–${formatNumber(eventPage.lastShown)} of ${formatNumber(eventPage.total)} events${session !== "" ? ` · session ${formatDayMonthYear(session)} is an Eastern trading day; rows show your local date and time` : ""}`;
 
   return (
     <>

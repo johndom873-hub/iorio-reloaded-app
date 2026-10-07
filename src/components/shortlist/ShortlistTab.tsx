@@ -307,7 +307,7 @@ export function ShortlistTab({ onOpenTickerModal }: ShortlistTabProps) {
       header: "Signals",
       headerTitle: "Off (default for new tickers): price-only, shown on Price Performance. On: scored on Signals with a nightly option-chain capture; turning it on sets up the option chain.",
       align: "center",
-      render: (row) => <SignalsToggle entryId={row.id} symbol={row.symbol} enabled={row.signalsEnabled} onChanged={(result) => handleSignalsChanged(row, result)} onError={setError} />,
+      render: (row) => <SignalsToggle entryId={row.id} symbol={row.symbol} enabled={row.signalsEnabled} botEnabled={row.botEnabled} openPositionCount={row.openPositionCount} onChanged={(result) => handleSignalsChanged(row, result)} onError={setError} />,
     },
     {
       key: "pluto",
@@ -319,6 +319,7 @@ export function ShortlistTab({ onOpenTickerModal }: ShortlistTabProps) {
           entryId={row.id}
           symbol={row.symbol}
           enabled={row.botEnabled}
+          openPositionCount={row.openPositionCount}
           disabledReason={row.signalsEnabled ? null : "Turn Signals on first: Pluto only trades Signals tickers."}
           onChanged={(enabled) => setRows((prev) => prev.map((entry) => (entry.id === row.id ? { ...entry, botEnabled: enabled } : entry)))}
           onError={setError}

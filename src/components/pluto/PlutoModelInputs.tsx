@@ -1,7 +1,7 @@
 import { useId, useState } from "react";
 import { fetchPlutoPass, type PlutoActionKind, type PlutoModelInput, type PlutoModelInputCloseAction, type PlutoModelInputContract, type PlutoModelInputRoll, type PlutoModelInputTicker } from "../../api/pluto";
 import { errorMessage } from "../../api/client";
-import { formatBrowserClockTimeWithSeconds, formatCurrency, formatDayMonth, formatNumber, formatSignedNumber, formatSignedPercentageValue } from "../../lib/formatters";
+import { formatBrowserClockTimeWithSeconds, formatBrowserDayMonth, formatCurrency, formatDayMonth, formatNumber, formatSignedNumber, formatSignedPercentageValue } from "../../lib/formatters";
 import { describeCandidateFlag, describeCandidateId, describeRecentDecisionVerdict, describeTradeOutcome, describeTrigger, groupMacroEventsByDate, parseBuybackDescription } from "../../lib/plutoPresentation";
 import { Spinner } from "../Spinner";
 import { GradeBadge, StrategyBadge } from "./plutoBits";
@@ -203,6 +203,12 @@ function CandidateLine({ candidate }: { candidate: PlutoModelInputContract }) {
   );
 }
 
+/** "opened by Pluto" / "opened by a person": the model is told who opened each position it may roll or close. */
+function openedByPiece(openedBy: string | undefined): string | null {
+  if (!openedBy) return null;
+  return openedBy === "pluto" ? "opened by Pluto" : `opened by ${openedBy}`;
+}
+
 function RollLine({ roll }: { roll: PlutoModelInputRoll }) {
   const replacement = roll.replacement;
   const pieces = [
@@ -210,6 +216,7 @@ function RollLine({ roll }: { roll: PlutoModelInputRoll }) {
     roll.net_credit_per_share !== undefined ? `net credit ${roll.net_credit_per_share.toFixed(2)}/sh` : null,
     roll.delta_change !== undefined ? `Δ change ${formatSignedNumber(roll.delta_change)}` : null,
     ...contractFigures(replacement),
+    openedByPiece(roll.opened_by),
   ].filter((piece): piece is string => Boolean(piece));
   return (
     <div className="pm-seen-line num">
@@ -230,6 +237,7 @@ function CloseOfferLine({ action }: { action: PlutoModelInputCloseAction }) {
       action.entry_price !== undefined ? `entry ${action.entry_price.toFixed(2)}` : null,
       action.cycle_pnl !== undefined ? `cycle P&L ${formatCurrency(action.cycle_pnl, 0)}${action.cycle_pnl_pct_of_capital !== undefined && action.cycle_pnl_pct_of_capital !== null ? ` (${action.cycle_pnl_pct_of_capital}% of capital)` : ""}` : null,
       action.odd_lot ? "odd lot" : null,
+      openedByPiece(action.opened_by),
     ].filter((piece): piece is string => Boolean(piece));
     return (
       <div className="pm-seen-line num">
@@ -245,6 +253,7 @@ function CloseOfferLine({ action }: { action: PlutoModelInputCloseAction }) {
     action.ask !== undefined ? `ask ${action.ask.toFixed(2)}${action.entry_credit !== undefined ? `, sold at ${action.entry_credit.toFixed(2)}` : ""}` : null,
     action.pnl_at_ask !== undefined ? `locks ${formatCurrency(action.pnl_at_ask, 0)} at the ask` : null,
     action.hold_edge_dollars !== undefined && action.close_cost_dollars !== undefined ? `hold edge ${formatCurrency(action.hold_edge_dollars, 0)} vs close cost ${formatCurrency(action.close_cost_dollars, 0)}` : null,
+    openedByPiece(action.opened_by),
   ].filter((piece): piece is string => Boolean(piece));
   return (
     <div className="pm-seen-line num">
@@ -305,7 +314,11 @@ function RecentDecisionsSection({ decisions }: { decisions: NonNullable<PlutoMod
           const outcome = decision.outcome ? describeTradeOutcome(decision.outcome) : null;
           return (
             <div key={`${decision.at}-${decision.verdict}`}>
-              <span className="t num">{formatBrowserClockTimeWithSeconds(decision.at)}</span>
+              <span className="t num">
+                {formatBrowserClockTimeWithSeconds(decision.at)}
+                {/* Recent decisions can span several days. */}
+                <span className="d">{formatBrowserDayMonth(decision.at)}</span>
+              </span>
               <span className="v">
                 {describeRecentDecisionVerdict(decision.verdict)}
                 {decision.verdict === "trade" && decision.candidate_id ? ` · ${describeCandidateId(decision.candidate_id)}` : ""}

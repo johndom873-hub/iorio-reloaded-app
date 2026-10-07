@@ -15,11 +15,13 @@ interface TickerHeaderStripProps {
   /** The header price: same frozen-then-live, last-trade-only source as the Positions table. Never a previous close. */
   spotPrice: number | null;
   nextCalendarEvents: NextTickerCalendarEvents | null;
+  /** Pluto may trade this ticker (its Pluto switch is on): a Pluto badge after the sector badge. */
+  plutoManaged: boolean;
   /** Called after "Add to Shortlist" succeeds so the owner can flip overview.isShortlisted. */
   onShortlisted: () => void;
 }
 
-export function TickerHeaderStrip({ symbol, overview, spotPrice, nextCalendarEvents, onShortlisted }: TickerHeaderStripProps) {
+export function TickerHeaderStrip({ symbol, overview, spotPrice, nextCalendarEvents, plutoManaged, onShortlisted }: TickerHeaderStripProps) {
   const [isAddingToShortlist, setIsAddingToShortlist] = useState(false);
   const [addToShortlistError, setAddToShortlistError] = useState<string | null>(null);
 
@@ -78,6 +80,11 @@ export function TickerHeaderStrip({ symbol, overview, spotPrice, nextCalendarEve
           <strong>Earnings</strong> {formatDate(nextCalendarEvents?.nextEarningsDate ?? null)}
         </span>
         {overview.sector && <span className="badge bg-secondary-lt">{overview.sector}</span>}
+        {plutoManaged && (
+          <span className="badge pluto-managed-badge" title={`Pluto may trade ${symbol}`}>
+            Pluto
+          </span>
+        )}
         {!overview.isShortlisted && (
           <button type="button" className="btn btn-outline-primary d-inline-flex align-items-center gap-1" disabled={isAddingToShortlist} onClick={handleAddToShortlist}>
             {isAddingToShortlist && <Spinner size="sm" />}

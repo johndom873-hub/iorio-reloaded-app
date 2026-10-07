@@ -303,6 +303,10 @@ export interface PlutoModelInputContract {
 
 export interface PlutoModelInputRoll {
   id: string;
+  /** The held leg the roll replaces (an id, not shown). */
+  held_leg_id?: string;
+  /** Who opened the position: "pluto" or "a person". */
+  opened_by?: string;
   quantity?: number;
   net_roll_edge_vp?: number;
   net_roll_edge_dollars?: number;
@@ -316,6 +320,8 @@ export interface PlutoModelInputRoll {
 /** A close offer (Formulas P1/P2): close_leg carries the buyback figures, close_shares the share figures. */
 export interface PlutoModelInputCloseAction {
   id: string;
+  /** Who opened the position: "pluto" or "a person". */
+  opened_by?: string;
   kind: "close_leg" | "close_shares";
   description: string;
   cycle_pnl?: number;
@@ -354,7 +360,8 @@ export interface PlutoModelInputTicker {
 export interface PlutoModelInput {
   as_of: string;
   session?: { date: string; minutes_to_window_end: number };
-  trigger?: { kind: string; detail: Record<string, unknown> };
+  /** Prompt v3.5 on sends the kind only. */
+  trigger?: { kind: string; detail?: Record<string, unknown> };
   market?: { spy_day_change_pct?: number };
   account?: { nlv?: number; free_cash?: number; pluto_budget_pct?: number; pluto_budget_used_pct?: number; open_pluto_positions?: number; managed_positions?: number; max_open_positions?: number; actions_today?: number; max_actions_per_session?: number };
   parameters?: { min_grade?: string; max_abs_delta?: number; dte_range?: [number, number]; max_ticker_exposure_pct?: number; order_size_pct_of_budget?: number; confidence_floor?: number; spread_cost_share_pct?: number };

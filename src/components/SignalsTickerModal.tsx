@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState, useCallback } from "react";
+import { usePlutoEnabledSymbols } from "../hooks/usePlutoEnabledSymbols";
 import { fetchNextTickerCalendarEvents, type NextTickerCalendarEvents } from "../api/calendarEvents";
 import { ApiError } from "../api/client";
 import { fetchSignalContractScore, fetchSignalsChain, fetchTickerSignals, openSignalsQuotesStream, openSignalsTickerStream, type HeldLegScore, type MacroEvent, type RollSignalCandidate, type ScoredSignalContract, type SignalCandidate, type SignalContractScore, type SignalsChain, type SignalsChainCellState, type SignalsQuotesFrame, type SignalStrategyKey, type TickerSignals, type UnscoredSignalContract } from "../api/signals";
@@ -297,6 +298,7 @@ const chainPickNotice = (pick: ChainContractPick, reason: string) => (
 
 export function SignalsTickerModal({ symbol, initialRollLegId = null, focusPositionId = null, onPositionsChanged, onClose }: SignalsTickerModalProps) {
   const [signals, setSignals] = useState<TickerSignals | null>(null);
+  const plutoEnabledSymbols = usePlutoEnabledSymbols();
   const noSignalBadge = useMemo(() => (signals ? describeNoSignalBadge(signals) : null), [signals]);
   const [signalsError, setSignalsError] = useState<string | null>(null);
   // GET /signals/:symbol answers 404 for a ticker neither shortlisted nor carrying an open short option leg.
@@ -955,6 +957,7 @@ export function SignalsTickerModal({ symbol, initialRollLegId = null, focusPosit
                   overview={overview}
                   spotPrice={spotPrice}
                   nextCalendarEvents={nextCalendarEvents}
+                  plutoManaged={plutoEnabledSymbols.has(symbol)}
                   onShortlisted={() => {
                     setOverview((prev) => (prev ? { ...prev, isShortlisted: true } : prev));
                     if (notInSignalsUniverse) setSignalsReloadKey((key) => key + 1);

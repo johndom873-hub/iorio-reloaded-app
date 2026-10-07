@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { PlutoManagedMark } from "../components/PlutoManagedMark";
+import { usePlutoEnabledSymbols } from "../hooks/usePlutoEnabledSymbols";
 import "@fontsource/ibm-plex-sans/400.css";
 import "@fontsource/ibm-plex-sans/500.css";
 import "@fontsource/ibm-plex-sans/600.css";
@@ -369,6 +371,7 @@ function EventRow({ time, text, color }: { time: string; text: string; color: st
 }
 
 export function PulsePage() {
+  const plutoEnabledSymbols = usePlutoEnabledSymbols();
   // Always dark, independent of the app-wide theme toggle — restored on
   // unmount so navigating back into the rest of the SPA (if this tab ever
   // does) isn't stuck dark.
@@ -926,7 +929,10 @@ export function PulsePage() {
     const successProbability = optionLeg ? successProbabilityFromDelta(optionLeg, greeksByLegId[optionLeg.id]?.delta) : null;
     return (
       <div className="pos-row" key={position.id}>
-        <span className="pos-sym">{position.symbol}</span>
+        <span className="pos-sym">
+          {position.symbol}
+          <PlutoManagedMark symbol={position.symbol} managed={plutoEnabledSymbols.has(position.symbol)} />
+        </span>
         <TooltipSpan className={`strat-badge ${strategyBadgeModifier[position.strategyKey] ?? "ns"}`} text={strategyTooltip(position.strategyKey)}>
           {positionStrategyAbbrev(position.strategyKey)}
         </TooltipSpan>
@@ -959,7 +965,10 @@ export function PulsePage() {
   const signalsEmpty = <div className="panel-empty">No signals with positive Edge $.</div>;
   const signalRowsRendered = topSignals.map(({ symbol, candidate }) => (
     <div className="yield-row" key={symbol}>
-      <span className="yield-sym">{symbol}</span>
+      <span className="yield-sym">
+        {symbol}
+        <PlutoManagedMark symbol={symbol} managed={plutoEnabledSymbols.has(symbol)} />
+      </span>
       <span className={`strat-badge ${candidate.strategyKey === "covered_call" ? "cc" : "csp"}`}>{strategyAbbrev(candidate.strategyKey)}</span>
       <span className="yield-strike">{signalStrikeLabel(candidate)}</span>
       <span className="yield-edge">{formatCompactDollars(candidate.edgeDollars)}</span>
@@ -1369,7 +1378,10 @@ export function PulsePage() {
             scoredCount: scoredTickerCount,
             bestRow: bestSignal ? (
               <>
-                <span className="yield-sym">{bestSignal.symbol}</span>
+                <span className="yield-sym">
+                  {bestSignal.symbol}
+                  <PlutoManagedMark symbol={bestSignal.symbol} managed={plutoEnabledSymbols.has(bestSignal.symbol)} />
+                </span>
                 <span className={`strat-badge ${bestSignal.candidate.strategyKey === "covered_call" ? "cc" : "csp"}`}>{strategyAbbrev(bestSignal.candidate.strategyKey)}</span>
                 <span>{signalStrikeLabel(bestSignal.candidate)}</span>
                 <span className="up" style={{ fontWeight: 700 }}>

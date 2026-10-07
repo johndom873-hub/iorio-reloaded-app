@@ -1437,3 +1437,21 @@
   height: 0.7rem;
   border-width: 0.12em;
 }
+
+/* Pluto marks (2026-10-07): the superscript "P" after a ticker Pluto may trade (Signals, Pulse), and the ticker modal's
+   Pluto badge. The mark is indigo text, darker on light and lighter on dark so both pass contrast. */
+.pluto-managed-mark {
+  margin-left: 0.1rem;
+  font-size: 0.65rem;
+  font-weight: 700;
+  color: #3b4fc4;
+}
+:root[data-bs-theme="dark"] .pluto-managed-mark {
+  color: #9fb0ff;
+}
+/* Solid like the sector badge beside it (white on indigo, 5.1:1, the same in both themes). */
+.pluto-managed-badge {
+  background-color: #4263eb;
+  color: #fff;
+}
+

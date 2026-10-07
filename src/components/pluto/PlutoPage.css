@@ -551,6 +551,7 @@ a.pm-b:hover, button.pm-b.link:hover { text-decoration: underline; }
 .pm-seen-decisions { display: grid; gap: 0.2rem; }
 .pm-seen-decisions > div { display: grid; grid-template-columns: 4.5rem minmax(7rem, 13rem) minmax(0, 1fr); gap: 0.5rem; align-items: baseline; }
 .pm-seen-decisions .t { color: var(--muted); }
+.pm-seen-decisions .t .d { display: block; font-size: 0.72rem; }
 .pm-seen-decisions .v { color: var(--strong); font-weight: 500; display: inline-flex; flex-wrap: wrap; align-items: center; gap: 0.3rem; }
 .pm-seen-decisions .r { overflow-wrap: anywhere; }
 @media (max-width: 767px) {

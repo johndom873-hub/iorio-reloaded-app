@@ -1,4 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
+import { PlutoManagedMark } from "../components/PlutoManagedMark";
+import { usePlutoEnabledSymbols } from "../hooks/usePlutoEnabledSymbols";
 import { IconAlertTriangle, IconChevronDown } from "@tabler/icons-react";
 import { ApiError } from "../api/client";
 import { fetchSignalsRoadmap, fetchSignalsScreen, openSignalsScreenStream, type DayQuotesFrameStatus, type RoadmapItem, type SignalGrade, type SignalsScreenRow } from "../api/signals";
@@ -131,6 +133,7 @@ function latestSnapshotCapturedAt(rows: SignalsScreenRow[]): string | null {
 
 export function SignalsPage() {
   const [rows, setRows] = useState<SignalsScreenRow[]>([]);
+  const plutoEnabledSymbols = usePlutoEnabledSymbols();
   const [roadmap, setRoadmap] = useState<RoadmapItem[]>([]);
   const [restRows, setRestRows] = useState<SignalsScreenRow[] | null>(null);
   const [loading, setLoading] = useState(true);
@@ -213,6 +216,7 @@ export function SignalsPage() {
         render: (row) => (
           <button type="button" className="btn btn-link p-0 text-decoration-none fw-bold" onClick={() => openTickerModal(row.symbol)}>
             {row.symbol}
+            <PlutoManagedMark symbol={row.symbol} managed={plutoEnabledSymbols.has(row.symbol)} />
           </button>
         ),
       },
@@ -331,7 +335,7 @@ export function SignalsPage() {
         ),
       },
     ],
-    [openTickerModal],
+    [openTickerModal, plutoEnabledSymbols],
   );
 
   if (error) {
@@ -417,6 +421,7 @@ export function SignalsPage() {
                   <span>
                     <button type="button" className="btn btn-link p-0 text-decoration-none fw-bold" onClick={() => openTickerModal(row.symbol)}>
                       {row.symbol}
+                      <PlutoManagedMark symbol={row.symbol} managed={plutoEnabledSymbols.has(row.symbol)} />
                     </button>{" "}
                     <TickColoredPrice value={row.spotPrice} initialReference={row.previousClose?.close ?? null} precision={2} title={priceSourceLabel[row.priceSource]}>
                       <span className="font-mono">{formatCurrency(row.spotPrice)}</span>

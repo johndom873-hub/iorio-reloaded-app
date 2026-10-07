@@ -12,6 +12,7 @@ import { VolatilitySurfaceModal } from "../VolatilitySurfaceModal";
 import { DailyBarsCell, DividendCell, EarningsCell, OptionChainExpiriesCell, PreparingStatusBadge, SnapshotsCell, SurfaceFitCell } from "../shortlist/readinessCells";
 import { TickerPrepModal } from "../shortlist/TickerPrepModal";
 import { Meter, SearchIcon, TickerButton, ToneBadge } from "./plutoBits";
+import { PlutoStopsManagingConfirm, plutoStopsManagingPositions } from "./PlutoStopsManagingConfirm";
 
 interface PlutoTickersTabProps {
   rows: ShortlistRow[];
@@ -46,7 +47,14 @@ const columns = [
 /** The per-ticker switch in the mockup's own style; saves on click, the cap error comes back from the API. */
 function TickerSwitch({ row, onToggled, onError, withLabel }: { row: ShortlistRow; onToggled: (enabled: boolean) => void; onError: (message: string) => void; withLabel: boolean }) {
   const [saving, setSaving] = useState(false);
+  const [confirming, setConfirming] = useState(false);
+  function requestToggle() {
+    if (saving) return;
+    if (plutoStopsManagingPositions(row.botEnabled, row.openPositionCount)) setConfirming(true);
+    else void toggle();
+  }
   async function toggle() {
+    setConfirming(false);
     if (saving) return;
     setSaving(true);
     try {
@@ -59,10 +67,13 @@ function TickerSwitch({ row, onToggled, onError, withLabel }: { row: ShortlistRo
     }
   }
   return (
-    <label className="pm-switch">
-      <input type="checkbox" role="switch" checked={row.botEnabled} disabled={saving} onChange={() => void toggle()} aria-label={`Pluto may trade ${row.symbol}`} />
-      {withLabel && <span className={`pm-switch-state ${row.botEnabled ? "on" : "off"}`}>{saving ? <Spinner size="sm" /> : row.botEnabled ? "Allowed" : "Off"}</span>}
-    </label>
+    <>
+      <label className="pm-switch">
+        <input type="checkbox" role="switch" checked={row.botEnabled} disabled={saving} onChange={requestToggle} aria-label={`Pluto may trade ${row.symbol}`} />
+        {withLabel && <span className={`pm-switch-state ${row.botEnabled ? "on" : "off"}`}>{saving ? <Spinner size="sm" /> : row.botEnabled ? "Allowed" : "Off"}</span>}
+      </label>
+      {confirming && <PlutoStopsManagingConfirm symbol={row.symbol} openPositionCount={row.openPositionCount} viaSignals={false} onConfirm={() => void toggle()} onCancel={() => setConfirming(false)} />}
+    </>
   );
 }
 
