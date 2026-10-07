@@ -223,6 +223,13 @@ export function easternIsoDate(dateInput: string | Date): string {
   }).format(typeof dateInput === "string" ? new Date(dateInput) : dateInput);
 }
 
+/** Minutes since midnight on the US/Eastern clock for an instant, e.g. 10:06 ET = 606, regardless of the viewer's timezone. */
+export function easternMinutesOfDay(isoTimestamp: string): number {
+  const parts = new Intl.DateTimeFormat("en-US", { timeZone: "America/New_York", hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).formatToParts(new Date(isoTimestamp));
+  const part = (type: string) => Number(parts.find((entry) => entry.type === type)?.value);
+  return part("hour") * 60 + part("minute");
+}
+
 /** Clock time in US/Eastern (market time) regardless of the viewer's timezone, e.g. "09:31 ET". */
 export function formatEasternTime(isoTimestamp: string): string {
   const time = new Intl.DateTimeFormat("en-US", { timeZone: "America/New_York", hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).format(new Date(isoTimestamp));

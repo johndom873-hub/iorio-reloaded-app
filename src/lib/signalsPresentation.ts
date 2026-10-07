@@ -1,6 +1,6 @@
 import type { AppNotification } from "../api/notifications";
 import type { DayQuotesFrameStatus, HeldLegScore, HeldLegUnscoredReason, RoadmapStatus, RollSignalCandidate, RollSignalFlag, RollSignalWarning, SignalCandidate, SignalFlag, SignalGrade, SignalQuoteSource, SignalsNoCandidatesReason, SignalsPriceSource, SignalsUnscoredDetail, SignalsUnscoredReason, MacroEvent } from "../api/signals";
-import { formatCurrencyTrimmed, formatDate, formatEasternTime, formatLocalTime, formatMonthDay, formatOptionContractShort, formatPercentageValue, formatShortAge, formatShortAgeWithSeconds, formatSignedPnl, formatVolatilityPoints } from "./formatters";
+import { easternMinutesOfDay, formatCurrencyTrimmed, formatDate, formatEasternTime, formatLocalTime, formatMonthDay, formatOptionContractShort, formatPercentageValue, formatShortAge, formatShortAgeWithSeconds, formatSignedPnl, formatVolatilityPoints } from "./formatters";
 
 // Labels, badge classes and short explanations for the Signals screen and
 // modal (mockup approved 2026-09-22). Every label a user can see has a plain
@@ -229,11 +229,18 @@ export const signalFlagExplanation: Record<SignalFlag, string> = {
   macro_event_before_expiry: "A major US macro event (Fed rate decision, CPI, GDP or a US federal election) lands before expiry — a short-dated IV spike may be an event premium, not mispricing",
 };
 
+/** The API's macro-flag rule (expirySpansMacroEvent): the event is still ahead and before 16:00 ET on the expiry date. */
+const expiryCloseEasternMinutes = 16 * 60;
+export function macroEventCountsForExpiry(event: MacroEvent, expiryIso: string, nowMs: number): boolean {
+  if (Date.parse(event.eventAtIso) <= nowMs) return false;
+  return event.dateIso < expiryIso || (event.dateIso === expiryIso && easternMinutesOfDay(event.eventAtIso) < expiryCloseEasternMinutes);
+}
+
 /** The flag's explanation, naming the actual releases for the macro flag: "… — CPI: Inflation Rate MoM (Oct 14)". */
 export function describeSignalFlag(flag: SignalFlag, candidate: SignalCandidate, macroEvents: MacroEvent[]): string {
   const base = signalFlagExplanation[flag];
   if (flag !== "macro_event_before_expiry") return base;
-  const spanned = macroEvents.filter((event) => event.dateIso <= candidate.expiry);
+  const spanned = macroEvents.filter((event) => macroEventCountsForExpiry(event, candidate.expiry, Date.now()));
   if (spanned.length === 0) return base;
   return `${base}: ${spanned.map((event) => `${event.title} (${formatDate(event.dateIso)})`).join("; ")}`;
 }
