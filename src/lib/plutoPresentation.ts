@@ -118,13 +118,15 @@ export function derivePlutoStatus(state: PlutoState, now: Date, crashLoopRestart
   };
 }
 
-/** "Pre-open check 06:00 ET: IBKR ✓ · API sign-in ✓ · OpenRouter ✓", for today's run only; null before the first one. */
+/** "Pre-open check 06:00 ET: IBKR ✓ · API sign-in ✓ · OpenRouter ✓ · Pluto running ✓", for today's run only; null before the first one. */
 export function readinessSummaryLine(state: PlutoState): string | null {
   const readiness = state.readiness;
   if (!readiness || readiness.dateIso !== todayInEasternIso()) return null;
   const marks = readiness.results.map((result) => `${result.name} ${result.ok ? "✓" : "✗"}`).join(" · ");
   const failing = readiness.signature !== "";
-  return `Pre-open check ${formatEasternTime(readiness.lastRunAt)}: ${marks}${failing && !readiness.finalDone ? " · re-checking every 10 min, pauses at 9:20 ET if still failing" : ""}`;
+  // "Pluto running" failing means Pluto is already off or paused, so only a failing probe leads to a pause at 9:20 ET.
+  const probeFailing = readiness.results.some((result) => !result.ok && result.name !== "Pluto running");
+  return `Pre-open check ${formatEasternTime(readiness.lastRunAt)}: ${marks}${failing && !readiness.finalDone ? ` · re-checking every 10 min${probeFailing ? ", pauses at 9:20 ET if still failing" : ""}` : ""}`;
 }
 
 /** The failing tests of today's readiness run, with their errors. */

@@ -66,7 +66,7 @@ export interface PlutoStateCore {
 }
 
 export interface PlutoReadinessResult {
-  name: "IBKR" | "API sign-in" | "OpenRouter";
+  name: "IBKR" | "API sign-in" | "OpenRouter" | "Pluto running";
   ok: boolean;
   detail: string;
 }
