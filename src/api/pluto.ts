@@ -139,7 +139,7 @@ export interface PlutoSettings {
   minSlicePointCount: number;
   maxMidVsSurfaceIvVp: number;
   maxIvShiftVp: number;
-  maxAbsDayChangePct: number;
+  maxDayMoveMultiple: number;
   windowStartEt: string;
   windowEndEt: string;
   dailyLossBreakerPct: number;
@@ -472,7 +472,8 @@ export interface PlutoScoreboard {
   closedActions: number;
   winningActions: number;
   openActions: number;
-  modelVsTopPick: { agree: number; disagree: number; noTrade: number };
+  /** noTrade includes the abstentions (the model distrusted the data). */
+  modelVsTopPick: { agree: number; disagree: number; noTrade: number; abstained: number };
 }
 
 export function fetchPlutoScoreboard(): Promise<PlutoScoreboard> {

@@ -77,13 +77,13 @@ export const plutoParameterGroups: PlutoParameterGroup[] = [
   {
     key: "surface",
     title: "Surface & model risk",
-    summary: (settings) => `slice fit error up to ${settings.maxSliceRmseVp} vp · IV shift up to ${settings.maxIvShiftVp} vp · |day change| up to ${settings.maxAbsDayChangePct}%`,
+    summary: (settings) => `slice fit error up to ${settings.maxSliceRmseVp} vp · IV shift up to ${settings.maxIvShiftVp} vp · day move up to ${settings.maxDayMoveMultiple}× normal`,
     parameters: [
       { field: "maxSliceRmseVp", label: "Max slice fit error", unit: "vp", kind: "number", step: "0.1", help: "Worst surface fit error, in volatility points, Pluto trusts for the expiry." },
       { field: "minSlicePointCount", label: "Min slice points", unit: "quotes", kind: "integer", step: "1", help: "Fewest quotes the expiry's fit must rest on." },
       { field: "maxMidVsSurfaceIvVp", label: "Max mid vs surface IV", unit: "vp", kind: "number", step: "0.1", help: "Largest gap between the market's mid IV and the surface before the candidate is suspect." },
       { field: "maxIvShiftVp", label: "Max IV shift", unit: "vp", kind: "number", step: "0.1", help: "Largest move of the ticker's IV since the 10:00 fit before Pluto stands aside." },
-      { field: "maxAbsDayChangePct", label: "Max |day change|", unit: "%", kind: "number", step: "0.1", help: "Pluto ignores a ticker that moved more than this today." },
+      { field: "maxDayMoveMultiple", label: "Max day move", unit: "× normal", kind: "number", step: "0.1", help: "Pluto ignores a ticker whose move today is more than this many times its normal day (its forecast volatility ÷ √252). At 3×, a stock whose normal day is 4.2% is ignored beyond 12.7%." },
     ],
   },
   {

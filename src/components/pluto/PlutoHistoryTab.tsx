@@ -118,7 +118,7 @@ function TrackRecordCard({ scoreboard, error }: { scoreboard: PlutoScoreboard | 
             <div className="pm-kpi-l">Model vs Edge $</div>
             <div className="pm-kpi-v">{agreePct === null ? "—" : `${agreePct}%`}</div>
             <div className="pm-kpi-s">
-              {decided === 0 ? "No orders decided yet" : `Same pick on ${scoreboard.modelVsTopPick.agree} of ${decided} orders`} · {scoreboard.modelVsTopPick.noTrade} no-order
+              {decided === 0 ? "No orders decided yet" : `Same pick on ${scoreboard.modelVsTopPick.agree} of ${decided} orders`} · {scoreboard.modelVsTopPick.noTrade} no-order{scoreboard.modelVsTopPick.abstained > 0 ? ` (${scoreboard.modelVsTopPick.abstained} abstained)` : ""}
             </div>
           </div>
           <div className="pm-stat">
