@@ -1,78 +1,45 @@
 import { useCallback, useMemo, useState } from "react";
-import type { PlutoAction, PlutoPass, PlutoScoreboard, PlutoState } from "../../api/pluto";
+import { fetchPlutoModelDecisionsPage, fetchPlutoOrdersPage, type PlutoAction, type PlutoDecisionVerdictFilter, type PlutoHistoryFilters, type PlutoOrderOutcomeFilter, type PlutoPass, type PlutoScoreboard, type PlutoState } from "../../api/pluto";
 import { useCollapsibleCard } from "../../hooks/useCollapsibleCard";
 import { useDebouncedValue } from "../../hooks/useDebouncedValue";
 import { easternIsoDate, formatBrowserClockTime, formatBrowserDayMonth, formatCurrency, formatDate, formatDayMonthYear, formatNumber, formatSignedPnl } from "../../lib/formatters";
 import { buildFeedContext, describeChosenAction, formatModelCost, describeTopPickComparison, describeTrigger, passVerdict, plutoEventCategoryOptions, plutoOrderColumns, verdictKind } from "../../lib/plutoPresentation";
 import { ColumnVisibilityPopover } from "../DataTable/ColumnVisibilityPopover";
+import { Spinner } from "../Spinner";
 import { useColumnVisibility } from "../DataTable/useColumnVisibility";
 import { PlutoCheckboxFilter } from "./PlutoCheckboxFilter";
 import { PlutoEventLog } from "./PlutoEventLog";
 import { usePlutoEventCategories } from "./usePlutoEventCategories";
 import { DecisionDetails, VerdictTag } from "./PlutoDecisionBody";
+import { usePlutoHistoryPage, type PlutoHistoryPageInfo } from "./usePlutoHistoryPage";
 import { PlutoOrdersTable } from "./PlutoOrdersTable";
 import { CheckIcon, CollapseButton, SearchIcon, StrategyBadge, ToggleHeader } from "./plutoBits";
 
 export type PlutoHistoryView = "orders" | "decisions" | "events";
 type Period = "today" | "7d" | "30d" | "all";
-type OutcomeFilter = "all" | "filled" | "working" | "blocked" | "cancelled" | "rejected";
-type VerdictFilter = "all" | "order" | "no_order" | "failed";
 
 interface PlutoHistoryTabProps {
   view: PlutoHistoryView;
   onViewChange: (view: PlutoHistoryView) => void;
   scoreboard: PlutoScoreboard | null;
   scoreboardError: string | null;
+  /** The newest actions, for the Event log's order descriptions; the Orders view pages its own. */
   actions: PlutoAction[];
-  actionsLoading: boolean;
-  actionsError: string | null;
-  passes: PlutoPass[];
-  passesLoading: boolean;
-  passesError: string | null;
   /** Bumped by the screen when a new event arrives, so the Event log reloads its first page. */
   eventLogRefreshToken: number;
+  /** Bumped when an event can have changed an order or a decision, so the Orders and Model decisions views reload their first page. */
+  historyListsRefreshToken: number;
   state: PlutoState | null;
   now: Date;
   isPhone: boolean;
   onOpenTicker: (symbol: string) => void;
-  /** Ask the page for more rows of the current view (the API is paged by limit). */
-  onLoadMore: (view: "orders" | "decisions") => void;
-  loadingMore: boolean;
 }
 
-const pageSize = 10;
-
-interface EventPageInfo {
-  page: number;
-  pageCount: number;
-  total: number;
-  firstShown: number;
-  lastShown: number;
-  goToPage: (page: number) => void;
-  loading: boolean;
-}
-
-function periodStart(period: Period, now: Date): number {
-  if (period === "all") return 0;
-  if (period === "today") return new Date(`${easternIsoDate(now)}T00:00:00`).getTime() - 12 * 3_600_000;
-  return now.getTime() - (period === "7d" ? 7 : 30) * 86_400_000;
-}
-
-function outcomeMatches(action: PlutoAction, filter: OutcomeFilter): boolean {
-  switch (filter) {
-    case "filled":
-      return action.outcome === "filled" || action.outcome === "partially_filled" || action.outcome === "cancelled_partially_filled";
-    case "working":
-      return action.outcome === "confirmed" || action.outcome === "order_built" || action.outcome === "validated";
-    case "blocked":
-      return action.outcome === "blocked";
-    case "cancelled":
-      return action.outcome === "cancelled";
-    case "rejected":
-      return action.outcome === "rejected" || action.outcome === "error";
-    default:
-      return true;
-  }
+/** The period's start as an ISO time, taken when a page is fetched; null for all time. */
+function periodStartIso(period: Period, now: Date): string | null {
+  if (period === "all") return null;
+  if (period === "today") return new Date(new Date(`${easternIsoDate(now)}T00:00:00`).getTime() - 12 * 3_600_000).toISOString();
+  return new Date(now.getTime() - (period === "7d" ? 7 : 30) * 86_400_000).toISOString();
 }
 
 function TrackRecordCard({ scoreboard, error }: { scoreboard: PlutoScoreboard | null; error: string | null }) {
@@ -132,7 +99,7 @@ function TrackRecordCard({ scoreboard, error }: { scoreboard: PlutoScoreboard | 
   );
 }
 
-function DecisionRow({ pass, state, open, onToggle }: { pass: PlutoPass; state: PlutoState | null; open: boolean; onToggle: () => void }) {
+function DecisionRow({ pass, state, open, onToggle, tickerFilter }: { pass: PlutoPass; state: PlutoState | null; open: boolean; onToggle: () => void; tickerFilter: string }) {
   const kind = verdictKind(pass);
   const { action, output, error } = passVerdict(pass);
   const comparison = describeTopPickComparison(pass);
@@ -158,69 +125,53 @@ function DecisionRow({ pass, state, open, onToggle }: { pass: PlutoPass; state: 
         <span className="num cost">{formatModelCost(pass.costUsd)}</span>
         <CollapseButton open={open} onToggle={onToggle} label="this decision" />
       </ToggleHeader>
-      {open && <DecisionDetails pass={pass} state={state} />}
+      {open && <DecisionDetails pass={pass} state={state} tickerFilter={tickerFilter} />}
     </div>
   );
 }
 
-export function PlutoHistoryTab({ view, onViewChange, scoreboard, scoreboardError, actions, actionsLoading, actionsError, passes, passesLoading, passesError, eventLogRefreshToken, state, now, isPhone, onOpenTicker, onLoadMore, loadingMore }: PlutoHistoryTabProps) {
+export function PlutoHistoryTab({ view, onViewChange, scoreboard, scoreboardError, actions, eventLogRefreshToken, historyListsRefreshToken, state, now, isPhone, onOpenTicker }: PlutoHistoryTabProps) {
   const [ticker, setTicker] = useState("");
   const [period, setPeriod] = useState<Period>("30d");
-  const [outcomeFilter, setOutcomeFilter] = useState<OutcomeFilter>("all");
-  const [verdictFilter, setVerdictFilter] = useState<VerdictFilter>("all");
-  const [shown, setShown] = useState(pageSize);
+  const [outcomeFilter, setOutcomeFilter] = useState<PlutoOrderOutcomeFilter>("all");
+  const [verdictFilter, setVerdictFilter] = useState<PlutoDecisionVerdictFilter>("all");
   const [session, setSession] = useState("");
   const { categories: eventCategories, toggleCategory: toggleEventCategory, selectCategories: selectEventCategories } = usePlutoEventCategories();
-  const [eventPage, setEventPage] = useState<EventPageInfo | null>(null);
+  const [eventPage, setEventPage] = useState<PlutoHistoryPageInfo | null>(null);
   const [openPassId, setOpenPassId] = useState<string | null>(null);
   const orderColumns = plutoOrderColumns.history;
   const { isColumnVisible, toggleColumn } = useColumnVisibility("pluto-orders-history", orderColumns.map((column) => column.key));
 
-  const since = periodStart(period, now);
   const feedContext = useMemo(() => buildFeedContext(actions), [actions]);
   const tickerFilter = ticker.trim().toUpperCase();
-  const orderRows = useMemo(() => actions.filter((action) => action.kind !== "no_trade" && new Date(action.createdAt).getTime() >= since && (!tickerFilter || action.symbol.toUpperCase().includes(tickerFilter)) && outcomeMatches(action, outcomeFilter)), [actions, since, tickerFilter, outcomeFilter]);
-  const decisionRows = useMemo(
-    () =>
-      passes.filter((pass) => {
-        if (!pass.modelCalled || new Date(pass.startedAt).getTime() < since) return false;
-        if (tickerFilter) {
-          const symbols = [...(Array.isArray(pass.triggerDetail?.symbols) ? (pass.triggerDetail.symbols as string[]) : []), ...pass.actions.map((action) => action.symbol)];
-          if (!symbols.some((symbol) => symbol.toUpperCase().includes(tickerFilter))) return false;
-        }
-        return verdictFilter === "all" || verdictKind(pass) === verdictFilter;
-      }),
-    [passes, since, tickerFilter, verdictFilter],
-  );
   const debouncedTicker = useDebouncedValue(tickerFilter, 300);
+  // The period's start is taken when a page is fetched, so the ticking clock does not reload the lists.
+  const historyFilters = (): PlutoHistoryFilters => ({ since: periodStartIso(period, new Date()), ticker: debouncedTicker });
+  const orders = usePlutoHistoryPage<PlutoAction>(
+    (limit, offset) => fetchPlutoOrdersPage(historyFilters(), outcomeFilter, limit, offset).then((page) => ({ rows: page.actions, total: page.total })),
+    `${period}|${debouncedTicker}|${outcomeFilter}`,
+    historyListsRefreshToken,
+    "Could not load the orders.",
+  );
+  const decisions = usePlutoHistoryPage<PlutoPass>(
+    (limit, offset) => fetchPlutoModelDecisionsPage(historyFilters(), verdictFilter, limit, offset).then((page) => ({ rows: page.passes, total: page.total })),
+    `${period}|${debouncedTicker}|${verdictFilter}`,
+    historyListsRefreshToken,
+    "Could not load the decisions.",
+  );
   const eventFilters = useMemo(() => ({ categories: eventCategories, ticker: debouncedTicker, session }), [eventCategories, debouncedTicker, session]);
-  const handleEventPageInfo = useCallback((info: EventPageInfo) => setEventPage(info), []);
+  const handleEventPageInfo = useCallback((info: PlutoHistoryPageInfo) => setEventPage(info), []);
 
-  const total = view === "orders" ? orderRows.length : decisionRows.length;
-  const visibleCount = Math.min(shown, total);
-  const loadedAll = view === "orders" ? actions.length < 100 : passes.length < 30;
-
-  function switchView(next: PlutoHistoryView) {
-    onViewChange(next);
-    setShown(pageSize);
-  }
-
-  function showMore() {
-    if (shown < total) setShown((count) => count + pageSize);
-    else if (!loadedAll && view !== "events") {
-      onLoadMore(view);
-      setShown((count) => count + pageSize);
-    }
-  }
-
+  const pageInfo = view === "orders" ? orders.pageInfo : view === "decisions" ? decisions.pageInfo : eventPage;
+  const shownRange = (info: PlutoHistoryPageInfo, noun: string) => `Showing ${formatNumber(info.firstShown)}–${formatNumber(info.lastShown)} of ${formatNumber(info.total)} ${noun}`;
   const footNote =
     view === "orders"
-      ? `Showing ${visibleCount} of ${total} · Realized counts the legs each order opened, net of closing commissions`
+      ? `${shownRange(orders.pageInfo, "orders")} · Realized counts the legs each order opened, net of closing commissions`
       : view === "decisions"
-        ? `Showing ${visibleCount} of ${total} · only analyses where the model was asked; routine analyses are in the Event log`
+        ? `${shownRange(decisions.pageInfo, "decisions")} · only analyses where the model was asked; routine analyses are in the Event log`
         : eventPage === null
           ? "Loading events…"
-          : `Showing ${formatNumber(eventPage.firstShown)}–${formatNumber(eventPage.lastShown)} of ${formatNumber(eventPage.total)} events${session !== "" ? ` · session ${formatDayMonthYear(session)} is an Eastern trading day; rows show your local date and time` : ""}`;
+          : `${shownRange(eventPage, "events")}${session !== "" ? ` · session ${formatDayMonthYear(session)} is an Eastern trading day; rows show your local date and time` : ""}`;
 
   return (
     <>
@@ -228,20 +179,20 @@ export function PlutoHistoryTab({ view, onViewChange, scoreboard, scoreboardErro
       <section className="pm-card">
         <div className="pm-toolbar">
           <div className="pm-seg" role="tablist" aria-label="History view">
-            <button type="button" role="tab" aria-selected={view === "orders"} className={view === "orders" ? "on" : ""} onClick={() => switchView("orders")}>
-              Orders <span className="cnt">{orderRows.length}</span>
+            <button type="button" role="tab" aria-selected={view === "orders"} className={view === "orders" ? "on" : ""} onClick={() => onViewChange("orders")}>
+              Orders <span className="cnt">{formatNumber(orders.pageInfo.total)}</span>
             </button>
-            <button type="button" role="tab" aria-selected={view === "decisions"} className={view === "decisions" ? "on" : ""} onClick={() => switchView("decisions")}>
-              Model decisions <span className="cnt">{decisionRows.length}</span>
+            <button type="button" role="tab" aria-selected={view === "decisions"} className={view === "decisions" ? "on" : ""} onClick={() => onViewChange("decisions")}>
+              Model decisions <span className="cnt">{formatNumber(decisions.pageInfo.total)}</span>
             </button>
-            <button type="button" role="tab" aria-selected={view === "events"} className={view === "events" ? "on" : ""} onClick={() => switchView("events")}>
+            <button type="button" role="tab" aria-selected={view === "events"} className={view === "events" ? "on" : ""} onClick={() => onViewChange("events")}>
               Event log
             </button>
           </div>
           <span className="pm-spacer" />
           <label className="pm-search">
             <SearchIcon />
-            <input type="text" placeholder="Ticker" aria-label="Filter by ticker" value={ticker} onChange={(event) => { setTicker(event.target.value); setShown(pageSize); }} />
+            <input type="text" placeholder="Ticker" aria-label="Filter by ticker" value={ticker} onChange={(event) => setTicker(event.target.value)} />
           </label>
           {view === "events" && (
             <>
@@ -255,7 +206,7 @@ export function PlutoHistoryTab({ view, onViewChange, scoreboard, scoreboardErro
             </>
           )}
           {view === "orders" && (
-            <select className="pm-select" aria-label="Outcome" value={outcomeFilter} onChange={(event) => { setOutcomeFilter(event.target.value as OutcomeFilter); setShown(pageSize); }}>
+            <select className="pm-select" aria-label="Outcome" value={outcomeFilter} onChange={(event) => setOutcomeFilter(event.target.value as PlutoOrderOutcomeFilter)}>
               <option value="all">All outcomes</option>
               <option value="filled">Filled</option>
               <option value="working">Working</option>
@@ -265,14 +216,14 @@ export function PlutoHistoryTab({ view, onViewChange, scoreboard, scoreboardErro
             </select>
           )}
           {view === "decisions" && (
-            <select className="pm-select" aria-label="Verdict" value={verdictFilter} onChange={(event) => { setVerdictFilter(event.target.value as VerdictFilter); setShown(pageSize); }}>
+            <select className="pm-select" aria-label="Verdict" value={verdictFilter} onChange={(event) => setVerdictFilter(event.target.value as PlutoDecisionVerdictFilter)}>
               <option value="all">All verdicts</option>
               <option value="order">Order</option>
               <option value="no_order">No order</option>
               <option value="failed">Failed</option>
             </select>
           )}
-          {view !== "events" && <select className="pm-select" aria-label="Period" value={period} onChange={(event) => { setPeriod(event.target.value as Period); setShown(pageSize); }}>
+          {view !== "events" && <select className="pm-select" aria-label="Period" value={period} onChange={(event) => setPeriod(event.target.value as Period)}>
             <option value="today">Today</option>
             <option value="7d">Last 7 days</option>
             <option value="30d">Last 30 days</option>
@@ -281,7 +232,7 @@ export function PlutoHistoryTab({ view, onViewChange, scoreboard, scoreboardErro
           {view === "orders" && !isPhone && <ColumnVisibilityPopover variant="toolbar" columns={orderColumns} isColumnVisible={isColumnVisible} onToggleColumn={toggleColumn} />}
         </div>
 
-        {view === "orders" && <PlutoOrdersTable variant="history" rows={orderRows.slice(0, shown)} now={now} state={state} loading={actionsLoading} error={actionsError} emptyMessage="No orders match." isColumnVisible={isColumnVisible} onOpenTicker={onOpenTicker} isPhone={isPhone} />}
+        {view === "orders" && <PlutoOrdersTable variant="history" rows={orders.rows} now={now} state={state} loading={orders.pageInfo.loading && orders.rows.length === 0} error={orders.error} emptyMessage="No orders match." isColumnVisible={isColumnVisible} onOpenTicker={onOpenTicker} isPhone={isPhone} />}
 
         {view === "decisions" && (
           <>
@@ -296,14 +247,14 @@ export function PlutoHistoryTab({ view, onViewChange, scoreboard, scoreboardErro
                 <span />
               </div>
             )}
-            {passesError ? (
-              <div className="alert alert-danger pm-error mb-0">{passesError}</div>
-            ) : passesLoading ? (
-              <div className="pm-empty">Loading…</div>
-            ) : decisionRows.length === 0 ? (
+            {decisions.error ? (
+              <div className="alert alert-danger pm-error mb-0">{decisions.error}</div>
+            ) : decisions.pageInfo.loading && decisions.rows.length === 0 ? (
+              <div className="pm-empty"><Spinner size="sm" label="Loading decisions" /></div>
+            ) : decisions.rows.length === 0 ? (
               <div className="pm-empty">No model decisions match.</div>
             ) : (
-              decisionRows.slice(0, shown).map((pass) => <DecisionRow key={pass.id} pass={pass} state={state} open={openPassId === pass.id} onToggle={() => setOpenPassId((current) => (current === pass.id ? null : pass.id))} />)
+              decisions.rows.map((pass) => <DecisionRow key={pass.id} pass={pass} state={state} open={openPassId === pass.id} onToggle={() => setOpenPassId((current) => (current === pass.id ? null : pass.id))} tickerFilter={debouncedTicker} />)
             )}
           </>
         )}
@@ -312,21 +263,16 @@ export function PlutoHistoryTab({ view, onViewChange, scoreboard, scoreboardErro
 
         <div className="pm-card-foot">
           <span>{footNote}</span>
-          {view === "events" && eventPage !== null && eventPage.pageCount > 1 && (
+          {pageInfo !== null && pageInfo.pageCount > 1 && (
             <span className="pm-pager">
-              <button type="button" className="pm-btn sm" disabled={eventPage.page <= 1 || eventPage.loading} onClick={() => eventPage.goToPage(eventPage.page - 1)}>
+              <button type="button" className="pm-btn sm" disabled={pageInfo.page <= 1 || pageInfo.loading} onClick={() => pageInfo.goToPage(pageInfo.page - 1)}>
                 Previous
               </button>
-              <span className="pm-pager-status">Page {formatNumber(eventPage.page)} of {formatNumber(eventPage.pageCount)}</span>
-              <button type="button" className="pm-btn sm" disabled={eventPage.page >= eventPage.pageCount || eventPage.loading} onClick={() => eventPage.goToPage(eventPage.page + 1)}>
+              <span className="pm-pager-status">Page {formatNumber(pageInfo.page)} of {formatNumber(pageInfo.pageCount)}</span>
+              <button type="button" className="pm-btn sm" disabled={pageInfo.page >= pageInfo.pageCount || pageInfo.loading} onClick={() => pageInfo.goToPage(pageInfo.page + 1)}>
                 Next
               </button>
             </span>
-          )}
-          {view !== "events" && (shown < total || !loadedAll) && (
-            <button type="button" className="pm-btn sm" disabled={loadingMore} onClick={showMore}>
-              {loadingMore ? "Loading…" : "Show more"}
-            </button>
           )}
         </div>
       </section>

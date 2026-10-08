@@ -3,6 +3,7 @@ import type { PlutoPass, PlutoState } from "../../api/pluto";
 import { formatCurrency } from "../../lib/formatters";
 import { checkLabel, checksAndGatesSummary, describeCandidateId, formatModelCost, orderedChecks, sentenceCase, describeChosenAction, describeTopPickComparison, formatExposure, gateLabel, passVerdict, verdictKind } from "../../lib/plutoPresentation";
 import { CheckIcon, CrossIcon, ExternalIcon, GradeBadge, StrategyBadge } from "./plutoBits";
+import { PlutoModelInputsToggle } from "./PlutoModelInputs";
 
 // The body of one model decision, shared by the Live tab's "Latest model decision" card and the History tab's
 // expanded decision rows. Pure rendering of a pass; the parent decides the chrome around it.
@@ -211,7 +212,8 @@ export function GatesList({ pass }: { pass: PlutoPass }) {
 }
 
 /** The History tab's expanded decision: two columns, every detail. */
-export function DecisionDetails({ pass, state }: { pass: PlutoPass; state: PlutoState | null }) {
+/** History's expanded decision; `tickerFilter` puts the matching tickers first in "What the model saw". */
+export function DecisionDetails({ pass, state, tickerFilter }: { pass: PlutoPass; state: PlutoState | null; tickerFilter: string }) {
   const { action } = passVerdict(pass);
   const summary = checksAndGatesSummary(pass);
   return (
@@ -221,6 +223,7 @@ export function DecisionDetails({ pass, state }: { pass: PlutoPass; state: Pluto
         <div className="pm-h4">The call</div>
         <DecisionFacts pass={pass} state={state} flush />
         <CallFacts pass={pass} />
+        <PlutoModelInputsToggle passId={pass.id} tickerFilter={tickerFilter} />
         <div className="pm-h4">Checks before the model · {summary.checks.passed} of {summary.checks.total} passed</div>
         <ChecksGrid pass={pass} columns={2} />
       </div>

@@ -7,8 +7,9 @@ import { DottedLabelTooltip } from "../HelpTooltip";
 import { Spinner } from "../Spinner";
 import { GradeBadge, StrategyBadge } from "./plutoBits";
 
-// The Event log's "What the model saw": a model call's full input, opened inside its row and loaded the first time
-// it is opened (GET /pluto/passes/:id). One block per ticker, the tickers matching the log's ticker filter first.
+// "What the model saw" (the Event log's model calls and History's expanded decisions): a model call's full input, opened
+// inside its row and loaded the first time it is opened (GET /pluto/passes/:id). One block per ticker, the tickers
+// matching the ticker filter first.
 
 type LoadState = { status: "idle" } | { status: "loading" } | { status: "ready"; input: PlutoModelInput | null } | { status: "error"; message: string };
 

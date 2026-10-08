@@ -471,6 +471,29 @@ export interface PlutoEventFilters {
   session: string;
 }
 
+/** History's Orders and Model decisions filters; the API applies them, so a page and its total agree. */
+export interface PlutoHistoryFilters {
+  /** ISO time, or null for all time. */
+  since: string | null;
+  /** Part of a symbol, any case, or "". */
+  ticker: string;
+}
+
+export type PlutoOrderOutcomeFilter = "all" | "filled" | "working" | "blocked" | "cancelled" | "rejected";
+export type PlutoDecisionVerdictFilter = "all" | "order" | "no_order" | "failed";
+
+export interface PlutoModelDecisionsPage {
+  passes: PlutoPass[];
+  /** Every pass matching the filters, not only this page. */
+  total: number;
+}
+
+export interface PlutoOrdersPage {
+  actions: PlutoAction[];
+  /** Every order matching the filters, not only this page. */
+  total: number;
+}
+
 export interface PlutoEventsPage {
   events: PlutoEvent[];
   /** Every event matching the filters, not only this page. */
@@ -563,11 +586,6 @@ export function fetchPlutoSettingsAudit(limit = 20): Promise<PlutoSettingsAuditR
   return apiRequest<PlutoSettingsAuditRow[]>(`/pluto/settings/audit?limit=${limit}`);
 }
 
-/** The newest passes that asked the model (the only ones the Model decisions list shows), so skipped passes cannot crowd them out of the limit. */
-export function fetchPlutoPasses(limit = 30): Promise<PlutoPass[]> {
-  return apiRequest<PlutoPass[]>(`/pluto/passes?modelCalled=true&limit=${limit}`);
-}
-
 /** The newest pass that asked the model, however many skipped passes came after it (the Live tab's latest decision). */
 export function fetchPlutoLatestModelPass(): Promise<PlutoPass[]> {
   return apiRequest<PlutoPass[]>("/pluto/passes?modelCalled=true&limit=1");
@@ -577,9 +595,30 @@ export function fetchPlutoActions(limit = 100): Promise<PlutoAction[]> {
   return apiRequest<PlutoAction[]>(`/pluto/actions?limit=${limit}`);
 }
 
-/** One pass with its model calls' full inputs (the Event log's "What the model saw"). */
+/** One pass with its model calls' full inputs ("What the model saw"). */
 export function fetchPlutoPass(passId: string): Promise<PlutoPass> {
   return apiRequest<PlutoPass>(`/pluto/passes/${encodeURIComponent(passId)}`);
+}
+
+function historyQuery(filters: PlutoHistoryFilters, limit: number, offset: number): URLSearchParams {
+  const query = new URLSearchParams({ limit: String(limit), offset: String(offset) });
+  if (filters.since !== null) query.set("since", filters.since);
+  if (filters.ticker.trim() !== "") query.set("ticker", filters.ticker.trim());
+  return query;
+}
+
+/** One page of History's Model decisions (passes that asked the model), newest first, with the total matching the filters. */
+export function fetchPlutoModelDecisionsPage(filters: PlutoHistoryFilters, verdict: PlutoDecisionVerdictFilter, limit: number, offset: number): Promise<PlutoModelDecisionsPage> {
+  const query = historyQuery(filters, limit, offset);
+  if (verdict !== "all") query.set("verdict", verdict);
+  return apiRequest<PlutoModelDecisionsPage>(`/pluto/model-decisions?${query}`);
+}
+
+/** One page of History's Orders (every action but the no-order rows), newest first, with the total matching the filters. */
+export function fetchPlutoOrdersPage(filters: PlutoHistoryFilters, outcome: PlutoOrderOutcomeFilter, limit: number, offset: number): Promise<PlutoOrdersPage> {
+  const query = historyQuery(filters, limit, offset);
+  if (outcome !== "all") query.set("outcome", outcome);
+  return apiRequest<PlutoOrdersPage>(`/pluto/orders?${query}`);
 }
 
 /** One page of the Event log, newest first, with the total number of events matching the filters. */

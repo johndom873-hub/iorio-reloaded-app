@@ -7,7 +7,6 @@ import {
   fetchPlutoEventsExcludingTypes,
   fetchPlutoEventsOfTypes,
   fetchPlutoLatestModelPass,
-  fetchPlutoPasses,
   fetchPlutoScoreboard,
   fetchPlutoSettings,
   fetchPlutoSettingsAudit,
@@ -49,8 +48,7 @@ const tabs: { key: PlutoTab; label: string }[] = [
 
 const stateRefreshIntervalMs = 30_000;
 const notificationRefreshDebounceMs = 400;
-const actionsPageSize = 100;
-const passesPageSize = 30;
+const liveActionsLimit = 100;
 
 function tabFromParam(value: string | null): PlutoTab {
   return value === "history" || value === "tickers" || value === "settings" ? value : "live";
@@ -71,10 +69,8 @@ export function PlutoPage() {
   const [stateError, setStateError] = useState<string | null>(null);
   // Bumped on every new event so an open Event log reloads its first page; the log owns its own page and filters.
   const [eventLogRefreshToken, setEventLogRefreshToken] = useState(0);
-  const [passes, setPasses] = useState<PlutoPass[]>([]);
-  const [passesLimit, setPassesLimit] = useState(passesPageSize);
-  const [passesLoading, setPassesLoading] = useState(true);
-  const [passesError, setPassesError] = useState<string | null>(null);
+  // Bumped when an event can have changed an order or a decision; History's Orders and Model decisions own their pages.
+  const [historyListsRefreshToken, setHistoryListsRefreshToken] = useState(0);
   const [latestModelPass, setLatestModelPass] = useState<PlutoPass | null>(null);
   const [latestModelPassLoading, setLatestModelPassLoading] = useState(true);
   const [latestModelPassError, setLatestModelPassError] = useState<string | null>(null);
@@ -82,10 +78,8 @@ export function PlutoPage() {
   const [feedEventsLoading, setFeedEventsLoading] = useState(true);
   const [feedEventsError, setFeedEventsError] = useState<string | null>(null);
   const [actions, setActions] = useState<PlutoAction[]>([]);
-  const [actionsLimit, setActionsLimit] = useState(actionsPageSize);
   const [actionsLoading, setActionsLoading] = useState(true);
   const [actionsError, setActionsError] = useState<string | null>(null);
-  const [loadingMore, setLoadingMore] = useState(false);
   const [shortlist, setShortlist] = useState<ShortlistRow[]>([]);
   const [shortlistLoading, setShortlistLoading] = useState(true);
   const [shortlistError, setShortlistError] = useState<string | null>(null);
@@ -107,19 +101,7 @@ export function PlutoPage() {
     }
   }, []);
   const refreshEventLog = useCallback(() => setEventLogRefreshToken((token) => token + 1), []);
-  const loadPasses = useCallback(
-    async (limit = passesLimit) => {
-      try {
-        setPasses(await fetchPlutoPasses(limit));
-        setPassesError(null);
-      } catch (err) {
-        setPassesError(errorMessage(err, "Could not load the decisions."));
-      } finally {
-        setPassesLoading(false);
-      }
-    },
-    [passesLimit],
-  );
+  const refreshHistoryLists = useCallback(() => setHistoryListsRefreshToken((token) => token + 1), []);
   const loadLatestModelPass = useCallback(async () => {
     try {
       setLatestModelPass((await fetchPlutoLatestModelPass())[0] ?? null);
@@ -140,19 +122,16 @@ export function PlutoPage() {
       setFeedEventsLoading(false);
     }
   }, []);
-  const loadActions = useCallback(
-    async (limit = actionsLimit) => {
-      try {
-        setActions(await fetchPlutoActions(limit));
-        setActionsError(null);
-      } catch (err) {
-        setActionsError(errorMessage(err, "Could not load the orders."));
-      } finally {
-        setActionsLoading(false);
-      }
-    },
-    [actionsLimit],
-  );
+  const loadActions = useCallback(async () => {
+    try {
+      setActions(await fetchPlutoActions(liveActionsLimit));
+      setActionsError(null);
+    } catch (err) {
+      setActionsError(errorMessage(err, "Could not load the orders."));
+    } finally {
+      setActionsLoading(false);
+    }
+  }, []);
   const loadScoreboard = useCallback(async () => {
     try {
       setScoreboard(await fetchPlutoScoreboard());
@@ -195,21 +174,15 @@ export function PlutoPage() {
   }, []);
 
   useEffect(() => {
-    void Promise.all([loadState(), loadPasses(), loadLatestModelPass(), loadFeedEvents(), loadActions(), loadShortlist(), loadSettings(), loadScoreboard(), loadDaySignalsWatch()]);
+    void Promise.all([loadState(), loadLatestModelPass(), loadFeedEvents(), loadActions(), loadShortlist(), loadSettings(), loadScoreboard(), loadDaySignalsWatch()]);
     const timer = setInterval(() => {
       void loadState();
       void loadDaySignalsWatch();
     }, stateRefreshIntervalMs);
     return () => clearInterval(timer);
-    // Initial load only; the per-list loaders re-run on their own limit changes below.
+    // Initial load only.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-  useEffect(() => {
-    if (actionsLimit > actionsPageSize) void loadActions(actionsLimit).finally(() => setLoadingMore(false));
-  }, [actionsLimit, loadActions]);
-  useEffect(() => {
-    if (passesLimit > passesPageSize) void loadPasses(passesLimit).finally(() => setLoadingMore(false));
-  }, [passesLimit, loadPasses]);
 
   // Every pluto_events row is pushed as a notification: refresh what it can have changed, coalesced.
   const refreshTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -227,7 +200,7 @@ export function PlutoPage() {
         refreshEventLog();
         void loadFeedEvents();
         if ([...kinds].some((kind) => kind.startsWith("pass_") || kind.startsWith("model_") || kind.startsWith("action_") || kind.startsWith("order_") || kind.startsWith("breaker_"))) {
-          void loadPasses();
+          refreshHistoryLists();
           void loadLatestModelPass();
           void loadActions();
           void loadScoreboard();
@@ -236,7 +209,7 @@ export function PlutoPage() {
         if (kinds.has("settings_changed")) void loadSettings();
       }, notificationRefreshDebounceMs);
     });
-  }, [loadState, refreshEventLog, loadFeedEvents, loadPasses, loadLatestModelPass, loadActions, loadShortlist, loadSettings, loadScoreboard]);
+  }, [loadState, refreshEventLog, loadFeedEvents, refreshHistoryLists, loadLatestModelPass, loadActions, loadShortlist, loadSettings, loadScoreboard]);
 
   // The paused headline's restart count lives in the pause event, which a busy log can push far past the loaded events.
   const [pauseEvents, setPauseEvents] = useState<PlutoEvent[]>([]);
@@ -273,11 +246,6 @@ export function PlutoPage() {
       { replace: true },
     );
   }
-  function loadMore(view: "orders" | "decisions") {
-    setLoadingMore(true);
-    if (view === "orders") setActionsLimit((limit) => limit + actionsPageSize);
-    else setPassesLimit((limit) => limit + passesPageSize);
-  }
 
   return (
     <div className="page-body">
@@ -310,6 +278,7 @@ export function PlutoPage() {
             onOrdersChanged={() => {
               void loadState();
               void loadActions();
+              refreshHistoryLists();
               refreshEventLog();
               void loadFeedEvents();
             }}
@@ -335,18 +304,12 @@ export function PlutoPage() {
             scoreboard={scoreboard}
             scoreboardError={scoreboardError}
             actions={actions}
-            actionsLoading={actionsLoading}
-            actionsError={actionsError}
-            passes={passes}
-            passesLoading={passesLoading}
-            passesError={passesError}
             eventLogRefreshToken={eventLogRefreshToken}
+            historyListsRefreshToken={historyListsRefreshToken}
             state={state}
             now={now}
             isPhone={isPhone}
             onOpenTicker={openTickerModal}
-            onLoadMore={loadMore}
-            loadingMore={loadingMore}
           />
         )}
         {tab === "tickers" && (

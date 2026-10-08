@@ -565,7 +565,7 @@ a.pm-b:hover, button.pm-b.link:hover { text-decoration: underline; }
   /* On a phone the panel also takes the date column's width (date column + dot + two gaps), or every figure wraps alone. */
   .pm-feed.seconds li .pm-seen { margin-left: calc(-4.75rem - 30px); }
   .pm-feed.seconds.h12 li .pm-seen { margin-left: calc(-6rem - 30px); }
-  .pm-btn.sm.pm-seen-toggle { height: 44px; }
+  .pm-btn.sm.pm-seen-toggle, .pm-pager .pm-btn.sm { height: 44px; }
   .pm-filter-quick { padding-bottom: 0.15rem; }
   .pm-link-btn { min-height: 44px; min-width: 44px; padding: 0 0.5rem; }
   .pm-seen-decisions > div { grid-template-columns: 4.5rem minmax(0, 1fr); }
