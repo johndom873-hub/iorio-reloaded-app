@@ -45,7 +45,7 @@ export const plutoParameterGroups: PlutoParameterGroup[] = [
   {
     key: "capital",
     title: "Capital",
-    summary: (settings) => `budget ${settings.capitalBudgetPct}% of the account · order size ${settings.orderSizePctOfBudget}% of budget · up to ${settings.maxOpenPositions} positions`,
+    summary: (settings) => `budget ${settings.capitalBudgetPct}% of the account · order size ${settings.orderSizePctOfBudget}% of budget · up to ${settings.maxOpenPositions} positions · ${settings.stressRiskBudgetPct > 0 ? `stress cap ${settings.stressRiskBudgetPct}% at ${settings.stressSigmas}σ` : "stress cap off"}`,
     parameters: [
       { field: "capitalBudgetPct", label: "Capital budget", unit: "% of account", kind: "number", step: "1", help: (context) => `Everything Pluto may have committed at once${dollarsOfAccount(context, context.settings.capitalBudgetPct)}. Human trades are not counted.` },
       { field: "maxTickerExposurePct", label: "Max per ticker", unit: "% of account", kind: "number", step: "1", help: (context) => `Ceiling per underlying, counting human positions too${dollarsOfAccount(context, context.settings.maxTickerExposurePct)}.` },
@@ -54,6 +54,8 @@ export const plutoParameterGroups: PlutoParameterGroup[] = [
       { field: "maxActionsPerSession", label: "Max orders per day", unit: "orders", kind: "integer", step: "1", help: "Orders Pluto may send in one trading day." },
       { field: "orderSizePctOfBudget", label: "Order size", unit: "% of budget", kind: "number", step: "1", help: (context) => `What Pluto commits per order${orderSizeDollars(context)}. Less only when a tighter limit applies: budget left, per-ticker cap, cash reserve or the contract's volume today.` },
       { field: "minCashReservePct", label: "Min cash reserve", unit: "% of account", kind: "number", step: "1", help: "Cash that must stay uncommitted after an order." },
+      { field: "stressRiskBudgetPct", label: "Stress cap per order", unit: "% of account", kind: "number", step: "0.1", help: (context) => `Most one order may lose if the stock moves against it by the stress move before expiry${dollarsOfAccount(context, context.settings.stressRiskBudgetPct)}. Longer expiries carry a bigger move, so they get fewer contracts. Applies to puts and to calls that buy shares, not to calls on shares already held. 0 turns the cap off.` },
+      { field: "stressSigmas", label: "Stress move", unit: "σ", kind: "number", step: "0.1", help: "Size of that adverse move, in standard deviations of the stock's forecast volatility up to expiry. Code adds 0.5σ for a stock in an unusually volatile stretch and 0.5σ when it is already down more than a normal day today. At 2σ, SMCI's 2-day move was 13.6%." },
     ],
   },
   {

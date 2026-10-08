@@ -140,6 +140,8 @@ export interface PlutoSettings {
   maxMidVsSurfaceIvVp: number;
   maxIvShiftVp: number;
   maxDayMoveMultiple: number;
+  stressRiskBudgetPct: number;
+  stressSigmas: number;
   windowStartEt: string;
   windowEndEt: string;
   dailyLossBreakerPct: number;
