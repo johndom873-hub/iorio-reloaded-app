@@ -1,7 +1,7 @@
 import { useId, useState } from "react";
 import { fetchPlutoPass, type PlutoActionKind, type PlutoModelInput, type PlutoModelInputCloseAction, type PlutoModelInputContract, type PlutoModelInputRoll, type PlutoModelInputTicker } from "../../api/pluto";
 import { errorMessage } from "../../api/client";
-import { formatBrowserClockTimeWithSeconds, formatBrowserDayMonth, formatCurrency, formatDayMonth, formatNumber, formatSignedNumber, formatSignedPercentageValue } from "../../lib/formatters";
+import { formatBrowserClockTimeWithSeconds, formatBrowserDayMonth, formatCurrency, formatDayMonth, formatNumber, formatOptionContractLabel, formatSignedNumber, formatSignedPercentageValue, formatStrike } from "../../lib/formatters";
 import { describeCandidateFlag, describeCandidateId, describeRecentDecisionVerdict, describeTradeOutcome, describeTrigger, groupMacroEventsByDate, parseBuybackDescription } from "../../lib/plutoPresentation";
 import { Spinner } from "../Spinner";
 import { GradeBadge, StrategyBadge } from "./plutoBits";
@@ -140,13 +140,11 @@ function TickerBlock({ ticker, isFiltered, sameMacroAs }: { ticker: PlutoModelIn
   );
 }
 
-/** "$47 call · 9 Oct (3d)" */
-function contractName(contract: { strike?: number; expiry?: string; dte?: number }, right: "call" | "put"): string {
-  return `$${contract.strike ?? "?"} ${right}${contract.expiry ? ` · ${formatDayMonth(contract.expiry)}` : ""}${contract.dte !== undefined ? ` (${contract.dte}d)` : ""}`;
-}
-
-function rightOf(kind: string): "call" | "put" {
-  return kind.includes("covered_call") ? "call" : "put";
+/** "$47 Call · 9 Oct (3DTE)": the ticker block's header names the symbol. */
+function contractName(contract: { strike?: number; expiry?: string; dte?: number }, kind: string): string {
+  const right = kind.includes("covered_call") ? "C" : "P";
+  if (contract.strike === undefined || !contract.expiry) return `${contract.strike === undefined ? "?" : formatStrike(contract.strike)} ${right === "C" ? "Call" : "Put"}`;
+  return formatOptionContractLabel({ strike: contract.strike, right, expiry: contract.expiry, dte: contract.dte ?? null });
 }
 
 /** The figures shared by a candidate and a roll's replacement, as separate pieces so the line can wrap between them. */
@@ -195,7 +193,7 @@ function CandidateLine({ candidate }: { candidate: PlutoModelInputContract }) {
   return (
     <div className="pm-seen-line num">
       <StrategyBadge kind={candidate.kind as PlutoActionKind} contract={null} />
-      <span className="what">{contractName(candidate, rightOf(candidate.kind))}</span>
+      <span className="what">{contractName(candidate, candidate.kind)}</span>
       {candidate.grade && <GradeBadge grade={candidate.grade} />}
       <Pieces pieces={[...edge, ...contractFigures(candidate)]} />
       <Flags flags={candidate.flags} />
@@ -222,7 +220,8 @@ function RollLine({ roll }: { roll: PlutoModelInputRoll }) {
     <div className="pm-seen-line num">
       <StrategyBadge kind="roll" contract={{ strategyKey: replacement.kind }} />
       <span className="what">
-        {roll.quantity !== undefined ? `${roll.quantity}× ` : ""}roll → {contractName(replacement, rightOf(replacement.kind))}
+        Roll → {contractName(replacement, replacement.kind)}
+        {roll.quantity !== undefined ? ` · ${roll.quantity}×` : ""}
       </span>
       {roll.grade && <GradeBadge grade={roll.grade} />}
       <Pieces pieces={pieces} />
@@ -248,7 +247,7 @@ function CloseOfferLine({ action }: { action: PlutoModelInputCloseAction }) {
       </div>
     );
   }
-  const contract = parseBuybackDescription(action.description);
+  const contract = action.kind === "close_leg" ? parseBuybackDescription(action.description, action.dte ?? null) : null;
   const pieces = [
     action.ask !== undefined ? `ask ${action.ask.toFixed(2)}${action.entry_credit !== undefined ? `, sold at ${action.entry_credit.toFixed(2)}` : ""}` : null,
     action.pnl_at_ask !== undefined ? `locks ${formatCurrency(action.pnl_at_ask, 0)} at the ask` : null,
@@ -258,8 +257,8 @@ function CloseOfferLine({ action }: { action: PlutoModelInputCloseAction }) {
   return (
     <div className="pm-seen-line num">
       {contract && <StrategyBadge kind="close_leg" contract={{ strategyKey: contract.right === "C" ? "covered_call" : "cash_secured_put" }} />}
-      <span className="pm-b warn">Buy back</span>
-      <span className="what">{contract ? `${contract.quantity}× ${contractName({ strike: Number(contract.strike), expiry: contract.expiry, dte: action.dte }, contract.right === "C" ? "call" : "put")}` : action.description}</span>
+      <span className="pm-b warn">{action.kind === "close_position" ? "Close" : "Buy back"}</span>
+      <span className="what">{contract ? `${contract.contract} · ${contract.quantity}×` : action.description}</span>
       <Pieces pieces={pieces} />
     </div>
   );
@@ -321,7 +320,7 @@ function RecentDecisionsSection({ decisions }: { decisions: NonNullable<PlutoMod
               </span>
               <span className="v">
                 {describeRecentDecisionVerdict(decision.verdict)}
-                {decision.verdict === "trade" && decision.candidate_id ? ` · ${describeCandidateId(decision.candidate_id)}` : ""}
+                {decision.verdict === "trade" && decision.candidate_id ? ` · ${describeCandidateId(decision.candidate_id, decision.at)}` : ""}
                 {outcome && <span className={`pm-b ${outcome.tone}`}>{outcome.label}</span>}
               </span>
               <span className="r">

@@ -62,7 +62,7 @@ export function PlutoOrdersTable({ variant, rows, now, state, loading, error, em
           const metaParts: string[] = [variant === "history" ? `${formatBrowserDayMonth(action.createdAt)} ${formatBrowserClockTime(action.createdAt)}` : formatBrowserClockTime(action.createdAt)];
           if (action.outcome === "blocked") metaParts.push(outcome.sub ?? "Blocked");
           else {
-            if (action.quantity !== null) metaParts.push(`${action.kind === "open_covered_call" ? "buy-write " : ""}${action.quantity} × ${action.fillPrice === null ? `limit ${priceText(action.limitPrice)}` : `filled ${(action.impliedFillPrice ?? action.fillPrice).toFixed(2)}${action.impliedFillPrice !== null && Math.abs(action.impliedFillPrice - action.fillPrice) > 0.004 ? ` (IBKR split ${action.fillPrice.toFixed(2)})` : ""}`}`);
+            if (action.quantity !== null) metaParts.push(`${action.quantity}× ${action.fillPrice === null ? `@ ${priceText(action.limitPrice)}` : `filled @ ${(action.impliedFillPrice ?? action.fillPrice).toFixed(2)}${action.impliedFillPrice !== null && Math.abs(action.impliedFillPrice - action.fillPrice) > 0.004 ? ` (IBKR split ${action.fillPrice.toFixed(2)})` : ""}`}`);
             if (action.exposureDollars !== null) metaParts.push(`EXP ${formatExposure(action.exposureDollars)}`);
             if (outcome.sub) metaParts.push(outcome.sub.charAt(0).toLowerCase() + outcome.sub.slice(1));
           }

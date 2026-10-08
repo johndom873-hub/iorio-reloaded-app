@@ -12,7 +12,7 @@ interface PlutoActivityFeedProps {
   /** Scrolls inside the card past this many entries' worth of height (the Live tab); the Event log grows. */
   scroll?: boolean;
   context?: PlutoFeedContext;
-  /** The Event log: a date on every row, time to the second, the category before each title, under each entry its type, id and every stored field, and a model call's inputs on demand. */
+  /** The Event log: a date on every row, time to the second, under each entry its type, id and every stored field, and a model call's inputs on demand. */
   showAllFields?: boolean;
   /** The Event log's ticker filter: when set, events that apply to every ticker are muted and tagged as such. */
   tickerFilter?: string;
@@ -50,12 +50,8 @@ export function PlutoActivityFeed({ events, loading, error, emptyMessage, scroll
             <i className={`ev-dot ${entry.dot}`} aria-hidden="true" />
             <div>
               <div className="ev-t">
-                {showAllFields && (
-                  <>
-                    <span className="ev-cat">{plutoEventCategoryLabel(event.category)}</span>
-                    {" · "}
-                  </>
-                )}
+                <span className="ev-cat">{plutoEventCategoryLabel(event.category)}</span>
+                {" · "}
                 <b>{entry.title}</b>
                 {entry.detail ? ` · ${entry.detail}` : ""}
                 {forAllTickers && <span className="ev-tag">All tickers</span>}

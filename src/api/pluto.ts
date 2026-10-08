@@ -322,7 +322,7 @@ export interface PlutoModelInputCloseAction {
   id: string;
   /** Who opened the position: "pluto" or "a person". */
   opened_by?: string;
-  kind: "close_leg" | "close_shares";
+  kind: "close_leg" | "close_shares" | "close_position";
   description: string;
   cycle_pnl?: number;
   dte?: number;

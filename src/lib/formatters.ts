@@ -311,6 +311,25 @@ export function formatExpiryWithDte(expiryIsoDate: string | null | undefined, as
   return `${formatDate(expiryIsoDate)} (${daysToExpiry(expiryIsoDate, asOf)} DTE)`;
 }
 
+/** A strike as the contract label writes it: "$46", "$42.5". */
+export function formatStrike(strike: number): string {
+  return `$${Number.isInteger(strike) ? strike : strike.toFixed(2).replace(/\.?0+$/, "")}`;
+}
+
+/**
+ * The platform's contract label: "SMCI $47 Call · 9 Oct (2DTE)", or "$47 Call · 9 Oct (2DTE)" without a symbol (a table
+ * with its own Ticker column); DTE left out when null. Where space is tight, formatOptionContractShort ("47C 2DTE").
+ */
+export function formatOptionContractLabel(contract: { symbol?: string; strike: number; right: "C" | "P"; expiry: string; dte: number | null }): string {
+  const symbol = contract.symbol ? `${contract.symbol} ` : "";
+  return `${symbol}${formatStrike(contract.strike)} ${contract.right === "C" ? "Call" : "Put"} · ${formatDayMonth(contract.expiry)}${contract.dte === null ? "" : ` (${contract.dte}DTE)`}`;
+}
+
+/** The order size after a contract label: " · 11× @ 0.39", or " · 11×" without a price. */
+export function formatOrderSize(quantity: number, price: number | null): string {
+  return ` · ${quantity}×${price === null ? "" : ` @ ${price.toFixed(2)}`}`;
+}
+
 /** "114P 3DTE" / "202.5C 3DTE" — the compact contract label shared by Pulse's Trades and Latest Events and the Signals Top Signal column. */
 export function formatOptionContractShort(strike: number | string, right: "C" | "P", dte: number | null): string {
   return `${formatNumber(strike, 2)}${right}${dte === null ? "" : ` ${dte}DTE`}`;

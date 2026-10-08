@@ -3,7 +3,7 @@ import { ApiError } from "../../api/client";
 import { cancelOrder } from "../../api/positions";
 import { pausePluto, resetPlutoBreaker, resumePluto, updatePlutoMode, updatePlutoStressOverride, type PlutoSettings, type PlutoState, type PlutoStateCore } from "../../api/pluto";
 import { formatCompactDollarsTrimmed, formatCurrency, formatEasternTime, formatHoursMinutesUntil, pluralize, todayInEasternIso } from "../../lib/formatters";
-import { checkLabel, describeOrderShort, formatAgeInWords, humanizeKey, orderedChecks, sentenceCase, spyStressFromState, type PlutoStatus } from "../../lib/plutoPresentation";
+import { checkLabel, describeOrderLine, formatAgeInWords, humanizeKey, orderedChecks, sentenceCase, spyStressFromState, type PlutoStatus } from "../../lib/plutoPresentation";
 import { ConfirmModal } from "../ConfirmModal";
 import { Spinner } from "../Spinner";
 import { CheckIcon, CrossIcon, Meter, PauseIcon, PlayIcon, ResetIcon, StopIcon, WarningIcon } from "./plutoBits";
@@ -191,7 +191,7 @@ export function PlutoStatusCard({ state, status, settings, now, isPhone, showKpi
         title="Pause and cancel working orders?"
         confirmLabel="Pause and cancel"
         confirming={busy === "modal"}
-        message={working.length === 0 ? <>No orders are working right now, so Pluto simply pauses. Orders not yet sent are dropped.</> : <>Pluto pauses, orders not yet sent are dropped and IBKR is asked to cancel the {pluralize(working.length, "working order")} ({working.map((order) => describeOrderShort(order)).join("; ")}).</>}
+        message={working.length === 0 ? <>No orders are working right now, so Pluto simply pauses. Orders not yet sent are dropped.</> : <>Pluto pauses, orders not yet sent are dropped and IBKR is asked to cancel the {pluralize(working.length, "working order")} ({working.map((order) => describeOrderLine(order, order.limitPrice)).join("; ")}).</>}
         onCancel={() => setPending(null)}
         onConfirm={() => void run(() => pausePluto(true), "modal", "Could not pause Pluto.")}
       />
@@ -225,7 +225,7 @@ export function PlutoStatusCard({ state, status, settings, now, isPhone, showKpi
         title={working.length === 1 ? "Cancel the working order?" : `Cancel the ${working.length} working orders?`}
         confirmLabel={working.length === 1 ? "Cancel the order" : "Cancel the orders"}
         confirming={busy === "modal"}
-        message={<>IBKR is asked to cancel {working.map((order) => describeOrderShort(order)).join("; ")}. Anything already filled stays filled.</>}
+        message={<>IBKR is asked to cancel {working.map((order) => describeOrderLine(order, order.limitPrice)).join("; ")}. Anything already filled stays filled.</>}
         onCancel={() => setPending(null)}
         onConfirm={() => void run(() => cancelWorkingOrders(), "modal", "Could not cancel the working orders.")}
       />
@@ -253,7 +253,7 @@ export function PlutoStatusCard({ state, status, settings, now, isPhone, showKpi
   const windowEndMs = new Date(session.windowEndAt).getTime();
   const windowSub = !session.isOpen ? "Market closed today" : now.getTime() < windowStartMs ? `Starts in ${formatHoursMinutesUntil(session.windowStartAt, now)} · market closes ${session.closeTimeEt}` : now.getTime() < windowEndMs ? `${formatHoursMinutesUntil(session.windowEndAt, now)} left · market closes ${session.closeTimeEt}` : `Closed for today · market closes ${session.closeTimeEt}`;
   const firstWorking = working[0] ?? null;
-  const workingSub = firstWorking ? `${describeOrderShort(firstWorking)} · ${formatAgeInWords(firstWorking.createdAt, now)}${working.length > 1 ? ` · +${working.length - 1} more` : ""}` : "None at IBKR";
+  const workingSub = firstWorking ? `${describeOrderLine(firstWorking, firstWorking.limitPrice)} · ${formatAgeInWords(firstWorking.createdAt, now)}${working.length > 1 ? ` · +${working.length - 1} more` : ""}` : "None at IBKR";
 
   const subline = isPhone && !showKpis ? `${state.ordersToday.sent} of ${ordersMax} orders today · ${working.length} working` : status.subline;
 

@@ -1,6 +1,6 @@
 import type { DaySignalsWatchStatus, PlutoAction, PlutoActionContract, PlutoActionKind, PlutoActionOutcome, PlutoEvent, PlutoEventCategory, PlutoPass, PlutoState, PlutoSystemCheck, PlutoWorkingOrder } from "../api/pluto";
 import { plutoParameterLabelByField } from "./plutoParameters";
-import { daysToExpiry, easternIsoDate, formatBrowserClockTime, formatCurrency, formatDayMonth, formatEasternTime, formatRelativeAge, formatRelativeTime, formatDateTime, pluralize, todayInEasternIso } from "./formatters";
+import { daysToExpiry, easternIsoDate, formatBrowserClockTime, formatCurrency, formatDayMonth, formatEasternTime, formatOptionContractLabel, formatOrderSize, formatRelativeAge, formatRelativeTime, formatDateTime, formatStrike, pluralize, todayInEasternIso } from "./formatters";
 
 // Presentation rules for the Pluto screen (redesign approved 2026-10-06): one status at a time, plain-language
 // wording for orders, decisions and the activity feed. Pure functions so the components stay declarative.
@@ -181,42 +181,65 @@ export function strategyBadgeFor(kind: PlutoActionKind, contract: PlutoActionCon
   return { className: "ns", label: "N/S" };
 }
 
-function rightWord(contract: PlutoActionContract | null): string {
-  if (contract?.right) return contract.right === "C" ? "call" : "put";
-  return contract?.strategyKey === "covered_call" ? "call" : "put";
+function contractRight(contract: PlutoActionContract | null): "C" | "P" {
+  if (contract?.right) return contract.right;
+  return contract?.strategyKey === "covered_call" ? "C" : "P";
 }
 
-function strikeText(strike: number | undefined): string {
-  return strike === undefined ? "?" : `$${Number.isInteger(strike) ? strike : strike.toFixed(2).replace(/\.?0+$/, "")}`;
+/** One leg of an action's contract, "$46 Call · 9 Oct (2DTE)": the held leg of a roll or the leg it trades; no DTE when asOfIso is null. */
+function actionLegLabel(contract: PlutoActionContract | null, leg: "held" | "traded", asOfIso: string | null): string {
+  const strike = leg === "held" ? contract?.fromStrike : contract?.strike;
+  const expiry = leg === "held" ? contract?.fromExpiry : contract?.expiry;
+  const right = contractRight(contract);
+  if (strike === undefined || !expiry) return `${strike === undefined ? "?" : formatStrike(strike)} ${right === "C" ? "Call" : "Put"}`;
+  return formatOptionContractLabel({ strike, right, expiry, dte: asOfIso === null ? null : daysToExpiry(expiry, asOfIso) });
 }
 
-/** The contract cell: a title and a sub-line ("$24 put · 17 Oct" / "Sell to open · 11 days"). */
-export function describeOrderContract(action: { kind: PlutoActionKind; contract: PlutoActionContract | null; quantity: number | null; createdAt: string }): { title: string; sub: string | null } {
-  const contract = action.contract;
-  if (action.kind === "close_shares") return { title: `Sell ${action.quantity ?? "?"} shares`, sub: "Close unstructured shares" };
-  if (action.kind === "close_leg") return { title: contract?.expiry ? `Buy back ${strikeText(contract.strike)} ${rightWord(contract)} · ${formatDayMonth(contract.expiry)}` : "Buy back", sub: "Buy back to close" };
-  if (action.kind === "close_position") return { title: contract?.expiry ? `Close ${strikeText(contract.strike)} call · ${formatDayMonth(contract.expiry)}` : "Close covered call", sub: `Buy back the call, sell ${action.quantity ?? "?"} shares` };
-  if (action.kind === "roll") {
-    const title = `Roll ${strikeText(contract?.fromStrike)} → ${strikeText(contract?.strike)} ${rightWord(contract)}`;
-    const sub = contract?.fromExpiry && contract.expiry ? `${formatDayMonth(contract.fromExpiry)} → ${formatDayMonth(contract.expiry)} · net credit` : "net credit";
-    return { title, sub };
-  }
+type DescribableOrder = { kind: PlutoActionKind; contract: PlutoActionContract | null; quantity: number | null; createdAt: string };
+
+/**
+ * What an action trades, without its verb or size, DTE as of the day it was made: "$46 Call · 9 Oct (2DTE)",
+ * "$105 Put · 10 Oct → $100 Put · 17 Oct (9DTE)", "$46 Call · 9 Oct (2DTE) + sell 100 shares", "100 shares".
+ */
+function describeActionContracts(action: DescribableOrder): string {
+  const asOfIso = easternIsoDate(action.createdAt);
+  if (action.kind === "close_shares") return `${action.quantity ?? "?"} shares`;
+  if (action.kind === "roll") return `${actionLegLabel(action.contract, "held", null)} → ${actionLegLabel(action.contract, "traded", asOfIso)}`;
+  // A close_position's quantity is its shares.
+  if (action.kind === "close_position") return `${actionLegLabel(action.contract, "traded", asOfIso)} + sell ${action.quantity ?? "?"} shares`;
+  return actionLegLabel(action.contract, "traded", asOfIso);
+}
+
+const actionVerbs: Record<PlutoActionKind, string> = {
+  open_covered_call: "Sell",
+  open_cash_secured_put: "Sell",
+  close_leg: "Buy back",
+  close_position: "Close",
+  close_shares: "Sell",
+  roll: "Roll",
+  no_trade: "",
+};
+
+/** The contract cell, under its own Ticker column: a title and a sub-line ("Sell $46 Call · 9 Oct (2DTE)" / "11 contracts with 1100 shares"). */
+export function describeOrderContract(action: DescribableOrder): { title: string; sub: string | null } {
   if (action.kind === "no_trade") return { title: "No order", sub: null };
-  if (!contract?.expiry) return { title: "—", sub: null };
-  const dte = daysToExpiry(contract.expiry, action.createdAt);
-  return { title: `${strikeText(contract.strike)} ${rightWord(contract)} · ${formatDayMonth(contract.expiry)}`, sub: action.kind === "open_covered_call" ? `Buy-write · with ${(action.quantity ?? 0) * 100} shares` : `Sell to open · ${dte} ${dte === 1 ? "day" : "days"}` };
+  if (action.kind === "close_shares") return { title: `Sell ${describeActionContracts(action)}`, sub: "Close unstructured shares" };
+  if (!action.contract?.expiry) return { title: action.kind === "close_leg" ? "Buy back" : action.kind === "close_position" ? "Close covered Call" : "—", sub: null };
+  const title = `${actionVerbs[action.kind]} ${describeActionContracts(action)}`;
+  const contracts = action.quantity === null ? null : pluralize(action.kind === "close_position" ? Math.round(action.quantity / 100) : action.quantity, "contract");
+  if (action.kind === "close_leg") return { title, sub: contracts };
+  if (action.kind === "close_position") return { title, sub: "Buy back the Call and sell the shares together" };
+  if (action.kind === "roll") return { title, sub: contracts ? `${contracts} · net credit` : "net credit" };
+  if (action.quantity === null) return { title, sub: null };
+  return { title, sub: action.kind === "open_covered_call" ? `${contracts} with ${action.quantity * 100} shares` : contracts };
 }
 
-/** "HOOD sell 2× $24 put" — one line for the status card and the feed. */
-export function describeOrderShort(order: { symbol: string; kind: PlutoActionKind; contract: PlutoActionContract | null; quantity: number | null }): string {
-  const contract = order.contract;
-  const quantity = order.quantity ?? "?";
-  if (order.kind === "close_shares") return `${order.symbol} sell ${quantity} shares`;
-  if (order.kind === "close_leg") return `${order.symbol} buy back ${quantity}× ${strikeText(contract?.strike)} ${rightWord(contract)}`;
-  if (order.kind === "close_position") return `${order.symbol} close covered call ${strikeText(contract?.strike)} (${quantity} shares)`;
-  if (order.kind === "roll") return `${order.symbol} roll ${strikeText(contract?.fromStrike)} → ${strikeText(contract?.strike)} ${rightWord(contract)}`;
-  if (order.kind === "open_covered_call") return `${order.symbol} buy-write ${quantity}× ${strikeText(contract?.strike)} call`;
-  return `${order.symbol} sell ${quantity}× ${strikeText(contract?.strike)} ${rightWord(contract)}`;
+/** The platform's order line: "SMCI Sell $46 Call · 9 Oct (2DTE) · 11× @ 0.39"; "SMCI Sell 100 shares @ 45.10"; no price when null. */
+export function describeOrderLine(order: DescribableOrder & { symbol: string }, price: number | null): string {
+  const head = `${order.symbol} ${actionVerbs[order.kind]} ${describeActionContracts(order)}`;
+  if (order.kind === "close_shares") return `${head}${price === null ? "" : ` @ ${price.toFixed(2)}`}`;
+  if (order.kind === "close_position") return `${head}${order.quantity === null ? "" : ` · ${Math.round(order.quantity / 100)}×`}`;
+  return `${head}${order.quantity === null ? "" : formatOrderSize(order.quantity, price)}`;
 }
 
 /** When the platform's unfilled-order sweep will cancel a working order: creation plus the sweep's minutes, or the session's cancel-by if sooner. */
@@ -230,7 +253,7 @@ export function workingOrderCancelAt(order: { createdAt: string }, state: Pick<P
 export function describeWorkingOrderLine(order: PlutoWorkingOrder, state: Pick<PlutoState, "unfilledCancelMinutes" | "session">, now: Date): string {
   const cancelAt = workingOrderCancelAt(order, state);
   const age = formatAgeInWords(order.createdAt, now);
-  return `${describeOrderShort(order)} @ ${order.limitPrice?.toFixed(2) ?? "?"} · ${age}${cancelAt ? ` · cancels at ${formatEasternTime(cancelAt.toISOString()).replace(" ET", "")} if unfilled` : ""}`;
+  return `${describeOrderLine(order, order.limitPrice)} · ${age}${cancelAt ? ` · cancels at ${formatEasternTime(cancelAt.toISOString()).replace(" ET", "")} if unfilled` : ""}`;
 }
 
 export type PlutoBadgeTone = "ok" | "bad" | "warn" | "info" | "neutral";
@@ -348,19 +371,36 @@ export const plutoOrderColumns: Record<PlutoOrdersVariant, PlutoOrderColumn[]> =
 
 // ---------- Decisions ----------
 
-export function describeCandidateId(candidateId: string | null | undefined): string {
-  if (!candidateId) return "—";
-  // SYM:strategy:expiry:strike | SYM:roll:legId:expiry:strike | SYM:close_leg:legId | SYM:close_shares:positionId | SYM:close_position:positionId
+type ParsedCandidateId =
+  | { kind: "open"; symbol: string; right: "C" | "P"; strike: number; expiry: string }
+  | { kind: "roll"; symbol: string; strike: number; expiry: string }
+  | { kind: "close_leg" | "close_shares" | "close_position"; symbol: string }
+  | null;
+
+// SYM:strategy:expiry:strike | SYM:roll:legId:expiry:strike | SYM:close_leg:legId | SYM:close_shares:positionId | SYM:close_position:positionId
+function parseCandidateId(candidateId: string): ParsedCandidateId {
   const parts = candidateId.split(":");
-  if (parts.length === 4 && (parts[1] === "covered_call" || parts[1] === "cash_secured_put")) {
-    const [symbol, strategy, expiry, strike] = parts;
-    return `${symbol} $${strike} ${strategy === "covered_call" ? "call" : "put"} · ${formatDayMonth(expiry!)}`;
-  }
-  if (parts.length === 5 && parts[1] === "roll") return `${parts[0]} roll → $${parts[4]} ${formatDayMonth(parts[3]!)}`;
-  if (parts[1] === "close_leg") return `${parts[0]} buy back`;
-  if (parts[1] === "close_shares") return `${parts[0]} sell shares`;
-  if (parts[1] === "close_position") return `${parts[0]} close covered call`;
-  return candidateId;
+  const symbol = parts[0]!;
+  if (parts.length === 4 && (parts[1] === "covered_call" || parts[1] === "cash_secured_put")) return { kind: "open", symbol, right: parts[1] === "covered_call" ? "C" : "P", strike: Number(parts[3]), expiry: parts[2]! };
+  if (parts.length === 5 && parts[1] === "roll") return { kind: "roll", symbol, strike: Number(parts[4]), expiry: parts[3]! };
+  if (parts[1] === "close_leg" || parts[1] === "close_shares" || parts[1] === "close_position") return { kind: parts[1], symbol };
+  return null;
+}
+
+/**
+ * A candidate as the model was offered it, DTE counted from the day of `asOf`: "SMCI $47 Call · 9 Oct (2DTE)". A roll's id
+ * names only the new contract and not its right ("MU Roll → $100 · 17 Oct (9DTE)"); closes name only the kind.
+ */
+export function describeCandidateId(candidateId: string | null | undefined, asOf: string | Date): string {
+  if (!candidateId) return "—";
+  const parsed = parseCandidateId(candidateId);
+  if (!parsed) return candidateId;
+  const dteOf = (expiry: string) => daysToExpiry(expiry, easternIsoDate(asOf));
+  if (parsed.kind === "open") return formatOptionContractLabel({ symbol: parsed.symbol, strike: parsed.strike, right: parsed.right, expiry: parsed.expiry, dte: dteOf(parsed.expiry) });
+  if (parsed.kind === "roll") return `${parsed.symbol} Roll → ${formatStrike(parsed.strike)} · ${formatDayMonth(parsed.expiry)} (${dteOf(parsed.expiry)}DTE)`;
+  if (parsed.kind === "close_leg") return `${parsed.symbol} Buy back`;
+  if (parsed.kind === "close_shares") return `${parsed.symbol} Sell shares`;
+  return `${parsed.symbol} Close covered Call`;
 }
 
 /** The model's verdict for a pass: the first schema-valid call's output (Pluto makes one call per decision). */
@@ -386,28 +426,25 @@ export function isAbstainVerdict(verdict: string | null | undefined): boolean {
   return verdict === "abstain" || verdict === "abstain_system_concern";
 }
 
-/** "Sell 2× HOOD $24 put, 17 Oct" — what the model chose, with the sized quantity once the gates set one. */
+/** What the model chose, as an order line with the sized quantity once the gates set one: "SMCI Sell $46 Call · 9 Oct (2DTE) · 11×". */
 export function describeChosenAction(pass: PlutoPass): string {
   const { output, action } = passVerdict(pass);
   if (!output || output.decision !== "trade") return isAbstainVerdict(output?.decision) ? "Abstained — the data looked unreliable" : "Nothing worth trading";
-  const quantity = action?.quantity ? `${action.quantity}× ` : "";
-  const contractName = (action ? describeOrderContract(action).title : describeCandidateId(output.candidate_id)).replace(" · ", ", ");
-  const symbol = action?.symbol ?? output.candidate_id?.split(":")[0] ?? "";
-  if (action?.kind === "roll") return `${contractName.replace(/^Roll /, `Roll ${quantity}${symbol} `)}`;
-  if (action?.kind === "close_leg") return contractName.replace(/^Buy back /, `Buy back ${quantity}${symbol} `);
-  if (action?.kind === "close_shares") return `${symbol} ${contractName.toLowerCase()}`;
-  if (action?.kind === "open_covered_call") return `Buy-write ${quantity}${symbol} ${contractName}`;
-  return `Sell ${quantity}${symbol} ${contractName}`;
+  if (action) return describeOrderLine(action, null);
+  // No action row (the chosen candidate was not among the offers): the candidate id is all there is.
+  const parsed = output.candidate_id ? parseCandidateId(output.candidate_id) : null;
+  const label = describeCandidateId(output.candidate_id, pass.startedAt);
+  return parsed?.kind === "open" ? label.replace(`${parsed.symbol} `, `${parsed.symbol} Sell `) : label;
 }
 
 /** How the model's pick compares with the deterministic Edge $ top pick. */
 export function describeTopPickComparison(pass: PlutoPass): { tone: "ok" | "warn" | "muted"; text: string } {
   const { output, topPick, action } = passVerdict(pass);
-  if (!output || output.decision !== "trade") return { tone: "muted", text: topPick ? `Top was ${describeCandidateId(topPick.id)}, $${Math.round(topPick.edgeDollars)}` : "No top pick" };
+  if (!output || output.decision !== "trade") return { tone: "muted", text: topPick ? `Top was ${describeCandidateId(topPick.id, pass.startedAt)}, $${Math.round(topPick.edgeDollars)}` : "No top pick" };
   if (action && (action.kind === "roll" || action.kind === "close_leg" || action.kind === "close_shares")) return { tone: "muted", text: `No open top pick (${action.kind === "roll" ? "roll" : "close"})` };
   if (!topPick) return { tone: "muted", text: "No top pick" };
   if (topPick.id === output.candidate_id) return { tone: "ok", text: "Same pick" };
-  return { tone: "warn", text: `Differs · top was ${describeCandidateId(topPick.id).replace(/^[A-Z.]+ /, "")}` };
+  return { tone: "warn", text: `Differs · top was ${describeCandidateId(topPick.id, pass.startedAt).replace(/^[A-Z.]+ /, "")}` };
 }
 
 /** Why the analysis ran, as a short cell ("HOOD Day Signals update") or a clause ("after a Day Signals update on HOOD"). */
@@ -522,6 +559,8 @@ function modelVerdictTitle(payload: Record<string, unknown>): string {
       return "Model: buy back";
     case "close_shares":
       return "Model: close shares";
+    case "close_position":
+      return "Model: close covered Call";
     default:
       return "Model: place order";
   }
@@ -543,24 +582,42 @@ export function buildFeedContext(actions: PlutoAction[]): PlutoFeedContext {
   return { actionsById, actionsByPassId };
 }
 
-/** "HOOD 2× $24P 2026-10-17 @ 0.62" (the agent's order description) → "HOOD sell 2× $24 put · 17 Oct @ 0.62". */
-export function humanizeOrderDescription(description: string): string {
+/**
+ * An order description the API stored, as the platform's order line ("SMCI Sell $46 Call · 9 Oct (2DTE) · 11× @ 0.39"),
+ * DTE counted from `asOf`. Current descriptions already are one and only lose their trailing notes ("(sold at …)",
+ * "before the … earnings", "; …"); older ones ("HOOD 2× $24P 2026-10-17 @ 0.62", "Buy back 2× COIN $300P …") are reworded.
+ */
+export function humanizeOrderDescription(description: string, asOf: string | Date): string {
+  const asOfIso = easternIsoDate(asOf);
+  const label = (strike: string, right: string, expiry: string) => formatOptionContractLabel({ strike: Number(strike), right: right === "C" ? "C" : "P", expiry, dte: daysToExpiry(expiry, asOfIso) });
+  const current = description.match(/^(\S+ (?:Sell|Buy back|Roll|Close) .+?)(?: \(sold at | \(unstructured\)| before the |;|$)/);
+  if (current) return current[1]!;
   const open = description.match(/^(\S+) (\d+)× \$(\S+?)([CP]) (\d{4}-\d{2}-\d{2}) @ ([\d.]+)$/);
-  if (open) return `${open[1]} ${open[4] === "C" ? "buy-write" : "sell"} ${open[2]}× $${open[3]} ${open[4] === "C" ? "call" : "put"} · ${formatDayMonth(open[5]!)} @ ${open[6]}`;
+  if (open) return `${open[1]} Sell ${label(open[3]!, open[4]!, open[5]!)} · ${open[2]}× @ ${open[6]}`;
   const roll = description.match(/^(\S+) roll (\d+)× \$(\S+) → \$(\S+) (\d{4}-\d{2}-\d{2}) @ ([\d.]+)$/);
-  if (roll) return `${roll[1]} roll ${roll[2]}× $${roll[3]} → $${roll[4]} · ${formatDayMonth(roll[5]!)} @ ${roll[6]}`;
+  if (roll) return `${roll[1]} Roll ${formatStrike(Number(roll[3]))} → ${formatStrike(Number(roll[4]))} · ${formatDayMonth(roll[5]!)} (${daysToExpiry(roll[5]!, asOfIso)}DTE) · ${roll[2]}× @ ${roll[6]}`;
   const buyback = description.match(/^Buy back (\d+)× (\S+) \$(\S+?)([CP]) (\d{4}-\d{2}-\d{2}) at ~([\d.]+)/);
-  if (buyback) return `${buyback[2]} buy back ${buyback[1]}× $${buyback[3]} ${buyback[4] === "C" ? "call" : "put"} · ${formatDayMonth(buyback[5]!)} @ ${buyback[6]}`;
+  if (buyback) return `${buyback[2]} Buy back ${label(buyback[3]!, buyback[4]!, buyback[5]!)} · ${buyback[1]}× @ ${buyback[6]}`;
+  const coveredCallClose = description.match(/^Close (\d+)× (\S+) covered call before the \S+ earnings: buy back \$(\S+?)C (\d{4}-\d{2}-\d{2}) at ~[\d.]+, sell (\d+) shares/);
+  if (coveredCallClose) return `${coveredCallClose[2]} Close ${label(coveredCallClose[3]!, "C", coveredCallClose[4]!)} + sell ${coveredCallClose[5]} shares · ${coveredCallClose[1]}×`;
   const shares = description.match(/^Sell (\d+) (\S+) shares .*?at ~([\d.]+)/);
-  if (shares) return `${shares[2]} sell ${shares[1]} shares @ ${shares[3]}`;
+  if (shares) return `${shares[2]} Sell ${shares[1]} shares @ ${shares[3]}`;
+  // An order adopted after a restart, before adopted orders were worded like the rest: "SMCI 11× open_covered_call $46 2026-10-09".
+  const adopted = description.match(/^(\S+) (\d+)× (open_covered_call|open_cash_secured_put|close_leg|close_position|close_shares|roll)(?: \$(\S+))?(?: (\d{4}-\d{2}-\d{2}))?$/);
+  if (adopted) {
+    const [, symbol, quantity, kind, strike, expiry] = adopted;
+    if (kind === "close_shares") return `${symbol} Sell ${quantity} shares`;
+    const contract = strike && expiry && kind!.startsWith("open_") ? label(strike, kind === "open_covered_call" ? "C" : "P", expiry) : `${strike ? formatStrike(Number(strike)) : ""}${expiry ? ` · ${formatDayMonth(expiry)}` : ""}`.trim();
+    return `${symbol} ${actionVerbs[kind as PlutoActionKind]} ${contract} · ${quantity}×`.replace(/\s+/g, " ");
+  }
   return description;
 }
 
-function orderLine(payload: Record<string, unknown>, context: PlutoFeedContext | undefined, price: number | null): string {
+function orderLine(payload: Record<string, unknown>, context: PlutoFeedContext | undefined, price: number | null, occurredAt: string): string {
   const action = context?.actionsById.get(text(payload.actionId));
-  if (action) return `${describeOrderShort(action)}${price !== null ? ` @ ${price.toFixed(2)}` : ""}`;
+  if (action) return describeOrderLine(action, price);
   const description = text(payload.description);
-  return description ? humanizeOrderDescription(description) : text(payload.symbol);
+  return description ? humanizeOrderDescription(description, occurredAt) : text(payload.symbol);
 }
 
 /** The tickers an event lists: plain symbols, or objects carrying a `symbol` (a skipped pass's per-ticker summary). */
@@ -573,25 +630,28 @@ export function describeFeedEvent(event: PlutoEvent, context?: PlutoFeedContext)
   const payload = event.payload ?? {};
   const symbol = text(payload.symbol);
   const by = text(payload.by);
+  const at = event.occurredAt;
+  // A candidate the event names: the action's own wording when the feed has it, else read from the candidate id.
+  const eventAction = context?.actionsById.get(text(payload.actionId));
   switch (event.type) {
     case "order_confirmed":
-      return { dot: "order", title: "Order sent", detail: orderLine(payload, context, context?.actionsById.get(text(payload.actionId))?.limitPrice ?? null), sub: null };
+      return { dot: "order", title: "Order sent", detail: orderLine(payload, context, eventAction?.limitPrice ?? null, at), sub: null };
     case "order_built":
-      return { dot: "order", title: "Order built", detail: orderLine(payload, context, context?.actionsById.get(text(payload.actionId))?.limitPrice ?? null), sub: null };
+      return { dot: "order", title: "Order built", detail: orderLine(payload, context, eventAction?.limitPrice ?? null, at), sub: null };
     case "order_outcome": {
       const outcome = text(payload.outcome);
       const price = payload.fillPrice ? Number(payload.fillPrice) : null;
-      const what = orderLine(payload, context, price);
+      const what = orderLine(payload, context, price, at);
       if (outcome === "filled") return { dot: "fill", title: "Filled", detail: what, sub: null };
       if (outcome === "partially_filled" || outcome === "cancelled_partially_filled") return { dot: "fill", title: "Partly filled", detail: what, sub: outcome === "cancelled_partially_filled" ? "Rest cancelled" : null };
-      if (outcome === "cancelled") return { dot: "look", title: "Cancelled", detail: orderLine(payload, context, null), sub: text(payload.reason) || null };
-      return { dot: "bad", title: outcome === "rejected" ? "Rejected" : "Order error", detail: orderLine(payload, context, null), sub: text(payload.error) || text(payload.reason) || null };
+      if (outcome === "cancelled") return { dot: "look", title: "Cancelled", detail: orderLine(payload, context, null, at), sub: text(payload.reason) || null };
+      return { dot: "bad", title: outcome === "rejected" ? "Rejected" : "Order error", detail: orderLine(payload, context, null, at), sub: text(payload.error) || text(payload.reason) || null };
     }
     case "model_called": {
       const trigger = describeTrigger({ trigger: text(payload.trigger), triggerDetail: (payload.triggerDetail as Record<string, unknown>) ?? {} }, "clause");
       const confidence = payload.confidence !== undefined && payload.confidence !== null ? ` · confidence ${Number(payload.confidence).toFixed(2)}` : "";
       const action = context?.actionsByPassId.get(text(payload.passId));
-      const chosen = action ? `${action.symbol} ${describeOrderContract(action).title.replace(/^Roll /, "").replace(/^Buy back /, "")}` : describeCandidateId(text(payload.candidateId));
+      const chosen = action ? `${action.symbol} ${describeActionContracts(action)}` : describeCandidateId(text(payload.candidateId), at);
       return { dot: "model", title: modelVerdictTitle(payload), detail: text(payload.verdict) === "trade" ? chosen : null, sub: `Asked ${trigger}${confidence}` };
     }
     case "model_failed":
@@ -599,13 +659,14 @@ export function describeFeedEvent(event: PlutoEvent, context?: PlutoFeedContext)
     case "no_trade": {
       const topPick = payload.deterministicTopPick as { id?: string; edgeDollars?: number } | null;
       const fallback = isAbstainVerdict(text(payload.verdict)) ? "the model abstained" : "nothing worth trading";
-      return { dot: "look", title: "No order", detail: topPick?.id ? `Edge $ top pick was ${describeCandidateId(topPick.id)} ($${Math.round(topPick.edgeDollars ?? 0)})` : fallback, sub: Array.isArray(payload.reasons) ? (payload.reasons as string[]).join(" ") : null };
+      return { dot: "look", title: "No order", detail: topPick?.id ? `Edge $ top pick was ${describeCandidateId(topPick.id, at)} ($${Math.round(topPick.edgeDollars ?? 0)})` : fallback, sub: Array.isArray(payload.reasons) ? (payload.reasons as string[]).join(" ") : null };
     }
     case "action_validated":
-      return { dot: "look", title: "Order checks passed", detail: `${describeCandidateId(text(payload.candidateId))} · ${text(payload.quantity)}× @ ${Number(payload.limitPrice ?? 0).toFixed(2)}`, sub: null };
+      return { dot: "look", title: "Order checks passed", detail: eventAction ? describeOrderLine(eventAction, Number(payload.limitPrice ?? 0)) : `${describeCandidateId(text(payload.candidateId), at)} · ${text(payload.quantity)}× @ ${Number(payload.limitPrice ?? 0).toFixed(2)}`, sub: null };
     case "action_blocked": {
       const failed = Array.isArray(payload.failed) ? (payload.failed as { gate: string; detail: string }[]) : [];
-      return { dot: "warn", title: "Blocked", detail: `${symbol}${payload.candidateId ? ` ${describeCandidateId(text(payload.candidateId)).replace(/^[A-Z.]+ /, "")}` : ""}`, sub: failed.length > 0 ? sentenceCase(failed.map((gate) => gate.detail).join(" · ")) : text(payload.reason) || null };
+      const blockedWhat = eventAction && eventAction.kind !== "no_trade" ? `${eventAction.symbol} ${describeActionContracts(eventAction)}` : `${symbol}${payload.candidateId ? ` ${describeCandidateId(text(payload.candidateId), at).replace(/^[A-Z.]+ /, "")}` : ""}`;
+      return { dot: "warn", title: "Blocked", detail: blockedWhat, sub: failed.length > 0 ? sentenceCase(failed.map((gate) => gate.detail).join(" · ")) : text(payload.reason) || null };
     }
     case "pass_started":
       return { dot: "look", title: "Pass started", detail: eventSymbols(payload.symbols).join(", ") || null, sub: null };
@@ -637,10 +698,21 @@ export function describeFeedEvent(event: PlutoEvent, context?: PlutoFeedContext)
       return { dot: "ctl", title: payload.enabled ? `New positions allowed under SPY stress today by ${by}` : `Stress override removed by ${by}`, detail: null, sub: null };
     case "lines_changed":
       return { dot: "look", title: "IBKR market-data lines", detail: `${text(payload.held)} held`, sub: text(payload.detail) || text(payload.reason) || null };
-    case "session_schedule":
-      return { dot: "look", title: "Session schedule", detail: `closes ${text(payload.closeTimeEt) || "?"} ET today`, sub: null };
+    case "window_opened":
+      return { dot: "ctl", title: "Trading window opened", detail: payload.windowEndAt ? `until ${formatBrowserClockTime(text(payload.windowEndAt))}` : `until ${text(payload.windowEndEt)} ET`, sub: null };
+    case "window_closed":
+      return { dot: "ctl", title: "Trading window closed", detail: "stopped analysing new trades", sub: null };
+    case "analysis_started": {
+      const data = text(payload.data);
+      const detail = data === "incomplete" ? "Day Signals not ready by 10:30 ET, running on incomplete data" : data === "complete_after_early_start" ? "Day Signals ready now, after an early start on incomplete data" : "Day Signals ready";
+      return { dot: "model", title: "Started analysing new trades", detail, sub: null };
+    }
+    case "connection_lost":
+      return { dot: "bad", title: "IBKR connection lost", detail: null, sub: "Quotes and orders can't flow until it reconnects" };
+    case "connection_restored":
+      return { dot: "ctl", title: "IBKR connection restored", detail: payload.downMinutes ? `after ${text(payload.downMinutes)} min` : null, sub: null };
     case "order_adopted":
-      return { dot: "warn", title: "Order adopted after a restart", detail: orderLine(payload, context, null), sub: `Still working ${text(payload.ageMinutes)} min after the restart; watch resumed` };
+      return { dot: "warn", title: "Order adopted after a restart", detail: orderLine(payload, context, null, at), sub: `Still working ${text(payload.ageMinutes)} min after the restart; watch resumed` };
     case "agent_started":
       return { dot: "ctl", title: "Pluto's program started", detail: `version ${shortRelease(payload.release) || "unknown"}`, sub: null };
     case "agent_stopped":
@@ -702,8 +774,8 @@ export function describeEventPayloadFields(payload: Record<string, unknown> | nu
   });
 }
 
-/** The Live tab's Activity feed leaves out the routine analysis bookkeeping the Event log keeps. */
-export const activityFeedHiddenEventTypes = ["pass_started", "pass_skipped", "order_built", "action_validated", "no_trade", "lines_changed", "session_schedule"];
+/** The Live tab's Activity feed leaves out the routine analysis bookkeeping the Event log keeps (no_trade: older rows only, now part of model_called). */
+export const activityFeedHiddenEventTypes = ["pass_started", "pass_skipped", "order_built", "action_validated", "no_trade", "lines_changed", "connection_lost", "connection_restored"];
 
 /** Restarts in the last hour from the newest crash-loop pause event, for the paused headline. */
 export function crashLoopRestartsFromEvents(events: PlutoEvent[]): number | null {
@@ -720,10 +792,17 @@ export function describeImpliedFill(reportedFillPrice: number, impliedFillPrice:
   );
 }
 
-/** A buyback offer's description ("Buy back 10× SMCI $42.5P 2026-10-09 at ~0.65 …") as its contract; null for anything else. */
-export function parseBuybackDescription(description: string): { quantity: number; strike: string; right: "C" | "P"; expiry: string } | null {
-  const match = description.match(/^Buy back (\d+)× \S+ \$(\S+?)([CP]) (\d{4}-\d{2}-\d{2})/);
-  return match ? { quantity: Number(match[1]), strike: match[2]!, right: match[3] as "C" | "P", expiry: match[4]! } : null;
+/**
+ * A buyback offer's description as its contract and size: the current "COIN Buy back $300 Put · 10 Oct (3DTE) · 2× @ 0.65 …"
+ * or the older "Buy back 2× COIN $300P 2026-10-10 at ~0.65 …" (DTE then from `dte`); null for anything else.
+ */
+export function parseBuybackDescription(description: string, dte: number | null): { quantity: number; right: "C" | "P"; contract: string } | null {
+  const current = description.match(/^\S+ Buy back (\$\S+ (Call|Put) · \d+ \w+(?: \(\d+DTE\))?) · (\d+)×/);
+  if (current) return { quantity: Number(current[3]), right: current[2] === "Call" ? "C" : "P", contract: current[1]! };
+  const older = description.match(/^Buy back (\d+)× \S+ \$(\S+?)([CP]) (\d{4}-\d{2}-\d{2})/);
+  if (!older) return null;
+  const right = older[3] === "C" ? "C" : "P";
+  return { quantity: Number(older[1]), right, contract: formatOptionContractLabel({ strike: Number(older[2]), right, expiry: older[4]!, dte }) };
 }
 
 /** A ticker's macro calendar by day, in date order: one entry per date with every release on it. */

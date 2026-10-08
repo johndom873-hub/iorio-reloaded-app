@@ -1,7 +1,7 @@
 import { Link } from "react-router-dom";
 import type { PlutoPass, PlutoState } from "../../api/pluto";
 import { formatCurrency } from "../../lib/formatters";
-import { checkLabel, checksAndGatesSummary, describeCandidateId, formatModelCost, orderedChecks, sentenceCase, describeChosenAction, describeOrderContract, describeTopPickComparison, formatExposure, gateLabel, passVerdict, verdictKind } from "../../lib/plutoPresentation";
+import { checkLabel, checksAndGatesSummary, describeCandidateId, formatModelCost, orderedChecks, sentenceCase, describeChosenAction, describeTopPickComparison, formatExposure, gateLabel, passVerdict, verdictKind } from "../../lib/plutoPresentation";
 import { CheckIcon, CrossIcon, ExternalIcon, GradeBadge, StrategyBadge } from "./plutoBits";
 
 // The body of one model decision, shared by the Live tab's "Latest model decision" card and the History tab's
@@ -45,12 +45,10 @@ export function DecisionVerdictLine({ pass }: { pass: PlutoPass }) {
 }
 
 export function ComparePanels({ pass, flush = false }: { pass: PlutoPass; flush?: boolean }) {
-  const { output, action, topPick } = passVerdict(pass);
+  const { output, topPick } = passVerdict(pass);
   const figures = candidateFigures(pass);
   const comparison = describeTopPickComparison(pass);
-  const chosenTitle = action && action.kind !== "no_trade" ? describeOrderContract(action).title : null;
-  // "MU roll $105 → $100 put", "COIN buy back $300 put · 10 Oct": a verb after the symbol reads in lower case.
-  const chosenName = action && chosenTitle ? `${action.symbol} ${/^[A-Z][a-z]/.test(chosenTitle) ? chosenTitle.charAt(0).toLowerCase() + chosenTitle.slice(1) : chosenTitle}` : output?.candidate_id ? describeCandidateId(output.candidate_id) : "Nothing";
+  const chosenName = output?.decision === "trade" ? describeChosenAction(pass) : "Nothing";
   return (
     <div className={`pm-compare${flush ? " flush" : ""}`}>
       <div>
@@ -63,7 +61,7 @@ export function ComparePanels({ pass, flush = false }: { pass: PlutoPass; flush?
       </div>
       <div>
         <div className="lbl">Edge $ top pick</div>
-        <div className="val">{topPick ? describeCandidateId(topPick.id) : "—"}</div>
+        <div className="val">{topPick ? describeCandidateId(topPick.id, pass.startedAt) : "—"}</div>
         <div className={`sub${comparison.tone === "ok" ? " t-ok" : comparison.tone === "warn" ? " t-warn" : ""}`}>
           {comparison.tone === "ok" && <CheckIcon />}
           {comparison.tone === "ok" ? "Same as the model" : topPick ? `${formatCurrency(topPick.edgeDollars, 0)} per contract` : comparison.text}

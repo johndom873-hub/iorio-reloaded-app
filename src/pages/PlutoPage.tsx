@@ -226,7 +226,7 @@ export function PlutoPage() {
         void loadState();
         refreshEventLog();
         void loadFeedEvents();
-        if ([...kinds].some((kind) => kind.startsWith("pass_") || kind.startsWith("model_") || kind === "no_trade" || kind.startsWith("action_") || kind.startsWith("order_") || kind.startsWith("breaker_"))) {
+        if ([...kinds].some((kind) => kind.startsWith("pass_") || kind.startsWith("model_") || kind.startsWith("action_") || kind.startsWith("order_") || kind.startsWith("breaker_"))) {
           void loadPasses();
           void loadLatestModelPass();
           void loadActions();
