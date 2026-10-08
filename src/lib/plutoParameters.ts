@@ -206,6 +206,42 @@ export function changedSettingsFields(settings: PlutoSettings, form: PlutoSettin
   return changes;
 }
 
+/**
+ * What the person typed, field by field, with the saved value it started from. Only these fields are theirs: every other
+ * field always shows the live saved value, so a change saved elsewhere (another person, another tab) appears at once instead
+ * of reading as an unsaved change of theirs, and a save never sends it back.
+ */
+export type PlutoSettingsEdits = Partial<Record<PlutoSettingsField, { value: string; startedFrom: string }>>;
+
+/** The form as shown: the saved settings with the person's edits on top. */
+export function formStateWithEdits(settings: PlutoSettings, edits: PlutoSettingsEdits): PlutoSettingsFormState {
+  const state = settingsToFormState(settings);
+  for (const [field, edit] of Object.entries(edits)) if (edit) state[field as PlutoSettingsField] = edit.value;
+  return state;
+}
+
+/** Records one keystroke's value; typing the saved value back drops the edit. */
+export function applySettingsEdit(settings: PlutoSettings, edits: PlutoSettingsEdits, field: PlutoSettingsField, value: string): PlutoSettingsEdits {
+  const spec = plutoParameterSpecByField[field]!;
+  const saved = formatSettingValue(spec, settings[field]);
+  const next = { ...edits };
+  if (!settingsValueDiffers(spec, saved, value.trim())) delete next[field];
+  else next[field] = { value, startedFrom: edits[field]?.startedFrom ?? saved };
+  return next;
+}
+
+/** Edited fields someone else has saved a different value for since the edit began, with the value the edit started from. */
+export function settingsChangedElsewhere(settings: PlutoSettings, edits: PlutoSettingsEdits): Map<PlutoSettingsField, string> {
+  const changed = new Map<PlutoSettingsField, string>();
+  for (const [field, edit] of Object.entries(edits)) {
+    if (!edit) continue;
+    const spec = plutoParameterSpecByField[field]!;
+    const saved = formatSettingValue(spec, settings[field as PlutoSettingsField]);
+    if (settingsValueDiffers(spec, edit.startedFrom, saved)) changed.set(field as PlutoSettingsField, edit.startedFrom);
+  }
+  return changed;
+}
+
 /** "Min Edge $ 30 → 25" for the save bar and the audit list; a time or a select shows no unit. */
 export function describeSettingsChange(change: { label: string; unit: string | null; from: string; to: string }): string {
   const unit = change.unit && change.unit !== "ET" && change.unit !== "min" && change.unit !== "max" && !change.unit.startsWith("$") ? ` ${change.unit}` : "";

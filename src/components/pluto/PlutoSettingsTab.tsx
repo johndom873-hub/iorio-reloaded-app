@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { ApiError } from "../../api/client";
 import { updatePlutoSettings, type PlutoSettings, type PlutoSettingsAuditRow, type PlutoSettingsField, type PlutoSettingsInput, type PlutoState } from "../../api/pluto";
 import { formatBrowserClockTime, formatBrowserDayMonth } from "../../lib/formatters";
-import { changedSettingsFields, describeSettingsChange, plutoParameterHelp, plutoParameterGroups, plutoParameterLabelByField, plutoParameterSpecByField, settingsInputValue, settingsToFormState, type PlutoParameterGroup, type PlutoParameterSpec, type PlutoSettingsFormState } from "../../lib/plutoParameters";
+import { applySettingsEdit, changedSettingsFields, describeSettingsChange, formStateWithEdits, plutoParameterHelp, plutoParameterGroups, plutoParameterLabelByField, plutoParameterSpecByField, settingsChangedElsewhere, settingsInputValue, type PlutoParameterGroup, type PlutoParameterSpec, type PlutoSettingsChange, type PlutoSettingsEdits, type PlutoSettingsFormState } from "../../lib/plutoParameters";
 import { ConfirmModal } from "../ConfirmModal";
 import { CollapseButton, InfoIcon, ToggleHeader } from "./plutoBits";
 
@@ -100,7 +100,7 @@ function GroupCard({ group, settings, form, changed, state, onChange, isOpen, on
 }
 
 export function PlutoSettingsTab({ settings, audit, loading, error, state, isPhone, onSaved }: PlutoSettingsTabProps) {
-  const [form, setForm] = useState<PlutoSettingsFormState | null>(null);
+  const [edits, setEdits] = useState<PlutoSettingsEdits>({});
   const [confirming, setConfirming] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
@@ -124,11 +124,10 @@ export function PlutoSettingsTab({ settings, audit, loading, error, state, isPho
     setScrollTarget(null);
   }, [scrollTarget, openGroup]);
 
-  // Loaded settings seed the form; a reload while the user is mid-edit keeps the edits.
-  useEffect(() => {
-    if (settings && form === null) setForm(settingsToFormState(settings));
-  }, [settings, form]);
-
+  // The form is the live saved settings with the person's own edits on top: a change saved elsewhere shows at once and is
+  // never sent back by this person's save. A reload while they are mid-edit keeps the edits.
+  const form = useMemo(() => (settings ? formStateWithEdits(settings, edits) : null), [settings, edits]);
+  const changedElsewhere = useMemo(() => (settings ? settingsChangedElsewhere(settings, edits) : new Map<PlutoSettingsField, string>()), [settings, edits]);
   const changes = useMemo(() => (settings && form ? changedSettingsFields(settings, form) : []), [settings, form]);
   const changedFields = useMemo(() => new Set(changes.map((change) => change.field as string)), [changes]);
 
@@ -136,13 +135,19 @@ export function PlutoSettingsTab({ settings, audit, loading, error, state, isPho
   if (loading || !settings || !form) return <div className="pm-card"><div className="pm-empty">Loading settings…</div></div>;
 
   function updateField(field: PlutoSettingsField, value: string) {
-    setForm((previous) => (previous ? { ...previous, [field]: value } : previous));
+    setEdits((previous) => applySettingsEdit(settings!, previous, field, value));
     setSaveError(null);
   }
 
   function discard() {
-    setForm(settingsToFormState(settings!));
+    setEdits({});
     setSaveError(null);
+  }
+
+  /** The change as the save bar and the dialog list it, saying so when someone else saved the field during the edit. */
+  function describeChange(change: PlutoSettingsChange): string {
+    const startedFrom = changedElsewhere.get(change.field);
+    return startedFrom === undefined ? describeSettingsChange(change) : `${describeSettingsChange(change)} (someone else changed it from ${startedFrom} while you were editing)`;
   }
 
   function jumpTo(key: string) {
@@ -157,7 +162,7 @@ export function PlutoSettingsTab({ settings, audit, loading, error, state, isPho
     setSaveError(null);
     try {
       const saved = await updatePlutoSettings(input);
-      setForm(settingsToFormState(saved));
+      setEdits({});
       setConfirming(false);
       onSaved(saved);
     } catch (err) {
@@ -205,7 +210,7 @@ export function PlutoSettingsTab({ settings, audit, loading, error, state, isPho
     <div className="pm-savebar" role="status">
       <i className="pend" aria-hidden="true" />
       <div className="body">
-        <span className="strong">{changes.length} unsaved {changes.length === 1 ? "change" : "changes"}</span> <span className="muted">· {changes.map(describeSettingsChange).join(" · ")}</span>
+        <span className="strong">{changes.length} unsaved {changes.length === 1 ? "change" : "changes"}</span> <span className="muted">· {changes.map(describeChange).join(" · ")}</span>
         {saveError && <div className="t-bad pm-wrap">{saveError}</div>}
       </div>
       <button type="button" className="pm-btn" onClick={discard} disabled={saving}>
@@ -259,7 +264,7 @@ export function PlutoSettingsTab({ settings, audit, loading, error, state, isPho
               Pluto uses the new values from its next analysis. Every change is logged with your name.
               <ul className="pm-changes">
                 {changes.map((change) => (
-                  <li key={change.field}>{describeSettingsChange(change)}</li>
+                  <li key={change.field}>{describeChange(change)}</li>
                 ))}
               </ul>
             </>
