@@ -489,9 +489,17 @@ a.pm-b:hover, button.pm-b.link:hover { text-decoration: underline; }
   .pm-group-sum { display: none; }
   .pm-field { grid-template-columns: minmax(0, 1fr); gap: 8px; padding: 12px 16px; }
   .pm-savebar { top: 8px; }
-  .pm-dec-row { grid-template-columns: minmax(0, 1fr) 28px; gap: 6px 10px; }
-  .pm-dec-row .when { grid-column: 1; }
-  .pm-dec-row .cost { text-align: left; }
+  /* A decision on a phone: when, cost and the chevron on top, then the verdict and trigger, what the model chose and
+     the top-pick comparison each on their own line, wrapping instead of cut (approved mockup 2026-10-08). */
+  .pm-dec-row { grid-template-columns: auto minmax(0, 1fr) auto 44px; grid-template-areas: "when when cost chev" "verdict trigger trigger trigger" "chosen chosen chosen chosen" "vs vs vs vs"; gap: 6px 10px; padding: 6px 6px 12px 16px; }
+  .pm-dec-row .when { grid-area: when; }
+  .pm-dec-row .cost { grid-area: cost; }
+  .pm-dec-row > .pm-iconbtn { grid-area: chev; }
+  .pm-dec-row .verdict { grid-area: verdict; }
+  .pm-dec-row .trigger { grid-area: trigger; }
+  .pm-dec-row .chosen { grid-area: chosen; }
+  .pm-dec-row .vs { grid-area: vs; display: flex; font-size: 13px; }
+  .pm-dec-row .what, .pm-dec-row .vs { white-space: normal; overflow: visible; overflow-wrap: anywhere; }
   .pm-dec-body { padding: 4px 16px 18px; grid-template-columns: minmax(0, 1fr); gap: 18px; }
   .pm-th-row { display: none; }
   .pm-gate { grid-template-columns: 16px minmax(0, 1fr); }

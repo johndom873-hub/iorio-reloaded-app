@@ -110,11 +110,11 @@ function DecisionRow({ pass, state, open, onToggle, tickerFilter }: { pass: Plut
         <span className="when">
           <span className="medium">{formatBrowserDayMonth(pass.startedAt)}</span> <span className="muted">{formatBrowserClockTime(pass.startedAt)}</span>
         </span>
-        <span className="what">{describeTrigger(pass, "short")}</span>
-        <span>
+        <span className="what trigger">{describeTrigger(pass, "short")}</span>
+        <span className="verdict">
           <VerdictTag pass={pass} size="sm" />
         </span>
-        <span className={`what ${kind === "order" ? "medium" : kind === "failed" ? "t-bad" : "muted"}`}>
+        <span className={`what chosen ${kind === "order" ? "medium" : kind === "failed" ? "t-bad" : "muted"}`}>
           {kind === "order" && action && <StrategyBadge kind={action.kind} contract={action.contract} />} {kind === "failed" ? error : describeChosenAction(pass)}
           {kind !== "failed" && <span className="muted pm-regular">{confidence}</span>}
         </span>
