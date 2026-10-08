@@ -50,6 +50,16 @@
   color: #fff !important;
 }
 
+/* Text selection: Tabler's 10% primary tint is near-invisible (1.07:1 on dark inputs, 1.16:1 on white). Light uses
+   the accessible blue at 25% (≈ the macOS highlight, 1.46:1 on white); dark uses the brand sky blue at 45%
+   (≈2:1 on every dark surface, white text on it 5.8:1+). Text keeps its own colour. */
+::selection {
+  background-color: color-mix(in srgb, #0369a1 25%, transparent);
+}
+:root[data-bs-theme="dark"] ::selection {
+  background-color: color-mix(in srgb, #0ea5e9 45%, transparent);
+}
+
 /* Standard outline buttons (Marcelo, 2026-09-30): every .btn-outline-* rests as an outline on the page
    background, with the label in the theme's text colour (white on dark, black on light), and fills solid
    with a white label on hover, focus and when active/checked. Warning is the one exception: white on the

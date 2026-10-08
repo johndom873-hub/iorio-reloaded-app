@@ -1,5 +1,5 @@
 import type { PlutoSettings, PlutoSettingsField } from "../api/pluto";
-import { formatCurrency } from "./formatters";
+import { formatCurrency, formatInputNumber } from "./formatters";
 
 // Every Pluto parameter the Settings tab edits, grouped as on the approved redesign (2026-10-06). Labels, units
 // and help are the only presentation the screen carries; validation lives in the API's settingsStore.
@@ -163,11 +163,13 @@ export const plutoParameterLabelByField: Record<string, string> = {
 
 export type PlutoSettingsFormState = Record<PlutoSettingsField, string>;
 
-/** A number as the field shows it: the step's decimals ("0.30" for step 0.01), integers bare. */
+/** A number as the field shows it: at least the step's decimals ("0.30" for step 0.01), never fewer than the value
+ *  has (2.5 stays "2.5" on a step-1 field, so the text never rounds the stored setting), integers bare. */
 export function formatSettingValue(spec: PlutoParameterSpec, value: string | number): string {
   if (spec.kind !== "number" || typeof value !== "number") return String(value);
-  const decimals = spec.step?.includes(".") ? spec.step.split(".")[1]!.length : 0;
-  return Number.isInteger(value) && decimals === 0 ? String(value) : value.toFixed(decimals);
+  const stepDecimals = spec.step?.includes(".") ? spec.step.split(".")[1]!.length : 0;
+  const valueDecimals = formatInputNumber(value, 6).split(".")[1]?.length ?? 0;
+  return value.toFixed(Math.max(stepDecimals, valueDecimals));
 }
 
 export function settingsToFormState(settings: PlutoSettings): PlutoSettingsFormState {
