@@ -548,6 +548,12 @@ a.pm-b:hover, button.pm-b.link:hover { text-decoration: underline; }
 .pm-seen-line .what { color: var(--strong); font-weight: 500; }
 .pm-seen-piece::before { content: "·"; color: var(--muted); margin-right: 0.5rem; }
 .pm-seen-flag { color: var(--warning-text); }
+/* Prompt v3.8 held positions (mockup approved 2026-10-08): the position's line, then the release ahead on its own line. */
+.pm-seen-held { display: grid; gap: 0.1rem; min-width: 0; }
+.pm-seen-held + .pm-seen-held { margin-top: 0.3rem; }
+.pm-seen-event { padding-left: 2.6rem; color: var(--warning-text); overflow-wrap: anywhere; line-height: 1.5; }
+.pm-seen-event .vs { color: var(--text); }
+.pm-seen-event .vs b { color: var(--strong); font-weight: 600; }
 .pm-seen-decisions { display: grid; gap: 0.2rem; }
 .pm-seen-decisions > div { display: grid; grid-template-columns: 4.5rem minmax(7rem, 13rem) minmax(0, 1fr); gap: 0.5rem; align-items: baseline; }
 .pm-seen-decisions .t { color: var(--muted); }
@@ -564,6 +570,7 @@ a.pm-b:hover, button.pm-b.link:hover { text-decoration: underline; }
   .pm-link-btn { min-height: 44px; min-width: 44px; padding: 0 0.5rem; }
   .pm-seen-decisions > div { grid-template-columns: 4.5rem minmax(0, 1fr); }
   .pm-seen-decisions .r { grid-column: 1 / -1; }
+  .pm-seen-event { padding-left: 0; }
 }
 .pm-date { height: 34px; border: 1px solid var(--border-strong); border-radius: 6px; background: var(--input-bg); color: var(--strong); font: inherit; font-size: 0.8rem; padding: 0 0.6rem; }
 :root[data-bs-theme="dark"] .pm-date { color-scheme: dark; }

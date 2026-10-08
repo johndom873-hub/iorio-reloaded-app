@@ -805,6 +805,41 @@ export function parseBuybackDescription(description: string, dte: number | null)
   return { quantity: Number(older[1]), right, contract: formatOptionContractLabel({ strike: Number(older[2]), right, expiry: older[4]!, dte }) };
 }
 
+/** "today", "1 session away", "4 sessions away": how far a macro release is, in open sessions (prompt v3.8). */
+function describeSessionsAway(sessions: number): string {
+  return sessions <= 0 ? "today" : `${pluralize(sessions, "session", "sessions")} away`;
+}
+
+/** v3.8, the release a contract's life runs into: "CPI 14 Oct (heavy): 4 sessions away, open 3 sessions after". */
+export function describeEventTiming(event: { title: string; date: string; weight: string; sessions_until: number; sessions_after: number }): string {
+  return `${event.title} ${formatDayMonth(event.date)} (${event.weight}): ${describeSessionsAway(event.sessions_until)}, open ${pluralize(event.sessions_after, "session", "sessions")} after`;
+}
+
+/** v3.8, an event close offer's reason: "before CPI 14 Oct (heavy, 4 sessions away)". */
+export function describeEventCloseReason(title: string, dateIso: string, weight: string, sessionsUntil: number): string {
+  return `before ${title} ${formatDayMonth(dateIso)} (${weight}, ${describeSessionsAway(sessionsUntil)})`;
+}
+
+/** The stress move in normal days, as a drop: "2-day", "1-day", "half-day". */
+export function describeStressMove(normalDays: number): string {
+  return normalDays === 0.5 ? "half-day" : `${normalDays}-day`;
+}
+
+/** v3.8, a held position's distance from its strike in the stock's normal days: "3.0 normal days away", or past the strike. */
+export function describeStrikeDistance(normalDays: number): { value: string; suffix: string } {
+  return { value: Math.abs(normalDays).toFixed(1), suffix: normalDays < 0 ? "in the money" : "away" };
+}
+
+/**
+ * A whole covered-call close offer's description (closeActions.ts), "COIN Close $200 Call · 23 Oct (15DTE) + sell 100 shares · 1× …:
+ * Call @ 0.66, shares @ 190.85; …", read back into its parts; null for any other wording.
+ */
+export function parseCoveredCallCloseDescription(description: string): { contract: string; shares: number; quantity: number; callPrice: number; sharesPrice: number } | null {
+  const match = description.match(/^\S+ Close (\$\S+ Call · \d+ \w+(?: \(\d+DTE\))?) \+ sell (\d+) shares · (\d+)×.*Call @ ([\d.]+), shares @ ([\d.]+)/);
+  if (!match) return null;
+  return { contract: match[1]!, shares: Number(match[2]), quantity: Number(match[3]), callPrice: Number(match[4]), sharesPrice: Number(match[5]) };
+}
+
 /** A ticker's macro calendar by day, in date order: one entry per date with every release on it. */
 export function groupMacroEventsByDate(events: { date: string; title: string }[]): { date: string; titles: string[] }[] {
   const byDate = new Map<string, string[]>();

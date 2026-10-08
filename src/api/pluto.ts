@@ -277,6 +277,42 @@ export interface PlutoPassDecision {
   inputPayload?: PlutoModelInput;
 }
 
+/** Prompt v3.8: the heaviest major macro release before a contract's expiry, with the sessions until it and after it. */
+export interface PlutoModelInputEvent {
+  title: string;
+  weight: "heavy" | "medium" | "light";
+  date: string;
+  sessions_until: number;
+  sessions_after: number;
+  /** Held positions only: the adverse move it is stressed with, in normal days (2 heavy, 1 medium, 0.5 light). */
+  stress_normal_days?: number;
+}
+
+/** Prompt v3.8: a held short put or covered call as the model saw it, every round. */
+export interface PlutoModelInputHeldPosition {
+  leg_id: string;
+  strategy: "cash_secured_put" | "covered_call";
+  opened_by?: string;
+  strike: number;
+  expiry: string;
+  dte?: number;
+  delta?: number;
+  quantity: number;
+  /** Covered calls: the shares held against the call. */
+  shares?: number;
+  entry_credit?: number;
+  bid?: number;
+  ask?: number;
+  captured_pct?: number;
+  max_remaining_gain_dollars?: number;
+  close_cost_dollars?: number;
+  strike_distance_days?: number;
+  event?: PlutoModelInputEvent;
+  event_stress_loss_dollars?: number;
+  /** Covered calls inside an event close's window only. */
+  cycle_pnl_after_costs_dollars?: number;
+}
+
 /** One option as the model saw it (the prompt's compact candidate; every field optional because the payload drops nulls). */
 export interface PlutoModelInputContract {
   id: string;
@@ -301,6 +337,8 @@ export interface PlutoModelInputContract {
   quote_source?: string;
   quote_age_min?: number;
   flags?: string[];
+  /** Prompt v3.8 on. */
+  event?: PlutoModelInputEvent;
 }
 
 export interface PlutoModelInputRoll {
@@ -319,7 +357,11 @@ export interface PlutoModelInputRoll {
   replacement: PlutoModelInputContract;
 }
 
-/** A close offer (Formulas P1/P2): close_leg carries the buyback figures, close_shares the share figures. */
+/**
+ * A close offer (Formulas P1/P2/P3b, and from prompt v3.8 F3, before a macro release): close_leg carries the buyback figures,
+ * close_shares the share figures, close_position a whole covered call; an event close also carries the release and the
+ * held-position figures it is judged on.
+ */
 export interface PlutoModelInputCloseAction {
   id: string;
   /** Who opened the position: "pluto" or "a person". */
@@ -337,6 +379,22 @@ export interface PlutoModelInputCloseAction {
   entry_price?: number;
   cycle_pnl_pct_of_capital?: number | null;
   odd_lot?: boolean;
+  /** Event close (v3.8): the release's title, weight, date and timing. */
+  event?: string;
+  event_weight?: "heavy" | "medium" | "light";
+  event_date?: string;
+  sessions_until?: number;
+  sessions_after?: number;
+  /** The adverse move the stress loss assumes, in normal days (2 heavy, 1 medium, 0.5 light). */
+  stress_normal_days?: number;
+  captured_pct?: number;
+  max_remaining_gain_dollars?: number;
+  event_stress_loss_dollars?: number;
+  strike_distance_days?: number;
+  /** close_position: the covered call's cycle P&L closed now, after the close cost, and the prices it closes at. */
+  cycle_pnl_after_costs_dollars?: number;
+  call_ask?: number;
+  stock_bid?: number;
 }
 
 export interface PlutoModelInputTicker {
@@ -356,6 +414,8 @@ export interface PlutoModelInputTicker {
   candidates?: PlutoModelInputContract[];
   rolls?: PlutoModelInputRoll[];
   close_actions?: PlutoModelInputCloseAction[];
+  /** Prompt v3.8 on. */
+  held_positions?: PlutoModelInputHeldPosition[];
 }
 
 /** The user message of one model call: exactly what the model was shown (pluto/prompt.ts on the API). */

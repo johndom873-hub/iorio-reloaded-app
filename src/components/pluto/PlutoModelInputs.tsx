@@ -1,8 +1,9 @@
 import { useId, useState } from "react";
-import { fetchPlutoPass, type PlutoActionKind, type PlutoModelInput, type PlutoModelInputCloseAction, type PlutoModelInputContract, type PlutoModelInputRoll, type PlutoModelInputTicker } from "../../api/pluto";
+import { fetchPlutoPass, type PlutoActionKind, type PlutoModelInput, type PlutoModelInputCloseAction, type PlutoModelInputContract, type PlutoModelInputEvent, type PlutoModelInputHeldPosition, type PlutoModelInputRoll, type PlutoModelInputTicker } from "../../api/pluto";
 import { errorMessage } from "../../api/client";
-import { formatBrowserClockTimeWithSeconds, formatBrowserDayMonth, formatCurrency, formatDayMonth, formatNumber, formatOptionContractLabel, formatSignedNumber, formatSignedPercentageValue, formatStrike } from "../../lib/formatters";
-import { describeCandidateFlag, describeCandidateId, describeRecentDecisionVerdict, describeTradeOutcome, describeTrigger, groupMacroEventsByDate, parseBuybackDescription } from "../../lib/plutoPresentation";
+import { formatBrowserClockTimeWithSeconds, formatBrowserDayMonth, formatCurrency, formatDayMonth, formatNumber, formatOptionContractLabel, formatSignedNumber, formatSignedPercentageValue, formatSignedPnl, formatStrike } from "../../lib/formatters";
+import { describeCandidateFlag, describeCandidateId, describeEventCloseReason, describeEventTiming, describeRecentDecisionVerdict, describeStressMove, describeStrikeDistance, describeTradeOutcome, describeTrigger, groupMacroEventsByDate, parseBuybackDescription, parseCoveredCallCloseDescription } from "../../lib/plutoPresentation";
+import { DottedLabelTooltip } from "../HelpTooltip";
 import { Spinner } from "../Spinner";
 import { GradeBadge, StrategyBadge } from "./plutoBits";
 
@@ -118,6 +119,12 @@ function TickerBlock({ ticker, isFiltered, sameMacroAs }: { ticker: PlutoModelIn
           <i>Macro events ({ticker.macro_events?.length}):</i> {sameMacroAs ? `same as ${sameMacroAs}` : macro.map((day) => `${formatDayMonth(day.date)} ${day.titles.join(", ")}`).join(" · ")}
         </div>
       )}
+      {(ticker.held_positions ?? []).length > 0 && (
+        <div className="pm-seen-sect">
+          <span className="pm-seen-l">Held positions ({ticker.held_positions?.length})</span>
+          {(ticker.held_positions ?? []).map((position) => <HeldPositionLine key={position.leg_id} position={position} symbol={ticker.symbol} normalDayPct={move.expected_daily_move_pct} />)}
+        </div>
+      )}
       {(ticker.close_actions ?? []).length > 0 && (
         <div className="pm-seen-sect">
           <span className="pm-seen-l">Close offers ({ticker.close_actions?.length})</span>
@@ -173,14 +180,17 @@ function Pieces({ pieces }: { pieces: string[] }) {
   );
 }
 
-function Flags({ flags }: { flags: string[] | undefined }) {
+/** A contract's flags; from prompt v3.8 the release it runs into replaces the generic macro flag. */
+function Flags({ flags, event }: { flags: string[] | undefined; event?: PlutoModelInputEvent }) {
+  const shown = event ? (flags ?? []).filter((flag) => flag !== "macro_event_before_expiry") : (flags ?? []);
   return (
     <>
-      {(flags ?? []).map((flag) => (
+      {shown.map((flag) => (
         <span key={flag} className="pm-seen-flag">
           ⚑ {describeCandidateFlag(flag)}
         </span>
       ))}
+      {event && <span className="pm-seen-flag">⚑ {describeEventTiming(event)}</span>}
     </>
   );
 }
@@ -196,7 +206,7 @@ function CandidateLine({ candidate }: { candidate: PlutoModelInputContract }) {
       <span className="what">{contractName(candidate, candidate.kind)}</span>
       {candidate.grade && <GradeBadge grade={candidate.grade} />}
       <Pieces pieces={[...edge, ...contractFigures(candidate)]} />
-      <Flags flags={candidate.flags} />
+      <Flags flags={candidate.flags} event={candidate.event} />
     </div>
   );
 }
@@ -225,7 +235,7 @@ function RollLine({ roll }: { roll: PlutoModelInputRoll }) {
       </span>
       {roll.grade && <GradeBadge grade={roll.grade} />}
       <Pieces pieces={pieces} />
-      <Flags flags={[...(roll.flags ?? []), ...(replacement.flags ?? []).filter((flag) => !(roll.flags ?? []).includes(flag))]} />
+      <Flags flags={[...(roll.flags ?? []), ...(replacement.flags ?? []).filter((flag) => !(roll.flags ?? []).includes(flag))]} event={replacement.event} />
     </div>
   );
 }
@@ -247,19 +257,106 @@ function CloseOfferLine({ action }: { action: PlutoModelInputCloseAction }) {
       </div>
     );
   }
+  const eventPieces = eventClosePieces(action);
+  if (action.kind === "close_position") {
+    const parts = parseCoveredCallCloseDescription(action.description);
+    const pieces = [
+      parts ? `call @ ${parts.callPrice.toFixed(2)}, shares @ ${parts.sharesPrice.toFixed(2)}` : null,
+      action.cycle_pnl_after_costs_dollars !== undefined ? `cycle ${formatSignedPnl(action.cycle_pnl_after_costs_dollars, 0)} after the close cost` : null,
+      ...eventPieces,
+      openedByPiece(action.opened_by),
+    ].filter((piece): piece is string => Boolean(piece));
+    return (
+      <div className="pm-seen-line num">
+        <StrategyBadge kind="close_leg" contract={{ strategyKey: "covered_call" }} />
+        <span className="pm-b warn">Close</span>
+        <span className="what">{parts ? `${parts.contract} + ${formatNumber(parts.shares)} shares · ${parts.quantity}×` : action.description}</span>
+        <Pieces pieces={pieces} />
+      </div>
+    );
+  }
   const contract = action.kind === "close_leg" ? parseBuybackDescription(action.description, action.dte ?? null) : null;
   const pieces = [
     action.ask !== undefined ? `ask ${action.ask.toFixed(2)}${action.entry_credit !== undefined ? `, sold at ${action.entry_credit.toFixed(2)}` : ""}` : null,
     action.pnl_at_ask !== undefined ? `locks ${formatCurrency(action.pnl_at_ask, 0)} at the ask` : null,
+    ...eventPieces,
     action.hold_edge_dollars !== undefined && action.close_cost_dollars !== undefined ? `hold edge ${formatCurrency(action.hold_edge_dollars, 0)} vs close cost ${formatCurrency(action.close_cost_dollars, 0)}` : null,
     openedByPiece(action.opened_by),
   ].filter((piece): piece is string => Boolean(piece));
   return (
     <div className="pm-seen-line num">
       {contract && <StrategyBadge kind="close_leg" contract={{ strategyKey: contract.right === "C" ? "covered_call" : "cash_secured_put" }} />}
-      <span className="pm-b warn">{action.kind === "close_position" ? "Close" : "Buy back"}</span>
+      <span className="pm-b warn">Buy back</span>
       <span className="what">{contract ? `${contract.contract} · ${contract.quantity}×` : action.description}</span>
       <Pieces pieces={pieces} />
+    </div>
+  );
+}
+
+/** v3.8: what an event close offer is judged on, "before CPI 14 Oct (heavy, 4 sessions away)" and the gain left against the stress loss. */
+function eventClosePieces(action: PlutoModelInputCloseAction): string[] {
+  if (!action.event || !action.event_date || !action.event_weight || action.sessions_until === undefined) return [];
+  const comparison =
+    action.max_remaining_gain_dollars !== undefined && action.event_stress_loss_dollars !== undefined && action.stress_normal_days !== undefined
+      ? `up to ${formatCurrency(action.max_remaining_gain_dollars, 0)} left vs ${formatCurrency(action.event_stress_loss_dollars, 0)} on a ${describeStressMove(action.stress_normal_days)} drop`
+      : null;
+  return [describeEventCloseReason(action.event, action.event_date, action.event_weight, action.sessions_until), ...(comparison ? [comparison] : [])];
+}
+
+/**
+ * v3.8: a held short put or covered call as the model saw it, every round: what is already earned, the most it can still make,
+ * what closing costs, the strike's distance in normal days, and (on its own line) the release ahead with its stress loss.
+ */
+function HeldPositionLine({ position, symbol, normalDayPct }: { position: PlutoModelInputHeldPosition; symbol: string; normalDayPct: number | undefined }) {
+  const coveredCall = position.strategy === "covered_call";
+  const label = `${formatOptionContractLabel({ strike: position.strike, right: coveredCall ? "C" : "P", expiry: position.expiry, dte: position.dte ?? null })} · ${position.quantity}×${coveredCall && position.shares !== undefined ? ` + ${formatNumber(position.shares)} shares` : ""}`;
+  const quote = position.entry_credit !== undefined && position.ask !== undefined ? `sold at ${position.entry_credit.toFixed(2)}, ask ${position.ask.toFixed(2)}` : null;
+  const before = [
+    // Below zero the ask is above the credit received: a loss so far, not a negative share earned.
+    position.captured_pct !== undefined ? (position.captured_pct < 0 ? `${Math.abs(position.captured_pct)}% loss on the premium` : `${position.captured_pct}% earned`) : null,
+    position.max_remaining_gain_dollars !== undefined ? `up to ${formatCurrency(position.max_remaining_gain_dollars, 0)} left${coveredCall ? ` if ${symbol} ends at or above ${formatStrike(position.strike)}` : ""}` : null,
+    position.close_cost_dollars !== undefined ? `closing costs ${formatCurrency(position.close_cost_dollars, 0)}` : null,
+  ].filter((piece): piece is string => Boolean(piece));
+  const after = [
+    position.cycle_pnl_after_costs_dollars !== undefined ? `cycle ${formatSignedPnl(position.cycle_pnl_after_costs_dollars, 0)} if closed now` : null,
+    openedByPiece(position.opened_by),
+  ].filter((piece): piece is string => Boolean(piece));
+  const distance = position.strike_distance_days !== undefined ? describeStrikeDistance(position.strike_distance_days) : null;
+  const normalDay = `A normal day is ${symbol}'s typical one-day move${normalDayPct !== undefined ? ` (${normalDayPct.toFixed(1)}%)` : ""}, from its volatility forecast.`;
+  return (
+    <div className="pm-seen-held">
+      <div className="pm-seen-line num">
+        <StrategyBadge kind="close_leg" contract={{ strategyKey: position.strategy }} />
+        <span className="what">{label}</span>
+        {quote && <span>{quote}</span>}
+        {before.map((piece) => (
+          <span key={piece} className="pm-seen-piece">
+            {piece}
+          </span>
+        ))}
+        {distance && (
+          <span className="pm-seen-piece">
+            {position.strike_distance_days !== undefined && position.strike_distance_days < 0 ? `${distance.value} ` : `strike ${distance.value} `}
+            <DottedLabelTooltip label="normal days" tooltipHtml={normalDay} />
+            {` ${distance.suffix}`}
+          </span>
+        )}
+        {after.map((piece) => (
+          <span key={piece} className="pm-seen-piece">
+            {piece}
+          </span>
+        ))}
+      </div>
+      {position.event && (
+        <div className="pm-seen-event num">
+          ⚑ {describeEventTiming(position.event)}
+          {position.event_stress_loss_dollars !== undefined && position.event.stress_normal_days !== undefined && (
+            <span className="vs">
+              {" "}· a {describeStressMove(position.event.stress_normal_days)} drop on it would cost <b>{formatCurrency(position.event_stress_loss_dollars, 0)}</b>
+            </span>
+          )}
+        </div>
+      )}
     </div>
   );
 }
