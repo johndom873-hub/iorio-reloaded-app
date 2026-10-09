@@ -374,6 +374,14 @@ export interface CloseLiveState {
   marketOpen: boolean;
   legQuotes: Record<string, CloseLiveLegQuote>;
   cycleTotal: number | null;
+  /** Estimated commission rates for the close (commissionEstimate.ts in the API repo); absent from an older API. */
+  commissionRates?: CloseCommissionRates;
+}
+
+/** Option rates are per contract by order side and size bucket, stock rates per share by order side. */
+export interface CloseCommissionRates {
+  optionPerContractDollars: Record<"buy" | "sell", Record<"1" | "2-4" | "5+", number>>;
+  stockPerShareDollars: Record<"buy" | "sell", number>;
 }
 
 export type CloseLiveStreamEvent =

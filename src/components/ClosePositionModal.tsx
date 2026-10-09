@@ -15,6 +15,7 @@ import {
   type Position,
   type PositionLeg,
 } from "../api/positions";
+import { estimateCycleAfterClose, type CloseCycleEstimate, type ClosingLegEstimateInput } from "../lib/closeCycleEstimate";
 import { formatCurrency, formatCurrencyTrimmed, formatExpiryWithDte, formatSignedPnl, pnlTextClass, todayInEasternIso } from "../lib/formatters";
 import { flashClassName, useFlashOnChange } from "../hooks/useFlashOnChange";
 import { useTooltip } from "../hooks/useTooltip";
@@ -57,6 +58,43 @@ function LiveMidQuote({ quote, error }: { quote: CloseLiveLegQuote | null; error
 }
 
 const noLegQuotes: Record<string, CloseLiveLegQuote> = {};
+
+/** The price the live cycle P&L marks a leg at: an option's bid/ask mid, the stock's last trade. */
+function liveMarkPriceFor(leg: PositionLeg, quote: CloseLiveLegQuote | undefined): number | null {
+  return (leg.legType === "stock" ? quote?.last : quote?.mid) ?? null;
+}
+
+/** An empty limit-price draft is "no price", not $0. */
+function parseLimitPriceDraft(draft: string): number {
+  return draft === "" ? Number.NaN : Number(draft);
+}
+
+// The wheel-cycle P&L if the close fills at the typed limits (lib/closeCycleEstimate.ts), under the limit-price inputs.
+function CycleEstimateRow({ symbol, estimate, isAwaitingLive }: { symbol: string; estimate: CloseCycleEstimate | null; isAwaitingLive: boolean }) {
+  return (
+    <div className="border rounded p-2 mt-3">
+      <div className="d-flex justify-content-between align-items-center gap-2">
+        <DottedLabelTooltip
+          label="Est. wheel cycle P&L if filled"
+          tooltipHtml={`Estimated profit and loss of ${symbol}'s whole wheel cycle if this close fills at the limit prices above: the live figure with the contracts and shares being closed valued at your limits instead of live prices, minus an estimate of this close's commissions based on recent fills. Anything left open keeps its live price. IBKR's exact commission appears on the review step.`}
+        />
+        {estimate ? (
+          <span className={`fw-bold font-mono ${pnlTextClass(estimate.estimatedCycleTotal)}`}>{formatSignedPnl(estimate.estimatedCycleTotal)}</span>
+        ) : isAwaitingLive ? (
+          <Spinner size="sm" label="Loading estimated cycle P&L" />
+        ) : (
+          <span className="text-secondary">—</span>
+        )}
+      </div>
+      {estimate && (
+        <div className="d-flex justify-content-between align-items-center gap-2 text-secondary" style={{ fontSize: "0.8rem" }}>
+          <span>vs live · incl. ~{formatCurrency(estimate.estimatedCommission)} est. commissions</span>
+          <span className={`font-mono ${pnlTextClass(estimate.changeFromLive)}`}>{formatSignedPnl(estimate.changeFromLive)}</span>
+        </div>
+      )}
+    </div>
+  );
+}
 
 interface UnstructuredLegDraft {
   included: boolean;
@@ -260,6 +298,43 @@ export function ClosePositionModal({ position, onClose, onClosed }: ClosePositio
       setSubmitting(false);
     }
   }
+
+  const closingLegsForEstimate: ClosingLegEstimateInput[] | null = isUnstructured
+    ? unstructuredFormValid
+      ? includedLegs.map((leg) => ({
+          legType: leg.legType,
+          side: leg.side,
+          quantityToClose: Number(legDrafts[leg.id]!.quantityDraft),
+          multiplier: leg.multiplier,
+          limitPrice: parseLimitPriceDraft(legDrafts[leg.id]!.limitPriceDraft),
+          liveMarkPrice: liveMarkPriceFor(leg, legQuotes[leg.id]),
+        }))
+      : null
+    : optionLeg && validContracts
+      ? [
+          {
+            legType: "option",
+            side: optionLeg.side,
+            quantityToClose: contractsToClose,
+            multiplier: optionLeg.multiplier,
+            limitPrice: parseLimitPriceDraft(optionLimitPriceDraft),
+            liveMarkPrice: liveMarkPriceFor(optionLeg, legQuotes[optionLeg.id]),
+          },
+          ...(stockLeg
+            ? [
+                {
+                  legType: "stock" as const,
+                  side: stockLeg.side,
+                  quantityToClose: sharesToClose,
+                  multiplier: stockLeg.multiplier,
+                  limitPrice: parseLimitPriceDraft(stockLimitPriceDraft),
+                  liveMarkPrice: liveMarkPriceFor(stockLeg, legQuotes[stockLeg.id]),
+                },
+              ]
+            : []),
+        ]
+      : null;
+  const cycleEstimate = closingLegsForEstimate ? estimateCycleAfterClose(liveState?.cycleTotal ?? null, closingLegsForEstimate, liveState?.commissionRates) : null;
 
   const rightLabel = optionLeg?.optionType === "call" ? "C" : "P";
   const showForm = !pendingOrder && openLegs.length > 0 && (isUnstructured || optionLeg !== undefined);
@@ -476,6 +551,8 @@ export function ClosePositionModal({ position, onClose, onClosed }: ClosePositio
                   </div>
                 </>
               )}
+
+              {showForm && <CycleEstimateRow symbol={position.symbol} estimate={cycleEstimate} isAwaitingLive={isAwaitingLive} />}
 
               {showForm && (
                 <div className="mt-3">
