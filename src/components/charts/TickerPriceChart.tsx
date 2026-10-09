@@ -9,6 +9,7 @@ import {
   type IChartApi,
   type ISeriesApi,
   type IPanePrimitive,
+  type ISeriesPrimitive,
   type Logical,
   type Time,
   type UTCTimestamp,
@@ -247,6 +248,102 @@ class GridLinePrimitive {
   }
 }
 
+// Draws the technical lines' titles (MA7, Support, ...) pinned to the pane's
+// left edge, so they don't cover the most recent candles on the right. The
+// price lines themselves keep their right-axis price tags; only the title
+// moves here. Labels whose prices sit close together are pushed apart
+// vertically so they never overlap.
+interface LeftEdgeLabel {
+  price: number;
+  title: string;
+  backgroundColor: string;
+  textColor: string;
+}
+
+const leftEdgeLabelHeightPx = 18;
+const leftEdgeLabelGapPx = 2;
+const leftEdgeLabelPaddingPx = 6;
+const leftEdgeLabelOffsetPx = 4;
+
+class LeftEdgeLabelRenderer {
+  private labels: (LeftEdgeLabel & { y: number })[] = [];
+  private fontFamily: string;
+  constructor(fontFamily: string) {
+    this.fontFamily = fontFamily;
+  }
+  setLabels(labels: (LeftEdgeLabel & { y: number })[]) {
+    this.labels = labels;
+  }
+  draw(target: any) {
+    if (!this.labels.length) return;
+    target.useMediaCoordinateSpace(({ context: ctx }: any) => {
+      ctx.save();
+      ctx.font = `12px ${this.fontFamily}`;
+      ctx.textBaseline = "middle";
+      for (const label of this.labels) {
+        const width = ctx.measureText(label.title).width + leftEdgeLabelPaddingPx * 2;
+        const top = label.y - leftEdgeLabelHeightPx / 2;
+        ctx.fillStyle = label.backgroundColor;
+        ctx.beginPath();
+        ctx.roundRect(leftEdgeLabelOffsetPx, top, width, leftEdgeLabelHeightPx, 2);
+        ctx.fill();
+        ctx.fillStyle = label.textColor;
+        ctx.fillText(label.title, leftEdgeLabelOffsetPx + leftEdgeLabelPaddingPx, label.y + 0.5);
+      }
+      ctx.restore();
+    });
+  }
+}
+
+class LeftEdgeLabelPrimitive {
+  private series: ISeriesApi<"Candlestick"> | null = null;
+  private requestUpdate: (() => void) | null = null;
+  private labels: LeftEdgeLabel[] = [];
+  private renderer: LeftEdgeLabelRenderer;
+
+  constructor(fontFamily: string) {
+    this.renderer = new LeftEdgeLabelRenderer(fontFamily);
+  }
+
+  setLabels(labels: LeftEdgeLabel[]) {
+    this.labels = labels;
+    this.requestUpdate?.();
+  }
+
+  attached({ series, requestUpdate }: { series: ISeriesApi<"Candlestick">; requestUpdate: () => void }) {
+    this.series = series;
+    this.requestUpdate = requestUpdate;
+  }
+
+  detached() {
+    this.series = null;
+    this.requestUpdate = null;
+  }
+
+  updateAllViews() {
+    const series = this.series;
+    if (!series) {
+      this.renderer.setLabels([]);
+      return;
+    }
+    const positioned: (LeftEdgeLabel & { y: number })[] = [];
+    for (const label of this.labels) {
+      const y = series.priceToCoordinate(label.price);
+      if (y !== null) positioned.push({ ...label, y });
+    }
+    positioned.sort((a, b) => a.y - b.y);
+    for (let index = 1; index < positioned.length; index++) {
+      const minimumY = positioned[index - 1].y + leftEdgeLabelHeightPx + leftEdgeLabelGapPx;
+      if (positioned[index].y < minimumY) positioned[index].y = minimumY;
+    }
+    this.renderer.setLabels(positioned);
+  }
+
+  paneViews() {
+    return [{ zOrder: () => "top" as const, renderer: () => this.renderer }];
+  }
+}
+
 interface HoveredBar {
   o: number;
   h: number;
@@ -281,6 +378,11 @@ const ma25Color = "#d6336c";
 const ma99Color = "#7048e8";
 const supportColor = "#4dabf7";
 const resistanceColor = "#f76707";
+// Title text on each line's left-edge label — the same contrast choice the
+// chart made for these colours' built-in axis titles (dark only on the light
+// support blue).
+const lightLabelTextColor = "#ffffff";
+const darkLabelTextColor = "#1d273b";
 
 // White in dark mode, near-black in light mode — matches the app's own
 // theme rather than the hardcoded #000000 the original menaris chart used
@@ -301,6 +403,7 @@ export function TickerPriceChart({ symbol, initialBars, technicals }: TickerPric
   const priceLineRef = useRef<ReturnType<ISeriesApi<"Candlestick">["createPriceLine"]> | null>(null);
   const technicalLinesRef = useRef<ReturnType<ISeriesApi<"Candlestick">["createPriceLine"]>[]>([]);
   const gridPrimitiveRef = useRef<GridLinePrimitive | null>(null);
+  const leftEdgeLabelPrimitiveRef = useRef<LeftEdgeLabelPrimitive | null>(null);
 
   const [range, setRange] = useState<ChartRange>("3M");
   const [bars, setBars] = useState<PriceBar[] | null>(initialBars ?? null);
@@ -425,14 +528,19 @@ export function TickerPriceChart({ symbol, initialBars, technicals }: TickerPric
     const gridPrimitive = new GridLinePrimitive(range, gridColorByTheme[theme]);
     chart.panes()[0].attachPrimitive(gridPrimitive as unknown as IPanePrimitive);
 
+    const leftEdgeLabelPrimitive = new LeftEdgeLabelPrimitive(getComputedStyle(containerRef.current).fontFamily);
+    candleSeries.attachPrimitive(leftEdgeLabelPrimitive as unknown as ISeriesPrimitive<Time>);
+
     chartRef.current = chart;
     candleRef.current = candleSeries;
     volumeRef.current = volumeSeries;
     gridPrimitiveRef.current = gridPrimitive;
+    leftEdgeLabelPrimitiveRef.current = leftEdgeLabelPrimitive;
 
     return () => {
       resizeObserver.disconnect();
       chart.panes()[0]?.detachPrimitive(gridPrimitive as unknown as IPanePrimitive);
+      candleSeries.detachPrimitive(leftEdgeLabelPrimitive as unknown as ISeriesPrimitive<Time>);
       chart.remove();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -497,20 +605,23 @@ export function TickerPriceChart({ symbol, initialBars, technicals }: TickerPric
 
     for (const line of technicalLinesRef.current) candleSeries.removePriceLine(line);
     technicalLinesRef.current = [];
+    leftEdgeLabelPrimitiveRef.current?.setLabels([]);
     if (!technicals) return;
 
     const { ma7, ma25, ma99 } = technicals.movingAverages;
     const { support, resistance } = technicals.supportResistance;
-    const lines: { price: number | null; color: string; title: string; dashed?: boolean }[] = [
-      { price: ma7, color: ma7Color, title: "MA7" },
-      { price: ma25, color: ma25Color, title: "MA25" },
-      { price: ma99, color: ma99Color, title: "MA99" },
-      { price: support?.price ?? null, color: supportColor, title: "Support", dashed: true },
-      { price: resistance?.price ?? null, color: resistanceColor, title: "Resistance", dashed: true },
+    const lines: { price: number | null; color: string; labelTextColor: string; title: string; dashed?: boolean }[] = [
+      { price: ma7, color: ma7Color, labelTextColor: lightLabelTextColor, title: "MA7" },
+      { price: ma25, color: ma25Color, labelTextColor: lightLabelTextColor, title: "MA25" },
+      { price: ma99, color: ma99Color, labelTextColor: lightLabelTextColor, title: "MA99" },
+      { price: support?.price ?? null, color: supportColor, labelTextColor: darkLabelTextColor, title: "Support", dashed: true },
+      { price: resistance?.price ?? null, color: resistanceColor, labelTextColor: lightLabelTextColor, title: "Resistance", dashed: true },
     ];
 
-    for (const { price, color, title, dashed } of lines) {
+    const leftEdgeLabels: LeftEdgeLabel[] = [];
+    for (const { price, color, labelTextColor, title, dashed } of lines) {
       if (price === null) continue;
+      leftEdgeLabels.push({ price, title, backgroundColor: color, textColor: labelTextColor });
       technicalLinesRef.current.push(
         candleSeries.createPriceLine({
           price,
@@ -518,10 +629,10 @@ export function TickerPriceChart({ symbol, initialBars, technicals }: TickerPric
           lineWidth: 1,
           lineStyle: dashed ? LineStyle.Dashed : LineStyle.Solid,
           axisLabelVisible: true,
-          title,
         }),
       );
     }
+    leftEdgeLabelPrimitiveRef.current?.setLabels(leftEdgeLabels);
   }, [technicals]);
 
   const lastBar = bars?.[bars.length - 1];
