@@ -18,9 +18,6 @@ export const quartersForEarningsAdjustment = 4;
 
 export function DailyBarsCell({ row }: { row: ShortlistRow }) {
   const reasons: string[] = [];
-  if (row.suspectedSplitDateIso) {
-    reasons.push(`Suspected stock split on ${row.suspectedSplitDateIso} — stored prices jump the way a split does, so the volatility forecast refuses to use them and this ticker isn't scored.`);
-  }
   if (row.dailyBarCount < tradingDaysForMomentum) {
     reasons.push(`Only ${row.dailyBarCount} daily bars — momentum needs ${tradingDaysForMomentum}, currently unavailable.`);
   } else if (row.dailyBarCount < tradingDaysForOwnVolatilityThreshold) {

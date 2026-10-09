@@ -16,7 +16,7 @@ export interface MacroEvent {
   title: string;
 }
 /** "analysing": today's snapshot is saved but its surface fit has not finished yet (pending, not a problem). */
-export type SignalsUnscoredReason = "no_snapshot" | "analysing" | "no_surface_fit" | "no_forecast" | "suspected_split";
+export type SignalsUnscoredReason = "no_snapshot" | "analysing" | "no_surface_fit" | "no_forecast";
 
 /** The facts behind an unscored reason (null for no_snapshot). */
 export type SignalsUnscoredDetail =
@@ -29,8 +29,7 @@ export type SignalsUnscoredDetail =
       /** Why the fit produced nothing: a skip reason (no_spot_price, no_risk_free_rate, no_quotes) or "error: <message>"; null when it ran and no slice was usable. */
       fitIssue: string | null;
     }
-  | { kind: "forecast"; dailyBarCount: number; barsNeeded: number }
-  | { kind: "split"; splitDateIso: string };
+  | { kind: "forecast"; dailyBarCount: number; barsNeeded: number };
 export type SignalsPriceSource = "live" | "frozen" | "snapshot";
 /** live = a pooled IBKR line (modal / screen best line), day = the Day Signals refresh loop, snapshot = the 10:00 ET capture. */
 export type SignalQuoteSource = "live" | "day" | "snapshot";

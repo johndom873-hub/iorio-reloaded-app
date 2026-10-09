@@ -32,7 +32,6 @@ export interface ShortlistRow {
   // Data-readiness columns (redesigned 2026-09-23) -- exactly what the Signals pipeline reads before it
   // can score a candidate; see loadShortlistDataReadiness.ts in the API repo.
   dailyBarCount: number;
-  suspectedSplitDateIso: string | null;
   earningsCount: number;
   nextEarningsDateIso: string | null;
   isEtf: boolean;

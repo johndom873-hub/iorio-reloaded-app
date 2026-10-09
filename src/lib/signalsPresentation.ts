@@ -19,7 +19,6 @@ export const unscoredReasonLabel: Record<SignalsUnscoredReason, string> = {
   analysing: "Snapshot saved, surface fit pending",
   no_surface_fit: "No fitted surface",
   no_forecast: "No volatility forecast (price history too short)",
-  suspected_split: "No volatility forecast (suspected stock split in the price history)",
 };
 
 const fitStatusLabel: Record<string, string> = {
@@ -52,7 +51,6 @@ export function describeUnscoredReason(reason: SignalsUnscoredReason, detail: Si
   if (reason === "no_forecast" && detail?.kind === "forecast") {
     return detail.dailyBarCount < detail.barsNeeded ? `No volatility forecast: ${detail.dailyBarCount} daily bars, needs ${detail.barsNeeded}` : "No volatility forecast: the price history could not produce one";
   }
-  if (reason === "suspected_split" && detail?.kind === "split") return `No volatility forecast: suspected stock split on ${formatMonthDay(detail.splitDateIso)} in the price history`;
   return unscoredReasonLabel[reason];
 }
 
