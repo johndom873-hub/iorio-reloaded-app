@@ -1521,3 +1521,239 @@
   color: #fff;
 }
 
+
+/* Backtesting screens (local only; mockup approved 2026-10-12). Job kind badges are light tints with dark text in light mode
+   and the reverse in dark mode: #0b4f78 on #e3eff8 7.5:1, #a5dcfb on #1e3a52 8.0:1, #5b2a86 on #efe7f8 8.2:1, #d9c2f5 on #3a2a52 8.0:1. */
+.badge.backtest-kind-download {
+  background-color: #e3eff8;
+  color: #0b4f78;
+}
+:root[data-bs-theme="dark"] .badge.backtest-kind-download {
+  background-color: #1e3a52;
+  color: #a5dcfb;
+}
+.badge.backtest-kind-run {
+  background-color: #efe7f8;
+  color: #5b2a86;
+}
+:root[data-bs-theme="dark"] .badge.backtest-kind-run {
+  background-color: #3a2a52;
+  color: #d9c2f5;
+}
+/* The data folder chip in the page header. */
+.backtest-source-chip {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.25rem 0.5rem;
+  font-size: 0.8rem;
+  padding: 0.35rem 0.6rem;
+  border: 1px solid var(--tblr-border-color);
+  border-radius: var(--tblr-border-radius);
+  background-color: var(--tblr-bg-surface);
+}
+/* One background job: badges and title, progress, action. Stacks on a phone. */
+.backtest-job-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0.5rem 1.25rem;
+  align-items: center;
+  padding: 0.75rem 1rem;
+}
+.backtest-job-row + .backtest-job-row {
+  border-top: 1px solid var(--tblr-border-color);
+}
+@media (min-width: 768px) {
+  .backtest-job-row {
+    grid-template-columns: 13rem minmax(0, 1fr) auto;
+  }
+}
+/* Ten headline tiles: five a row on wide screens, two on a phone. */
+.backtest-kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.75rem;
+}
+@media (min-width: 768px) {
+  .backtest-kpi-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+@media (min-width: 1200px) {
+  .backtest-kpi-grid {
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+  }
+}
+.backtest-kpi-value {
+  font-family: "Roboto Mono", ui-monospace, monospace;
+  font-variant-numeric: tabular-nums;
+  font-size: 1.25rem;
+  font-weight: 600;
+  line-height: 1.3;
+}
+/* Monthly returns cells: a green or red tint carries the sign; text keeps the body colour (13.0:1 / 11.4:1 / 12.0:1 / 12.7:1).
+   Table cells paint var(--tblr-table-bg), so the tint sets that variable. */
+.backtest-month-gain {
+  --tblr-table-bg: #e3f3e7;
+}
+.backtest-month-loss {
+  --tblr-table-bg: #f9e1e1;
+}
+:root[data-bs-theme="dark"] .backtest-month-gain {
+  --tblr-table-bg: #1f3d2b;
+}
+:root[data-bs-theme="dark"] .backtest-month-loss {
+  --tblr-table-bg: #4a2525;
+}
+/* Compare: the best figure in each row. */
+.backtest-best-cell {
+  --tblr-table-bg: #e3f3e7;
+  font-weight: 700;
+}
+:root[data-bs-theme="dark"] .backtest-best-cell {
+  --tblr-table-bg: #1f3d2b;
+}
+/* New session: a setting changed for this session. The row tint keeps text-secondary at 4.5:1 (#fff7e8) and 4.6:1 (#4a3517);
+   the changed value reads #7a4100 (8.1:1 on the white input) or #ffd699 (8.9:1 on the dark input). */
+.backtest-setting-changed > td {
+  --tblr-table-bg: #fff7e8;
+}
+:root[data-bs-theme="dark"] .backtest-setting-changed > td {
+  --tblr-table-bg: #4a3517;
+}
+.form-control.backtest-setting-changed-input,
+.form-select.backtest-setting-changed-input {
+  color: #7a4100;
+  font-weight: 600;
+}
+:root[data-bs-theme="dark"] .form-control.backtest-setting-changed-input,
+:root[data-bs-theme="dark"] .form-select.backtest-setting-changed-input {
+  color: #ffd699;
+}
+/* Session results: a setting the session changed, as a chip next to the title (7.5:1 / 8.5:1). */
+.backtest-override-chip {
+  display: inline-block;
+  font-size: 0.75rem;
+  font-weight: 600;
+  padding: 0.2rem 0.5rem;
+  border-radius: var(--tblr-border-radius);
+  background-color: #fff4e0;
+  color: #7a4100;
+}
+:root[data-bs-theme="dark"] .backtest-override-chip {
+  background-color: #4a3517;
+  color: #ffd699;
+}
+/* Settings group heading row inside the New session settings table. */
+.backtest-settings-group-row > td {
+  --tblr-table-bg: var(--tblr-bg-surface-secondary);
+  padding-top: 0.35rem;
+  padding-bottom: 0.35rem;
+}
+/* Notes in a table cell wrap instead of stretching the table. */
+.backtest-wrapping-note {
+  white-space: normal;
+  min-width: 12rem;
+  max-width: 24rem;
+  font-size: 0.78rem;
+  line-height: 1.4;
+}
+/* Session monthly returns: twelve narrow month columns (values without the % sign) and a year column; the year label stays
+   visible while the grid scrolls sideways on a phone. */
+.backtest-monthly-grid {
+  table-layout: fixed;
+  min-width: calc(3.5rem + 12 * 3.3rem + 4.6rem);
+}
+.backtest-monthly-grid th:first-child {
+  width: 3.5rem;
+}
+.backtest-monthly-grid .backtest-monthly-year-column {
+  width: 4.6rem;
+  border-left: 1px solid var(--tblr-border-color);
+}
+.backtest-monthly-grid th,
+.backtest-monthly-grid td {
+  white-space: nowrap;
+  padding-left: 0.4rem;
+  padding-right: 0.4rem;
+}
+.backtest-monthly-grid th:first-child,
+.backtest-monthly-grid td:first-child {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+}
+.backtest-monthly-grid tbody th:first-child {
+  --tblr-table-bg: var(--tblr-bg-surface);
+  background-color: var(--tblr-bg-surface);
+}
+/* Session results: monthly returns beside model accuracy only where both fit unscrolled (3 : 2), stacked below that. */
+.backtest-results-pair {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 1rem;
+  align-items: start;
+}
+@media (min-width: 1600px) {
+  .backtest-results-pair {
+    grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
+  }
+}
+/* Compare: the figure names stay visible while the session columns scroll sideways on a phone. */
+.backtest-compare-table th:first-child,
+.backtest-compare-table td:first-child {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+}
+.backtest-compare-table tbody td:first-child {
+  --tblr-table-bg: var(--tblr-bg-surface);
+  background-color: var(--tblr-bg-surface);
+}
+/* New session settings on a phone: the group band and a changed setting's tint (same colours as the table rows). */
+.backtest-settings-group-band {
+  background-color: var(--tblr-bg-surface-secondary);
+  border-bottom: 1px solid var(--tblr-border-color);
+}
+.backtest-setting-changed-block {
+  background-color: #fff7e8;
+}
+:root[data-bs-theme="dark"] .backtest-setting-changed-block {
+  background-color: #4a3517;
+}
+/* Backtesting on a phone: every button and field is at least a 44px tap target, including the compact table-row buttons
+   and the link-style Reset buttons; the compare checkbox gets a 44px hit area without making its row taller. */
+@media (max-width: 767.98px) {
+  .backtest-screen .btn,
+  .backtest-screen .form-control,
+  .backtest-screen .form-select {
+    min-height: 2.75rem;
+  }
+  .backtest-screen .btn-link {
+    min-width: 2.75rem;
+  }
+  /* The shared column gear sets min-width: 0 inline. */
+  .backtest-screen .btn-icon {
+    min-width: 2.75rem !important;
+  }
+}
+.backtest-checkbox-hit {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 2.75rem;
+  min-height: 2.75rem;
+  margin: -0.75rem -0.5rem;
+  cursor: pointer;
+}
+/* Session daily decisions: the morning's note wraps in its cell instead of widening the table. */
+.backtest-decision-cell {
+  white-space: normal;
+  min-width: 15rem;
+  font-size: 0.78rem;
+  line-height: 1.4;
+}
+/* A little clear of the date beside it (beats .table-sm's cell padding). */
+.table .backtest-decision-cell {
+  padding-left: 0.75rem;
+}

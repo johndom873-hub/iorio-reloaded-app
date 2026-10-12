@@ -645,3 +645,46 @@ export function pnlTextClass(pnl: number | null | undefined): string {
   if (pnl < 0) return "text-danger";
   return "";
 }
+
+/** A duration given in seconds, in words: "1 h 50 min", "3 min", "45 s" (a job's time left). */
+export function formatSecondsInWords(totalSeconds: number | null | undefined): string {
+  if (totalSeconds === null || totalSeconds === undefined || Number.isNaN(totalSeconds)) return "—";
+  const seconds = Math.max(0, Math.round(totalSeconds));
+  if (seconds < 60) return `${seconds} s`;
+  const totalMinutes = Math.round(seconds / 60);
+  const hours = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
+  return hours > 0 ? `${hours} h ${minutes} min` : `${minutes} min`;
+}
+
+/** A file size in decimal units, as Finder shows it: "512 B", "820 KB", "148 MB", "1.2 GB" (one decimal under 10). */
+export function formatFileSize(bytes: number | null | undefined): string {
+  if (bytes === null || bytes === undefined || Number.isNaN(bytes)) return "—";
+  const units = ["B", "KB", "MB", "GB", "TB"];
+  let value = Math.max(0, bytes);
+  let unitIndex = 0;
+  while (value >= 1000 && unitIndex < units.length - 1) {
+    value /= 1000;
+    unitIndex++;
+  }
+  return `${unitIndex === 0 || value >= 10 ? Math.round(value) : value.toFixed(1)} ${units[unitIndex]}`;
+}
+
+/** A plain ratio to a fixed number of decimals, no sign forced: "1.12", "-0.40", "0.78" (Sortino, edge capture). */
+export function formatRatio(valueOrNull: number | null | undefined, decimalPlaces = 2): string {
+  if (valueOrNull === null || valueOrNull === undefined || Number.isNaN(valueOrNull)) return "—";
+  return valueOrNull.toFixed(decimalPlaces);
+}
+
+/** A "YYYY-MM" month as short month and year: "Mar 2022". */
+export function formatYearMonth(yearMonth: string): string {
+  if (!/^\d{4}-\d{2}$/.test(yearMonth)) return "—";
+  const [year, month] = yearMonth.split("-").map(Number);
+  return `${new Intl.DateTimeFormat("en-US", { month: "short" }).format(new Date(year, month - 1, 1))} ${year}`;
+}
+
+/** Signed version of formatPercentage (a 0-1 fraction): 0.418 → "+41.8%", -0.097 → "-9.7%", 0 → "0.0%". */
+export function formatSignedPercentage(fractionOrNull: number | null | undefined, decimalPlaces = 1): string {
+  if (fractionOrNull === null || fractionOrNull === undefined || Number.isNaN(fractionOrNull)) return "—";
+  return formatSignedPercentageValue(fractionOrNull * 100, decimalPlaces);
+}

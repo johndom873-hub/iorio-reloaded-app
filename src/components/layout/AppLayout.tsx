@@ -14,6 +14,7 @@ import {
   IconClock,
   IconChevronLeft,
   IconChevronRight,
+  IconFlask,
   IconActivity,
   IconAlertTriangle,
   IconHeartRateMonitor,
@@ -45,6 +46,8 @@ const navigationItems = [
   { to: "/risk-limits", label: "Risk & Limits", icon: IconShieldCheck },
   { to: "/pluto", label: "Pluto", icon: IconPaw },
   { to: "/system-health", label: "System Health", icon: IconHeartRateMonitor },
+  // Local-only screens (the backtest routes exist only on the Mac with the ThetaData files): never in a production build.
+  ...(import.meta.env.DEV ? [{ to: "/backtest", label: "Backtesting", icon: IconFlask }] : []),
 ];
 
 // Matches the fixed geometry in theme.css's sidebar rules: nav links
