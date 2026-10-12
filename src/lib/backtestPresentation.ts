@@ -23,6 +23,7 @@ import {
   formatOptionContractLabel,
   formatPercentage,
   formatRatio,
+  formatSecondsInWords,
   formatSignedPercentage,
   formatSignedPnl,
   formatYearMonth,
@@ -89,6 +90,14 @@ export function jobProgressFraction(job: BacktestJobView): number {
 export function describeJobProgress(job: BacktestJobView): string {
   if (job.progressTotal <= 0) return job.displayStatus === "queued" ? "waiting" : "starting";
   return `${formatNumber(job.progressDone)} of ${formatNumber(job.progressTotal)} ${job.kind === "download" ? "trading days" : "days"}`;
+}
+
+/** Total run time: "running 1 h 5 min" while it runs, "ran 1 h 12 min" once it ended, "ran 40 min so far" for a resumed download still queued. */
+export function describeJobRunTime(status: BacktestJobDisplayStatus, runSeconds: number): string {
+  const duration = formatSecondsInWords(runSeconds);
+  if (status === "running") return `running ${duration}`;
+  if (status === "queued" || status === "stopped") return `ran ${duration} so far`;
+  return `ran ${duration}`;
 }
 
 /** The job's title: the symbol for a download, "SMCI · Edge Yield 20%" for a backtest. */

@@ -5,6 +5,7 @@ import type { BacktestJobDisplayStatus, BacktestJobKind, BacktestJobView } from 
 import { formatRelativeAge, formatSecondsInWords, formatShortAgeWithSeconds } from "../../lib/formatters";
 import {
   describeJobProgress,
+  describeJobRunTime,
   jobKindBadgeClass,
   jobKindLabel,
   jobProgressBarClass,
@@ -83,6 +84,7 @@ export function BacktestJobProgress({ job, now }: { job: BacktestJobView; now: D
         {status === "queued" && (
           <span className="text-secondary">{job.kind === "download" ? "starts when the download ahead of it finishes (ThetaData allows one at a time)" : "waiting to start"}</span>
         )}
+        {job.runSeconds !== null && <span className="text-secondary">{describeJobRunTime(status, job.runSeconds)}</span>}
         {status === "running" && job.heartbeatAt && <span className="text-secondary">updated {formatRelativeAge(job.heartbeatAt, now)}</span>}
         {status === "stopped" && (
           <span className="iorio-note-amber">
