@@ -58,21 +58,27 @@ export function BacktestSeriesSwatch({ color, line }: { color: string; line: "so
   return <span aria-hidden="true" className="d-inline-block flex-shrink-0" style={{ width: "1rem", height: 0, borderTop: `3px ${line} ${color}` }} />;
 }
 
-/** The account value charts' Linear / Log switch (a card action). */
-export function BacktestValueScaleSwitch({ scale, onChange }: { scale: BacktestValueScale; onChange: (scale: BacktestValueScale) => void }) {
-  const options: { value: BacktestValueScale; label: string }[] = [
-    { value: "linear", label: "Linear" },
-    { value: "log", label: "Log" },
-  ];
+/** A two-or-more-way choice as a button group, the chosen one filled (the Linear / Log switch, the New session's Period). */
+export function BacktestSegmentedSwitch<TValue extends string>({ options, value, onChange, ariaLabel }: { options: { value: TValue; label: string }[]; value: TValue; onChange: (value: TValue) => void; ariaLabel: string }) {
   return (
-    <div className="btn-group" role="group" aria-label="Value axis">
+    <div className="btn-group" role="group" aria-label={ariaLabel}>
       {options.map((option) => (
-        <button key={option.value} type="button" className={`btn ${scale === option.value ? "btn-primary" : "btn-outline-secondary"}`} aria-pressed={scale === option.value} onClick={() => onChange(option.value)}>
+        <button key={option.value} type="button" className={`btn ${value === option.value ? "btn-primary" : "btn-outline-secondary"}`} aria-pressed={value === option.value} onClick={() => onChange(option.value)}>
           {option.label}
         </button>
       ))}
     </div>
   );
+}
+
+const valueScaleOptions: { value: BacktestValueScale; label: string }[] = [
+  { value: "linear", label: "Linear" },
+  { value: "log", label: "Log" },
+];
+
+/** The account value charts' Linear / Log switch (a card action). */
+export function BacktestValueScaleSwitch({ scale, onChange }: { scale: BacktestValueScale; onChange: (scale: BacktestValueScale) => void }) {
+  return <BacktestSegmentedSwitch options={valueScaleOptions} value={scale} onChange={onChange} ariaLabel="Value axis" />;
 }
 
 /** The Show / Hide button of a collapsible results card (its state remembered by useCollapsibleCard). */

@@ -16,7 +16,7 @@ import {
 } from "../../api/backtest";
 import { PageHeader } from "../../components/layout/PageHeader";
 import { Spinner } from "../../components/Spinner";
-import { BacktestBackLink, BacktestCard } from "../../components/backtest/backtestBits";
+import { BacktestBackLink, BacktestCard, BacktestSegmentedSwitch } from "../../components/backtest/backtestBits";
 import { BacktestSettingsTable } from "../../components/backtest/BacktestSettingsTable";
 import { BacktestSymbolPicker } from "../../components/backtest/BacktestSymbolPicker";
 import { useBacktestOverview } from "../../components/backtest/useBacktestPolling";
@@ -25,12 +25,18 @@ import { formatNumber, pluralizeCount } from "../../lib/formatters";
 import {
   buildBacktestOverrides,
   describeLlmEstimate,
+  describeYearOption,
   formatSettingRowValue,
   isSettingChanged,
   llmSessionNote,
   settingInputText,
   settingValueProblem,
   valueAtSettingsPath,
+  wholeYearsContaining,
+  wholeYearsDates,
+  wholeYearsMatching,
+  yearsInPeriod,
+  type BacktestPeriodMode,
 } from "../../lib/backtestPresentation";
 
 const pageTitle = "New session";
@@ -38,6 +44,11 @@ const pageSubtitle = "Starts from Pluto's settings as they are now (saved with t
 const defaultStartingValue = 1_000_000;
 /** The estimate is asked for once the form has stopped changing this long. */
 const estimateDebounceMs = 600;
+
+const periodModeOptions: { value: BacktestPeriodMode; label: string }[] = [
+  { value: "years", label: "Whole years" },
+  { value: "custom", label: "Custom dates" },
+];
 
 function usableFiles(files: BacktestDataFileSummary[]): BacktestDataFileSummary[] {
   return files.filter((file) => file.firstDate !== null && file.lastDate !== null);
@@ -89,6 +100,10 @@ export function NewBacktestSessionPage() {
 
   const [name, setName] = useState("");
   const [symbols, setSymbols] = useState<string[]>([]);
+  // The period: whole years (From / To, the dates derived from the shared period) or custom dates. Opens on whole years.
+  const [periodMode, setPeriodMode] = useState<BacktestPeriodMode>("years");
+  const [fromYear, setFromYear] = useState<number | null>(null);
+  const [toYear, setToYear] = useState<number | null>(null);
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
   const [startingValueText, setStartingValueText] = useState(formatNumber(defaultStartingValue));
@@ -133,8 +148,15 @@ export function NewBacktestSessionPage() {
     const initialSymbols = sourceSymbols.length > 0 ? sourceSymbols : candidates[0] ? [candidates[0].symbol] : [];
     const initialCoverage = sharedCoverage(initialSymbols.map((picked) => candidates.find((candidate) => candidate.symbol === picked)!));
     setSymbols(initialSymbols);
-    setStartDate(source && sourceSymbols.length > 0 ? source.startDate : (initialCoverage?.firstDate ?? ""));
-    setEndDate(source && sourceSymbols.length > 0 ? source.endDate : (initialCoverage?.lastDate ?? ""));
+    const copiedDates = source && sourceSymbols.length > 0 ? { startDate: source.startDate, endDate: source.endDate } : null;
+    setStartDate(copiedDates?.startDate ?? initialCoverage?.firstDate ?? "");
+    setEndDate(copiedDates?.endDate ?? initialCoverage?.lastDate ?? "");
+    // A copied session opens on whole years when some From / To gives its dates exactly, else on its own dates.
+    const copiedYears = copiedDates && initialCoverage ? wholeYearsMatching(copiedDates.startDate, copiedDates.endDate, initialCoverage) : null;
+    const coverageYears = initialCoverage ? yearsInPeriod(initialCoverage) : [];
+    setPeriodMode(copiedDates && !copiedYears ? "custom" : "years");
+    setFromYear(copiedYears?.fromYear ?? coverageYears[0] ?? null);
+    setToYear(copiedYears?.toYear ?? coverageYears.at(-1) ?? null);
     if (source) {
       setName(source.name);
       setStartingValueText(formatNumber(source.startingValue));
@@ -144,14 +166,50 @@ export function NewBacktestSessionPage() {
     setInitialized(true);
   }, [initialized, overview, template, sourceLoaded, sourceSession]);
 
-  /** Picking or dropping a symbol sets the period to all that the picked files share, as picking one did. */
+  /** Picking or dropping a symbol: custom dates become all that the picked files share; years narrowed by hand stay while they
+   *  are still inside that period, and otherwise (or when they were all of the old period) become all of it. With no shared
+   *  period the dates are cleared and the years cannot be picked. */
   const changeSymbols = (nextSymbols: string[]) => {
     setSymbols(nextSymbols);
     const nextCoverage = sharedCoverage(nextSymbols.map((picked) => files.find((file) => file.symbol === picked)).filter((file): file is BacktestDataFileSummary => file !== undefined));
-    if (nextCoverage) {
-      setStartDate(nextCoverage.firstDate);
-      setEndDate(nextCoverage.lastDate);
+    setStartDate(nextCoverage?.firstDate ?? "");
+    setEndDate(nextCoverage?.lastDate ?? "");
+    if (!nextCoverage) return;
+    const nextYears = yearsInPeriod(nextCoverage);
+    const currentYears = coverage ? yearsInPeriod(coverage) : [];
+    const yearsWereAllOfThePeriod = fromYear === currentYears[0] && toYear === currentYears.at(-1);
+    if (fromYear === null || toYear === null || yearsWereAllOfThePeriod || !nextYears.includes(fromYear) || !nextYears.includes(toYear)) {
+      setFromYear(nextYears[0]!);
+      setToYear(nextYears.at(-1)!);
     }
+  };
+
+  const yearOptions = coverage ? yearsInPeriod(coverage) : [];
+  const yearsPeriod = coverage && fromYear !== null && toYear !== null && yearOptions.includes(fromYear) && yearOptions.includes(toYear) ? wholeYearsDates(fromYear, toYear, coverage) : null;
+  // What the session is sent and estimated on: the derived dates on whole years, the date fields on custom dates.
+  const sessionStartDate = periodMode === "years" ? (yearsPeriod?.startDate ?? "") : startDate;
+  const sessionEndDate = periodMode === "years" ? (yearsPeriod?.endDate ?? "") : endDate;
+
+  /** Whole years → custom: the fields take the derived dates. Custom → whole years: the years holding the dates, clamped to the
+   *  shared period. */
+  const changePeriodMode = (nextMode: BacktestPeriodMode) => {
+    if (nextMode === periodMode) return;
+    if (nextMode === "custom" && yearsPeriod) {
+      setStartDate(yearsPeriod.startDate);
+      setEndDate(yearsPeriod.endDate);
+    }
+    if (nextMode === "years" && coverage) {
+      const containing = wholeYearsContaining(startDate, endDate, coverage);
+      setFromYear(containing.fromYear);
+      setToYear(containing.toYear);
+    }
+    setPeriodMode(nextMode);
+  };
+
+  /** From moved past To takes To with it; To never lists a year before From. */
+  const changeFromYear = (year: number) => {
+    setFromYear(year);
+    if (toYear === null || toYear < year) setToYear(year);
   };
 
   const startingValue = parseDollarText(startingValueText);
@@ -160,10 +218,10 @@ export function NewBacktestSessionPage() {
   // With the AI model deciding: the model calls and hours the session may take, and its warnings, before anything starts.
   const decidedByModel = valueByPath["decisionMaker"] === "llm";
   const estimateRequestText = useMemo(() => {
-    if (!template || !decidedByModel || symbols.length === 0 || !startDate || !endDate || !(startingValue > 0)) return null;
+    if (!template || !decidedByModel || symbols.length === 0 || !sessionStartDate || !sessionEndDate || !(startingValue > 0)) return null;
     // The endpoint needs no name (an unnamed form still gets its estimate).
-    return JSON.stringify({ name: name.trim(), symbols, startDate, endDate, startingValue, tablesMode, overrides: buildBacktestOverrides(template.rows, valueByPath) });
-  }, [template, decidedByModel, name, symbols, startDate, endDate, startingValue, tablesMode, valueByPath]);
+    return JSON.stringify({ name: name.trim(), symbols, startDate: sessionStartDate, endDate: sessionEndDate, startingValue, tablesMode, overrides: buildBacktestOverrides(template.rows, valueByPath) });
+  }, [template, decidedByModel, name, symbols, sessionStartDate, sessionEndDate, startingValue, tablesMode, valueByPath]);
   const debouncedEstimateRequestText = useDebouncedValue(estimateRequestText, estimateDebounceMs);
   const [estimate, setEstimate] = useState<{ requestText: string; result: BacktestSessionEstimateResponse | null; error: string | null } | null>(null);
   useEffect(() => {
@@ -184,9 +242,10 @@ export function NewBacktestSessionPage() {
   if (selectedFiles.length === 0) problems.push("Pick at least one symbol with a downloaded file.");
   else if (selectedFiles.length > backtestMaxSymbolsPerSession) problems.push(`Pick at most ${backtestMaxSymbolsPerSession} symbols.`);
   else if (!coverage) problems.push("The picked files share no period: drop the symbol whose file starts after another's ends.");
-  if (!startDate || !endDate) problems.push("Choose a start and an end date.");
-  else if (startDate >= endDate) problems.push("The start date must be before the end date.");
-  else if (coverage && (startDate < coverage.firstDate || endDate > coverage.lastDate)) {
+  if (!sessionStartDate || !sessionEndDate) {
+    if (coverage) problems.push(periodMode === "years" ? "Choose the From and To years." : "Choose a start and an end date.");
+  } else if (sessionStartDate >= sessionEndDate) problems.push("The start date must be before the end date.");
+  else if (coverage && (sessionStartDate < coverage.firstDate || sessionEndDate > coverage.lastDate)) {
     problems.push(`The period must fall within every picked file: ${coverage.firstDate} → ${coverage.lastDate}.`);
   }
   if (!(startingValue > 0)) problems.push("The starting account value must be a positive dollar amount.");
@@ -205,8 +264,8 @@ export function NewBacktestSessionPage() {
       const response = await createBacktestSession({
         name: name.trim(),
         symbols,
-        startDate,
-        endDate,
+        startDate: sessionStartDate,
+        endDate: sessionEndDate,
         startingValue,
         tablesMode,
         overrides: buildBacktestOverrides(template.rows, valueByPath),
@@ -353,34 +412,96 @@ export function NewBacktestSessionPage() {
               </div>
               <div className="col-12 col-lg-6">
                 <div className="row g-3">
-                  <div className="col-12 col-sm-6">
-                    <label htmlFor="backtest-session-start" className="form-label">
-                      Start date
-                    </label>
-                    <input
-                      id="backtest-session-start"
-                      type="date"
-                      className="form-control font-mono"
-                      min={coverage?.firstDate}
-                      max={coverage?.lastDate}
-                      value={startDate}
-                      onChange={(event) => setStartDate(event.target.value)}
-                    />
+                  <div className="col-12">
+                    <div className="d-flex flex-wrap align-items-center justify-content-between gap-2">
+                      <span className="form-label mb-0" id="backtest-session-period-label">
+                        Period
+                      </span>
+                      <BacktestSegmentedSwitch options={periodModeOptions} value={periodMode} onChange={changePeriodMode} ariaLabel="Period" />
+                    </div>
                   </div>
-                  <div className="col-12 col-sm-6">
-                    <label htmlFor="backtest-session-end" className="form-label">
-                      End date
-                    </label>
-                    <input
-                      id="backtest-session-end"
-                      type="date"
-                      className="form-control font-mono"
-                      min={coverage?.firstDate}
-                      max={coverage?.lastDate}
-                      value={endDate}
-                      onChange={(event) => setEndDate(event.target.value)}
-                    />
-                  </div>
+                  {periodMode === "years" ? (
+                    <>
+                      <div className="col-12 col-sm-6">
+                        <label htmlFor="backtest-session-from-year" className="form-label">
+                          From year
+                        </label>
+                        <select
+                          id="backtest-session-from-year"
+                          className="form-select font-mono"
+                          disabled={!coverage}
+                          value={coverage && fromYear !== null ? String(fromYear) : ""}
+                          onChange={(event) => changeFromYear(Number(event.target.value))}
+                        >
+                          {!coverage && <option value="">—</option>}
+                          {coverage &&
+                            yearOptions.map((year) => (
+                              <option key={year} value={year}>
+                                {describeYearOption(year, coverage)}
+                              </option>
+                            ))}
+                        </select>
+                      </div>
+                      <div className="col-12 col-sm-6">
+                        <label htmlFor="backtest-session-to-year" className="form-label">
+                          To year
+                        </label>
+                        <select
+                          id="backtest-session-to-year"
+                          className="form-select font-mono"
+                          disabled={!coverage}
+                          value={coverage && toYear !== null ? String(toYear) : ""}
+                          onChange={(event) => setToYear(Number(event.target.value))}
+                        >
+                          {!coverage && <option value="">—</option>}
+                          {coverage &&
+                            yearOptions
+                              .filter((year) => fromYear === null || year >= fromYear)
+                              .map((year) => (
+                                <option key={year} value={year}>
+                                  {describeYearOption(year, coverage)}
+                                </option>
+                              ))}
+                        </select>
+                      </div>
+                      {yearsPeriod && (
+                        <div className="col-12 font-mono" style={{ fontSize: "0.85rem", marginTop: "0.5rem" }} aria-live="polite">
+                          {yearsPeriod.startDate} → {yearsPeriod.endDate}
+                        </div>
+                      )}
+                    </>
+                  ) : (
+                    <>
+                      <div className="col-12 col-sm-6">
+                        <label htmlFor="backtest-session-start" className="form-label">
+                          Start date
+                        </label>
+                        <input
+                          id="backtest-session-start"
+                          type="date"
+                          className="form-control font-mono"
+                          min={coverage?.firstDate}
+                          max={coverage?.lastDate}
+                          value={startDate}
+                          onChange={(event) => setStartDate(event.target.value)}
+                        />
+                      </div>
+                      <div className="col-12 col-sm-6">
+                        <label htmlFor="backtest-session-end" className="form-label">
+                          End date
+                        </label>
+                        <input
+                          id="backtest-session-end"
+                          type="date"
+                          className="form-control font-mono"
+                          min={coverage?.firstDate}
+                          max={coverage?.lastDate}
+                          value={endDate}
+                          onChange={(event) => setEndDate(event.target.value)}
+                        />
+                      </div>
+                    </>
+                  )}
                   <div className="col-12 text-secondary" style={{ fontSize: "0.75rem", marginTop: "0.25rem" }}>
                     {coverage
                       ? `${selectedFiles.length > 1 ? "Every picked file covers" : "The file covers"} ${coverage.firstDate} → ${coverage.lastDate}; the period must lie inside it.`

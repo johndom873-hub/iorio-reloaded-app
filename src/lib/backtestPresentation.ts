@@ -29,11 +29,13 @@ import {
 } from "../api/backtest";
 import type { SignalGrade } from "../api/signals";
 import {
+  daysToExpiry,
   easternIsoDate,
   formatCompactDollarsTrimmed,
   formatCurrency,
   formatCurrencyTrimmed,
   formatEasternTime,
+  formatDayMonth,
   formatDayMonthYear,
   formatInputNumber,
   formatNumber,
@@ -878,4 +880,62 @@ export function doublingLogValueAxis(low: number, high: number): { min: number; 
   const anchor = [5, 2, 1].map((factor) => factor * magnitude).find((candidate) => candidate <= positiveLow)!;
   const doublings = Math.max(1, Math.ceil(Math.log2(Math.max(high, positiveLow) / anchor) - 1e-9));
   return { min: anchor, max: anchor * 2 ** doublings, tickAmount: doublings, logarithmic: true, logBase: 2 };
+}
+
+// ---- New session: the period in whole years, or custom dates ----
+
+export type BacktestPeriodMode = "years" | "custom";
+
+/** A period of calendar dates, "YYYY-MM-DD", both ends included. */
+export interface BacktestDatePeriod {
+  firstDate: string;
+  lastDate: string;
+}
+
+function yearOfDate(isoDate: string): number {
+  return Number(isoDate.slice(0, 4));
+}
+
+/** Every calendar year that overlaps the period, in order. */
+export function yearsInPeriod(period: BacktestDatePeriod): number[] {
+  const years: number[] = [];
+  for (let year = yearOfDate(period.firstDate); year <= yearOfDate(period.lastDate); year++) years.push(year);
+  return years;
+}
+
+/** A whole-years choice as dates: 1 Jan of From (or the period's first date, if later) to 31 Dec of To (or its last, if earlier). */
+export function wholeYearsDates(fromYear: number, toYear: number, period: BacktestDatePeriod): { startDate: string; endDate: string } {
+  const yearStart = `${fromYear}-01-01`;
+  const yearEnd = `${toYear}-12-31`;
+  return { startDate: yearStart > period.firstDate ? yearStart : period.firstDate, endDate: yearEnd < period.lastDate ? yearEnd : period.lastDate };
+}
+
+/** Calendar days a year may lack at either end and still read as whole (Marcelo 2026-10-12): New Year's Day and a weekend. */
+const wholeYearEdgeToleranceDays = 4;
+
+/** A year option: "2023", or the part the period holds at its edges: "2021 · from 4 Aug", "2026 · to 9 Oct", "2024 · 4 Aug to 9 Oct". */
+export function describeYearOption(year: number, period: BacktestDatePeriod): string {
+  const startsLate = year === yearOfDate(period.firstDate) && daysToExpiry(period.firstDate, `${year}-01-01`) > wholeYearEdgeToleranceDays;
+  const endsEarly = year === yearOfDate(period.lastDate) && daysToExpiry(`${year}-12-31`, period.lastDate) > wholeYearEdgeToleranceDays;
+  if (startsLate && endsEarly) return `${year} · ${formatDayMonth(period.firstDate)} to ${formatDayMonth(period.lastDate)}`;
+  if (startsLate) return `${year} · from ${formatDayMonth(period.firstDate)}`;
+  if (endsEarly) return `${year} · to ${formatDayMonth(period.lastDate)}`;
+  return String(year);
+}
+
+/** The From and To years whose whole-years dates are exactly these, or null when no pair gives them (they open as custom dates). */
+export function wholeYearsMatching(startDate: string, endDate: string, period: BacktestDatePeriod): { fromYear: number; toYear: number } | null {
+  const fromYear = yearOfDate(startDate);
+  const toYear = yearOfDate(endDate);
+  if (fromYear > toYear || startDate < period.firstDate || endDate > period.lastDate) return null;
+  const derived = wholeYearsDates(fromYear, toYear, period);
+  return derived.startDate === startDate && derived.endDate === endDate ? { fromYear, toYear } : null;
+}
+
+/** The years holding these dates, clamped to the period; the whole period's years when the dates are empty. */
+export function wholeYearsContaining(startDate: string, endDate: string, period: BacktestDatePeriod): { fromYear: number; toYear: number } {
+  const clamp = (date: string) => (date < period.firstDate ? period.firstDate : date > period.lastDate ? period.lastDate : date);
+  const fromYear = yearOfDate(startDate ? clamp(startDate) : period.firstDate);
+  const toYear = yearOfDate(endDate ? clamp(endDate) : period.lastDate);
+  return { fromYear, toYear: Math.max(fromYear, toYear) };
 }
