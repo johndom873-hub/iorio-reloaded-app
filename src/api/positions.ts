@@ -333,6 +333,8 @@ export interface OrderLegQuote {
   // backend) -- Close/Roll orders get a live quote but no compliance gate.
   compliance: OrderLegQuoteCompliance | null;
   signalLimits: OrderLegQuoteSignalLimits | null;
+  /** λ (0..1), the Risk & Limits spread cost: the share of the half-spread the panel's yield charges as friction. */
+  spreadShareCharged: number;
 }
 
 export type OrderLegQuoteStreamEvent =

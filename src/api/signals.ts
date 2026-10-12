@@ -479,6 +479,8 @@ export interface SignalsChain {
   /** The expiry `strikes` belongs to; null when the ticker has no listed expiry stored. */
   selectedExpiry: string | null;
   strikes: SignalsChainStrikeRow[];
+  /** λ (0..1), the Risk & Limits spread cost: the share of the half-spread the chain's yields charge as friction. */
+  spreadShareCharged: number;
 }
 
 export interface SignalContractContext {

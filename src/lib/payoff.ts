@@ -136,17 +136,30 @@ export function computeExposurePerShare(strategyKey: StrategyKey, input: { strik
   return base - input.premium;
 }
 
-// Annualized yield, same as the server's: premium ÷ the exposure net of the premium × 365 ÷ dte.
+// The server's flat commission per option contract (optionFriction.ts), the fallback its estimate starts from.
+export const flatCommissionPerContractDollars = 0.68;
+
+// The friction a sale is charged, in dollars per contract, as the server charges it: λ × half-spread × 100 + commission
+// (λ = the Risk & Limits spread cost share). The screen's yields use the flat commission (Marcelo, 2026-10-12).
+export function computeFrictionDollarsPerContract(input: { bid: number; ask: number; spreadShareCharged: number }): number {
+  return input.spreadShareCharged * ((input.ask - input.bid) / 2) * 100 + flatCommissionPerContractDollars;
+}
+
+// Annualized yield, same as the server's: premium ÷ the exposure net of the premium × 365 ÷ dte. With
+// frictionDollarsPerContract (the chain and its order form, Marcelo 2026-10-12) the premium on top is after costs:
+// (premium − friction ÷ 100) ÷ exposure × 365 ÷ dte; the exposure stays net of the full premium, as EXP $ is.
+// Example: $40 put, bid 0.45 / ask 0.55, 7 DTE, λ 50%: friction $3.18, (0.50 − 0.0318) ÷ 39.50 × 365 ÷ 7 = 62%.
 // Returns null when the inputs can't support a real number (no premium, or dte/exposure <= 0).
 export function computeAnnualizedYield(
   strategyKey: StrategyKey,
-  input: { premium: number | null; dte: number; strike: number; spotPrice: number },
+  input: { premium: number | null; dte: number; strike: number; spotPrice: number; frictionDollarsPerContract?: number },
 ): number | null {
   const { premium, dte, strike, spotPrice } = input;
   if (premium === null || premium <= 0 || dte <= 0) return null;
   const exposurePerShare = computeExposurePerShare(strategyKey, { strike, spotPrice, premium });
   if (exposurePerShare === null) return null;
-  return (premium / exposurePerShare) * (365 / dte);
+  const premiumAfterCosts = premium - (input.frictionDollarsPerContract ?? 0) / 100;
+  return (premiumAfterCosts / exposurePerShare) * (365 / dte);
 }
 
 // Same definition as Positions' capitalAtRisk (EXP $): the shares bought less the call's premium on them for a

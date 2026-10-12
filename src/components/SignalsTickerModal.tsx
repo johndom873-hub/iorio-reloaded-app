@@ -1285,6 +1285,7 @@ export function SignalsTickerModal({ symbol, initialRollLegId = null, focusPosit
                               contract={livePickedScore!}
                               freeShares={signals?.freeShares ?? null}
                               spotPrice={spotPriceForOrders}
+                              spreadShareCharged={chain?.spreadShareCharged ?? null}
                               notice={chainPick.result.notCandidateReason ? chainPickNotice(chainPick, chainPick.result.notCandidateReason) : null}
                               onCancel={clearSelection}
                               onSubmitted={(order, adaptivePriority) => setPendingOrder({ order, adaptivePriority })}

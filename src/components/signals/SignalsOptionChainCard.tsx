@@ -3,7 +3,7 @@ import type { SignalCandidate, SignalGrade, SignalsChain, SignalsChainCell } fro
 import { FLASH_DURATION_MS, flashClassName, useFlashOnChange } from "../../hooks/useFlashOnChange";
 import { useMediaQuery } from "../../hooks/useMediaQuery";
 import { formatCurrency, formatCurrencyTrimmed, formatPercentage, formatQuotePrice } from "../../lib/formatters";
-import { computeAnnualizedYield } from "../../lib/payoff";
+import { computeAnnualizedYield, computeFrictionDollarsPerContract } from "../../lib/payoff";
 import { chainCellStateExplanation, describeChainExpiryTab, escapeTooltipHtml, gradeBadgeClass, gradeLabel, isChainContractInTheMoney, signalContractKey } from "../../lib/signalsPresentation";
 import { DottedLabelTooltip } from "../HelpTooltip";
 import { Spinner } from "../Spinner";
@@ -62,7 +62,7 @@ const chainColumnLabels: Record<ChainColumn, ReactNode> = {
   bid: <span>Bid</span>,
   ask: <span>Ask</span>,
   delta: <span>Δ</span>,
-  yield: <DottedLabelTooltip label="Yield" tooltipHtml="Annualised yield at the mid price: (mid ÷ strike for a put, ÷ spot for a call) × 365 ÷ days to expiry." focusable={false} />,
+  yield: <DottedLabelTooltip label="Yield" tooltipHtml="Annualised yield at the mid price after costs: (mid − costs) ÷ (strike − mid) for a put, ÷ (spot − mid) for a call, × 365 ÷ days to expiry. Costs: the Risk &amp; Limits spread cost share of the half-spread plus $0.68 commission per contract." focusable={false} />,
   grade: <span>Grade</span>,
 };
 
@@ -88,14 +88,14 @@ function describeCellForScreenReader(contract: ChainContractRef, cell: SignalsCh
   return `${contractLabel}, not in today's capture or refresh`;
 }
 
-function ChainCellButton({ contract, cell, liveCandidate, dte, spotPrice, selected, disabled, showStrike, unscoredLabel, onPick }: { contract: ChainContractRef; cell: SignalsChainCell; liveCandidate: SignalCandidate | undefined; dte: number | null; spotPrice: number | null; selected: boolean; disabled: boolean; showStrike: boolean; unscoredLabel: string; onPick: () => void }) {
+function ChainCellButton({ contract, cell, liveCandidate, dte, spotPrice, spreadShareCharged, selected, disabled, showStrike, unscoredLabel, onPick }: { contract: ChainContractRef; cell: SignalsChainCell; liveCandidate: SignalCandidate | undefined; dte: number | null; spotPrice: number | null; spreadShareCharged: number | null; selected: boolean; disabled: boolean; showStrike: boolean; unscoredLabel: string; onPick: () => void }) {
   const shown = displayedCell(cell, liveCandidate);
   // Cells update between fetches (live frames); compared at the displayed 2 decimals.
   const bidFlash = useFlashOnChange(cell.state !== "not_captured" ? shown.bid : null, FLASH_DURATION_MS, 2);
   const askFlash = useFlashOnChange(cell.state !== "not_captured" ? shown.ask : null, FLASH_DURATION_MS, 2);
   const deltaFlash = useFlashOnChange(cell.state !== "not_captured" ? shown.delta : null, FLASH_DURATION_MS, 2);
-  // Annualised yield at the mid (approved formula, lib/payoff); a call needs the spot for its capital base.
-  const yieldFraction = shown.bid !== null && shown.ask !== null && dte !== null ? computeAnnualizedYield(contract.right === "C" ? "covered_call" : "cash_secured_put", { premium: (shown.bid + shown.ask) / 2, dte, strike: contract.strike, spotPrice: spotPrice ?? 0 }) : null;
+  // Annualised yield at the mid after costs (approved formula, lib/payoff); a call needs the spot for its capital base.
+  const yieldFraction = shown.bid !== null && shown.ask !== null && dte !== null && spreadShareCharged !== null ? computeAnnualizedYield(contract.right === "C" ? "covered_call" : "cash_secured_put", { premium: (shown.bid + shown.ask) / 2, dte, strike: contract.strike, spotPrice: spotPrice ?? 0, frictionDollarsPerContract: computeFrictionDollarsPerContract({ bid: shown.bid, ask: shown.ask, spreadShareCharged }) }) : null;
   const yieldFlash = useFlashOnChange(cell.state !== "not_captured" && yieldFraction !== null ? yieldFraction * 100 : null, FLASH_DURATION_MS, 0);
   const notCaptured = cell.state === "not_captured";
   const columnCells: Record<ChainColumn, ReactNode> = {
@@ -208,6 +208,7 @@ export function SignalsOptionChainCard({ chain, loading, error, spotPrice, liveC
         liveCandidate={shownCell.state === "candidate" && !liveChainCells[key] ? liveCandidatesByKey.get(key) : undefined}
         dte={selectedExpiryDte}
         spotPrice={spotPrice}
+        spreadShareCharged={chain?.spreadShareCharged ?? null}
         selected={key === selectedContractKey}
         disabled={pickingDisabled}
         showStrike={showStrike}

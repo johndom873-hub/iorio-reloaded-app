@@ -3,7 +3,7 @@ import { ApiError } from "../api/client";
 import { buildOpenOrder, type AdaptivePriority, type OrderRequest } from "../api/positions";
 import type { SignalQuoteSource, SignalStrategyKey } from "../api/signals";
 import { checkOrderLimits } from "../api/orderChecks";
-import { computeAnnualizedYield, computeExposurePerShare, computePayoff } from "../lib/payoff";
+import { computeAnnualizedYield, computeExposurePerShare, computeFrictionDollarsPerContract, computePayoff } from "../lib/payoff";
 import { formatCurrency, formatDateTime, formatPercentage, formatQuotePrice, formatSignedPnl } from "../lib/formatters";
 import { describeCandidate, describeNonLiveQuoteBlock, quoteSourceLabel } from "../lib/signalsPresentation";
 import { useTooltip } from "../hooks/useTooltip";
@@ -38,6 +38,8 @@ interface ChainContractOrderSetupFormProps {
   /** Free shares to cover a call; null when unknown (ticker outside the Signals universe). */
   freeShares: number | null;
   spotPrice: number | null;
+  /** λ (0..1), the Risk & Limits spread cost, from the chain: the yield is after the same costs as the chain's (Marcelo, 2026-10-12). */
+  spreadShareCharged: number | null;
   /** Why this contract has no Signals score, shown above the quote. */
   notice: ReactNode;
   onCancel: () => void;
@@ -72,7 +74,7 @@ function describeQuoteSource(contract: ChainContractQuote): string {
   return contract.quotedAt && contract.quoteSource !== "snapshot" ? `${label} · ${formatDateTime(contract.quotedAt)}` : label;
 }
 
-export function ChainContractOrderSetupForm({ symbol, contract, freeShares, spotPrice, notice, onCancel, onSubmitted }: ChainContractOrderSetupFormProps) {
+export function ChainContractOrderSetupForm({ symbol, contract, freeShares, spotPrice, spreadShareCharged, notice, onCancel, onSubmitted }: ChainContractOrderSetupFormProps) {
   const isCall = contract.strategyKey === "covered_call";
   const hasTwoSidedQuote = contract.bid !== null && contract.ask !== null;
   const mid = hasTwoSidedQuote ? (contract.bid! + contract.ask!) / 2 : null;
@@ -87,7 +89,9 @@ export function ChainContractOrderSetupForm({ symbol, contract, freeShares, spot
   const limitPrice = Number(limitPriceInput);
   const limitPriceValid = limitPriceInput.trim() !== "" && Number.isFinite(limitPrice) && limitPrice > 0;
   const premiumTotal = limitPriceValid ? limitPrice * 100 * quantity : null;
-  const annualizedYield = limitPriceValid && spotPrice !== null ? computeAnnualizedYield(contract.strategyKey, { premium: limitPrice, dte: contract.dte, strike: contract.strike, spotPrice }) : null;
+  // After costs, as the chain cell shows it: the spread cost share of the contract's half-spread plus the flat commission.
+  const frictionDollarsPerContract = contract.bid !== null && contract.ask !== null && spreadShareCharged !== null ? computeFrictionDollarsPerContract({ bid: contract.bid, ask: contract.ask, spreadShareCharged }) : null;
+  const annualizedYield = limitPriceValid && spotPrice !== null && frictionDollarsPerContract !== null ? computeAnnualizedYield(contract.strategyKey, { premium: limitPrice, dte: contract.dte, strike: contract.strike, spotPrice, frictionDollarsPerContract }) : null;
   // EXP $ at the limit price, net of the premium: the same as Positions will show once it fills.
   const exposurePerShareAtLimit = limitPriceValid ? computeExposurePerShare(contract.strategyKey, { strike: contract.strike, spotPrice: spotPrice ?? 0, premium: limitPrice }) : null;
   const capitalAtRisk = exposurePerShareAtLimit === null ? null : exposurePerShareAtLimit * 100 * quantity;
@@ -222,7 +226,7 @@ export function ChainContractOrderSetupForm({ symbol, contract, freeShares, spot
           <FillPriorityPicker value={adaptivePriority} onChange={setAdaptivePriority} />
         </div>
         <Row label="Premium (total)" value={formatCurrency(premiumTotal, 0)} tone="text-success" />
-        <Row label="Annualised yield" value={formatPercentage(annualizedYield, 0)} />
+        <Row label="Annualised yield after costs" value={formatPercentage(annualizedYield, 0)} />
         <OrderCommissionRows {...commissionPreview} expectedPremiumDollars={premiumTotal ?? 0} />
         {payoff ? (
           <>

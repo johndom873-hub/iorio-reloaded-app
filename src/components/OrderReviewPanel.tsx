@@ -32,7 +32,8 @@ import {
   orderRequestStatusLabel,
   todayInEasternIso,
 } from "../lib/formatters";
-import { computeAnnualizedYield, computeCapitalAtRiskFromOrderLegs, computePayoff, orderLegsToPayoffInput } from "../lib/payoff";
+import { computeAnnualizedYield, computeCapitalAtRiskFromOrderLegs, computeFrictionDollarsPerContract, computePayoff, orderLegsToPayoffInput } from "../lib/payoff";
+import { DottedLabelTooltip } from "./HelpTooltip";
 import { computeProbabilityOfProfit } from "../lib/probabilityOfProfit";
 import { flashClassName, useFlashOnChange } from "../hooks/useFlashOnChange";
 import { useTooltip } from "../hooks/useTooltip";
@@ -249,13 +250,17 @@ export function OrderReviewPanel({ order: initialOrder, initialAdaptivePriority,
   // before the live quote arrives (same fallback the mid-price display
   // elsewhere in the app uses).
   const liveOptionMid = quote ? (quote.bid !== null && quote.ask !== null ? (quote.bid + quote.ask) / 2 : quote.last) : (optionLeg?.unitPrice ?? null);
+  // After costs, as the option chain shows it (Marcelo, 2026-10-12): the spread cost share of the live half-spread plus
+  // the flat commission. Without a two-sided quote there is no half-spread to charge, so no yield is shown.
+  const liveFrictionDollarsPerContract = quote && quote.bid !== null && quote.ask !== null ? computeFrictionDollarsPerContract({ bid: quote.bid, ask: quote.ask, spreadShareCharged: quote.spreadShareCharged }) : null;
   const liveYield =
-    isOpeningOrder && optionLeg?.strike !== undefined && dte !== null
+    isOpeningOrder && optionLeg?.strike !== undefined && dte !== null && liveFrictionDollarsPerContract !== null
       ? computeAnnualizedYield(order.payload.strategyKey as StrategyKey, {
           premium: liveOptionMid,
           dte,
           strike: optionLeg.strike,
           spotPrice: stockLeg?.unitPrice ?? optionLeg.strike,
+          frictionDollarsPerContract: liveFrictionDollarsPerContract,
         })
       : null;
 
@@ -376,7 +381,9 @@ export function OrderReviewPanel({ order: initialOrder, initialAdaptivePriority,
         <div className="row g-3 font-mono" style={{ fontSize: "0.85rem" }}>
           {liveYield !== null && (
             <div className="col-4">
-              <div className="text-secondary text-uppercase" style={{ fontSize: "0.68rem" }}>Ann. Yield</div>
+              <div className="text-secondary text-uppercase" style={{ fontSize: "0.68rem" }}>
+                <DottedLabelTooltip label="Ann. Yield" tooltipHtml="Annualised yield at the live mid after costs: (mid − costs) ÷ exposure × 365 ÷ days to expiry. Costs: the Risk &amp; Limits spread cost share of the half-spread plus $0.68 commission per contract." />
+              </div>
               <div className="fw-semibold text-success">{formatPercentage(liveYield)}</div>
             </div>
           )}
