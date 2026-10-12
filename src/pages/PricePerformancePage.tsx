@@ -108,11 +108,11 @@ type LiveConnection = "connecting" | "live" | "unavailable";
 
 // The live change against a reference close if a live price is known, else the
 // static change vs. the last completed close the server computed.
-// A live price is measured back from the session it belongs to (liveReferenceCloses, Marcelo 2026-10-07): during the
-// session 24hr is live vs the last close, not vs the close before it. `?? referenceCloses` covers an API without them.
+// A live price is measured from the row's Last Close at any hour (liveReferenceCloses, Marcelo 2026-10-12): 1D is
+// Current vs Last Close, pre-market and after-hours included.
 function changeFor(row: PricePerformanceRow, livePrice: number | null | undefined, key: keyof ReferenceCloses, staticChange: number | null): number | null {
   if (livePrice === undefined || livePrice === null) return staticChange;
-  return percentChange(livePrice, (row.liveReferenceCloses ?? row.referenceCloses)[key]);
+  return percentChange(livePrice, row.liveReferenceCloses[key]);
 }
 
 export function PricePerformancePage() {
@@ -169,14 +169,14 @@ export function PricePerformancePage() {
     };
   }, [symbolsKey]);
 
-  // A tab open across the 09:30 ET open: the live references must move to today's session. Checked on each market-status
-  // poll (about once a minute), so a snapshot the server computed just before the open is replaced within a minute.
+  // A tab open across Eastern midnight: the live 1W / 1M / 3M / 1Y references count back from today, so they must move.
+  // Checked on each market-status poll (about once a minute).
   const marketStatus = useMarketStatus();
-  const liveSessionDateRef = useRef<string | null>(null);
-  liveSessionDateRef.current = data?.meta.liveSessionDate ?? null;
+  const liveReferenceDateRef = useRef<string | null>(null);
+  liveReferenceDateRef.current = data?.meta.liveReferenceDate ?? null;
   useEffect(() => {
-    if (marketStatus?.state !== "open" || liveSessionDateRef.current === null) return;
-    if (liveSessionDateRef.current !== todayInEasternIso()) void load();
+    if (liveReferenceDateRef.current === null) return;
+    if (liveReferenceDateRef.current !== todayInEasternIso()) void load();
   }, [marketStatus, load]);
 
   // The nightly capture finished: reload the stored data.
@@ -280,25 +280,25 @@ export function PricePerformancePage() {
       },
     },
     {
-      key: "change24h",
-      header: "24hr",
+      key: "change1d",
+      header: "1D",
       headerTitle: "vs. 1 trading day back — live once the price stream connects",
       align: "right",
-      render: (row) => <ChangeBadge value={changeFor(row, livePrices[row.symbol], "close24hAgo", row.change24h)} />,
+      render: (row) => <ChangeBadge value={changeFor(row, livePrices[row.symbol], "close1dAgo", row.change1d)} />,
     },
     {
-      key: "change48h",
-      header: "48hr",
+      key: "change2d",
+      header: "2D",
       headerTitle: "vs. 2 trading days back — live once the price stream connects",
       align: "right",
-      render: (row) => <ChangeBadge value={changeFor(row, livePrices[row.symbol], "close48hAgo", row.change48h)} />,
+      render: (row) => <ChangeBadge value={changeFor(row, livePrices[row.symbol], "close2dAgo", row.change2d)} />,
     },
     {
-      key: "change72h",
-      header: "72hr",
+      key: "change3d",
+      header: "3D",
       headerTitle: "vs. 3 trading days back — live once the price stream connects",
       align: "right",
-      render: (row) => <ChangeBadge value={changeFor(row, livePrices[row.symbol], "close72hAgo", row.change72h)} />,
+      render: (row) => <ChangeBadge value={changeFor(row, livePrices[row.symbol], "close3dAgo", row.change3d)} />,
     },
     {
       key: "change1w",

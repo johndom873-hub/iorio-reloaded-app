@@ -5,9 +5,9 @@ export type MacdSignal = "Bullish" | "Bearish" | "Neutral";
 export type MaTrend = "uptrend" | "downtrend" | "mixed";
 
 export interface ReferenceCloses {
-  close24hAgo: number | null;
-  close48hAgo: number | null;
-  close72hAgo: number | null;
+  close1dAgo: number | null;
+  close2dAgo: number | null;
+  close3dAgo: number | null;
   close1wAgo: number | null;
   close1mAgo: number | null;
   close3mAgo: number | null;
@@ -27,17 +27,17 @@ export interface PricePerformanceRow {
   monthlyLow: string;
   monthlyHigh: string;
   /** vs. the latest completed close; the page recomputes them against the live price once one arrives. */
-  change24h: number | null;
-  change48h: number | null;
-  change72h: number | null;
+  change1d: number | null;
+  change2d: number | null;
+  change3d: number | null;
   change1w: number | null;
   change1m: number | null;
   change3m: number | null;
   change1y: number | null;
   /** The closes those changes are measured against, counted back from the latest completed close. */
   referenceCloses: ReferenceCloses;
-  /** The closes a live price is measured against, counted back from meta.liveSessionDate (absent from an older API). */
-  liveReferenceCloses?: ReferenceCloses;
+  /** The closes a live price is measured against: 1D is the latest close itself; 1W / 1M / 3M / 1Y count back from meta.liveReferenceDate. */
+  liveReferenceCloses: ReferenceCloses;
   /** As of the last completed daily close — computed on the server from stored daily bars. */
   macdTrend: MacdSignal | null;
   maTrend: MaTrend | null;
@@ -58,8 +58,8 @@ export interface PricePerformanceMeta {
   expectedSessionDate: string;
   isDataCurrent: boolean;
   behindSymbols: string[];
-  /** The session a live price belongs to: today from 09:30 ET on an open day, else the last completed session. */
-  liveSessionDate?: string;
+  /** Today's Eastern date: what the live 1W / 1M / 3M / 1Y reference closes count back from. */
+  liveReferenceDate: string;
 }
 
 export interface PricePerformanceData {
