@@ -67,7 +67,10 @@ export interface PlutoStateCore {
 
 export interface PlutoReadinessResult {
   name: "IBKR" | "API sign-in" | "OpenRouter" | "Pluto running";
+  /** The test passed. */
   ok: boolean;
+  /** "fail" only when Pluto is meant to trade today; a switched-off Pluto and its failed probes are "warn". Absent on runs before 2026-10-12. */
+  status?: "ok" | "warn" | "fail";
   detail: string;
 }
 
@@ -75,7 +78,7 @@ export interface PlutoReadinessRecord {
   dateIso: string;
   lastRunAt: string;
   lastRunKind: "first" | "recheck" | "final";
-  /** Failing tests' names joined, "" when all passed. */
+  /** The names of the tests with status "fail" joined, "" when none fails. */
   signature: string;
   finalDone: boolean;
   results: PlutoReadinessResult[];

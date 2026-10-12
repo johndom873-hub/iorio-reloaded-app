@@ -1,4 +1,4 @@
-import type { DaySignalsWatchStatus, PlutoAction, PlutoActionContract, PlutoActionKind, PlutoActionOutcome, PlutoEvent, PlutoEventCategory, PlutoPass, PlutoState, PlutoSystemCheck, PlutoWorkingOrder } from "../api/pluto";
+import type { DaySignalsWatchStatus, PlutoAction, PlutoActionContract, PlutoActionKind, PlutoActionOutcome, PlutoEvent, PlutoEventCategory, PlutoPass, PlutoReadinessResult, PlutoState, PlutoSystemCheck, PlutoWorkingOrder } from "../api/pluto";
 import { plutoParameterLabelByField } from "./plutoParameters";
 import { daysToExpiry, easternIsoDate, formatBrowserClockTime, formatCurrency, formatDayMonth, formatEasternTime, formatOptionContractLabel, formatOrderSize, formatPercentageValue, formatRelativeAge, formatSignedPercentageValue, formatSignedPnl, formatRelativeTime, formatDateTime, formatStrike, pluralize, todayInEasternIso } from "./formatters";
 
@@ -118,22 +118,29 @@ export function derivePlutoStatus(state: PlutoState, now: Date, crashLoopRestart
   };
 }
 
+/** A readiness test's status; runs stored before statuses existed counted every failed test as failing. */
+export function readinessResultStatus(result: PlutoReadinessResult): "ok" | "warn" | "fail" {
+  return result.status ?? (result.ok ? "ok" : "fail");
+}
+
+const readinessMarks = { ok: "✓", warn: "⚠", fail: "✗" } as const;
+
 /** "Pre-open check 06:00 ET: IBKR ✓ · API sign-in ✓ · OpenRouter ✓ · Pluto running ✓", for today's run only; null before the first one. */
 export function readinessSummaryLine(state: PlutoState): string | null {
   const readiness = state.readiness;
   if (!readiness || readiness.dateIso !== todayInEasternIso()) return null;
-  const marks = readiness.results.map((result) => `${result.name} ${result.ok ? "✓" : "✗"}`).join(" · ");
+  const marks = readiness.results.map((result) => `${result.name} ${readinessMarks[readinessResultStatus(result)]}`).join(" · ");
   const failing = readiness.signature !== "";
   // Only a failing probe leads to a pause at 9:20 ET, and only while Pluto is running: "Pluto running" failing means it is
-  // already off or paused, so the API does not pause it again.
-  const plutoRunning = readiness.results.every((result) => result.ok || result.name !== "Pluto running");
-  const probeFailing = readiness.results.some((result) => !result.ok && result.name !== "Pluto running");
+  // already paused, so the API does not pause it again.
+  const plutoRunning = readiness.results.every((result) => readinessResultStatus(result) !== "fail" || result.name !== "Pluto running");
+  const probeFailing = readiness.results.some((result) => readinessResultStatus(result) === "fail" && result.name !== "Pluto running");
   return `Pre-open check ${formatEasternTime(readiness.lastRunAt)}: ${marks}${failing && !readiness.finalDone ? ` · re-checking every 10 min${probeFailing && plutoRunning ? ", pauses at 9:20 ET if still failing" : ""}` : ""}`;
 }
 
 /** The failing tests of today's readiness run, with their errors. */
 function readinessFailureLine(state: PlutoState): string | null {
-  const failing = state.readiness?.results.filter((result) => !result.ok) ?? [];
+  const failing = state.readiness?.results.filter((result) => readinessResultStatus(result) === "fail") ?? [];
   return failing.length > 0 ? failing.map((result) => `${result.name}: ${result.detail}`).join(" · ") : null;
 }
 
@@ -756,9 +763,11 @@ export function describeFeedEvent(event: PlutoEvent, context?: PlutoFeedContext)
     case "agent_stopped":
       return { dot: "ctl", title: "Pluto's program stopped", detail: text(payload.reason) || null, sub: null };
     case "readiness_check": {
-      const results = Array.isArray(payload.results) ? (payload.results as { name: string; ok: boolean; detail: string }[]) : [];
-      const failing = results.filter((result) => !result.ok);
+      const results = Array.isArray(payload.results) ? (payload.results as PlutoReadinessResult[]) : [];
+      const failing = results.filter((result) => readinessResultStatus(result) === "fail");
+      const warnings = results.filter((result) => readinessResultStatus(result) === "warn");
       const runLabel = text(payload.kind) === "final" ? "Final pre-open check" : "Pre-open check";
+      if (failing.length === 0 && warnings.length > 0) return { dot: "warn", title: `${runLabel} passed, with warnings`, detail: warnings.map((result) => result.name).join(", "), sub: warnings.map((result) => `${result.name}: ${result.detail}`).join(" · ") };
       if (failing.length === 0) return { dot: "look", title: `${runLabel} passed`, detail: results.map((result) => result.name).join(", "), sub: null };
       return { dot: "bad", title: `${runLabel} failed`, detail: failing.map((result) => result.name).join(", "), sub: failing.map((result) => `${result.name}: ${result.detail}`).join(" · ") };
     }
