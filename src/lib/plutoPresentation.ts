@@ -410,11 +410,14 @@ export function describeCandidateId(candidateId: string | null | undefined, asOf
   return `${parsed.symbol} Close covered Call`;
 }
 
+/** Gates that mark an action code took on its own in the round (an automatic close, a call on held shares), not the model's. */
+const automaticActionGates = new Set(["automatic_close", "automatic_held_share_call"]);
+
 /** The model's verdict for a pass: the first schema-valid call's output (Pluto makes one call per decision). */
 export function passVerdict(pass: PlutoPass) {
   const call = pass.decisions.find((decision) => decision.parsedOutput !== null) ?? pass.decisions[0] ?? null;
   const output = call?.parsedOutput ?? null;
-  const action = pass.actions.find((entry) => entry.kind !== "no_trade") ?? null;
+  const action = pass.actions.find((entry) => entry.kind !== "no_trade" && !(entry.gateResults ?? []).some((gate) => automaticActionGates.has(gate.gate))) ?? null;
   const topPick = pass.actions.find((entry) => entry.deterministicTopPick)?.deterministicTopPick ?? null;
   const failed = call !== null && call.parsedOutput === null;
   return { call, output, action, topPick, failed, error: call?.error ?? (failed ? "The model's answer could not be read" : null) };
@@ -563,6 +566,9 @@ const gateLabels: Record<string, string> = {
   limit_price: "Limit price",
   same_contract: "Same contract",
   automatic_close: "Automatic close",
+  automatic_held_share_call: "Call on held shares (code)",
+  live_quote: "Live quote",
+  break_even: "Break-even",
 };
 
 export function gateLabel(name: string): string {
