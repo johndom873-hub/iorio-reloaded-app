@@ -5,10 +5,12 @@ export interface OrderLimitsCheckParams {
   strategyKey: "covered_call" | "cash_secured_put";
   quantity: number;
   strike: number;
+  /** The option's price per share (the limit, or the mid): the order's exposure is net of the premium it sells for. */
+  premium: number;
   /** The modal's own live spot, when known — avoids an extra IBKR round trip on the backend. */
   spotPrice?: number | null;
-  /** Rolls: the strike of the leg being closed; only the strike difference adds notional. */
-  rollFromStrike?: number;
+  /** Rolls: the strike of the leg being closed and its buyback price per share; only the strike difference less the net credit adds notional. */
+  rollFrom?: { strike: number; premium: number };
 }
 
 export interface OrderLimitsResult {
@@ -25,9 +27,13 @@ export async function checkOrderLimits(params: OrderLimitsCheckParams): Promise<
     strategyKey: params.strategyKey,
     quantity: String(params.quantity),
     strike: String(params.strike),
+    premium: String(params.premium),
   });
   if (params.spotPrice) query.set("spotPrice", String(params.spotPrice));
-  if (params.rollFromStrike !== undefined) query.set("rollFromStrike", String(params.rollFromStrike));
+  if (params.rollFrom) {
+    query.set("rollFromStrike", String(params.rollFrom.strike));
+    query.set("rollFromPremium", String(params.rollFrom.premium));
+  }
   return apiRequest<OrderLimitsResult>(`/order-checks/limits?${query.toString()}`);
 }
 

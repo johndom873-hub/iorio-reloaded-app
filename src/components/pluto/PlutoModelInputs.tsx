@@ -196,11 +196,36 @@ function Flags({ flags, event }: { flags: string[] | undefined; event?: PlutoMod
   );
 }
 
-function CandidateLine({ candidate }: { candidate: PlutoModelInputContract }) {
-  const edge = [
-    candidate.edge_dollars !== undefined ? `edge ${formatCurrency(candidate.edge_dollars, 0)}` : null,
-    candidate.net_edge_vp !== undefined ? `net ${candidate.net_edge_vp.toFixed(1)} vp${candidate.edge_vp !== undefined ? ` (${candidate.edge_vp.toFixed(1)} gross)` : ""}` : null,
+/**
+ * The valuation model's figures as the model saw them (prompt v4.0 on; mockup approved 2026-10-10): edge $ and per $10k of EXP $
+ * with the margin, Edge Yield, what history says, PoP, win/loss, worst 5%, the 2σ fall, the premium, and the day basis.
+ */
+function modelFigures(contract: PlutoModelInputContract): string[] {
+  if (contract.edge_margin_pct === undefined) return [];
+  const per10k = contract.edge_dollars !== undefined && contract.dollar_risk !== undefined && contract.dollar_risk > 0 ? (contract.edge_dollars * 10_000) / contract.dollar_risk : null;
+  return [
+    contract.edge_dollars !== undefined ? `edge ${formatSignedPnl(contract.edge_dollars, 0)}${per10k !== null ? `, ${formatSignedPnl(per10k, 0)} /10k` : ""} (margin ${contract.edge_margin_pct.toFixed(0)}%)` : null,
+    contract.edge_yield_ann_pct !== undefined ? `Edge Yield ${contract.edge_yield_ann_pct}%` : null,
+    contract.hist_edge_dollars !== undefined ? `history ${formatSignedPnl(contract.hist_edge_dollars, 0)}${contract.hist_yield_ann_pct !== undefined ? `, Hist Yield ${contract.hist_yield_ann_pct}%` : ""}` : null,
+    contract.pop_pct !== undefined ? `PoP ${contract.pop_pct}%` : null,
+    contract.avg_win !== undefined && contract.avg_loss !== undefined ? `win ${formatSignedPnl(contract.avg_win, 0)} / loss ${formatSignedPnl(contract.avg_loss, 0)}` : null,
+    contract.worst5_avg !== undefined ? `worst 5% ${formatSignedPnl(contract.worst5_avg, 0)}` : null,
+    contract.stress_2sd !== undefined ? `2σ fall ${formatSignedPnl(contract.stress_2sd, 0)}` : null,
+    contract.premium_after_costs !== undefined ? `premium ${formatCurrency(contract.premium_after_costs, 0)}${contract.premium_yield_ann_pct !== undefined ? `, ${contract.premium_yield_ann_pct}%/yr` : ""}` : null,
+    contract.sessions_to_expiry !== undefined ? `${contract.sessions_to_expiry.toFixed(2)} trading days${contract.implied_vol !== undefined ? `, IV ${contract.implied_vol.toFixed(1)}%` : ""}` : null,
   ].filter((piece): piece is string => Boolean(piece));
+}
+
+function CandidateLine({ candidate }: { candidate: PlutoModelInputContract }) {
+  const model = modelFigures(candidate);
+  // Before prompt v4.0 the model saw the old Edge in volatility points.
+  const edge =
+    model.length > 0
+      ? model
+      : [
+          candidate.edge_dollars !== undefined ? `edge ${formatCurrency(candidate.edge_dollars, 0)}` : null,
+          candidate.net_edge_vp !== undefined ? `net ${candidate.net_edge_vp.toFixed(1)} vp${candidate.edge_vp !== undefined ? ` (${candidate.edge_vp.toFixed(1)} gross)` : ""}` : null,
+        ].filter((piece): piece is string => Boolean(piece));
   return (
     <div className="pm-seen-line num">
       <StrategyBadge kind={candidate.kind as PlutoActionKind} contract={null} />
@@ -221,7 +246,11 @@ function openedByPiece(openedBy: string | undefined): string | null {
 function RollLine({ roll }: { roll: PlutoModelInputRoll }) {
   const replacement = roll.replacement;
   const pieces = [
-    roll.net_roll_edge_dollars !== undefined ? `net roll edge ${formatCurrency(roll.net_roll_edge_dollars, 0)}${roll.net_roll_edge_vp !== undefined ? ` (${roll.net_roll_edge_vp.toFixed(1)} vp)` : ""}` : null,
+    roll.roll_edge_margin_pct !== undefined
+      ? `net roll ${formatSignedPnl(roll.net_roll_edge_dollars ?? 0, 0)} (${[roll.per_contract !== undefined ? `${formatSignedPnl(roll.per_contract, 0)}/contract` : null, `margin ${roll.roll_edge_margin_pct.toFixed(0)}%`].filter(Boolean).join(", ")})`
+      : roll.net_roll_edge_dollars !== undefined
+        ? `net roll edge ${formatCurrency(roll.net_roll_edge_dollars, 0)}${roll.net_roll_edge_vp !== undefined ? ` (${roll.net_roll_edge_vp.toFixed(1)} vp)` : ""}`
+        : null,
     roll.net_credit_per_share !== undefined ? `net credit ${roll.net_credit_per_share.toFixed(2)}/sh` : null,
     roll.delta_change !== undefined ? `Δ change ${formatSignedNumber(roll.delta_change)}` : null,
     ...contractFigures(replacement),
@@ -281,7 +310,8 @@ function CloseOfferLine({ action }: { action: PlutoModelInputCloseAction }) {
     action.ask !== undefined ? `ask ${action.ask.toFixed(2)}${action.entry_credit !== undefined ? `, sold at ${action.entry_credit.toFixed(2)}` : ""}` : null,
     action.pnl_at_ask !== undefined ? `locks ${formatCurrency(action.pnl_at_ask, 0)} at the ask` : null,
     ...eventPieces,
-    action.hold_edge_dollars !== undefined && action.close_cost_dollars !== undefined ? `hold edge ${formatCurrency(action.hold_edge_dollars, 0)} vs close cost ${formatCurrency(action.close_cost_dollars, 0)}` : null,
+    action.hold_value_dollars !== undefined && action.close_cost_dollars !== undefined ? `hold value ${formatCurrency(action.hold_value_dollars, 0)} vs close cost ${formatCurrency(action.close_cost_dollars, 0)}` : null,
+    action.hold_value_dollars === undefined && action.hold_edge_dollars !== undefined && action.close_cost_dollars !== undefined ? `hold edge ${formatCurrency(action.hold_edge_dollars, 0)} vs close cost ${formatCurrency(action.close_cost_dollars, 0)}` : null,
     openedByPiece(action.opened_by),
   ].filter((piece): piece is string => Boolean(piece));
   return (

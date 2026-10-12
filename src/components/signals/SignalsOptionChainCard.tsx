@@ -43,7 +43,7 @@ const phoneLayoutQuery = "(max-width: 991.98px)";
 
 /** Chain cell as displayed: a candidate takes the live-scored bid/ask/delta/grade when the modal has it. */
 function displayedCell(cell: SignalsChainCell, liveCandidate: SignalCandidate | undefined): { bid: number | null; ask: number | null; delta: number | null; grade: SignalGrade | null } {
-  if (cell.state === "candidate" && liveCandidate) return { bid: liveCandidate.bid, ask: liveCandidate.ask, delta: liveCandidate.delta, grade: liveCandidate.grade };
+  if (cell.state === "candidate" && liveCandidate) return { bid: liveCandidate.bid, ask: liveCandidate.ask, delta: liveCandidate.delta, grade: liveCandidate.model?.grade ?? null };
   return { bid: cell.bid, ask: cell.ask, delta: cell.delta, grade: cell.grade };
 }
 

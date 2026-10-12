@@ -9,6 +9,8 @@ interface TooltipSpanProps {
   style?: CSSProperties;
   /** Element to render — defaults to "span". Used for table header/cell tooltip targets (e.g. "th", "td"). */
   as?: "span" | "div" | "td" | "th";
+  /** Table cells only: how many columns it spans. */
+  colSpan?: number;
 }
 
 // Generic tooltip-carrying wrapper for spots where a tooltip target sits
@@ -17,11 +19,11 @@ interface TooltipSpanProps {
 // see FlashingNumber.tsx's doc comment for the same constraint. Each
 // TooltipSpan instance is its own component instance, so the hook call
 // inside it is safe to use from a loop or table-cell render callback.
-export function TooltipSpan({ text, children, className, style, as = "span" }: TooltipSpanProps) {
+export function TooltipSpan({ text, children, className, style, as = "span", colSpan }: TooltipSpanProps) {
   const ref = useTooltip<HTMLElement>(text);
   const Tag = as;
   return (
-    <Tag ref={ref as Ref<never>} className={className} style={style} tabIndex={text ? 0 : undefined}>
+    <Tag ref={ref as Ref<never>} className={className} style={style} tabIndex={text ? 0 : undefined} {...(colSpan !== undefined ? { colSpan } : {})}>
       {children}
     </Tag>
   );

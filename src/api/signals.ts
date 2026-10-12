@@ -34,6 +34,49 @@ export type SignalsPriceSource = "live" | "frozen" | "snapshot";
 /** live = a pooled IBKR line (modal / screen best line), day = the Day Signals refresh loop, snapshot = the 10:00 ET capture. */
 export type SignalQuoteSource = "live" | "day" | "snapshot";
 
+/**
+ * One contract's value to a seller under the valuation model (API contractValuation.ts / signalCandidates.ts; model review,
+ * approved 2026-10-10). Dollar figures are per contract; yields are yearly rates on capitalAtRiskDollars (EXP $, net of the
+ * premium) over calendarYears. A covered call's risk figures count the shares with the call.
+ */
+export interface CandidateModelScore {
+  fairPrice: number;
+  /** 1 − fair ÷ mid, before costs: what the grade is cut on. */
+  edgeMargin: number;
+  /** Edge $: expected P&L held to expiry, after costs. */
+  expectedPnlDollars: number;
+  calibratedEdgeMargin: number;
+  /** Hist Edge $: what history says such a sale earned. */
+  calibratedExpectedPnlDollars: number;
+  /** Edge Yield (0.25 = 25% a year). */
+  expectedAnnualizedReturn: number;
+  /** Hist Yield. */
+  calibratedAnnualizedReturn: number;
+  probabilityOfProfit: number;
+  averageWinDollars: number;
+  averageLossDollars: number;
+  /** Worst 5%: the average of the worst one-in-twenty outcomes. */
+  expectedShortfallDollars: number;
+  /** The stock down 2σ by expiry. */
+  stressPnlDollars: number;
+  premiumAfterCostsDollars: number;
+  premiumYield: number;
+  pnlVarianceDollars: number;
+  coveredPositionPnlVarianceDollars: number | null;
+  capitalAtRiskDollars: number;
+  /** The YZ21 forecast, annualized on trading days. */
+  forecastVolatility: number;
+  /** Trading days of variance left (the day basis), today's remainder included. */
+  varianceSessions: number;
+  calendarYears: number;
+  grade: SignalGrade;
+  /** The contract's own mid as a volatility on the day basis. */
+  impliedVolatility: number | null;
+  valuedAtIso: string;
+  forward: number;
+  spot: number;
+}
+
 export interface SignalCandidate {
   strategyKey: SignalStrategyKey;
   expiry: string;
@@ -65,7 +108,10 @@ export interface SignalCandidate {
   quotedAt: string | null;
   flags: SignalFlag[];
   executable: boolean;
+  /** The old net-Edge grade (phasing out); the valuation model's grade is model.grade. */
   grade: SignalGrade;
+  /** The valuation model's figures (what Pluto acts on); null when it could not value the contract. */
+  model: CandidateModelScore | null;
 }
 
 // Roll Signals (Formula 3j, approved 2026-09-24): every open short option leg scored as a contract to keep,
@@ -104,6 +150,8 @@ export interface HeldLegScore {
   quotedAt: string | null;
   flags: RollSignalFlag[];
   unscoredReason: HeldLegUnscoredReason | null;
+  /** The valuation model's view of the held leg; null when it could not value it. */
+  model: { valuation: CandidateModelScore; holdValueDollars: number; closeCostDollars: number } | null;
 }
 
 export interface RollSignalCandidate {
@@ -124,7 +172,10 @@ export interface RollSignalCandidate {
   dollarRiskChange: number;
   flags: RollSignalFlag[];
   warnings: RollSignalWarning[];
+  /** The old net roll Edge grade (phasing out); the model's is model.grade. */
   grade: SignalGrade;
+  /** The valuation model's roll (what Pluto acts on): net roll $ per contract and across the held quantity, the roll's edge margin and grade. */
+  model: { netExpectedPnlPerContract: number; netExpectedPnl: number; edgeMargin: number; grade: SignalGrade } | null;
 }
 
 export interface ElevatedVolatilityFlag {
@@ -177,7 +228,11 @@ export interface TickerSignals {
   nextEarningsDateIso: string | null;
   macroEvents: MacroEvent[];
   atmImpliedVolatility: number | null;
+  /** The same at-the-money variance on the day basis (trading days), comparable with modelForecast. */
+  atmImpliedVolatilityPerSession: number | null;
   forecast: { volatility: number; windowDays: number } | null;
+  /** The valuation model's forecast (21-day Yang-Zhang, annualized on trading days). */
+  modelForecast: { perSessionVariance: number; annualizedVolatility: number; windowDays: number } | null;
   dailyBarCount: number;
   dividendCadenceUnknown: boolean;
   caveats: RoadmapItem[];

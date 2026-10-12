@@ -52,7 +52,7 @@ export interface Position {
   realizedPremiumPnl: string;
   /** realizedPnl's stock-leg-only component. Always "0" for CSP (no stock leg). */
   realizedStockPnl: string;
-  /** Entry-time capital committed: stock cost for covered calls, strike collateral for CSPs. Null if unavailable. */
+  /** Entry-time capital committed, net of the premium received: stock cost less the open call's premium for covered calls, strike collateral less the premium for CSPs. Null if unavailable. */
   capitalAtRisk: string | null;
   /** Base for P&L %: capitalAtRisk plus the shares already sold in closed slices of a position that still holds shares. */
   capitalDeployed: string | null;

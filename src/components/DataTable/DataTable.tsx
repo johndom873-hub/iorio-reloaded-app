@@ -12,6 +12,22 @@ export interface DataTableColumn<TRow> {
   align?: "left" | "right" | "center";
   /** Full-text tooltip for an abbreviated header (e.g. header: "Avg Vol", headerTitle: "Average Option Volume"). */
   headerTitle?: string;
+  /** A group heading shared by adjacent columns, drawn in a row above the headers (one cell per run of visible columns). */
+  group?: { label: string; className?: string; title?: string };
+  /** Extra class on the column's body cells (e.g. a tinted group). */
+  cellClassName?: string;
+}
+
+/** Adjacent visible columns with the same group label, as header cells; ungrouped runs get one blank cell. */
+function groupHeaderCells<TRow>(columns: DataTableColumn<TRow>[]): { key: string; label: string; className?: string; title?: string; span: number }[] {
+  const cells: { key: string; label: string; className?: string; title?: string; span: number }[] = [];
+  for (const column of columns) {
+    const label = column.group?.label ?? "";
+    const last = cells[cells.length - 1];
+    if (last && last.label === label) last.span += 1;
+    else cells.push({ key: column.key, label, className: column.group?.className, title: column.group?.title, span: 1 });
+  }
+  return cells;
 }
 
 interface DataTableProps<TRow> {
@@ -78,6 +94,15 @@ export function DataTable<TRow>({
       <div className="table-responsive" style={maxBodyHeight ? { maxHeight: maxBodyHeight, overflowY: "auto" } : undefined}>
         <table className="table table-sm table-hover table-vcenter card-table" style={dense ? { fontSize: "0.8rem" } : undefined}>
           <thead className="table-light" style={maxBodyHeight ? { position: "sticky", top: 0, zIndex: 1 } : undefined}>
+            {visibleColumns.some((column) => column.group) && (
+              <tr className="data-table-group-row">
+                {groupHeaderCells(visibleColumns).map((cell) => (
+                  <TooltipSpan as="th" key={`group-${cell.key}`} colSpan={cell.span} text={cell.title} className={cell.label ? cell.className : undefined}>
+                    {cell.label}
+                  </TooltipSpan>
+                ))}
+              </tr>
+            )}
             <tr>
               {visibleColumns.map((column, index) => {
                 const isLastColumn = index === visibleColumns.length - 1;
@@ -139,7 +164,7 @@ export function DataTable<TRow>({
                   onClick={onRowClick ? () => onRowClick(row) : undefined}
                 >
                   {visibleColumns.map((column) => (
-                    <td key={column.key} className={alignClassName(column.align)}>
+                    <td key={column.key} className={[alignClassName(column.align), column.cellClassName].filter(Boolean).join(" ") || undefined}>
                       {column.render(row)}
                     </td>
                   ))}

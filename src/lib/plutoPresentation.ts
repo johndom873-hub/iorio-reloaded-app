@@ -1,6 +1,6 @@
 import type { DaySignalsWatchStatus, PlutoAction, PlutoActionContract, PlutoActionKind, PlutoActionOutcome, PlutoEvent, PlutoEventCategory, PlutoPass, PlutoState, PlutoSystemCheck, PlutoWorkingOrder } from "../api/pluto";
 import { plutoParameterLabelByField } from "./plutoParameters";
-import { daysToExpiry, easternIsoDate, formatBrowserClockTime, formatCurrency, formatDayMonth, formatEasternTime, formatOptionContractLabel, formatOrderSize, formatRelativeAge, formatRelativeTime, formatDateTime, formatStrike, pluralize, todayInEasternIso } from "./formatters";
+import { daysToExpiry, easternIsoDate, formatBrowserClockTime, formatCurrency, formatDayMonth, formatEasternTime, formatOptionContractLabel, formatOrderSize, formatPercentageValue, formatRelativeAge, formatSignedPercentageValue, formatSignedPnl, formatRelativeTime, formatDateTime, formatStrike, pluralize, todayInEasternIso } from "./formatters";
 
 // Presentation rules for the Pluto screen (redesign approved 2026-10-06): one status at a time, plain-language
 // wording for orders, decisions and the activity feed. Pure functions so the components stay declarative.
@@ -437,10 +437,41 @@ export function describeChosenAction(pass: PlutoPass): string {
   return parsed?.kind === "open" ? label.replace(`${parsed.symbol} `, `${parsed.symbol} Sell `) : label;
 }
 
-/** How the model's pick compares with the deterministic Edge $ top pick. */
+/** "Hist Yield 23%" on rows that carry it (2026-10-12 on), else the older "$N per contract". */
+export function describeTopPickFigure(topPick: { edgeDollars: number; calibratedAnnualizedReturn?: number }): string {
+  return topPick.calibratedAnnualizedReturn !== undefined ? `Hist Yield ${formatSignedPercentageValue(topPick.calibratedAnnualizedReturn * 100, 0)}` : `$${Math.round(topPick.edgeDollars)} per contract`;
+}
+
+/** The valuation model's figures for the decided contract, from the stored candidate scores; null on rows that predate the model. */
+export function describeDecisionModelFigures(scores: Record<string, unknown> | null): { text: string; grade: string } | null {
+  const model = scores && typeof scores.model === "object" && scores.model !== null ? (scores.model as Record<string, unknown>) : null;
+  if (!model || typeof model.grade !== "string") return null;
+  const number = (key: string) => (typeof model[key] === "number" ? (model[key] as number) : null);
+  // A roll's model block: net roll $ across the held quantity and per contract, and the roll's margin.
+  const netRoll = number("netExpectedPnl");
+  if (netRoll !== null) {
+    const perContract = number("netExpectedPnlPerContract");
+    const margin = number("edgeMargin");
+    return { grade: model.grade, text: [`net roll ${formatSignedPnl(netRoll, 0)}${perContract !== null ? ` (${formatSignedPnl(perContract, 0)}/contract)` : ""}`, margin !== null ? `roll margin ${formatPercentageValue(margin * 100, 0)}` : null].filter(Boolean).join(" · ") };
+  }
+  const edge = number("expectedPnlDollars");
+  const exposure = number("capitalAtRiskDollars");
+  const margin = number("edgeMargin");
+  const edgeYield = number("expectedAnnualizedReturn");
+  const histYield = number("calibratedAnnualizedReturn");
+  const pieces = [
+    edge !== null && exposure !== null && exposure > 0 ? `Edge ${formatSignedPnl((edge * 10_000) / exposure, 0)} /10k` : edge !== null ? `Edge ${formatSignedPnl(edge, 0)} per contract` : null,
+    margin !== null ? `margin ${formatPercentageValue(margin * 100, 0)}` : null,
+    edgeYield !== null ? `Edge Yield ${formatSignedPercentageValue(edgeYield * 100, 0)}` : null,
+    histYield !== null ? `Hist Yield ${formatSignedPercentageValue(histYield * 100, 0)}` : null,
+  ].filter(Boolean);
+  return { grade: model.grade, text: pieces.join(" · ") };
+}
+
+/** How the model's pick compares with the deterministic top pick (highest Hist Yield since prompt v4.0). */
 export function describeTopPickComparison(pass: PlutoPass): { tone: "ok" | "warn" | "muted"; text: string } {
   const { output, topPick, action } = passVerdict(pass);
-  if (!output || output.decision !== "trade") return { tone: "muted", text: topPick ? `Top was ${describeCandidateId(topPick.id, pass.startedAt)}, $${Math.round(topPick.edgeDollars)}` : "No top pick" };
+  if (!output || output.decision !== "trade") return { tone: "muted", text: topPick ? `Top was ${describeCandidateId(topPick.id, pass.startedAt)}, ${describeTopPickFigure(topPick)}` : "No top pick" };
   if (action && (action.kind === "roll" || action.kind === "close_leg" || action.kind === "close_shares")) return { tone: "muted", text: `No open top pick (${action.kind === "roll" ? "roll" : "close"})` };
   if (!topPick) return { tone: "muted", text: "No top pick" };
   if (topPick.id === output.candidate_id) return { tone: "ok", text: "Same pick" };
@@ -657,9 +688,9 @@ export function describeFeedEvent(event: PlutoEvent, context?: PlutoFeedContext)
     case "model_failed":
       return { dot: "bad", title: "Model call failed", detail: null, sub: text(payload.error) || null };
     case "no_trade": {
-      const topPick = payload.deterministicTopPick as { id?: string; edgeDollars?: number } | null;
+      const topPick = payload.deterministicTopPick as { id?: string; edgeDollars?: number; calibratedAnnualizedReturn?: number } | null;
       const fallback = isAbstainVerdict(text(payload.verdict)) ? "the model abstained" : "nothing worth trading";
-      return { dot: "look", title: "No order", detail: topPick?.id ? `Edge $ top pick was ${describeCandidateId(topPick.id, at)} ($${Math.round(topPick.edgeDollars ?? 0)})` : fallback, sub: Array.isArray(payload.reasons) ? (payload.reasons as string[]).join(" ") : null };
+      return { dot: "look", title: "No order", detail: topPick?.id ? `Top pick was ${describeCandidateId(topPick.id, at)} (${describeTopPickFigure({ edgeDollars: topPick.edgeDollars ?? 0, calibratedAnnualizedReturn: topPick.calibratedAnnualizedReturn })})` : fallback, sub: Array.isArray(payload.reasons) ? (payload.reasons as string[]).join(" ") : null };
     }
     case "action_validated":
       return { dot: "look", title: "Order checks passed", detail: eventAction ? describeOrderLine(eventAction, Number(payload.limitPrice ?? 0)) : `${describeCandidateId(text(payload.candidateId), at)} · ${text(payload.quantity)}× @ ${Number(payload.limitPrice ?? 0).toFixed(2)}`, sub: null };

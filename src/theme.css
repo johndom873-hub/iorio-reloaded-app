@@ -949,6 +949,62 @@
   max-height: 100%;
 }
 
+/* DataTable column groups: the small heading row above grouped columns. */
+.data-table-group-row th {
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  padding-top: 0.35rem;
+  padding-bottom: 0.35rem;
+  border-bottom: 0;
+}
+
+/* Signals: the valuation model's column group (mockup approved 2026-10-10), a faint blue band in both themes.
+   Header text #0b4f78 on #e8f2f9 is 8.4:1; #a5dcfb on #1e3a52 is 8.0:1. Body cells keep the table's text colour. */
+.data-table-group-row th.signals-model-group {
+  background-color: #e8f2f9;
+  color: #0b4f78;
+}
+:root[data-bs-theme="dark"] .data-table-group-row th.signals-model-group {
+  background-color: #1e3a52;
+  color: #a5dcfb;
+}
+/* Table cells paint var(--tblr-table-bg), so the tint sets that variable on the cell (a plain background loses to the table rule).
+   #f9fbfd keeps text-secondary at 4.66:1 and text-danger at 4.50:1 (a deeper tint drops red below AA); the header band carries the group. */
+.signals-model-cell {
+  --tblr-table-bg: #f9fbfd;
+}
+:root[data-bs-theme="dark"] .signals-model-cell {
+  --tblr-table-bg: #22344a;
+}
+/* Signals order panel: the valuation box's faint ground (mockup approved 2026-10-10); text keeps the body colour.
+   #f9fbfd, not the mockup's #f3f7fa: that one put text-secondary at 4.49:1 and text-danger at 4.33:1, under AA. */
+.signals-valuation-box {
+  background-color: #f9fbfd;
+}
+:root[data-bs-theme="dark"] .signals-valuation-box {
+  background-color: #243041;
+}
+
+/* Signals phone cards: the model's six figures in a three-column grid (mockup approved 2026-10-10). */
+.signals-mobile-model-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.2rem 0.5rem;
+  font-size: 0.76rem;
+}
+.signals-mobile-model-label {
+  font-family: var(--tblr-font-sans-serif);
+  color: var(--tblr-secondary);
+}
+
+/* The old 63-day Edge, phasing out: a grey group heading; its cells use text-secondary. */
+.data-table-group-row th.signals-old-group,
+.data-table-group-row th.signals-day-basis-group {
+  color: var(--tblr-secondary);
+}
+
 /* Signals modal header: the live-status line sits between the title and the close button, and drops to its
    own full-width row under the title on phones so it doesn't squeeze the symbol/company name. */
 .signals-modal-live-status {

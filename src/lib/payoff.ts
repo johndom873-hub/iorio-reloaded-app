@@ -127,33 +127,37 @@ export function orderLegsToPayoffInput(legs: OrderLeg[]): PayoffLegInput[] {
   }));
 }
 
-// Approved annualized-yield formula (2026-08-20), same as the server's:
-//   annualizedYield = (premium / capitalAtRisk) * (365 / dte)
-// capitalAtRisk = spot price for a covered call (the stock you'd hold),
-// strike price for a cash-secured put (the cash you'd reserve).
-// Returns null when the inputs can't support a real number (no premium, or
-// dte/capitalAtRisk <= 0).
+// A contract's exposure (EXP $) per share, net of the premium received (Marcelo 2026-10-12), the same as the
+// server's: the strike for a cash-secured put (the cash it reserves) or the spot for a covered call (the shares it
+// holds), less the premium the sale brings in. Null when the inputs can't support a real number.
+export function computeExposurePerShare(strategyKey: StrategyKey, input: { strike: number; spotPrice: number; premium: number }): number | null {
+  const base = strategyKey === "covered_call" ? input.spotPrice : input.strike;
+  if (!(base > 0) || !(input.premium >= 0) || input.premium >= base) return null;
+  return base - input.premium;
+}
+
+// Annualized yield, same as the server's: premium ÷ the exposure net of the premium × 365 ÷ dte.
+// Returns null when the inputs can't support a real number (no premium, or dte/exposure <= 0).
 export function computeAnnualizedYield(
   strategyKey: StrategyKey,
   input: { premium: number | null; dte: number; strike: number; spotPrice: number },
 ): number | null {
   const { premium, dte, strike, spotPrice } = input;
   if (premium === null || premium <= 0 || dte <= 0) return null;
-  const capitalAtRisk = strategyKey === "covered_call" ? spotPrice : strike;
-  if (!capitalAtRisk || capitalAtRisk <= 0) return null;
-  return (premium / capitalAtRisk) * (365 / dte);
+  const exposurePerShare = computeExposurePerShare(strategyKey, { strike, spotPrice, premium });
+  if (exposurePerShare === null) return null;
+  return (premium / exposurePerShare) * (365 / dte);
 }
 
-// Same definition already established for Positions'
-// capitalAtRisk (stock entry cost for a covered call, strike collateral for
-// a CSP) -- computed here from the order's own proposed legs since an
-// unconfirmed order has no stored capitalAtRisk field the way a real
-// Position does.
+// Same definition as Positions' capitalAtRisk (EXP $): the shares bought less the call's premium on them for a
+// covered call, the strike collateral less the premium for a CSP -- computed here from the order's own proposed
+// legs (limit prices) since an unconfirmed order has no stored capitalAtRisk field the way a real Position does.
+// A covered call written on shares already held buys nothing: null.
 export function computeCapitalAtRiskFromOrderLegs(strategyKey: StrategyKey, legs: OrderLeg[]): number | null {
+  const optionLeg = legs.find((leg) => leg.role === "option");
   if (strategyKey === "covered_call") {
     const stockLeg = legs.find((leg) => leg.role === "stock");
-    return stockLeg ? stockLeg.unitPrice * stockLeg.quantity : null;
+    return stockLeg ? stockLeg.quantity * (stockLeg.unitPrice - (optionLeg?.unitPrice ?? 0)) : null;
   }
-  const putLeg = legs.find((leg) => leg.role === "option");
-  return putLeg && putLeg.strike !== undefined ? putLeg.strike * putLeg.quantity * 100 : null;
+  return optionLeg && optionLeg.strike !== undefined ? (optionLeg.strike - optionLeg.unitPrice) * optionLeg.quantity * 100 : null;
 }

@@ -197,7 +197,7 @@ export function PositionCard({
           );
         })()}
         {position.capitalAtRisk !== null && (
-          <TooltipSpan className="small position-stat" text="Capital committed to this position — stock cost for covered calls, strike collateral for cash-secured puts — and, in brackets, its share of total account value (positions + cash)">
+          <TooltipSpan className="small position-stat" text="Capital committed to this position — the shares' cost for covered calls, the strike collateral for cash-secured puts, less the premium received — and, in brackets, its share of total account value (positions + cash)">
             <span className="position-stat-label">EXP $:</span> {formatCurrency(Number(position.capitalAtRisk), 0)}
             {totalAccountValue !== null && <> ({formatPercentageValue((Number(position.capitalAtRisk) / totalAccountValue) * 100, 1)})</>}
           </TooltipSpan>

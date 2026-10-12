@@ -125,7 +125,7 @@ export interface PlutoSettings {
   orderSizePctOfBudget: number;
   minCashReservePct: number;
   minGrade: "strong" | "good" | "weak";
-  minEdgeDollars: number;
+  minEdgeYieldPct: number;
   maxAbsDelta: number;
   minDte: number;
   maxDte: number;
@@ -146,7 +146,7 @@ export interface PlutoSettings {
   windowEndEt: string;
   dailyLossBreakerPct: number;
   spyStressBreakerPct: number;
-  maxEdgeDriftVp: number;
+  maxEdgeMarginDriftPts: number;
   tickerCooldownMinutes: number;
   maxFillSlippagePct: number;
   modelId: string;
@@ -221,7 +221,20 @@ export interface PlutoAction {
   tickerId: string | null;
   contract: PlutoActionContract | null;
   candidateScores: Record<string, unknown> | null;
-  deterministicTopPick: { id: string; edgeDollars: number; netEdge: number; grade: string } | null;
+  /**
+   * The highest-Hist-Yield eligible open. edgeDollars is the valuation model's expected P&L per contract since prompt v4.0 (the old
+   * Edge $ on earlier rows); the yields, EXP $ and the runner-up are on rows from 2026-10-12.
+   */
+  deterministicTopPick: {
+    id: string;
+    edgeDollars: number;
+    grade: string;
+    edgeMargin?: number;
+    calibratedAnnualizedReturn?: number;
+    expectedAnnualizedReturn?: number;
+    capitalAtRiskDollars?: number;
+    runnerUp?: { id: string; calibratedAnnualizedReturn: number } | null;
+  } | null;
   gateResults: PlutoGateResult[];
   sizeTier: "full" | "half" | null;
   quantity: number | null;
@@ -339,6 +352,20 @@ export interface PlutoModelInputContract {
   flags?: string[];
   /** Prompt v3.8 on. */
   event?: PlutoModelInputEvent;
+  // The valuation model's figures (prompt v4.0 on; the yield names from 2026-10-12): per contract, yields in % a year.
+  sessions_to_expiry?: number;
+  implied_vol?: number;
+  edge_margin_pct?: number;
+  hist_edge_dollars?: number;
+  edge_yield_ann_pct?: number;
+  hist_yield_ann_pct?: number;
+  pop_pct?: number;
+  avg_win?: number;
+  avg_loss?: number;
+  worst5_avg?: number;
+  stress_2sd?: number;
+  premium_after_costs?: number;
+  premium_yield_ann_pct?: number;
 }
 
 export interface PlutoModelInputRoll {
@@ -350,6 +377,9 @@ export interface PlutoModelInputRoll {
   quantity?: number;
   net_roll_edge_vp?: number;
   net_roll_edge_dollars?: number;
+  /** Prompt v4.0 on: the model's net roll $ per contract and the roll's edge margin. */
+  per_contract?: number;
+  roll_edge_margin_pct?: number;
   net_credit_per_share?: number;
   delta_change?: number;
   grade?: string;
@@ -372,6 +402,8 @@ export interface PlutoModelInputCloseAction {
   dte?: number;
   ask?: number;
   entry_credit?: number;
+  /** The valuation model's hold value per contract (since 2026-10-10); hold_edge_dollars on earlier rows. */
+  hold_value_dollars?: number;
   hold_edge_dollars?: number;
   close_cost_dollars?: number;
   pnl_at_ask?: number;
@@ -538,6 +570,30 @@ export function fetchPlutoState(): Promise<PlutoState> {
 
 export function updatePlutoMode(mode: PlutoMode): Promise<PlutoStateCore> {
   return apiRequest<PlutoStateCore>("/pluto/mode", { method: "PUT", body: JSON.stringify({ mode }) });
+}
+
+/** What Pluto's sizing gate would cap one contract at (display only; backend routes/pluto.ts POST /pluto/sizing-caps). */
+export interface PlutoSizingCaps {
+  kelly: { contracts: number; detail: string };
+  /** null: the stress cap is off or never binds for this contract. */
+  stress: { contracts: number | null; detail: string };
+  netLiquidationValue: number;
+  /** The date of the account value the caps were sized against (last night's). */
+  accountValueDateIso: string;
+}
+
+export interface PlutoSizingCapsRequest {
+  strategyKey: "covered_call" | "cash_secured_put";
+  strike: number;
+  bid: number;
+  ask: number;
+  spotPrice: number | null;
+  model: { calibratedExpectedPnlDollars: number; pnlVarianceDollars: number; coveredPositionPnlVarianceDollars: number | null; varianceSessions: number };
+  ticker: { forecastVolatility: number | null; elevatedVolatility: boolean; dayChangePercent: number | null };
+}
+
+export function fetchPlutoSizingCaps(request: PlutoSizingCapsRequest): Promise<PlutoSizingCaps> {
+  return apiRequest<PlutoSizingCaps>("/pluto/sizing-caps", { method: "POST", body: JSON.stringify(request) });
 }
 
 export function pausePluto(cancelWorkingOrders: boolean): Promise<PlutoStateCore> {

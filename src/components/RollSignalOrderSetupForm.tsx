@@ -5,6 +5,8 @@ import type { HeldLegScore, RollSignalCandidate, TickerSignals, UnscoredSignalCo
 import { checkOrderLimits } from "../api/orderChecks";
 import { FLASH_DURATION_MS, flashClassName, useFlashOnChange } from "../hooks/useFlashOnChange";
 import { formatCurrency, formatCurrencyTrimmed, formatDate, formatPercentage, formatQuotePrice, formatSignedPnl, formatVolatilityPoints } from "../lib/formatters";
+import { computeExposurePerShare } from "../lib/payoff";
+import { RollValuationCard } from "./signals/ModelValuationCard";
 import { describeHeldLeg, describeNonLiveQuoteBlock, describeRollSignalFlag, describeRollSignalWarning, describeSignalFlag, gradeBadgeClass, gradeLabel, heldLegUnscoredReasonLabel, netRollEdgeExplanation, rollFlagLetter, signalFlagLetter } from "../lib/signalsPresentation";
 import { Spinner } from "./Spinner";
 import { OrderCommissionRows } from "./OrderCommissionRows";
@@ -87,9 +89,9 @@ export function RollSignalOrderSetupForm({ symbol, signals, roll, unscoredReplac
   const isDebit = netCreditAtMid < 0;
   const netWord = isDebit ? "debit" : "credit";
   const netMoney = (perShare: number, decimals?: number) => formatCurrency(isDebit ? -perShare : perShare, decimals);
-  // Without a Signals score the replacement's capital base is strike×100 (put) or spot×100 (call), less the premium it brings in.
-  const replacementCapitalBase = isCall ? (spotPrice ?? 0) * 100 : target.strike * 100;
-  const replacementDollarRisk = replacement ? replacement.dollarRisk : replacementCapitalBase - replacementMid;
+  // EXP $ per contract of the new leg (the Signals score's, else computed the same way): strike (put) or spot (call), less its premium.
+  const replacementExposurePerShare = computeExposurePerShare(held.strategyKey, { strike: target.strike, spotPrice: spotPrice ?? 0, premium: replacementMid });
+  const replacementDollarRisk = replacement ? replacement.dollarRisk : replacementExposurePerShare === null ? null : replacementExposurePerShare * 100;
   // Both legs go out at their mids; the expected fill gives up the Risk & Limits share of both half-spreads (the
   // way from the mid credit to the worst case), the same assumption the net roll Edge is scored with.
   const netCreditExpected = netCreditAtMid - (netCreditAtMid - netCreditWorst) * signals.spreadShareCharged;
@@ -100,7 +102,7 @@ export function RollSignalOrderSetupForm({ symbol, signals, roll, unscoredReplac
   const decayed = Math.abs(decay) >= rollDecayWarningVolatilityPoints / 100;
   const netRollEdgeFlash = useFlashOnChange(roll?.netRollEdge ?? 0, FLASH_DURATION_MS, 3);
   const realisedOnHeldLeg = (held.entryPrice - heldMid) * 100 * quantity;
-  const capitalAtRiskAfter = (replacementDollarRisk + replacementMid) * quantity; // strike×100 (CSP) or spot×100 (CC) per contract
+  const capitalAtRiskAfter = replacementDollarRisk === null ? null : replacementDollarRisk * quantity; // net of the new leg's premium, as Positions counts it
 
   // One IBKR what-if for the whole two-leg combo (re-asked only when the legs change, never on a price tick); the
   // expected premium is the expected net credit, so a roll whose credit barely covers the commission warns.
@@ -115,16 +117,20 @@ export function RollSignalOrderSetupForm({ symbol, signals, roll, unscoredReplac
         ]
       : null;
   const commissionPreview = useOrderCommissionPreview(commissionPreviewLegs);
+  // The limit check reads both legs' prices when it runs, without re-running on every price tick.
+  const rollPricesForLimitsRef = useRef({ premium: replacementLimitForPreview, buyback: heldLimitForPreview });
+  rollPricesForLimitsRef.current = { premium: replacementLimitForPreview, buyback: heldLimitForPreview };
 
   // The blocking order limits, re-checked against the backend with the roll rule (only the
-  // strike difference adds notional). Cosmetic: POST /orders/:id/confirm is the real gate.
+  // strike difference less the net credit adds notional). Cosmetic: POST /orders/:id/confirm is the real gate.
   const [orderLimitsResult, setOrderLimitsResult] = useState<OrderLimitsResult | null>(null);
   const limitsDebounceRef = useRef<number | null>(null);
   useEffect(() => {
     if (limitsDebounceRef.current !== null) window.clearTimeout(limitsDebounceRef.current);
     limitsDebounceRef.current = window.setTimeout(() => {
       // No spot price: a roll's notional never uses it (only the strike difference counts), and passing it re-ran the check on every price tick.
-      checkOrderLimits({ symbol, strategyKey: held.strategyKey, quantity, strike: target.strike, rollFromStrike: held.strike })
+      const prices = rollPricesForLimitsRef.current;
+      checkOrderLimits({ symbol, strategyKey: held.strategyKey, quantity, strike: target.strike, premium: prices.premium, rollFrom: { strike: held.strike, premium: prices.buyback } })
         .then(setOrderLimitsResult)
         .catch(() => setOrderLimitsResult(null));
     }, orderLimitsDebounceMs);
@@ -239,12 +245,19 @@ export function RollSignalOrderSetupForm({ symbol, signals, roll, unscoredReplac
         Rolls the whole leg: {quantity} contract{quantity === 1 ? "" : "s"} close, {quantity} open, as one IBKR combo at a net {netWord} limit.
       </div>
 
+      {roll && replacement && <RollValuationCard roll={roll} held={held} replacement={replacement} quantity={quantity} />}
+      {roll && replacement && !roll.model && (
+        <div className="alert alert-secondary mb-0 py-2" style={{ fontSize: "0.85rem" }}>
+          The valuation model could not value this roll, so Pluto would not act on it. The old roll Edge is below.
+        </div>
+      )}
+
       {roll && replacement && gradeForExpected ? (
       <div className="border rounded p-3">
         <div className="d-flex justify-content-between align-items-center gap-2">
           <div>
             <div className="text-secondary text-uppercase" style={{ fontSize: "0.68rem", fontWeight: 700, letterSpacing: "0.06em" }}>
-              Roll signal
+              Old roll Edge (63-day)
             </div>
             <span className={`h3 mb-0 font-mono ${roll.netRollEdge > 0 ? "text-success" : "text-danger"} ${flashClassName(netRollEdgeFlash)}`}>{formatVolatilityPoints(roll.netRollEdge)}</span>{" "}
             <span className="text-secondary" style={{ fontSize: "0.8rem" }}>

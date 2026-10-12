@@ -3,7 +3,7 @@ import { ApiError } from "../api/client";
 import { buildOpenOrder, type AdaptivePriority, type OrderRequest } from "../api/positions";
 import type { SignalQuoteSource, SignalStrategyKey } from "../api/signals";
 import { checkOrderLimits } from "../api/orderChecks";
-import { computeAnnualizedYield, computePayoff } from "../lib/payoff";
+import { computeAnnualizedYield, computeExposurePerShare, computePayoff } from "../lib/payoff";
 import { formatCurrency, formatDateTime, formatPercentage, formatQuotePrice, formatSignedPnl } from "../lib/formatters";
 import { describeCandidate, describeNonLiveQuoteBlock, quoteSourceLabel } from "../lib/signalsPresentation";
 import { useTooltip } from "../hooks/useTooltip";
@@ -88,7 +88,9 @@ export function ChainContractOrderSetupForm({ symbol, contract, freeShares, spot
   const limitPriceValid = limitPriceInput.trim() !== "" && Number.isFinite(limitPrice) && limitPrice > 0;
   const premiumTotal = limitPriceValid ? limitPrice * 100 * quantity : null;
   const annualizedYield = limitPriceValid && spotPrice !== null ? computeAnnualizedYield(contract.strategyKey, { premium: limitPrice, dte: contract.dte, strike: contract.strike, spotPrice }) : null;
-  const capitalAtRisk = isCall ? (spotPrice === null ? null : spotPrice * 100 * quantity) : contract.strike * 100 * quantity;
+  // EXP $ at the limit price, net of the premium: the same as Positions will show once it fills.
+  const exposurePerShareAtLimit = limitPriceValid ? computeExposurePerShare(contract.strategyKey, { strike: contract.strike, spotPrice: spotPrice ?? 0, premium: limitPrice }) : null;
+  const capitalAtRisk = exposurePerShareAtLimit === null ? null : exposurePerShareAtLimit * 100 * quantity;
   // Expiration payoff at the limit price (same computePayoff as SignalOrderSetupForm): a covered call buys the shares at spot in the same order.
   const payoff =
     !limitPriceValid || (isCall && spotPrice === null)
@@ -111,19 +113,25 @@ export function ChainContractOrderSetupForm({ symbol, contract, freeShares, spot
   const commissionPreview = useOrderCommissionPreview(commissionPreviewLegs);
 
   // Same debounced order-limits check as SignalOrderSetupForm (cosmetic: confirm re-checks server-side, so a failed check fails open).
+  // It needs the limit price (the exposure is net of the premium); the price is typed, not live, so it re-checks on edits only.
   const [orderLimitsResult, setOrderLimitsResult] = useState<OrderLimitsResult | null>(null);
   const limitsDebounceRef = useRef<number | null>(null);
+  const premiumForLimits = limitPriceValid ? limitPriceForPreview : null;
   useEffect(() => {
     if (limitsDebounceRef.current !== null) window.clearTimeout(limitsDebounceRef.current);
+    if (premiumForLimits === null) {
+      setOrderLimitsResult(null);
+      return;
+    }
     limitsDebounceRef.current = window.setTimeout(() => {
-      checkOrderLimits({ symbol, strategyKey: contract.strategyKey, quantity, strike: contract.strike, spotPrice: isCall ? spotPrice : null })
+      checkOrderLimits({ symbol, strategyKey: contract.strategyKey, quantity, strike: contract.strike, premium: premiumForLimits, spotPrice: isCall ? spotPrice : null })
         .then(setOrderLimitsResult)
         .catch(() => setOrderLimitsResult(null));
     }, orderLimitsDebounceMs);
     return () => {
       if (limitsDebounceRef.current !== null) window.clearTimeout(limitsDebounceRef.current);
     };
-  }, [symbol, contract.strategyKey, contract.strike, quantity, spotPrice, isCall]);
+  }, [symbol, contract.strategyKey, contract.strike, quantity, premiumForLimits, spotPrice, isCall]);
 
   const nonLiveQuoteBlock = describeNonLiveQuoteBlock("This contract", contract.quoteSource);
   const blockingReasons = [...(nonLiveQuoteBlock ? [nonLiveQuoteBlock] : []), ...(orderLimitsResult?.blocked ? orderLimitsResult.reasons : [])];

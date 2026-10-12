@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import { usePlutoEnabledSymbols } from "../hooks/usePlutoEnabledSymbols";
 import { fetchNextTickerCalendarEvents, type NextTickerCalendarEvents } from "../api/calendarEvents";
 import { ApiError } from "../api/client";
-import { fetchSignalContractScore, fetchSignalsChain, fetchTickerSignals, openSignalsQuotesStream, openSignalsTickerStream, type HeldLegScore, type MacroEvent, type RollSignalCandidate, type ScoredSignalContract, type SignalCandidate, type SignalContractScore, type SignalsChain, type SignalsChainCellState, type SignalsQuotesFrame, type SignalStrategyKey, type TickerSignals, type UnscoredSignalContract } from "../api/signals";
+import { fetchSignalContractScore, fetchSignalsChain, fetchTickerSignals, openSignalsQuotesStream, openSignalsTickerStream, type HeldLegScore, type MacroEvent, type RollSignalCandidate, type ScoredSignalContract, type SignalCandidate, type SignalGrade, type SignalContractScore, type SignalsChain, type SignalsChainCellState, type SignalsQuotesFrame, type SignalStrategyKey, type TickerSignals, type UnscoredSignalContract } from "../api/signals";
 import { useVisibleLiveContracts } from "../hooks/useVisibleLiveContracts";
 import { openTickerDetailStream, type MacdSignal, type PriceBar, type TickerOverview, type TickerTechnicals } from "../api/tickerDetail";
 import { useTickerPositions } from "../hooks/useTickerPositions";
@@ -13,7 +13,7 @@ import { SignalOrderSetupForm } from "./SignalOrderSetupForm";
 import { ChainContractOrderSetupForm } from "./ChainContractOrderSetupForm";
 import { SignalsOptionChainCard, type ChainContractRef } from "./signals/SignalsOptionChainCard";
 import { formatCompactNumber, formatCurrency, formatCurrencyTrimmed, formatDate, formatDateTime, formatNumber, formatPercentage, formatPercentageValue, formatSignedPercentageValue, formatSignedPnl, formatVolatilityPoints, pnlTextClass } from "../lib/formatters";
-import { candidateContractKey, describeHeldLeg, describeSupportResistanceLevel, describeNoCandidatesMessage, describeQuoteAgeRange, describeRollSignalFlag, describeSignalFlag, gradeBadgeClass, gradeExplanation, gradeLabel, heldLegUnscoredReasonLabel, netRollEdgeExplanation, quoteSourceLabel, rollFlagLetter, signalContractKey, signalFlagLetter, surfaceIvTrustClass, describeNoSignalBadge, restScoresFallbackMs } from "../lib/signalsPresentation";
+import { candidateContractKey, compareCandidatesByModel, compareRollsByModel, dollarsPerTenThousandOfExposure, modelColumnExplanation, modelGradeExplanation, describeHeldLeg, describeSupportResistanceLevel, describeNoCandidatesMessage, describeQuoteAgeRange, describeRollSignalFlag, describeSignalFlag, gradeBadgeClass, gradeExplanation, gradeLabel, heldLegUnscoredReasonLabel, netRollEdgeExplanation, quoteSourceLabel, rollFlagLetter, signalContractKey, signalFlagLetter, surfaceIvTrustClass, describeNoSignalBadge, restScoresFallbackMs } from "../lib/signalsPresentation";
 import { IvHistoryChart } from "./charts/IvHistoryChart";
 import { TickerPriceChart } from "./charts/TickerPriceChart";
 import { CollapsibleCard } from "./CollapsibleCard";
@@ -66,12 +66,35 @@ const noCreditRollNotice = "No credit roll to a lower-delta contract passes the 
 const notInSignalsUniverseNotice = "Not in the Signals universe — not on the shortlist and no open short option. Signals scores appear once it's shortlisted.";
 const rollKey = (roll: RollSignalCandidate) => `${roll.legId}|${candidateContractKey(roll.replacement)}`;
 
-function RollGradeBadge({ roll }: { roll: RollSignalCandidate }) {
-  const ref = useTooltip<HTMLSpanElement>(netRollEdgeExplanation);
+/** The valuation model's grade (what Pluto acts on); "Not valued" when the model could not value the contract or roll. */
+function ModelGradeBadge({ grade, explanation }: { grade: SignalGrade | null; explanation: string }) {
+  const ref = useTooltip<HTMLSpanElement>(grade ? explanation : "The valuation model could not value it, so Pluto would not act on it.");
   return (
-    <span ref={ref} className={`badge ${gradeBadgeClass[roll.grade]}`} style={badgeFontSize} tabIndex={0}>
-      {gradeLabel[roll.grade]}
+    <span ref={ref} className={`badge ${grade ? gradeBadgeClass[grade] : "bg-secondary-lt"}`} style={badgeFontSize} tabIndex={0}>
+      {grade ? gradeLabel[grade] : "Not valued"}
     </span>
+  );
+}
+
+const rollModelExplanation = "The roll's grade, from its edge margin. Net roll $ = the new leg's Edge $ − what holding the current leg is still worth − the cost to close it, per contract and across the held quantity.";
+
+/** A model dollar figure, signed and coloured; "—" when absent. */
+function SignedDollars({ value }: { value: number | null | undefined }) {
+  if (value === null || value === undefined) return <span className="font-mono text-secondary">—</span>;
+  return (
+    <FlashingNumber value={value} precision={0} className={`font-mono ${pnlTextClass(value)}`}>
+      {formatSignedPnl(value, 0)}
+    </FlashingNumber>
+  );
+}
+
+/** A model yearly rate as a signed whole percent, coloured; "—" when absent. */
+function SignedYield({ value }: { value: number | null | undefined }) {
+  if (value === null || value === undefined) return <span className="font-mono text-secondary">—</span>;
+  return (
+    <FlashingNumber value={value} precision={2} className={`font-mono ${pnlTextClass(value)}`}>
+      {formatSignedPercentageValue(value * 100, 0)}
+    </FlashingNumber>
   );
 }
 
@@ -95,7 +118,9 @@ function RollFlagBadges({ roll, held }: { roll: RollSignalCandidate; held: HeldL
 const liveContractsSettleMs = 300;
 
 function HeldLegRolls({ held, rolls, showAvoid, selectedRollKey, disabled, onSelect }: { held: HeldLegScore; rolls: RollSignalCandidate[]; showAvoid: boolean; selectedRollKey: string | null; disabled: boolean; onSelect: (roll: RollSignalCandidate) => void }) {
-  const shown = showAvoid ? rolls : rolls.filter((roll) => roll.grade !== "avoid");
+  // Pluto's order and grade (the valuation model's); a roll the model could not value counts with Avoid.
+  const ordered = [...rolls].sort(compareRollsByModel);
+  const shown = showAvoid ? ordered : ordered.filter((roll) => roll.model !== null && roll.model.grade !== "avoid");
   const hiddenAvoid = rolls.length - shown.length;
   const heldKey = signalContractKey({ expiry: held.expiry, strike: held.strike, right: held.right });
   return (
@@ -104,7 +129,33 @@ function HeldLegRolls({ held, rolls, showAvoid, selectedRollKey, disabled, onSel
         <span>
           Short <strong>{describeHeldLeg(held)}</strong> · {held.quantity} contract{held.quantity === 1 ? "" : "s"} · sold at {formatCurrency(held.entryPrice)}
         </span>
-        {held.unscoredReason ? (
+        {held.model ? (
+          <span className="text-secondary">
+            <span className="text-nowrap">
+              Hold value <span className={`font-mono ${pnlTextClass(held.model.holdValueDollars)}`}>{formatSignedPnl(held.model.holdValueDollars, 0)}</span> per contract
+            </span>{" "}
+            · <span className="text-nowrap">
+              vs close cost <span className="font-mono">{formatCurrency(held.model.closeCostDollars, 0)}</span>
+            </span>{" "}
+            · <span className="text-nowrap">
+              Δ <span className="font-mono">{held.delta === null ? "—" : held.delta.toFixed(2)}</span>
+            </span>
+            {held.edge !== null && (
+              <>
+                {" "}
+                · <span className="text-nowrap">
+                  old: edge of holding <span className="font-mono">{formatVolatilityPoints(held.edge)}</span>
+                </span>
+              </>
+            )}
+            {held.flags.length > 0 && rolls.length > 0 && (
+              <>
+                {" "}
+                · <RollFlagBadges roll={{ ...rolls[0]!, flags: held.flags } as RollSignalCandidate} held={held} />
+              </>
+            )}
+          </span>
+        ) : held.unscoredReason ? (
           <span className="text-secondary">Not scored: {heldLegUnscoredReasonLabel[held.unscoredReason]}</span>
         ) : (
           <span className="text-secondary">
@@ -128,7 +179,7 @@ function HeldLegRolls({ held, rolls, showAvoid, selectedRollKey, disabled, onSel
       </div>
       {shown.length === 0 ? (
         <div className="text-secondary px-2 py-1" style={{ fontSize: "0.78rem" }}>
-          {held.unscoredReason ? "" : hiddenAvoid > 0 ? `No roll with positive net roll Edge right now (${hiddenAvoid} Avoid hidden).` : "No credit roll to a lower-delta contract right now."}
+          {held.unscoredReason && !held.model ? "" : hiddenAvoid > 0 ? `No roll the valuation model grades above Avoid right now (${hiddenAvoid} hidden).` : "No credit roll to a lower-delta contract right now."}
         </div>
       ) : (
         <div className="table-responsive">
@@ -137,13 +188,14 @@ function HeldLegRolls({ held, rolls, showAvoid, selectedRollKey, disabled, onSel
               <tr>
                 <th></th>
                 <th>Roll to</th>
-                <th className="text-center">Grade</th>
-                <th className="text-end">Net Edge new</th>
-                <th className="text-end">Net roll Edge</th>
-                <th className="text-end">$</th>
+                <TooltipSpan as="th" className="text-center" text={rollModelExplanation}>Grade</TooltipSpan>
+                <TooltipSpan as="th" className="text-end" text="The roll's edge margin: the new leg's margin after what holding the current leg is still worth.">Roll margin</TooltipSpan>
+                <TooltipSpan as="th" className="text-end" text="Net roll $ across the held quantity.">Net roll $</TooltipSpan>
+                <th className="text-end">Per contract</th>
                 <th className="text-end">Net credit</th>
                 <th className="text-end">Δ new</th>
                 <th className="text-end">DTE</th>
+                <TooltipSpan as="th" className="text-end" text={netRollEdgeExplanation}>Old net roll Edge</TooltipSpan>
                 <th className="text-center">Flags</th>
               </tr>
             </thead>
@@ -154,7 +206,7 @@ function HeldLegRolls({ held, rolls, showAvoid, selectedRollKey, disabled, onSel
                 // A roll's price needs both legs: closing the held one and opening the replacement.
                 const liveKeys = `${heldKey},${signalContractKey({ expiry: roll.replacement.expiry, strike: roll.replacement.strike, right: isCall ? "C" : "P" })}`;
                 return (
-                  <tr key={key} data-live-contracts={liveKeys} className={[selectedRollKey === key ? "table-active" : "", roll.grade === "avoid" ? "text-secondary" : ""].filter(Boolean).join(" ") || undefined} style={{ cursor: disabled ? undefined : "pointer" }} onClick={disabled ? undefined : () => onSelect(roll)}>
+                  <tr key={key} data-live-contracts={liveKeys} className={[selectedRollKey === key ? "table-active" : "", !roll.model || roll.model.grade === "avoid" ? "text-secondary" : ""].filter(Boolean).join(" ") || undefined} style={{ cursor: disabled ? undefined : "pointer" }} onClick={disabled ? undefined : () => onSelect(roll)}>
                     <td>
                       <input type="radio" className="form-check-input" checked={selectedRollKey === key} readOnly aria-label={`Select roll to ${describeHeldLeg({ right: isCall ? "C" : "P", strike: roll.replacement.strike, dte: roll.replacement.dte })}`} />
                     </td>
@@ -166,24 +218,19 @@ function HeldLegRolls({ held, rolls, showAvoid, selectedRollKey, disabled, onSel
                       <span className="text-secondary">{formatDate(roll.replacement.expiry)}</span>
                     </td>
                     <td className="text-center">
-                      <RollGradeBadge roll={roll} />
+                      <ModelGradeBadge grade={roll.model?.grade ?? null} explanation={rollModelExplanation} />
+                    </td>
+                    <td className="text-end font-mono">{roll.model ? formatPercentage(roll.model.edgeMargin, 0) : "—"}</td>
+                    <td className="text-end">
+                      <SignedDollars value={roll.model?.netExpectedPnl} />
                     </td>
                     <td className="text-end">
-                      <span className={`font-mono ${pnlTextClass(roll.replacement.netEdge)}`}>{formatVolatilityPoints(roll.replacement.netEdge)}</span>
-                    </td>
-                    <td className="text-end">
-                      <FlashingNumber value={roll.netRollEdge} precision={3} className={`font-mono ${pnlTextClass(roll.netRollEdge)}`}>
-                        {formatVolatilityPoints(roll.netRollEdge)}
-                      </FlashingNumber>
-                    </td>
-                    <td className="text-end">
-                      <FlashingNumber value={roll.netRollEdgeDollars} precision={0} className={`font-mono ${pnlTextClass(roll.netRollEdgeDollars)}`}>
-                        {formatSignedPnl(roll.netRollEdgeDollars, 0)}
-                      </FlashingNumber>
+                      <SignedDollars value={roll.model?.netExpectedPnlPerContract} />
                     </td>
                     <td className="text-end font-mono">{formatCurrency(roll.netCreditPerShare)}</td>
                     <td className="text-end font-mono">{formatSignedDelta(roll.replacement.delta)}</td>
                     <td className="text-end font-mono">{roll.replacement.dte}</td>
+                    <td className="text-end font-mono text-secondary">{formatVolatilityPoints(roll.netRollEdge)}</td>
                     <td className="text-center">
                       <RollFlagBadges roll={roll} held={held} />
                     </td>
@@ -195,15 +242,6 @@ function HeldLegRolls({ held, rolls, showAvoid, selectedRollKey, disabled, onSel
         </div>
       )}
     </div>
-  );
-}
-
-function GradeBadge({ candidate }: { candidate: SignalCandidate }) {
-  const ref = useTooltip<HTMLSpanElement>(gradeExplanation);
-  return (
-    <span ref={ref} className={`badge ${gradeBadgeClass[candidate.grade]}`} style={badgeFontSize} tabIndex={0}>
-      {gradeLabel[candidate.grade]}
-    </span>
   );
 }
 
@@ -534,20 +572,15 @@ export function SignalsTickerModal({ symbol, initialRollLegId = null, focusPosit
         ? `0.0vp (fewer than 5 fresh quotes: ${ivShift.quoteCount})`
         : `${formatVolatilityPoints(ivShift.shiftVolatilityPoints / 100)} from ${ivShift.quoteCount} quotes`;
 
-  const rankedCandidates = useMemo(() => (signals ? [...signals.candidates].sort((a, b) => b.edgeDollars - a.edgeDollars || b.netEdge - a.netEdge) : []), [signals]);
+  // Pluto's order: Hist Yield, then Edge $ (mockup approved 2026-10-10).
+  const rankedCandidates = useMemo(() => (signals ? [...signals.candidates].sort(compareCandidatesByModel) : []), [signals]);
   const filteredCandidates = useMemo(() => {
     const dteMatches = dteFilters.find((filter) => filter.key === dteFilter)!.matches;
     return rankedCandidates.filter((candidate) => (strategyFilter === "all" || candidate.strategyKey === strategyFilter) && dteMatches(candidate.dte));
   }, [rankedCandidates, strategyFilter, dteFilter]);
-  const shownCandidates = useMemo(() => (showAvoid ? filteredCandidates : filteredCandidates.filter((candidate) => candidate.grade !== "avoid")), [filteredCandidates, showAvoid]);
+  // Avoid is the model's grade; a contract the model could not value is hidden with them (Pluto would not act on it).
+  const shownCandidates = useMemo(() => (showAvoid ? filteredCandidates : filteredCandidates.filter((candidate) => candidate.model !== null && candidate.model.grade !== "avoid")), [filteredCandidates, showAvoid]);
   const hiddenAvoidCount = filteredCandidates.length - shownCandidates.length;
-  // Ann. Yield heatmap: quintile rank among the shown candidates, lowest yield = tier 1 (muted) to highest = tier 5 (vivid).
-  const yieldTierByKey = useMemo(() => {
-    const ranked = [...shownCandidates].sort((a, b) => a.annualizedYield - b.annualizedYield);
-    const tiers = new Map<string, number>();
-    ranked.forEach((candidate, index) => tiers.set(candidateContractKey(candidate), Math.min(5, Math.floor((index / ranked.length) * 5) + 1)));
-    return tiers;
-  }, [shownCandidates]);
   const selectedCandidate = useMemo(() => (selectedKey ? (signals?.candidates.find((candidate) => candidateContractKey(candidate) === selectedKey) ?? null) : null), [signals, selectedKey]);
   const selectedRoll = useMemo(() => (selectedRollKey ? (signals?.rolls.find((roll) => rollKey(roll) === selectedRollKey) ?? null) : null), [signals, selectedRollKey]);
   const rollModeHeldLeg = useMemo(() => (rollModeLegId ? (signals?.heldLegs.find((leg) => leg.legId === rollModeLegId) ?? null) : null), [signals, rollModeLegId]);
@@ -779,29 +812,14 @@ export function SignalsTickerModal({ symbol, initialRollLegId = null, focusPosit
           </span>
         ),
       },
-      { key: "grade", header: "Grade", align: "center", headerTitle: gradeExplanation, render: (row) => <GradeBadge candidate={row} /> },
-      {
-        key: "netEdge",
-        header: "Net Edge",
-        align: "right",
-        headerTitle: "Surface IV at the strike minus forecast volatility minus friction, in volatility points",
-        render: (row) => (
-          <FlashingNumber value={row.netEdge} precision={3} className={`font-mono ${pnlTextClass(row.netEdge)}`}>
-            {formatVolatilityPoints(row.netEdge)}
-          </FlashingNumber>
-        ),
-      },
-      {
-        key: "edgeDollars",
-        header: "Edge $",
-        align: "right",
-        headerTitle: "Net Edge x vega x 100: the excess premium in dollars per contract",
-        render: (row) => (
-          <FlashingNumber value={row.edgeDollars} precision={0} className={`font-mono ${pnlTextClass(row.edgeDollars)}`}>
-            {formatSignedPnl(row.edgeDollars, 0)}
-          </FlashingNumber>
-        ),
-      },
+      { key: "grade", header: "Grade", align: "center", headerTitle: modelGradeExplanation, render: (row) => <ModelGradeBadge grade={row.model?.grade ?? null} explanation={modelGradeExplanation} /> },
+      { key: "edgeMargin", header: "Edge margin", align: "right", headerTitle: modelColumnExplanation.margin, render: (row) => <span className="font-mono">{row.model ? formatPercentage(row.model.edgeMargin, 0) : "—"}</span> },
+      { key: "edgePer10k", header: "Edge $ /10k", align: "right", headerTitle: modelColumnExplanation.edgePer10k, render: (row) => <SignedDollars value={row.model ? dollarsPerTenThousandOfExposure(row.model.expectedPnlDollars, row.model.capitalAtRiskDollars) : null} /> },
+      { key: "edgeYield", header: "Edge Yield", align: "right", headerTitle: modelColumnExplanation.edgeYield, render: (row) => <SignedYield value={row.model?.expectedAnnualizedReturn} /> },
+      { key: "histYield", header: "Hist Yield", align: "right", headerTitle: modelColumnExplanation.histYield, render: (row) => <SignedYield value={row.model?.calibratedAnnualizedReturn} /> },
+      { key: "pop", header: "PoP", align: "right", headerTitle: modelColumnExplanation.pop, render: (row) => <span className="font-mono">{row.model ? formatPercentage(row.model.probabilityOfProfit, 0) : "—"}</span> },
+      { key: "worstPer10k", header: "Worst 5% /10k", align: "right", headerTitle: modelColumnExplanation.worstPer10k, render: (row) => <SignedDollars value={row.model ? dollarsPerTenThousandOfExposure(row.model.expectedShortfallDollars, row.model.capitalAtRiskDollars) : null} /> },
+      { key: "premiumYield", header: "Premium yield", align: "right", headerTitle: modelColumnExplanation.premiumYield, render: (row) => <span className="font-mono">{row.model ? formatPercentage(row.model.premiumYield, 0) : "—"}</span> },
       { key: "friction", header: "Friction", align: "right", headerTitle: "The Risk & Limits spread cost share of the half-spread, plus commission, in volatility points", render: (row) => <span className="font-mono text-secondary">{formatVolatilityPoints(row.frictionVolatility).replace("+", "")}</span> },
       {
         key: "iv",
@@ -859,11 +877,17 @@ export function SignalsTickerModal({ symbol, initialRollLegId = null, focusPosit
             </TooltipSpan>
           ),
       },
-      { key: "yield", header: "Ann. yield", align: "right", render: (row) => <span className={`font-mono heat-yield-${yieldTierByKey.get(candidateContractKey(row)) ?? 1}`}>{formatPercentage(row.annualizedYield, 0)}</span> },
+      {
+        key: "oldNetEdge",
+        header: "Old net Edge",
+        align: "right",
+        headerTitle: `${gradeExplanation} Net Edge = surface IV at the strike minus the 63-day forecast minus friction, in volatility points.`,
+        render: (row) => <span className="font-mono text-secondary">{formatVolatilityPoints(row.netEdge)}</span>,
+      },
       { key: "uncompensated", header: "Drift", align: "right", headerTitle: "Share of P&L variance from delta drift (UncompensatedShare)", render: (row) => <span className="font-mono text-secondary">{row.uncompensatedSharePercent === null ? "…" : `${row.uncompensatedSharePercent.toFixed(0)}%`}</span> },
       { key: "flags", header: "Flags", align: "center", render: (row) => <FlagBadges candidate={row} macroEvents={signals?.macroEvents ?? []} /> },
     ],
-    [yieldTierByKey],
+    [signals],
   );
   const opportunityRows = useMemo(() => shownCandidates.map((candidate, index) => ({ ...(liveCandidatesByKey.get(candidateContractKey(candidate)) ?? candidate), rank: index + 1 })), [shownCandidates, liveCandidatesByKey]);
 
@@ -906,7 +930,7 @@ export function SignalsTickerModal({ symbol, initialRollLegId = null, focusPosit
           return;
         }
         // Sell Call on held shares: the best covered call graded above Avoid, else the chain on its Calls side.
-        const bestCall = rankedCandidates.find((candidate) => candidate.strategyKey === "covered_call" && candidate.grade !== "avoid");
+        const bestCall = rankedCandidates.find((candidate) => candidate.strategyKey === "covered_call" && candidate.model !== null && candidate.model.grade !== "avoid");
         if (bestCall) {
           selectCandidate(bestCall);
           setChainNotice(null);
@@ -978,12 +1002,16 @@ export function SignalsTickerModal({ symbol, initialRollLegId = null, focusPosit
               )}
               {signals && (
                 <div className="d-flex flex-wrap align-items-center gap-3 mb-3" style={{ fontSize: "0.8rem" }}>
-                  <SignalMetric label="ATM IV (30d)" value={formatPercentage(signals.atmImpliedVolatility, 1)} />
-                  <SignalMetric label={`Forecast RV (${signals.forecast?.windowDays ?? 63}d)`} value={formatPercentage(signals.forecast?.volatility, 1)} />
+                  <SignalMetric
+                    label="ATM IV (30d, day basis)"
+                    value={formatPercentage(signals.atmImpliedVolatilityPerSession, 1)}
+                    valueClassName={signals.atmImpliedVolatilityPerSession !== null && signals.modelForecast ? pnlTextClass(signals.atmImpliedVolatilityPerSession - signals.modelForecast.annualizedVolatility) : ""}
+                  />
+                  <SignalMetric label="Forecast (21-day)" value={formatPercentage(signals.modelForecast?.annualizedVolatility, 1)} />
                   <SignalMetric
                     label="IV − forecast"
-                    value={signals.atmImpliedVolatility !== null && signals.forecast ? formatVolatilityPoints(signals.atmImpliedVolatility - signals.forecast.volatility) : "—"}
-                    valueClassName={signals.atmImpliedVolatility !== null && signals.forecast ? pnlTextClass(signals.atmImpliedVolatility - signals.forecast.volatility) : ""}
+                    value={signals.atmImpliedVolatilityPerSession !== null && signals.modelForecast ? formatVolatilityPoints(signals.atmImpliedVolatilityPerSession - signals.modelForecast.annualizedVolatility) : "—"}
+                    valueClassName={signals.atmImpliedVolatilityPerSession !== null && signals.modelForecast ? pnlTextClass(signals.atmImpliedVolatilityPerSession - signals.modelForecast.annualizedVolatility) : ""}
                   />
                   <SignalMetric label={`Intraday IV shift${effectiveExpiry ? ` (${formatDate(effectiveExpiry)})` : ""}`} value={ivShiftValue} />
                   <SignalMetric
@@ -997,6 +1025,9 @@ export function SignalsTickerModal({ symbol, initialRollLegId = null, focusPosit
                   <SignalMetric label="Cash free" value={formatCurrency(signals.freeCash, 0)} />
                   <span className="ms-auto">
                     <ModelCaveatBadge symbol={symbol} caveats={signals.caveats} />
+                  </span>
+                  <span className="w-100 text-secondary" style={{ fontSize: "0.75rem" }}>
+                    Old Edge basis: ATM IV {formatPercentage(signals.atmImpliedVolatility, 1)} (calendar days) · forecast {formatPercentage(signals.forecast?.volatility, 1)} ({signals.forecast?.windowDays ?? 63}-day) · shown until retired
                   </span>
                 </div>
               )}
@@ -1028,7 +1059,7 @@ export function SignalsTickerModal({ symbol, initialRollLegId = null, focusPosit
                             Your positions
                           </span>
                           <span className="text-secondary" style={{ fontSize: "0.75rem" }}>
-                            credit rolls to a lower-delta contract, graded on net roll Edge; click a roll to set up the order
+                            credit rolls to a lower-delta contract, graded on the roll's edge margin; net roll $ = the new leg's Edge $ − what holding is still worth − the cost to close. Click a roll to set up the order.
                           </span>
                         </div>
                         <div className="card-body py-2">
@@ -1047,9 +1078,9 @@ export function SignalsTickerModal({ symbol, initialRollLegId = null, focusPosit
                         rows={opportunityRows}
                         rowKey={(row) => candidateContractKey(row)}
                         rowAttributes={(row) => ({ "data-live-contracts": candidateContractKey(row) })}
-                        emptyMessage={hiddenAvoidCount > 0 ? `No candidate has positive net Edge right now. Tick "Show Avoid" to see the ${hiddenAvoidCount} hidden.` : signals.noCandidatesReason ? describeNoCandidatesMessage(signals.noCandidatesReason) : "No candidates match the filters."}
+                        emptyMessage={hiddenAvoidCount > 0 ? `No candidate the valuation model grades above Avoid right now. Tick "Show Avoid" to see the ${hiddenAvoidCount} hidden.` : signals.noCandidatesReason ? describeNoCandidatesMessage(signals.noCandidatesReason) : "No candidates match the filters."}
                         onRowClick={selectCandidate}
-                        rowClassName={(row) => [candidateContractKey(row) === selectedKey ? "table-active" : "", row.grade === "avoid" ? "text-secondary" : ""].filter(Boolean).join(" ") || undefined}
+                        rowClassName={(row) => [candidateContractKey(row) === selectedKey ? "table-active" : "", !row.model || row.model.grade === "avoid" ? "text-secondary" : ""].filter(Boolean).join(" ") || undefined}
                         toolbar={
                           <div className="d-flex flex-wrap align-items-center gap-2 w-100" style={{ fontSize: "0.8rem" }}>
                             <span className="text-secondary text-uppercase fw-bold" style={{ fontSize: "0.72rem", letterSpacing: "0.06em" }}>
@@ -1070,14 +1101,14 @@ export function SignalsTickerModal({ symbol, initialRollLegId = null, focusPosit
                               <span className="form-check-label">Show Avoid ({hiddenAvoidCount} hidden)</span>
                             </label>
                             <span className="text-secondary ms-auto">
-                              {uncompensatedAsOf && <>Delta drift as of {formatCurrency(uncompensatedAsOf.spotPrice)} · </>}
+                              ranked by Hist Yield, as Pluto ranks · {uncompensatedAsOf && <>Delta drift as of {formatCurrency(uncompensatedAsOf.spotPrice)} · </>}
                               quotes: <span className="font-mono">{signals.quoteSourceCounts.live} live</span> · <span className="font-mono">{signals.quoteSourceCounts.day} day</span> · <span className="font-mono">{signals.quoteSourceCounts.snapshot} snapshot</span>
                             </span>
                           </div>
                         }
                         afterTable={
                           <div className="card-footer text-secondary" style={{ fontSize: "0.75rem" }}>
-                            * quote from the 10:00 ET snapshot. Live quotes stream only for the contracts on screen; every other pooled contract shows the Day Signals loop's latest quote with its age.
+                            * quote from the 10:00 ET snapshot. Live quotes stream only for the contracts on screen; every other pooled contract shows the Day Signals loop's latest quote with its age. /10k = per $10,000 of EXP $ (net of the premium). Grade, margin, Edge $, yields, PoP and Worst 5% are the valuation model's; Old net Edge is the 63-day measure, until retired.
                           </div>
                         }
                       />

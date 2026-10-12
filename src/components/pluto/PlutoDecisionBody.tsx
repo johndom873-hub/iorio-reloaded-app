@@ -1,7 +1,7 @@
 import { Link } from "react-router-dom";
 import type { PlutoPass, PlutoState } from "../../api/pluto";
 import { formatCurrency } from "../../lib/formatters";
-import { checkLabel, checksAndGatesSummary, describeCandidateId, formatModelCost, orderedChecks, sentenceCase, describeChosenAction, describeTopPickComparison, formatExposure, gateLabel, passVerdict, verdictKind } from "../../lib/plutoPresentation";
+import { checkLabel, checksAndGatesSummary, describeCandidateId, describeDecisionModelFigures, describeTopPickFigure, formatModelCost, orderedChecks, sentenceCase, describeChosenAction, describeTopPickComparison, formatExposure, gateLabel, passVerdict, verdictKind } from "../../lib/plutoPresentation";
 import { CheckIcon, CrossIcon, ExternalIcon, GradeBadge, StrategyBadge } from "./plutoBits";
 import { PlutoModelInputsToggle } from "./PlutoModelInputs";
 
@@ -46,27 +46,31 @@ export function DecisionVerdictLine({ pass }: { pass: PlutoPass }) {
 }
 
 export function ComparePanels({ pass, flush = false }: { pass: PlutoPass; flush?: boolean }) {
-  const { output, topPick } = passVerdict(pass);
+  const { output, topPick, action } = passVerdict(pass);
+  // The valuation model's figures (mockup approved 2026-10-10); rows from before the model show the old Edge $.
+  const modelFigures = describeDecisionModelFigures(action?.candidateScores ?? null);
   const figures = candidateFigures(pass);
   const comparison = describeTopPickComparison(pass);
   const chosenName = output?.decision === "trade" ? describeChosenAction(pass) : "Nothing";
+  const runnerUp = topPick?.runnerUp ?? null;
   return (
     <div className={`pm-compare${flush ? " flush" : ""}`}>
       <div>
         <div className="lbl">Model chose</div>
         <div className="val">{chosenName}</div>
         <div className="sub">
-          {figures.edgeDollars !== null ? `Edge ${formatCurrency(figures.edgeDollars, 0)} per contract` : output?.confidence !== undefined ? `Confidence ${output.confidence.toFixed(2)}` : "—"}
-          {figures.grade && <GradeBadge grade={figures.grade} />}
+          {modelFigures ? modelFigures.text : figures.edgeDollars !== null ? `Edge ${formatCurrency(figures.edgeDollars, 0)} per contract` : output?.confidence !== undefined ? `Confidence ${output.confidence.toFixed(2)}` : "—"}
+          {(modelFigures?.grade ?? figures.grade) && <GradeBadge grade={(modelFigures?.grade ?? figures.grade)!} />}
         </div>
       </div>
       <div>
-        <div className="lbl">Edge $ top pick</div>
+        <div className="lbl">{topPick?.calibratedAnnualizedReturn !== undefined ? "Top pick · highest Hist Yield" : "Edge $ top pick"}</div>
         <div className="val">{topPick ? describeCandidateId(topPick.id, pass.startedAt) : "—"}</div>
         <div className={`sub${comparison.tone === "ok" ? " t-ok" : comparison.tone === "warn" ? " t-warn" : ""}`}>
           {comparison.tone === "ok" && <CheckIcon />}
-          {comparison.tone === "ok" ? "Same as the model" : topPick ? `${formatCurrency(topPick.edgeDollars, 0)} per contract` : comparison.text}
+          {comparison.tone === "ok" ? "Same as the model" : topPick ? describeTopPickFigure(topPick) : comparison.text}
           {topPick?.grade && comparison.tone !== "ok" && <GradeBadge grade={topPick.grade} />}
+          {comparison.tone === "ok" && runnerUp && <span className="muted">· next: {describeCandidateId(runnerUp.id, pass.startedAt)}, Hist Yield {Math.round(runnerUp.calibratedAnnualizedReturn * 100)}%</span>}
         </div>
       </div>
     </div>

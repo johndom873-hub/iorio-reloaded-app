@@ -12,7 +12,47 @@ export const gradeLabel: Record<SignalGrade, string> = { strong: "Strong", good:
 // so this grade scale doesn't drift if those general-purpose semantic colors change elsewhere.
 export const gradeBadgeClass: Record<SignalGrade, string> = { strong: "badge-grade-strong", good: "badge-grade-good", weak: "badge-grade-weak", avoid: "badge-grade-avoid" };
 
-export const gradeExplanation = "Grades are fixed net Edge cut points: Strong = 10vp or more, Good = 5-10vp, Weak = 0-5vp, Avoid = net Edge at or below zero.";
+export const gradeExplanation = "Old Edge grade (63-day forecast, phasing out): fixed net Edge cut points, Strong = 10vp or more, Good = 5-10vp, Weak = 0-5vp, Avoid = net Edge at or below zero.";
+
+// ---- The valuation model's figures (mockup approved 2026-10-10; EXP $ net of the premium and yields on calendar days, 2026-10-12) ----
+
+export const modelGradeExplanation = "The valuation model's grade, from the edge margin (1 − fair value ÷ mid, before costs): Strong 30% or more, Good 20%, Weak 10%, the rest Avoid. What Pluto acts on.";
+
+/** A per-contract dollar figure per $10,000 of the contract's EXP $, so tickers of different prices compare ($8 on $20,000 of EXP $ → $4). */
+export function dollarsPerTenThousandOfExposure(dollars: number, exposureDollars: number): number | null {
+  return exposureDollars > 0 ? (dollars * 10_000) / exposureDollars : null;
+}
+
+/** Pluto's order (the API's compareCandidatesByModel): Hist Yield, then Edge $; contracts the model could not value last, by the old Edge $. */
+export function compareCandidatesByModel(a: SignalCandidate, b: SignalCandidate): number {
+  if (a.model && b.model && (a.model.calibratedAnnualizedReturn !== b.model.calibratedAnnualizedReturn || a.model.expectedPnlDollars !== b.model.expectedPnlDollars)) {
+    return b.model.calibratedAnnualizedReturn - a.model.calibratedAnnualizedReturn || b.model.expectedPnlDollars - a.model.expectedPnlDollars;
+  }
+  if (Boolean(a.model) !== Boolean(b.model)) return a.model ? -1 : 1;
+  return b.edgeDollars - a.edgeDollars || b.netEdge - a.netEdge;
+}
+
+/** Rolls in Pluto's order (the API's compareRollsByModel): the model's net roll $ across the held quantity; unvalued rolls last, by the old net roll Edge $. */
+export function compareRollsByModel(a: RollSignalCandidate, b: RollSignalCandidate): number {
+  if (a.model && b.model && a.model.netExpectedPnl !== b.model.netExpectedPnl) return b.model.netExpectedPnl - a.model.netExpectedPnl;
+  if (Boolean(a.model) !== Boolean(b.model)) return a.model ? -1 : 1;
+  return b.netRollEdgeDollars - a.netRollEdgeDollars || b.netRollEdge - a.netRollEdge;
+}
+
+/** Header tooltips and legends for the model's columns. */
+export const modelColumnExplanation = {
+  topSignal: "The ticker's best contract in Pluto's order: highest Hist Yield, then Edge $.",
+  grade: modelGradeExplanation,
+  margin: "Edge margin: how far the price is above the model's fair value, as a share of the price (1 − fair ÷ mid), before costs. It sets the grade.",
+  edgePer10k: "Edge $ per $10,000 of EXP $: the expected profit per contract held to expiry, after costs, scaled to $10,000 of exposure so tickers compare. EXP $ is the cash reserved at the strike for a put, or the shares at their price for a covered call, less the premium received.",
+  edgeYield: "Edge Yield: the expected profit as a yearly rate on EXP $, over the calendar days to expiry (weekends count: the capital is tied up).",
+  histYield: "Hist Yield: the Edge Yield after history's correction, what sales with the same margin and time left actually earned. Pluto ranks by it.",
+  pop: "Chance the sale ends in profit. A covered call counts the shares with the call, so it is judged like a cash-secured put.",
+  worstPer10k: "Worst 5% per $10,000 of EXP $: the average result of the worst one-in-twenty outcomes, scaled to $10,000 of exposure. A tail measure, not the maximum loss.",
+  premiumYield: "The premium kept after costs, as a yearly rate on EXP $ over the calendar days to expiry: income, not an expectation.",
+  dayBasisAtmIv: "At-the-money implied volatility nearest 30 days, on the day basis (trading days, like the forecast). Green when above the 21-day forecast, red when below.",
+  forecast21: "The valuation model's forecast: 21-day Yang-Zhang realized volatility, on trading days.",
+} as const;
 
 export const unscoredReasonLabel: Record<SignalsUnscoredReason, string> = {
   no_snapshot: "No chain snapshot yet",
@@ -371,18 +411,18 @@ export function describeAssignmentRisk(notification: Extract<AppNotification, { 
 export const signalsColumnExplanation = {
   price: "Live stock price (same source as the Positions table).",
   day: "Change versus the previous session's close.",
-  best: "The candidate contract with the highest Edge $ across every expiry and strike on the out-of-the-money side.",
-  yield: "Annualised yield of the Top Signal contract: mid premium / capital at risk, annualised to a 365-day year.",
+  best: modelColumnExplanation.topSignal,
+  yield: "Annualised yield of the Top Signal contract: mid premium / exposure (the strike for a put, the share price for a covered call, less the premium), annualised to a 365-day year.",
   grade: gradeExplanation,
   netEdge: "Net Edge = implied volatility at the strike (fitted surface) minus the forecast volatility minus friction (the Risk & Limits spread cost share of the half-spread, plus commission), in volatility points.",
   edgeDollars: "Net Edge x vega x 100: the excess premium in dollars per contract.",
-  atmIv: "At-the-money implied volatility from the fitted surface, expiry nearest 30 days. Coloured green when it's above FV (forecast), red when below.",
-  forecast: "Forecast realized volatility: trailing 63-day Yang-Zhang (21-day when 63 is unavailable).",
+  atmIv: modelColumnExplanation.dayBasisAtmIv,
+  forecast: modelColumnExplanation.forecast21,
   momentum: "Trailing 12-month return skipping the most recent month (12-1 momentum).",
   volFlag: "Elevated when the 21-day / 126-day volatility ratio is above this ticker's own 90th percentile (or a fixed 1.3 until a year of history exists).",
   earnings: "Next earnings date on record.",
   notAccountedFor: "Measures the ranking does not use yet, what each is waiting on, and when it should be ready.",
-  roll: "Open short legs on this ticker with a credit roll graded above Avoid; the colour is the best roll's grade. Click to review it.",
+  roll: "Open short legs on this ticker with a credit roll the valuation model grades above Avoid; the colour is the best roll's grade. Click to review it.",
   quotes: "What the best opportunity's numbers are based on: a live IBKR line, a Day Signals quote (age shown), or still the 10:00 ET snapshot quote.",
 } as const;
 

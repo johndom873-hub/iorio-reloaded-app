@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { PlutoManagedMark } from "../components/PlutoManagedMark";
 import { usePlutoEnabledSymbols } from "../hooks/usePlutoEnabledSymbols";
 import { IconAlertTriangle, IconChevronDown } from "@tabler/icons-react";
@@ -14,8 +14,8 @@ import { Spinner } from "../components/Spinner";
 import { TickColoredPrice } from "../components/TickColoredPrice";
 import { TooltipSpan } from "../components/TooltipSpan";
 import { useSignalsTickerModal } from "../hooks/useSignalsTickerModal";
-import { daysToExpiry, formatCurrency, formatDateTime, formatDaysToExpiry, formatPercentage, formatRelativeTime, formatSignedPercentageValue, formatSnapshotStamp, formatSignedPnl, formatVolatilityPoints, pnlTextClass } from "../lib/formatters";
-import { candidateContractKey, describeCandidateCompact, describeDayQuotesStatus, describeNoSignalBadge, type NoSignalBadge, gradeBadgeClass, gradeExplanation, gradeLabel, priceSourceLabel, quoteSourceLabel, roadmapStatusBadgeClass, roadmapStatusLabel, signalsColumnExplanation, restScoresFallbackMs } from "../lib/signalsPresentation";
+import { daysToExpiry, formatCurrency, formatDateTime, formatDaysToExpiry, formatPercentage, formatRelativeTime, formatSignedPercentageValue, formatSignedPnl, formatVolatilityPoints, pnlTextClass } from "../lib/formatters";
+import { candidateContractKey, describeCandidateCompact, describeDayQuotesStatus, describeNoSignalBadge, dollarsPerTenThousandOfExposure, type NoSignalBadge, gradeBadgeClass, gradeExplanation, gradeLabel, modelColumnExplanation, priceSourceLabel, quoteSourceLabel, roadmapStatusBadgeClass, roadmapStatusLabel, signalsColumnExplanation, restScoresFallbackMs } from "../lib/signalsPresentation";
 import { useTooltip } from "../hooks/useTooltip";
 import { QuoteAgeLabel } from "../components/QuoteAgeLabel";
 
@@ -29,12 +29,73 @@ type StreamState = "connecting" | "live" | "failed";
 
 const badgeFontSize = { fontSize: "0.72rem" } as const;
 
-function GradeBadge({ grade }: { grade: SignalGrade }) {
-  const ref = useTooltip<HTMLSpanElement>(gradeExplanation);
+function GradeBadge({ grade, explanation = modelColumnExplanation.grade, faded = false }: { grade: SignalGrade; explanation?: string; faded?: boolean }) {
+  const ref = useTooltip<HTMLSpanElement>(explanation);
   return (
-    <span ref={ref} className={`badge ${gradeBadgeClass[grade]}`} style={badgeFontSize} tabIndex={0}>
+    <span ref={ref} className={`badge ${gradeBadgeClass[grade]}`} style={faded ? { ...badgeFontSize, opacity: 0.8 } : badgeFontSize} tabIndex={0}>
       {gradeLabel[grade]}
     </span>
+  );
+}
+
+// The valuation model's column groups (mockup approved 2026-10-10).
+const modelGroup = { label: "Valuation model · what Pluto acts on", className: "signals-model-group", title: "The valuation model's figures for each ticker's top signal: what Pluto ranks, sizes and acts on." };
+const dayBasisGroup = { label: "Day basis", className: "signals-day-basis-group", title: "Volatilities on trading days, the basis the model compares them on." };
+const oldEdgeGroup = { label: "Old Edge · 63-day · phasing out", className: "signals-old-group", title: "The previous Edge measure (63-day forecast, volatility points), shown until it is retired." };
+const modelCell = "signals-model-cell";
+
+/** The top signal's model figures, or null when the ticker has none or the model could not value it. */
+function topModel(row: SignalsScreenRow) {
+  return row.best?.model ?? null;
+}
+
+/** A per-contract dollar figure per $10,000 of the top signal's EXP $. */
+function topPerTenThousand(row: SignalsScreenRow, pick: (model: NonNullable<ReturnType<typeof topModel>>) => number): number | null {
+  const model = topModel(row);
+  return model ? dollarsPerTenThousandOfExposure(pick(model), model.capitalAtRiskDollars) : null;
+}
+
+/**
+ * Rows in Pluto's order: the top signal's Hist Yield, highest first, at the precision shown (whole percent), so a tick that
+ * does not change the figure on screen does not move a row; ties keep the previous order. Tickers without one go last.
+ */
+function rankRowsByHistYield(rows: SignalsScreenRow[], previousOrder: Map<string, number>): SignalsScreenRow[] {
+  const shownHistYield = (row: SignalsScreenRow) => {
+    const model = topModel(row);
+    return model ? Math.round(model.calibratedAnnualizedReturn * 100) : null;
+  };
+  const indexed = rows.map((row, index) => ({ row, histYield: shownHistYield(row), previous: previousOrder.get(row.tickerId) ?? rows.length + index }));
+  indexed.sort((a, b) => (a.histYield === null ? 1 : 0) - (b.histYield === null ? 1 : 0) || (b.histYield ?? 0) - (a.histYield ?? 0) || a.previous - b.previous);
+  return indexed.map((entry) => entry.row);
+}
+
+/** A model fraction as a whole percent ("34%"); flashes only when the shown figure changes. */
+function ModelPercent({ value }: { value: number | null | undefined }) {
+  if (value === null || value === undefined) return <span className="font-mono text-secondary">—</span>;
+  return (
+    <FlashingNumber value={value} precision={2} className="font-mono">
+      {formatPercentage(value, 0)}
+    </FlashingNumber>
+  );
+}
+
+/** A yearly rate as a signed whole percent ("+40%"), green above zero and red below. */
+function ModelSignedPercent({ value }: { value: number | null | undefined }) {
+  if (value === null || value === undefined) return <span className="font-mono text-secondary">—</span>;
+  return (
+    <FlashingNumber value={value} precision={2} className={`font-mono ${pnlTextClass(value)}`}>
+      {formatSignedPercentageValue(value * 100, 0)}
+    </FlashingNumber>
+  );
+}
+
+/** Whole dollars, signed ("+$35", "−$1,119"), green above zero and red below. */
+function ModelDollars({ value }: { value: number | null }) {
+  if (value === null) return <span className="font-mono text-secondary">—</span>;
+  return (
+    <FlashingNumber value={value} precision={0} className={`font-mono ${pnlTextClass(value)}`}>
+      {formatSignedPnl(value, 0)}
+    </FlashingNumber>
   );
 }
 
@@ -54,20 +115,6 @@ function NoSignalBadgeLabel({ badge }: { badge: NoSignalBadge }) {
     <span className={`badge ${badge.className} d-inline-flex align-items-center gap-1`} style={badgeFontSize}>
       {badge.spinning && <Spinner size="sm" className="iorio-badge-spinner" />}
       {badge.label}
-    </span>
-  );
-}
-
-function VolatilityFlagBadge({ row }: { row: SignalsScreenRow }) {
-  const flag = row.elevatedVolatility;
-  const title = flag
-    ? `21-day / 126-day volatility = ${flag.ratio.toFixed(2)} vs threshold ${flag.threshold.toFixed(2)} (${flag.thresholdSource === "own_p90" ? "this ticker's own 90th percentile" : "fixed fallback until a year of history"})`
-    : undefined;
-  const ref = useTooltip<HTMLSpanElement>(title);
-  if (!flag) return <span className="text-secondary">n/a</span>;
-  return (
-    <span ref={ref} className={`badge ${flag.elevated ? "bg-danger-lt" : "bg-secondary-lt"}`} style={badgeFontSize} tabIndex={0}>
-      {flag.elevated ? "Elevated" : "Normal"}
     </span>
   );
 }
@@ -96,6 +143,16 @@ function QuoteSourceCell({ row }: { row: SignalsScreenRow }) {
     <TooltipSpan className="font-mono text-secondary" text={row.snapshotCapturedAt ? `${formatDateTime(row.snapshotCapturedAt)} snapshot quote — this contract is not in today's refresh pool` : quoteSourceLabel.snapshot}>
       Snapshot
     </TooltipSpan>
+  );
+}
+
+/** One label/value pair of a phone card's model grid. */
+function MobileFigure({ label, value, tone = "" }: { label: string; value: string; tone?: string }) {
+  return (
+    <span>
+      <span className="signals-mobile-model-label">{label} </span>
+      <span className={tone}>{value}</span>
+    </span>
   );
 }
 
@@ -196,6 +253,14 @@ export function SignalsPage() {
     );
   }, [modalSymbol]);
 
+  // Rows in Pluto's order, kept stable between frames (see rankRowsByHistYield).
+  const previousOrderRef = useRef(new Map<string, number>());
+  const rankedRows = useMemo(() => {
+    const ranked = rankRowsByHistYield(rows, previousOrderRef.current);
+    previousOrderRef.current = new Map(ranked.map((row, index) => [row.tickerId, index]));
+    return ranked;
+  }, [rows]);
+
   const anyLivePrice = rows.some((row) => row.priceSource === "live");
   const liveStatus =
     streamState === "failed" ? { label: "Live prices unavailable — showing snapshot prices", tone: "text-danger" } : anyLivePrice ? { label: "Live prices connected", tone: "text-success" } : streamState === "live" ? { label: "Live stream connected — waiting for prices", tone: "text-secondary" } : { label: "Connecting live prices…", tone: "text-secondary" };
@@ -221,11 +286,6 @@ export function SignalsPage() {
         ),
       },
       {
-        key: "name",
-        header: "Name",
-        render: (row) => <span className="text-secondary">{row.companyName ?? "—"}</span>,
-      },
-      {
         key: "price",
         header: "Price",
         align: "right",
@@ -245,8 +305,10 @@ export function SignalsPage() {
       },
       {
         key: "best",
-        header: "Top Signal",
-        headerTitle: signalsColumnExplanation.best,
+        header: "Top signal",
+        headerTitle: modelColumnExplanation.topSignal,
+        group: modelGroup,
+        cellClassName: modelCell,
         render: (row) =>
           row.best ? (
             <FlashingText changeKey={candidateContractKey(row.best)} className="text-nowrap">
@@ -256,62 +318,51 @@ export function SignalsPage() {
             <UnscoredBadge row={row} />
           ),
       },
+      { key: "modelGrade", header: "Grade", headerTitle: modelColumnExplanation.grade, group: modelGroup, cellClassName: modelCell, render: (row) => (topModel(row) ? <GradeBadge grade={topModel(row)!.grade} /> : null) },
       {
-        key: "yield",
-        header: "Yield",
+        key: "edgeMargin",
+        header: "Edge margin",
         align: "right",
-        headerTitle: signalsColumnExplanation.yield,
-        // annualizedYield is a fraction shown as a percentage to 1 decimal, so 3 decimals of the fraction.
-        render: (row) =>
-          row.best ? (
-            <FlashingNumber value={row.best.annualizedYield} precision={3} className="font-mono">
-              {formatPercentage(row.best.annualizedYield, 1)}
-            </FlashingNumber>
-          ) : (
-            <span className="font-mono">—</span>
-          ),
+        headerTitle: modelColumnExplanation.margin,
+        group: modelGroup,
+        cellClassName: modelCell,
+        render: (row) => <ModelPercent value={topModel(row)?.edgeMargin} />,
       },
-      { key: "grade", header: "Grade", headerTitle: signalsColumnExplanation.grade, render: (row) => (row.best ? <GradeBadge grade={row.best.grade} /> : null) },
+      { key: "edgePer10k", header: "Edge $ /10k", align: "right", headerTitle: modelColumnExplanation.edgePer10k, group: modelGroup, cellClassName: modelCell, render: (row) => <ModelDollars value={topPerTenThousand(row, (model) => model.expectedPnlDollars)} /> },
+      { key: "edgeYield", header: "Edge Yield", align: "right", headerTitle: modelColumnExplanation.edgeYield, group: modelGroup, cellClassName: modelCell, render: (row) => <ModelSignedPercent value={topModel(row)?.expectedAnnualizedReturn} /> },
+      { key: "histYield", header: "Hist Yield", align: "right", headerTitle: modelColumnExplanation.histYield, group: modelGroup, cellClassName: modelCell, render: (row) => <ModelSignedPercent value={topModel(row)?.calibratedAnnualizedReturn} /> },
+      { key: "pop", header: "PoP", align: "right", headerTitle: modelColumnExplanation.pop, group: modelGroup, cellClassName: modelCell, render: (row) => <ModelPercent value={topModel(row)?.probabilityOfProfit} /> },
+      { key: "worstPer10k", header: "Worst 5% /10k", align: "right", headerTitle: modelColumnExplanation.worstPer10k, group: modelGroup, cellClassName: modelCell, render: (row) => <ModelDollars value={topPerTenThousand(row, (model) => model.expectedShortfallDollars)} /> },
+      { key: "quotes", header: "Quotes", headerTitle: signalsColumnExplanation.quotes, render: (row) => <QuoteSourceCell row={row} /> },
+      {
+        key: "atmIv",
+        header: "ATM IV",
+        align: "right",
+        headerTitle: modelColumnExplanation.dayBasisAtmIv,
+        group: dayBasisGroup,
+        render: (row) => {
+          const atm = row.atmImpliedVolatilityPerSession;
+          const forecast = row.modelForecast?.annualizedVolatility ?? null;
+          return <span className={`font-mono ${atm !== null && forecast !== null ? pnlTextClass(atm - forecast) : ""}`}>{formatPercentage(atm, 1)}</span>;
+        },
+      },
+      { key: "forecast", header: "FV 21d", align: "right", headerTitle: modelColumnExplanation.forecast21, group: dayBasisGroup, render: (row) => <span className="font-mono">{formatPercentage(row.modelForecast?.annualizedVolatility, 1)}</span> },
+      { key: "grade", header: "Grade", headerTitle: gradeExplanation, group: oldEdgeGroup, render: (row) => (row.best ? <GradeBadge grade={row.best.grade} explanation={gradeExplanation} faded /> : null) },
       {
         key: "netEdge",
         header: "Net Edge",
         align: "right",
         headerTitle: signalsColumnExplanation.netEdge,
-        render: (row) =>
-          row.best ? (
-            <FlashingNumber value={row.best.netEdge} precision={3} className={`font-mono ${pnlTextClass(row.best.netEdge)}`}>
-              {formatVolatilityPoints(row.best.netEdge)}
-            </FlashingNumber>
-          ) : null,
+        group: oldEdgeGroup,
+        render: (row) => (row.best ? <span className="font-mono text-secondary">{formatVolatilityPoints(row.best.netEdge)}</span> : null),
       },
       {
         key: "edgeDollars",
         header: "Edge $",
         align: "right",
         headerTitle: signalsColumnExplanation.edgeDollars,
-        render: (row) =>
-          row.best ? (
-            <FlashingNumber value={row.best.edgeDollars} precision={0} className={`font-mono ${pnlTextClass(row.best.edgeDollars)}`}>
-              {formatSignedPnl(row.best.edgeDollars, 0)}
-            </FlashingNumber>
-          ) : null,
-      },
-      { key: "quotes", header: "Quotes", headerTitle: signalsColumnExplanation.quotes, render: (row) => <QuoteSourceCell row={row} /> },
-      {
-        key: "atmIv",
-        header: "ATM IV",
-        align: "right",
-        headerTitle: signalsColumnExplanation.atmIv,
-        render: (row) => (
-          <span className={`font-mono ${row.atmImpliedVolatility !== null && row.forecast ? pnlTextClass(row.atmImpliedVolatility - row.forecast.volatility) : ""}`}>{formatPercentage(row.atmImpliedVolatility, 1)}</span>
-        ),
-      },
-      { key: "forecast", header: "FV", align: "right", headerTitle: signalsColumnExplanation.forecast, render: (row) => <span className="font-mono">{formatPercentage(row.forecast?.volatility, 1)}</span> },
-      {
-        key: "snapshot",
-        header: "Snapshot",
-        headerTitle: "When the option-chain snapshot behind this row's score was captured: a clock time (ET) for today's, a date for an earlier one.",
-        render: (row) => <span className={`font-mono text-nowrap ${row.snapshotCapturedAt && formatSnapshotStamp(row.snapshotCapturedAt).includes("ET") ? "" : "text-secondary"}`}>{formatSnapshotStamp(row.snapshotCapturedAt)}</span>,
+        group: oldEdgeGroup,
+        render: (row) => (row.best ? <span className="font-mono text-secondary">{formatSignedPnl(row.best.edgeDollars, 0)}</span> : null),
       },
       {
         key: "momentum",
@@ -320,7 +371,6 @@ export function SignalsPage() {
         headerTitle: signalsColumnExplanation.momentum,
         render: (row) => (row.momentum === null ? <span className="text-secondary">n/a</span> : <span className={`font-mono ${pnlTextClass(row.momentum)}`}>{formatSignedPercentageValue(row.momentum * 100, 0)}</span>),
       },
-      { key: "volFlag", header: "Vol flag", headerTitle: signalsColumnExplanation.volFlag, render: (row) => <VolatilityFlagBadge row={row} /> },
       { key: "earnings", header: "Earnings", headerTitle: signalsColumnExplanation.earnings, render: (row) => <span className="font-mono text-nowrap">{row.nextEarningsDateIso ? formatDaysToExpiry(daysToExpiry(row.nextEarningsDateIso)) : "—"}</span> },
       {
         // Badges column (2026-09-24): blank header; a "model" badge only when the ticker has a caveat of its own,
@@ -384,8 +434,8 @@ export function SignalsPage() {
   );
 
   const gradesNote = (
-    <div className="card-footer text-secondary" style={{ fontSize: "0.8rem" }}>
-      <strong>Grades</strong> are fixed net-Edge cut points: <strong>Strong</strong> 10vp or more, <strong>Good</strong> 5-10vp, <strong>Weak</strong> 0-5vp, the rest <strong>Avoid</strong>. Any contract with net Edge at or below zero is <strong>Avoid</strong>. Raw numbers are always beside the grade. Click a ticker for its full opportunity list.
+    <div className="card-footer text-secondary" style={{ fontSize: "0.8rem", lineHeight: 1.55 }}>
+      <strong>Edge margin</strong>: how far the price is above the model's fair value, as a share of the price (1 − fair ÷ mid); it sets the grade: <strong>Strong</strong> 30% or more · <strong>Good</strong> 20% · <strong>Weak</strong> 10%. <strong>Edge $ /10k</strong>: the expected profit per contract held to expiry, after costs, per $10,000 of EXP $ (the exposure: the cash reserved at the strike for a put, the shares at their price for a covered call, less the premium received). <strong>Edge Yield</strong>: that expected profit as a yearly rate on EXP $, over the calendar days left. <strong>Hist Yield</strong>: the same after history's correction, what similar sales actually earned; rows and each ticker's top signal are ranked by it, as Pluto ranks. <strong>PoP</strong>: chance the sale ends in profit. <strong>Worst 5% /10k</strong>: the average result of the worst one-in-twenty outcomes, per $10,000 of EXP $. A covered call counts the shares with the call, so it is judged like a cash-secured put. ATM IV and FV are on the day basis (trading days); ATM IV is green above FV, red below. <strong>Old Edge</strong>: the 63-day forecast in volatility points, until retired. Click a ticker for its full opportunity list.
     </div>
   );
 
@@ -397,7 +447,7 @@ export function SignalsPage() {
         <DataTable
           tableId="signals"
           columns={columns}
-          rows={rows}
+          rows={rankedRows}
           rowKey={(row) => row.tickerId}
           rowClassName={(row) => (row.unscoredReason === "analysing" ? "signals-row-analysing" : row.unscoredReason ? "signals-row-unscored" : undefined)}
           loading={loading && rows.length === 0}
@@ -414,50 +464,73 @@ export function SignalsPage() {
           {roadmapSection}
         </div>
         <div className="d-flex flex-column gap-2">
-          {rows.map((row) => (
-            <div key={row.tickerId} className="card">
-              <div className="card-body py-2">
-                <div className="d-flex justify-content-between align-items-center">
-                  <span>
-                    <button type="button" className="btn btn-link p-0 text-decoration-none fw-bold" onClick={() => openTickerModal(row.symbol)}>
+          {rankedRows.map((row) => {
+            const model = topModel(row);
+            return (
+              <div key={row.tickerId} className="card position-relative">
+                <div className="card-body py-2 d-flex flex-column gap-1">
+                  <div className="d-flex justify-content-between align-items-baseline gap-2">
+                    {/* stretched-link: the whole card opens the ticker (a 44px+ tap target, as the mockup's card link). */}
+                    <button type="button" className="btn btn-link p-0 text-decoration-none fw-bold stretched-link position-static" onClick={() => openTickerModal(row.symbol)}>
                       {row.symbol}
                       <PlutoManagedMark symbol={row.symbol} managed={plutoEnabledSymbols.has(row.symbol)} />
-                    </button>{" "}
-                    <TickColoredPrice value={row.spotPrice} initialReference={row.previousClose?.close ?? null} precision={2} title={priceSourceLabel[row.priceSource]}>
-                      <span className="font-mono">{formatCurrency(row.spotPrice)}</span>
-                    </TickColoredPrice>{" "}
-                    <span className={`font-mono ${pnlTextClass(row.dayChangePercent)}`} style={{ fontSize: "0.8rem" }}>
-                      {formatSignedPercentageValue(row.dayChangePercent, 1)}
+                    </button>
+                    <span className="font-mono" style={{ fontSize: "0.85rem" }}>
+                      <TickColoredPrice value={row.spotPrice} initialReference={row.previousClose?.close ?? null} precision={2} title={priceSourceLabel[row.priceSource]}>
+                        <span>{formatCurrency(row.spotPrice)}</span>
+                      </TickColoredPrice>{" "}
+                      <span className={pnlTextClass(row.dayChangePercent)}>{formatSignedPercentageValue(row.dayChangePercent, 1)}</span>
                     </span>
-                  </span>
-                  {row.best ? <GradeBadge grade={row.best.grade} /> : <NoSignalBadgeLabel badge={describeNoSignalBadge(row)} />}
-                </div>
-                <div className="d-flex justify-content-between gap-2 text-secondary" style={{ fontSize: "0.8rem" }}>
+                  </div>
                   {row.best ? (
                     <>
-                      <span>{describeCandidateCompact(row.best)}</span>
-                      <span className="font-mono">{formatPercentage(row.best.annualizedYield, 1)}</span>
-                      <span className={`font-mono ${pnlTextClass(row.best.netEdge)}`}>{formatVolatilityPoints(row.best.netEdge)}</span>
-                      <span className="font-mono">{formatSignedPnl(row.best.edgeDollars, 0)}</span>
+                      <div className="d-flex flex-wrap align-items-center gap-2">
+                        <span className="fw-semibold">{describeCandidateCompact(row.best)}</span>
+                        {model ? <GradeBadge grade={model.grade} /> : <GradeBadge grade={row.best.grade} explanation={gradeExplanation} faded />}
+                        {model && (
+                          <span className="font-mono" style={{ fontSize: "0.82rem" }}>
+                            <span className="signals-mobile-model-label">margin </span>
+                            {formatPercentage(model.edgeMargin, 0)}
+                          </span>
+                        )}
+                      </div>
+                      {model ? (
+                        <div className="signals-mobile-model-grid font-mono">
+                          <MobileFigure label="Edge/10k" value={formatSignedPnl(topPerTenThousand(row, (entry) => entry.expectedPnlDollars), 0)} tone={pnlTextClass(topPerTenThousand(row, (entry) => entry.expectedPnlDollars))} />
+                          <MobileFigure label="Edge Yield" value={formatSignedPercentageValue(model.expectedAnnualizedReturn * 100, 0)} tone={pnlTextClass(model.expectedAnnualizedReturn)} />
+                          <MobileFigure label="Hist Yield" value={formatSignedPercentageValue(model.calibratedAnnualizedReturn * 100, 0)} tone={pnlTextClass(model.calibratedAnnualizedReturn)} />
+                          <MobileFigure label="PoP" value={formatPercentage(model.probabilityOfProfit, 0)} />
+                          <MobileFigure label="Worst/10k" value={formatSignedPnl(topPerTenThousand(row, (entry) => entry.expectedShortfallDollars), 0)} tone={pnlTextClass(topPerTenThousand(row, (entry) => entry.expectedShortfallDollars))} />
+                          <MobileFigure label="Old" value={formatVolatilityPoints(row.best.netEdge)} tone="text-secondary" />
+                        </div>
+                      ) : (
+                        <div className="text-secondary" style={{ fontSize: "0.78rem" }}>
+                          Not valued by the model · old Edge <span className="font-mono">{formatVolatilityPoints(row.best.netEdge)}</span>
+                        </div>
+                      )}
                     </>
                   ) : (
-                    <span>{describeNoSignalBadge(row).reason}</span>
+                    <UnscoredBadge row={row} />
+                  )}
+                  <div className="d-flex justify-content-between align-items-center gap-2 text-secondary" style={{ fontSize: "0.78rem" }}>
+                    <span>Mom {row.momentum === null ? "n/a" : formatSignedPercentageValue(row.momentum * 100, 0)}</span>
+                    <span>Vol {row.elevatedVolatility ? (row.elevatedVolatility.elevated ? "elevated" : "normal") : "n/a"}</span>
+                    <QuoteSourceCell row={row} />
+                  </div>
+                  {(row.caveats.length > 0 || (row.bestRoll !== null && row.rollCount > 0)) && (
+                    // Above the stretched link, so the badges keep their own actions.
+                    <div className="d-flex justify-content-end align-items-center gap-1 position-relative" style={{ zIndex: 2 }}>
+                      <ModelCaveatBadge symbol={row.symbol} caveats={row.caveats} />
+                      <RollBadge row={row} onClick={(legId) => openTickerModal(row.symbol, { rollLegId: legId })} />
+                    </div>
                   )}
                 </div>
-                <div className="d-flex justify-content-between align-items-center gap-2 text-secondary" style={{ fontSize: "0.8rem" }}>
-                  <span>Mom {row.momentum === null ? "n/a" : formatSignedPercentageValue(row.momentum * 100, 0)}</span>
-                  <span>Vol {row.elevatedVolatility ? (row.elevatedVolatility.elevated ? "elevated" : "normal") : "n/a"}</span>
-                  <QuoteSourceCell row={row} />
-                </div>
-                {(row.caveats.length > 0 || (row.bestRoll !== null && row.rollCount > 0)) && (
-                  <div className="d-flex justify-content-end align-items-center gap-1 mt-1">
-                    <ModelCaveatBadge symbol={row.symbol} caveats={row.caveats} />
-                    <RollBadge row={row} onClick={(legId) => openTickerModal(row.symbol, { rollLegId: legId })} />
-                  </div>
-                )}
               </div>
-            </div>
-          ))}
+            );
+          })}
+          <p className="text-secondary mb-0" style={{ fontSize: "0.72rem", lineHeight: 1.45 }}>
+            Edge/10k and Worst/10k: per $10,000 of EXP $ (net of the premium). Edge Yield: the expected profit as a yearly rate on EXP $; Hist Yield: the same after history's correction. Old = the 63-day Edge, until retired.
+          </p>
         </div>
       </div>
 

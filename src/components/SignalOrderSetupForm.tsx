@@ -4,7 +4,7 @@ import { buildOpenOrder, type AdaptivePriority, type OrderRequest } from "../api
 import type { SignalCandidate, TickerSignals } from "../api/signals";
 import { checkOrderLimits } from "../api/orderChecks";
 import { FLASH_DURATION_MS, flashClassName, useFlashOnChange } from "../hooks/useFlashOnChange";
-import { computePayoff } from "../lib/payoff";
+import { computeExposurePerShare, computePayoff } from "../lib/payoff";
 import { formatCurrency, formatDate, formatPercentage, formatSignedPercentageValue, formatSignedPnl, formatVolatilityPoints } from "../lib/formatters";
 import { describeCandidate, describeNonLiveQuoteBlock, describeSignalFlag, gradeBadgeClass, gradeLabel, signalFlagLetter } from "../lib/signalsPresentation";
 import { Spinner } from "./Spinner";
@@ -12,6 +12,7 @@ import { OrderCommissionRows } from "./OrderCommissionRows";
 import { toIbkrExpiry, useOrderCommissionPreview } from "../hooks/useOrderCommissionPreview";
 import type { CommissionPreviewLeg, OrderLimitsResult } from "../api/orderChecks";
 import { useTooltip } from "../hooks/useTooltip";
+import { ModelValuationCard } from "./signals/ModelValuationCard";
 
 // Signals order setup (stage 5, approved 2026-09-22). This is only the "form" half -- it builds the order
 // through the existing POST /positions/orders and hands the OrderRequest up;
@@ -87,11 +88,15 @@ export function SignalOrderSetupForm({ symbol, signals, candidate, spotPrice, ne
   const netEdgeExpected = candidate.netEdge;
   const edgeDollarsExpected = candidate.edgeDollars;
   const premiumExpected = mid - (mid - candidate.bid) * signals.spreadShareCharged;
-  const capitalAtRiskPerContract = isCall ? (spotPrice ?? 0) * 100 : candidate.strike * 100;
-  const dollarRiskExpected = capitalAtRiskPerContract - premiumExpected;
+  // EXP $ per contract at the expected premium (the server's dollarRisk at the mid until the spot is known).
+  const exposurePerShareExpected = computeExposurePerShare(candidate.strategyKey, { strike: candidate.strike, spotPrice: spotPrice ?? 0, premium: premiumExpected });
+  const dollarRiskExpected = exposurePerShareExpected === null ? candidate.dollarRisk : exposurePerShareExpected * 100;
   const riskAdjustedRatioExpected = edgeDollarsExpected / dollarRiskExpected;
   // One IBKR what-if per form (re-asked only when the contracts change, never on a price tick); the expected premium follows the live quote.
   const limitPriceForPreview = Number(mid.toFixed(2));
+  // The limit check reads the premium the order would go out at when it runs, without re-running on every price tick.
+  const limitPriceForLimitsRef = useRef(limitPriceForPreview);
+  limitPriceForLimitsRef.current = limitPriceForPreview;
   const commissionPreviewLegs: CommissionPreviewLeg[] | null =
     limitPriceForPreview > 0 && (!isBuyWrite || (spotPrice !== null && spotPrice > 0))
       ? [
@@ -107,7 +112,9 @@ export function SignalOrderSetupForm({ symbol, signals, candidate, spotPrice, ne
   // A covered call always sends both legs (buy the shares, sell the call) in one order, so having
   // no free shares yet is the normal case, not a blocker -- only a cash-secured put needs the cash upfront.
   const insufficientCashFlagged = candidate.flags.includes("insufficient_cash");
-  const capitalAtRisk = isCall ? (spotPrice ?? 0) * 100 * quantity : candidate.strike * 100 * quantity;
+  // EXP $ at the order's limit (the mid), net of the premium: the same as Positions will show once it fills.
+  const exposurePerShareAtLimit = computeExposurePerShare(candidate.strategyKey, { strike: candidate.strike, spotPrice: spotPrice ?? 0, premium: limitPriceForPreview });
+  const capitalAtRisk = exposurePerShareAtLimit === null ? null : exposurePerShareAtLimit * 100 * quantity;
   const maxGainAtBid = candidate.bid * 100 * quantity;
   // Expiration payoff at the bid (same computePayoff as the Positions cards and Order Review): a covered call
   // buys the shares at spot in the same order, so its max gain includes the stock's upside to the strike.
@@ -130,7 +137,7 @@ export function SignalOrderSetupForm({ symbol, signals, candidate, spotPrice, ne
     if (limitsDebounceRef.current !== null) window.clearTimeout(limitsDebounceRef.current);
     limitsDebounceRef.current = window.setTimeout(() => {
       // Spot only matters to a covered call's share shortfall; a put's check ignores it and would otherwise re-run on every price tick.
-      checkOrderLimits({ symbol, strategyKey: candidate.strategyKey, quantity, strike: candidate.strike, spotPrice: isCall ? spotPrice : null })
+      checkOrderLimits({ symbol, strategyKey: candidate.strategyKey, quantity, strike: candidate.strike, premium: limitPriceForLimitsRef.current, spotPrice: isCall ? spotPrice : null })
         .then(setOrderLimitsResult)
         .catch(() => setOrderLimitsResult(null));
     }, orderLimitsDebounceMs);
@@ -209,28 +216,40 @@ export function SignalOrderSetupForm({ symbol, signals, candidate, spotPrice, ne
         </div>
       )}
 
+      {candidate.model ? (
+        <ModelValuationCard candidate={candidate} model={candidate.model} signals={signals} spotPrice={spotPrice} />
+      ) : (
+        <div className="alert alert-secondary mb-0 py-2" style={{ fontSize: "0.85rem" }}>
+          The valuation model could not value this contract, so Pluto would not act on it. The old Edge is below.
+        </div>
+      )}
+
       <div className="border rounded p-3">
-        <div className="d-flex justify-content-between align-items-center gap-2">
-          <div>
-            <div className="text-secondary text-uppercase" style={{ fontSize: "0.68rem", fontWeight: 700, letterSpacing: "0.06em" }}>
-              Signal
+        {!candidate.model && (
+          <>
+            <div className="d-flex justify-content-between align-items-center gap-2">
+              <div>
+                <div className="text-secondary text-uppercase" style={{ fontSize: "0.68rem", fontWeight: 700, letterSpacing: "0.06em" }}>
+                  Old Edge (63-day)
+                </div>
+                <span className={`h3 mb-0 font-mono ${candidate.netEdge > 0 ? "text-success" : "text-danger"} ${flashClassName(netEdgeFlash)}`}>{formatVolatilityPoints(candidate.netEdge)}</span>{" "}
+                <span className="text-secondary" style={{ fontSize: "0.8rem" }}>
+                  net Edge ({formatSignedPnl(edgeDollarsExpected, 0)})
+                </span>
+              </div>
+              <span className={`badge ${gradeBadgeClass[candidate.grade]}`} style={{ fontSize: "0.72rem" }}>
+                {gradeLabel[candidate.grade]}
+              </span>
             </div>
-            <span className={`h3 mb-0 font-mono ${candidate.netEdge > 0 ? "text-success" : "text-danger"} ${flashClassName(netEdgeFlash)}`}>{formatVolatilityPoints(candidate.netEdge)}</span>{" "}
-            <span className="text-secondary" style={{ fontSize: "0.8rem" }}>
-              net Edge ({formatSignedPnl(edgeDollarsExpected, 0)})
-            </span>
-          </div>
-          <span className={`badge ${gradeBadgeClass[candidate.grade]}`} style={{ fontSize: "0.8rem" }}>
-            {gradeLabel[candidate.grade]}
-          </span>
-        </div>
-        <div className="mt-2">
-          <Row label="Surface IV at this strike (10:00 snapshot, live spot)" value={formatPercentage(candidate.surfaceImpliedVolatility, 1)} />
-          <Row label={`Forecast volatility (${signals.forecast?.windowDays ?? 63}-day Yang-Zhang)`} value={formatPercentage(candidate.forecastVolatility, 1)} />
-          <Row label={`Friction (${formatPercentage(signals.spreadShareCharged, 0)} of the half-spread + commission)`} value={formatVolatilityPoints(candidate.frictionVolatility).replace("+", "")} />
-        </div>
-        <div className={`d-flex align-items-center gap-2 mt-2 rounded px-2 py-1 ${decayed ? "bg-warning-lt" : "bg-secondary-lt"}`} style={{ fontSize: "0.78rem" }}>
-          {decayed ? `Net Edge has moved ${formatVolatilityPoints(decay)} since you selected this contract at ${formatDate(selectedAtIso)}.` : `Net Edge is steady since you selected this contract (${formatVolatilityPoints(netEdgeAtSelection)}).`}
+            <div className="mt-2">
+              <Row label="Surface IV at this strike (10:00 snapshot, live spot)" value={formatPercentage(candidate.surfaceImpliedVolatility, 1)} />
+              <Row label={`Forecast volatility (${signals.forecast?.windowDays ?? 63}-day Yang-Zhang)`} value={formatPercentage(candidate.forecastVolatility, 1)} />
+              <Row label={`Friction (${formatPercentage(signals.spreadShareCharged, 0)} of the half-spread + commission)`} value={formatVolatilityPoints(candidate.frictionVolatility).replace("+", "")} />
+            </div>
+          </>
+        )}
+        <div className={`d-flex align-items-center gap-2 ${candidate.model ? "" : "mt-2"} rounded px-2 py-1 ${decayed ? "bg-warning-lt" : "bg-secondary-lt"}`} style={{ fontSize: "0.78rem" }}>
+          {decayed ? `Old net Edge has moved ${formatVolatilityPoints(decay)} since you selected this contract at ${formatDate(selectedAtIso)}.` : `Old net Edge is steady since you selected this contract (${formatVolatilityPoints(netEdgeAtSelection)}).`}
           <span className="ms-auto d-inline-flex align-items-center gap-1 text-secondary">
             <span className="iorio-pulse-dot" />
             live
@@ -285,8 +304,7 @@ export function SignalOrderSetupForm({ symbol, signals, candidate, spotPrice, ne
             <Row label="Breakeven" value={formatCurrency(payoffAtBid.breakeven)} />
           </>
         )}
-        <Row label="Capital at risk" value={formatCurrency(capitalAtRisk, 0)} />
-        <Row label="Annualised yield" value={formatPercentage(candidate.annualizedYield, 0)} />
+        <Row label={`EXP $ (${isCall ? "the shares" : "cash reserved at the strike"}, less the premium)`} value={formatCurrency(capitalAtRisk, 0)} />
         <OrderCommissionRows {...commissionPreview} expectedPremiumDollars={premiumExpected * 100 * quantity} />
         {isCall && (
           <div className="text-secondary font-mono" style={{ fontSize: "0.75rem" }}>

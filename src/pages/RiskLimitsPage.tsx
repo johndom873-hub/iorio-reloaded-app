@@ -568,7 +568,7 @@ export function RiskLimitsPage() {
                   label={fieldLabels.minAnnualizedYieldPct}
                   value={formState.minAnnualizedYieldPct}
                   step="0.5"
-                  help="Floor on annualised yield (premium as a % of the capital at risk, scaled to a year by days to expiry). Candidates below it are filtered out."
+                  help="Floor on annualised yield (premium as a % of the exposure net of the premium, scaled to a year by days to expiry). Candidates below it are filtered out."
                   onChange={(value) => updateField("minAnnualizedYieldPct", value)}
                 />
                 <NumberField
