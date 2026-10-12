@@ -427,7 +427,7 @@ export function SignalsPage() {
       <div className="pt-2">
         <RoadmapItemRows items={roadmap} />
         <div className="text-secondary pt-2" style={{ fontSize: "0.78rem" }}>
-          Dates are projected from today's real data counts (one capture per trading day), so they move if the nightly capture starts late. Each item is a reminder to ask for it to be wired in once its data is ready.
+          Each item is a reminder to ask for it to be wired in once what it waits on is ready.
         </div>
       </div>
     </details>
