@@ -56,16 +56,16 @@ function topPerTenThousand(row: SignalsScreenRow, pick: (model: NonNullable<Retu
 }
 
 /**
- * Rows in Pluto's order: the top signal's Hist Yield, highest first, at the precision shown (whole percent), so a tick that
+ * Rows in Pluto's order: the top signal's Edge Yield, highest first, at the precision shown (whole percent), so a tick that
  * does not change the figure on screen does not move a row; ties keep the previous order. Tickers without one go last.
  */
-function rankRowsByHistYield(rows: SignalsScreenRow[], previousOrder: Map<string, number>): SignalsScreenRow[] {
-  const shownHistYield = (row: SignalsScreenRow) => {
+function rankRowsByEdgeYield(rows: SignalsScreenRow[], previousOrder: Map<string, number>): SignalsScreenRow[] {
+  const shownEdgeYield = (row: SignalsScreenRow) => {
     const model = topModel(row);
-    return model ? Math.round(model.calibratedAnnualizedReturn * 100) : null;
+    return model ? Math.round(model.expectedAnnualizedReturn * 100) : null;
   };
-  const indexed = rows.map((row, index) => ({ row, histYield: shownHistYield(row), previous: previousOrder.get(row.tickerId) ?? rows.length + index }));
-  indexed.sort((a, b) => (a.histYield === null ? 1 : 0) - (b.histYield === null ? 1 : 0) || (b.histYield ?? 0) - (a.histYield ?? 0) || a.previous - b.previous);
+  const indexed = rows.map((row, index) => ({ row, edgeYield: shownEdgeYield(row), previous: previousOrder.get(row.tickerId) ?? rows.length + index }));
+  indexed.sort((a, b) => (a.edgeYield === null ? 1 : 0) - (b.edgeYield === null ? 1 : 0) || (b.edgeYield ?? 0) - (a.edgeYield ?? 0) || a.previous - b.previous);
   return indexed.map((entry) => entry.row);
 }
 
@@ -253,10 +253,10 @@ export function SignalsPage() {
     );
   }, [modalSymbol]);
 
-  // Rows in Pluto's order, kept stable between frames (see rankRowsByHistYield).
+  // Rows in Pluto's order, kept stable between frames (see rankRowsByEdgeYield).
   const previousOrderRef = useRef(new Map<string, number>());
   const rankedRows = useMemo(() => {
-    const ranked = rankRowsByHistYield(rows, previousOrderRef.current);
+    const ranked = rankRowsByEdgeYield(rows, previousOrderRef.current);
     previousOrderRef.current = new Map(ranked.map((row, index) => [row.tickerId, index]));
     return ranked;
   }, [rows]);
@@ -435,7 +435,7 @@ export function SignalsPage() {
 
   const gradesNote = (
     <div className="card-footer text-secondary" style={{ fontSize: "0.8rem", lineHeight: 1.55 }}>
-      <strong>Edge margin</strong>: how far the price is above the model's fair value, as a share of the price (1 − fair ÷ mid); it sets the grade: <strong>Strong</strong> 30% or more · <strong>Good</strong> 20% · <strong>Weak</strong> 10%. <strong>Edge $ /10k</strong>: the expected profit per contract held to expiry, after costs, per $10,000 of EXP $ (the exposure: the cash reserved at the strike for a put, the shares at their price for a covered call, less the premium received). <strong>Edge Yield</strong>: that expected profit as a yearly rate on EXP $, over the calendar days left. <strong>Hist Yield</strong>: the same after history's correction, what similar sales actually earned; rows and each ticker's top signal are ranked by it, as Pluto ranks. <strong>PoP</strong>: chance the sale ends in profit. <strong>Worst 5% /10k</strong>: the average result of the worst one-in-twenty outcomes, per $10,000 of EXP $. A covered call counts the shares with the call, so it is judged like a cash-secured put. ATM IV and FV are on the day basis (trading days); ATM IV is green above FV, red below. <strong>Old Edge</strong>: the 63-day forecast in volatility points, until retired. Click a ticker for its full opportunity list.
+      <strong>Edge margin</strong>: how far the price is above the model's fair value, as a share of the price (1 − fair ÷ mid); it sets the grade: <strong>Strong</strong> 30% or more · <strong>Good</strong> 20% · <strong>Weak</strong> 10%. <strong>Edge $ /10k</strong>: the expected profit per contract held to expiry, after costs, per $10,000 of EXP $ (the exposure: the cash reserved at the strike for a put, the shares at their price for a covered call, less the premium received). <strong>Edge Yield</strong>: that expected profit as a yearly rate on EXP $, over the calendar days left; rows and each ticker's top signal are ranked by it, as Pluto ranks. <strong>Hist Yield</strong>: the same after history's correction, what similar at-the-money sales actually earned. <strong>PoP</strong>: chance the sale ends in profit. <strong>Worst 5% /10k</strong>: the average result of the worst one-in-twenty outcomes, per $10,000 of EXP $. A covered call counts the shares with the call, so it is judged like a cash-secured put. ATM IV and FV are on the day basis (trading days); ATM IV is green above FV, red below. <strong>Old Edge</strong>: the 63-day forecast in volatility points, until retired. Click a ticker for its full opportunity list.
     </div>
   );
 

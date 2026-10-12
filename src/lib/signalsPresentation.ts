@@ -23,10 +23,10 @@ export function dollarsPerTenThousandOfExposure(dollars: number, exposureDollars
   return exposureDollars > 0 ? (dollars * 10_000) / exposureDollars : null;
 }
 
-/** Pluto's order (the API's compareCandidatesByModel): Hist Yield, then Edge $; contracts the model could not value last, by the old Edge $. */
+/** Pluto's order (the API's compareCandidatesByModel): Edge Yield, then Edge $; contracts the model could not value last, by the old Edge $. */
 export function compareCandidatesByModel(a: SignalCandidate, b: SignalCandidate): number {
-  if (a.model && b.model && (a.model.calibratedAnnualizedReturn !== b.model.calibratedAnnualizedReturn || a.model.expectedPnlDollars !== b.model.expectedPnlDollars)) {
-    return b.model.calibratedAnnualizedReturn - a.model.calibratedAnnualizedReturn || b.model.expectedPnlDollars - a.model.expectedPnlDollars;
+  if (a.model && b.model && (a.model.expectedAnnualizedReturn !== b.model.expectedAnnualizedReturn || a.model.expectedPnlDollars !== b.model.expectedPnlDollars)) {
+    return b.model.expectedAnnualizedReturn - a.model.expectedAnnualizedReturn || b.model.expectedPnlDollars - a.model.expectedPnlDollars;
   }
   if (Boolean(a.model) !== Boolean(b.model)) return a.model ? -1 : 1;
   return b.edgeDollars - a.edgeDollars || b.netEdge - a.netEdge;
@@ -41,12 +41,12 @@ export function compareRollsByModel(a: RollSignalCandidate, b: RollSignalCandida
 
 /** Header tooltips and legends for the model's columns. */
 export const modelColumnExplanation = {
-  topSignal: "The ticker's best contract in Pluto's order: highest Hist Yield, then Edge $.",
+  topSignal: "The ticker's best contract in Pluto's order: highest Edge Yield, then Edge $.",
   grade: modelGradeExplanation,
   margin: "Edge margin: how far the price is above the model's fair value, as a share of the price (1 − fair ÷ mid), before costs. It sets the grade.",
   edgePer10k: "Edge $ per $10,000 of EXP $: the expected profit per contract held to expiry, after costs, scaled to $10,000 of exposure so tickers compare. EXP $ is the cash reserved at the strike for a put, or the shares at their price for a covered call, less the premium received.",
-  edgeYield: "Edge Yield: the expected profit as a yearly rate on EXP $, over the calendar days to expiry (weekends count: the capital is tied up).",
-  histYield: "Hist Yield: the Edge Yield after history's correction, what sales with the same margin and time left actually earned. Pluto ranks by it.",
+  edgeYield: "Edge Yield: the expected profit as a yearly rate on EXP $, over the calendar days to expiry (weekends count: the capital is tied up). Pluto ranks by it.",
+  histYield: "Hist Yield: the Edge Yield after history's correction, what at-the-money sales with the same margin and time left actually earned.",
   pop: "Chance the sale ends in profit. A covered call counts the shares with the call, so it is judged like a cash-secured put.",
   worstPer10k: "Worst 5% per $10,000 of EXP $: the average result of the worst one-in-twenty outcomes, scaled to $10,000 of exposure. A tail measure, not the maximum loss.",
   premiumYield: "The premium kept after costs, as a yearly rate on EXP $ over the calendar days to expiry: income, not an expectation.",

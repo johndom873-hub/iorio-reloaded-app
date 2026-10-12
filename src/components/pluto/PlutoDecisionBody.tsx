@@ -1,7 +1,7 @@
 import { Link } from "react-router-dom";
 import type { PlutoPass, PlutoState } from "../../api/pluto";
 import { formatCurrency } from "../../lib/formatters";
-import { checkLabel, checksAndGatesSummary, describeCandidateId, describeDecisionModelFigures, describeTopPickFigure, formatModelCost, orderedChecks, sentenceCase, describeChosenAction, describeTopPickComparison, formatExposure, gateLabel, passVerdict, verdictKind } from "../../lib/plutoPresentation";
+import { checkLabel, checksAndGatesSummary, describeCandidateId, describeDecisionModelFigures, describeTopPickFigure, formatModelCost, orderedChecks, sentenceCase, describeChosenAction, describeTopPickComparison, formatExposure, gateLabel, passVerdict, topPickRankingYield, verdictKind } from "../../lib/plutoPresentation";
 import { CheckIcon, CrossIcon, ExternalIcon, GradeBadge, StrategyBadge } from "./plutoBits";
 import { PlutoModelInputsToggle } from "./PlutoModelInputs";
 
@@ -53,6 +53,8 @@ export function ComparePanels({ pass, flush = false }: { pass: PlutoPass; flush?
   const comparison = describeTopPickComparison(pass);
   const chosenName = output?.decision === "trade" ? describeChosenAction(pass) : "Nothing";
   const runnerUp = topPick?.runnerUp ?? null;
+  const topPickRanking = topPick ? topPickRankingYield(topPick, topPick.rankedBy) : null;
+  const runnerUpRanking = runnerUp && topPick ? topPickRankingYield(runnerUp, topPick.rankedBy) : null;
   return (
     <div className={`pm-compare${flush ? " flush" : ""}`}>
       <div>
@@ -64,13 +66,13 @@ export function ComparePanels({ pass, flush = false }: { pass: PlutoPass; flush?
         </div>
       </div>
       <div>
-        <div className="lbl">{topPick?.calibratedAnnualizedReturn !== undefined ? "Top pick · highest Hist Yield" : "Edge $ top pick"}</div>
+        <div className="lbl">{topPickRanking ? `Top pick · highest ${topPickRanking.label}` : "Edge $ top pick"}</div>
         <div className="val">{topPick ? describeCandidateId(topPick.id, pass.startedAt) : "—"}</div>
         <div className={`sub${comparison.tone === "ok" ? " t-ok" : comparison.tone === "warn" ? " t-warn" : ""}`}>
           {comparison.tone === "ok" && <CheckIcon />}
           {comparison.tone === "ok" ? "Same as the model" : topPick ? describeTopPickFigure(topPick) : comparison.text}
           {topPick?.grade && comparison.tone !== "ok" && <GradeBadge grade={topPick.grade} />}
-          {comparison.tone === "ok" && runnerUp && <span className="muted">· next: {describeCandidateId(runnerUp.id, pass.startedAt)}, Hist Yield {Math.round(runnerUp.calibratedAnnualizedReturn * 100)}%</span>}
+          {comparison.tone === "ok" && runnerUp && <span className="muted">· next: {describeCandidateId(runnerUp.id, pass.startedAt)}{runnerUpRanking ? `, ${runnerUpRanking.label} ${Math.round(runnerUpRanking.value * 100)}%` : ""}</span>}
         </div>
       </div>
     </div>

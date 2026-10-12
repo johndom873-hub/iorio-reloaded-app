@@ -39,7 +39,7 @@ function usePlutoSizingCaps(candidate: SignalCandidate, signals: TickerSignals, 
       bid: current.bid,
       ask: current.ask,
       spotPrice: spot ?? ticker.spotPrice,
-      model: { calibratedExpectedPnlDollars: model.calibratedExpectedPnlDollars, pnlVarianceDollars: model.pnlVarianceDollars, coveredPositionPnlVarianceDollars: model.coveredPositionPnlVarianceDollars, varianceSessions: model.varianceSessions },
+      model: { expectedPnlDollars: model.expectedPnlDollars, pnlVarianceDollars: model.pnlVarianceDollars, coveredPositionPnlVarianceDollars: model.coveredPositionPnlVarianceDollars, varianceSessions: model.varianceSessions },
       ticker: { forecastVolatility: ticker.modelForecast?.annualizedVolatility ?? null, elevatedVolatility: ticker.elevatedVolatility?.elevated === true, dayChangePercent: ticker.dayChangePercent },
     })
       .then((caps) => {

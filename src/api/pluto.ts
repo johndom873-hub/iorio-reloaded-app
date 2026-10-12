@@ -222,8 +222,9 @@ export interface PlutoAction {
   contract: PlutoActionContract | null;
   candidateScores: Record<string, unknown> | null;
   /**
-   * The highest-Hist-Yield eligible open. edgeDollars is the valuation model's expected P&L per contract since prompt v4.0 (the old
-   * Edge $ on earlier rows); the yields, EXP $ and the runner-up are on rows from 2026-10-12.
+   * The top eligible open in Pluto's order: highest Edge Yield on rows with rankedBy "edge_yield" (2026-10-12 on), highest Hist
+   * Yield on earlier rows that carry the yields. edgeDollars is the valuation model's expected P&L per contract since prompt v4.0
+   * (the old Edge $ on earlier rows).
    */
   deterministicTopPick: {
     id: string;
@@ -233,7 +234,8 @@ export interface PlutoAction {
     calibratedAnnualizedReturn?: number;
     expectedAnnualizedReturn?: number;
     capitalAtRiskDollars?: number;
-    runnerUp?: { id: string; calibratedAnnualizedReturn: number } | null;
+    rankedBy?: "edge_yield";
+    runnerUp?: { id: string; calibratedAnnualizedReturn: number; expectedAnnualizedReturn?: number } | null;
   } | null;
   gateResults: PlutoGateResult[];
   sizeTier: "full" | "half" | null;
@@ -588,7 +590,7 @@ export interface PlutoSizingCapsRequest {
   bid: number;
   ask: number;
   spotPrice: number | null;
-  model: { calibratedExpectedPnlDollars: number; pnlVarianceDollars: number; coveredPositionPnlVarianceDollars: number | null; varianceSessions: number };
+  model: { expectedPnlDollars: number; pnlVarianceDollars: number; coveredPositionPnlVarianceDollars: number | null; varianceSessions: number };
   ticker: { forecastVolatility: number | null; elevatedVolatility: boolean; dayChangePercent: number | null };
 }
 

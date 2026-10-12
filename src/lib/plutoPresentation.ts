@@ -437,9 +437,16 @@ export function describeChosenAction(pass: PlutoPass): string {
   return parsed?.kind === "open" ? label.replace(`${parsed.symbol} `, `${parsed.symbol} Sell `) : label;
 }
 
-/** "Hist Yield 23%" on rows that carry it (2026-10-12 on), else the older "$N per contract". */
-export function describeTopPickFigure(topPick: { edgeDollars: number; calibratedAnnualizedReturn?: number }): string {
-  return topPick.calibratedAnnualizedReturn !== undefined ? `Hist Yield ${formatSignedPercentageValue(topPick.calibratedAnnualizedReturn * 100, 0)}` : `$${Math.round(topPick.edgeDollars)} per contract`;
+/** The yield a ledger top pick (or its runner-up) was ranked by: Edge Yield on rows with rankedBy (2026-10-12 on), Hist Yield on earlier rows that carry it; null on the oldest rows (ranked by Edge $). */
+export function topPickRankingYield(entry: { calibratedAnnualizedReturn?: number; expectedAnnualizedReturn?: number }, rankedBy: "edge_yield" | undefined): { label: "Edge Yield" | "Hist Yield"; value: number } | null {
+  if (rankedBy === "edge_yield") return entry.expectedAnnualizedReturn !== undefined ? { label: "Edge Yield", value: entry.expectedAnnualizedReturn } : null;
+  return entry.calibratedAnnualizedReturn !== undefined ? { label: "Hist Yield", value: entry.calibratedAnnualizedReturn } : null;
+}
+
+/** "Edge Yield 23%" (or "Hist Yield 23%" on rows ranked by it), else the older "$N per contract". */
+export function describeTopPickFigure(topPick: { edgeDollars: number; calibratedAnnualizedReturn?: number; expectedAnnualizedReturn?: number; rankedBy?: "edge_yield" }): string {
+  const ranking = topPickRankingYield(topPick, topPick.rankedBy);
+  return ranking ? `${ranking.label} ${formatSignedPercentageValue(ranking.value * 100, 0)}` : `$${Math.round(topPick.edgeDollars)} per contract`;
 }
 
 /** The valuation model's figures for the decided contract, from the stored candidate scores; null on rows that predate the model. */
@@ -468,7 +475,7 @@ export function describeDecisionModelFigures(scores: Record<string, unknown> | n
   return { grade: model.grade, text: pieces.join(" · ") };
 }
 
-/** How the model's pick compares with the deterministic top pick (highest Hist Yield since prompt v4.0). */
+/** How the model's pick compares with the deterministic top pick (highest Edge Yield since 2026-10-12, Hist Yield from prompt v4.0). */
 export function describeTopPickComparison(pass: PlutoPass): { tone: "ok" | "warn" | "muted"; text: string } {
   const { output, topPick, action } = passVerdict(pass);
   if (!output || output.decision !== "trade") return { tone: "muted", text: topPick ? `Top was ${describeCandidateId(topPick.id, pass.startedAt)}, ${describeTopPickFigure(topPick)}` : "No top pick" };
@@ -688,9 +695,9 @@ export function describeFeedEvent(event: PlutoEvent, context?: PlutoFeedContext)
     case "model_failed":
       return { dot: "bad", title: "Model call failed", detail: null, sub: text(payload.error) || null };
     case "no_trade": {
-      const topPick = payload.deterministicTopPick as { id?: string; edgeDollars?: number; calibratedAnnualizedReturn?: number } | null;
+      const topPick = payload.deterministicTopPick as { id?: string; edgeDollars?: number; calibratedAnnualizedReturn?: number; expectedAnnualizedReturn?: number; rankedBy?: "edge_yield" } | null;
       const fallback = isAbstainVerdict(text(payload.verdict)) ? "the model abstained" : "nothing worth trading";
-      return { dot: "look", title: "No order", detail: topPick?.id ? `Top pick was ${describeCandidateId(topPick.id, at)} (${describeTopPickFigure({ edgeDollars: topPick.edgeDollars ?? 0, calibratedAnnualizedReturn: topPick.calibratedAnnualizedReturn })})` : fallback, sub: Array.isArray(payload.reasons) ? (payload.reasons as string[]).join(" ") : null };
+      return { dot: "look", title: "No order", detail: topPick?.id ? `Top pick was ${describeCandidateId(topPick.id, at)} (${describeTopPickFigure({ edgeDollars: topPick.edgeDollars ?? 0, calibratedAnnualizedReturn: topPick.calibratedAnnualizedReturn, expectedAnnualizedReturn: topPick.expectedAnnualizedReturn, rankedBy: topPick.rankedBy })})` : fallback, sub: Array.isArray(payload.reasons) ? (payload.reasons as string[]).join(" ") : null };
     }
     case "action_validated":
       return { dot: "look", title: "Order checks passed", detail: eventAction ? describeOrderLine(eventAction, Number(payload.limitPrice ?? 0)) : `${describeCandidateId(text(payload.candidateId), at)} · ${text(payload.quantity)}× @ ${Number(payload.limitPrice ?? 0).toFixed(2)}`, sub: null };

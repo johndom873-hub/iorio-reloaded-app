@@ -572,7 +572,7 @@ export function SignalsTickerModal({ symbol, initialRollLegId = null, focusPosit
         ? `0.0vp (fewer than 5 fresh quotes: ${ivShift.quoteCount})`
         : `${formatVolatilityPoints(ivShift.shiftVolatilityPoints / 100)} from ${ivShift.quoteCount} quotes`;
 
-  // Pluto's order: Hist Yield, then Edge $ (mockup approved 2026-10-10).
+  // Pluto's order: Edge Yield, then Edge $ (Marcelo, 2026-10-12; Hist Yield before).
   const rankedCandidates = useMemo(() => (signals ? [...signals.candidates].sort(compareCandidatesByModel) : []), [signals]);
   const filteredCandidates = useMemo(() => {
     const dteMatches = dteFilters.find((filter) => filter.key === dteFilter)!.matches;
@@ -1101,7 +1101,7 @@ export function SignalsTickerModal({ symbol, initialRollLegId = null, focusPosit
                               <span className="form-check-label">Show Avoid ({hiddenAvoidCount} hidden)</span>
                             </label>
                             <span className="text-secondary ms-auto">
-                              ranked by Hist Yield, as Pluto ranks · {uncompensatedAsOf && <>Delta drift as of {formatCurrency(uncompensatedAsOf.spotPrice)} · </>}
+                              ranked by Edge Yield, as Pluto ranks · {uncompensatedAsOf && <>Delta drift as of {formatCurrency(uncompensatedAsOf.spotPrice)} · </>}
                               quotes: <span className="font-mono">{signals.quoteSourceCounts.live} live</span> · <span className="font-mono">{signals.quoteSourceCounts.day} day</span> · <span className="font-mono">{signals.quoteSourceCounts.snapshot} snapshot</span>
                             </span>
                           </div>
