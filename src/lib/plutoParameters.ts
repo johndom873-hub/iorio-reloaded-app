@@ -63,7 +63,7 @@ export const plutoParameterGroups: PlutoParameterGroup[] = [
     title: "Candidate quality",
     summary: (settings) => `grade ${settings.minGrade} or better · Edge Yield ${settings.minEdgeYieldPct}%+ · |delta| ≤ ${settings.maxAbsDelta} · ${settings.minDte}–${settings.maxDte} DTE`,
     parameters: [
-      { field: "minGrade", label: "Min grade", kind: "select", options: ["strong", "good", "weak"], help: "Lowest valuation-model grade the model may be offered, from the edge margin (1 − fair value ÷ mid): Strong 30% or more, Good 20%, Weak 10%." },
+      { field: "minGrade", label: "Min grade", kind: "select", options: ["strong", "good", "weak"], help: "Lowest valuation-model grade the model may be offered, from the edge margin (1 − fair value ÷ mid): Strong 20% or more, Good 10% to 20%, Weak 0% to 10%." },
       { field: "minEdgeYieldPct", label: "Min Edge Yield", unit: "% a year", kind: "number", step: "1", help: "Lowest Edge Yield a candidate needs: the valuation model's expected profit (after costs) as a yearly rate on the contract's exposure (net of the premium), over the calendar days to expiry. Measured as a rate, so a 2-day contract and a 30-day one meet the same bar. Rolls: the net roll Edge $ on the new leg's exposure and days." },
       { field: "maxAbsDelta", label: "Max |delta|", kind: "number", step: "0.01", help: "Furthest-in-the-money strike Pluto may sell, by absolute delta." },
       { field: "minDte", label: "Days to expiry", unit: "min", kind: "integer", step: "1", help: "Shortest and longest expiry Pluto may trade." },

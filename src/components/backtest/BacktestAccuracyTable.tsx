@@ -5,7 +5,7 @@ import { DataTable, type DataTableColumn } from "../DataTable/DataTable";
 import { BacktestCardTitle } from "./backtestBits";
 
 const columns: DataTableColumn<BacktestAccuracyBand>[] = [
-  { key: "band", header: "Edge margin", headerTitle: "The edge margin at the open: 1 − fair value ÷ mid, before costs. It sets the grade: Strong 30% or more, Good 20%, Weak 10%.", render: (band) => band.label },
+  { key: "band", header: "Edge margin", headerTitle: "The edge margin at the open: 1 − fair value ÷ mid, before costs. It sets the grade: Strong 20% or more, Good 10% to 20%, Weak 0% to 10%.", render: (band) => band.label },
   { key: "trades", header: "Trades", align: "right", render: (band) => formatNumber(band.tradeCount) },
   {
     key: "predicted",

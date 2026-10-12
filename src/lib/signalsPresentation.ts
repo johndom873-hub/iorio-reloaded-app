@@ -16,7 +16,7 @@ export const gradeExplanation = "Old Edge grade (63-day forecast, phasing out): 
 
 // ---- The valuation model's figures (mockup approved 2026-10-10; EXP $ net of the premium and yields on calendar days, 2026-10-12) ----
 
-export const modelGradeExplanation = "The valuation model's grade, from the edge margin (1 − fair value ÷ mid, before costs): Strong 30% or more, Good 20%, Weak 10%, the rest Avoid. What Pluto acts on.";
+export const modelGradeExplanation = "The valuation model's grade, from the edge margin (1 − fair value ÷ mid, before costs): Strong 20% or more, Good 10% to 20%, Weak 0% to 10%, Avoid below 0%. What Pluto acts on.";
 
 /** A per-contract dollar figure per $10,000 of the contract's EXP $, so tickers of different prices compare ($8 on $20,000 of EXP $ → $4). */
 export function dollarsPerTenThousandOfExposure(dollars: number, exposureDollars: number): number | null {

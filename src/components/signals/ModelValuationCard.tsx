@@ -143,7 +143,7 @@ export function ModelValuationCard({ candidate, model, signals, spotPrice }: { c
  */
 export function RollValuationCard({ roll, held, replacement, quantity }: { roll: RollSignalCandidate; held: HeldLegScore; replacement: SignalCandidate; quantity: number }) {
   const model = roll.model;
-  const gradeRef = useTooltip<HTMLSpanElement>("The roll's grade, from its edge margin: the new leg's margin after what holding the current leg is still worth. Strong 30% or more, Good 20%, Weak 10%.");
+  const gradeRef = useTooltip<HTMLSpanElement>("The roll's grade, from its edge margin: the new leg's margin after what holding the current leg is still worth. Strong 20% or more, Good 10% to 20%, Weak 0% to 10%.");
   if (!model) return null;
   const newLeg = replacement.model;
   return (
