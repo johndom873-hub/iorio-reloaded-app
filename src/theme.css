@@ -1757,3 +1757,76 @@
 .table .backtest-decision-cell {
   padding-left: 0.75rem;
 }
+/* New session: a choice setting (the Decisions group). Its values are sentences, so the select is wide and Pluto's value wraps. */
+.backtest-setting-choice {
+  width: 25rem;
+  max-width: 100%;
+}
+.backtest-setting-choice .form-select {
+  font-size: 0.8125rem;
+}
+.backtest-setting-choice-now {
+  white-space: normal;
+  min-width: 9rem;
+  max-width: 14rem;
+  font-size: 0.78rem;
+  line-height: 1.35;
+}
+@media (max-width: 767.98px) {
+  .backtest-setting-choice {
+    width: 100%;
+  }
+}
+/* Session results: the wheel cycle P&L leads the headline tiles, twice as wide (the whole row on a phone). */
+.backtest-kpi-lead {
+  grid-column: span 2;
+}
+.backtest-kpi-lead .backtest-kpi-value {
+  font-size: 1.5rem;
+}
+/* Positions: each leg on its own line, wrapping in its cell instead of widening the table. */
+.backtest-legs-cell {
+  white-space: normal;
+  min-width: 20rem;
+  font-size: 0.78rem;
+}
+.backtest-leg-line {
+  line-height: 1.35;
+}
+/* Monthly returns: the series select names a buy and hold ("Buy and hold · SMCI, HOOD (comparison only)"); never wider than the card. */
+.backtest-monthly-series {
+  max-width: 100%;
+  text-overflow: ellipsis;
+}
+/* New session: the symbols, a checkbox row per downloaded file in a box that scrolls past a dozen. */
+.backtest-symbol-picker {
+  max-height: 18rem;
+  overflow-y: auto;
+}
+.backtest-symbol-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  column-gap: 0.75rem;
+  row-gap: 0.125rem;
+  min-height: 2.75rem;
+  padding: 0.375rem 0.75rem;
+  margin: 0;
+  cursor: pointer;
+  border-bottom: 1px solid var(--tblr-border-color);
+}
+.backtest-symbol-row:last-child {
+  border-bottom: 0;
+}
+.backtest-symbol-row-picked {
+  background-color: rgba(var(--tblr-primary-rgb), 0.08);
+}
+.backtest-symbol-name {
+  min-width: 3.5rem;
+}
+/* Sessions: a session's name keeps a readable width (it wraps over a few lines, not one word a line) while the many figure
+   columns scroll sideways. */
+.backtest-session-name-cell {
+  min-width: 13rem;
+  white-space: normal;
+}

@@ -446,6 +446,11 @@ export function pluralize(count: number, singular: string, plural = `${singular}
   return `${count} ${count === 1 ? singular : plural}`;
 }
 
+/** pluralize with the count's thousands separated: "1,004 fills", "1 fill" (counts that can run past 999). */
+export function pluralizeCount(count: number, singular: string, plural = `${singular}s`): string {
+  return `${formatNumber(count)} ${count === 1 ? singular : plural}`;
+}
+
 export function formatBarsAsYears(dailyBarCount: number): string {
   return `${(dailyBarCount / tradingDaysPerYear).toFixed(1)}y`;
 }

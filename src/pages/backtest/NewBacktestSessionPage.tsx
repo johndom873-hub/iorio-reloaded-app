@@ -1,33 +1,62 @@
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { errorMessage } from "../../api/client";
 import {
+  backtestMaxSymbolsPerSession,
   createBacktestSession,
+  estimateBacktestSession,
   fetchBacktestSession,
   fetchBacktestSettingsTemplate,
   type BacktestDataFileSummary,
   type BacktestSessionDetail,
+  type BacktestSessionEstimateResponse,
   type BacktestSettingsTemplate,
   type BacktestTablesMode,
+  type CreateBacktestSessionResponse,
 } from "../../api/backtest";
 import { PageHeader } from "../../components/layout/PageHeader";
 import { Spinner } from "../../components/Spinner";
 import { BacktestBackLink, BacktestCard } from "../../components/backtest/backtestBits";
 import { BacktestSettingsTable } from "../../components/backtest/BacktestSettingsTable";
+import { BacktestSymbolPicker } from "../../components/backtest/BacktestSymbolPicker";
 import { useBacktestOverview } from "../../components/backtest/useBacktestPolling";
-import { formatNumber, pluralize } from "../../lib/formatters";
-import { buildBacktestOverrides, isSettingChanged, settingInputText, settingValueProblem, valueAtSettingsPath } from "../../lib/backtestPresentation";
+import { useDebouncedValue } from "../../hooks/useDebouncedValue";
+import { formatNumber, pluralizeCount } from "../../lib/formatters";
+import {
+  buildBacktestOverrides,
+  describeLlmEstimate,
+  formatSettingRowValue,
+  isSettingChanged,
+  llmSessionNote,
+  settingInputText,
+  settingValueProblem,
+  valueAtSettingsPath,
+} from "../../lib/backtestPresentation";
 
 const pageTitle = "New session";
 const pageSubtitle = "Starts from Pluto's settings as they are now (saved with the session). Change any of them for this session only; Pluto itself is not touched.";
 const defaultStartingValue = 1_000_000;
+/** The estimate is asked for once the form has stopped changing this long. */
+const estimateDebounceMs = 600;
 
 function usableFiles(files: BacktestDataFileSummary[]): BacktestDataFileSummary[] {
   return files.filter((file) => file.firstDate !== null && file.lastDate !== null);
 }
 
-function describeFileOption(file: BacktestDataFileSummary): string {
-  return `${file.symbol} · ${file.firstDate} → ${file.lastDate}`;
+/** The period every picked file covers: the latest first date to the earliest last date; null when they do not overlap. */
+function sharedCoverage(files: BacktestDataFileSummary[]): { firstDate: string; lastDate: string } | null {
+  if (files.length === 0) return null;
+  const firstDate = files.map((file) => file.firstDate!).reduce((latest, date) => (date > latest ? date : latest));
+  const lastDate = files.map((file) => file.lastDate!).reduce((earliest, date) => (date < earliest ? date : earliest));
+  return firstDate < lastDate ? { firstDate, lastDate } : null;
+}
+
+/** "10:00 – 15:30 ET": Pluto's window from the settings rows; null when the template has none. */
+function describeLooks(template: BacktestSettingsTemplate): string | null {
+  const from = template.rows.find((row) => row.path === "pluto.windowStartEt");
+  const until = template.rows.find((row) => row.path === "pluto.windowEndEt");
+  if (!from || !until) return null;
+  return `${String(from.now)} – ${formatSettingRowValue(until, until.now)}`;
 }
 
 function parseDollarText(text: string): number {
@@ -59,7 +88,7 @@ export function NewBacktestSessionPage() {
   const [initialized, setInitialized] = useState(false);
 
   const [name, setName] = useState("");
-  const [symbol, setSymbol] = useState("");
+  const [symbols, setSymbols] = useState<string[]>([]);
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
   const [startingValueText, setStartingValueText] = useState(formatNumber(defaultStartingValue));
@@ -68,6 +97,7 @@ export function NewBacktestSessionPage() {
   const [submitAttempted, setSubmitAttempted] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
+  const [created, setCreated] = useState<CreateBacktestSessionResponse | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -92,16 +122,19 @@ export function NewBacktestSessionPage() {
   }, [sourceSessionId]);
 
   const files = usableFiles(overview?.files ?? []);
-  const selectedFile = files.find((file) => file.symbol === symbol) ?? null;
+  const selectedFiles = symbols.map((picked) => files.find((file) => file.symbol === picked)).filter((file): file is BacktestDataFileSummary => file !== undefined);
+  const coverage = sharedCoverage(selectedFiles);
 
   useEffect(() => {
     if (initialized || !overview || !template || !sourceLoaded) return;
     const candidates = usableFiles(overview.files);
     const source = sourceSession?.session ?? null;
-    const file = candidates.find((candidate) => candidate.symbol === source?.symbol) ?? candidates[0] ?? null;
-    setSymbol(file?.symbol ?? "");
-    setStartDate(source && file ? source.startDate : (file?.firstDate ?? ""));
-    setEndDate(source && file ? source.endDate : (file?.lastDate ?? ""));
+    const sourceSymbols = (source ? (source.symbols.length > 0 ? source.symbols : [source.symbol]) : []).filter((picked) => candidates.some((candidate) => candidate.symbol === picked));
+    const initialSymbols = sourceSymbols.length > 0 ? sourceSymbols : candidates[0] ? [candidates[0].symbol] : [];
+    const initialCoverage = sharedCoverage(initialSymbols.map((picked) => candidates.find((candidate) => candidate.symbol === picked)!));
+    setSymbols(initialSymbols);
+    setStartDate(source && sourceSymbols.length > 0 ? source.startDate : (initialCoverage?.firstDate ?? ""));
+    setEndDate(source && sourceSymbols.length > 0 ? source.endDate : (initialCoverage?.lastDate ?? ""));
     if (source) {
       setName(source.name);
       setStartingValueText(formatNumber(source.startingValue));
@@ -111,26 +144,50 @@ export function NewBacktestSessionPage() {
     setInitialized(true);
   }, [initialized, overview, template, sourceLoaded, sourceSession]);
 
-  const changeSymbol = (nextSymbol: string) => {
-    setSymbol(nextSymbol);
-    const file = files.find((candidate) => candidate.symbol === nextSymbol);
-    if (file?.firstDate && file.lastDate) {
-      setStartDate(file.firstDate);
-      setEndDate(file.lastDate);
+  /** Picking or dropping a symbol sets the period to all that the picked files share, as picking one did. */
+  const changeSymbols = (nextSymbols: string[]) => {
+    setSymbols(nextSymbols);
+    const nextCoverage = sharedCoverage(nextSymbols.map((picked) => files.find((file) => file.symbol === picked)).filter((file): file is BacktestDataFileSummary => file !== undefined));
+    if (nextCoverage) {
+      setStartDate(nextCoverage.firstDate);
+      setEndDate(nextCoverage.lastDate);
     }
   };
 
   const startingValue = parseDollarText(startingValueText);
   const settingRows = template?.rows ?? [];
+
+  // With the AI model deciding: the model calls and hours the session may take, and its warnings, before anything starts.
+  const decidedByModel = valueByPath["decisionMaker"] === "llm";
+  const estimateRequestText = useMemo(() => {
+    if (!template || !decidedByModel || symbols.length === 0 || !startDate || !endDate || !(startingValue > 0)) return null;
+    // The endpoint needs no name (an unnamed form still gets its estimate).
+    return JSON.stringify({ name: name.trim(), symbols, startDate, endDate, startingValue, tablesMode, overrides: buildBacktestOverrides(template.rows, valueByPath) });
+  }, [template, decidedByModel, name, symbols, startDate, endDate, startingValue, tablesMode, valueByPath]);
+  const debouncedEstimateRequestText = useDebouncedValue(estimateRequestText, estimateDebounceMs);
+  const [estimate, setEstimate] = useState<{ requestText: string; result: BacktestSessionEstimateResponse | null; error: string | null } | null>(null);
+  useEffect(() => {
+    if (debouncedEstimateRequestText === null) return;
+    let cancelled = false;
+    estimateBacktestSession(JSON.parse(debouncedEstimateRequestText))
+      .then((result) => !cancelled && setEstimate({ requestText: debouncedEstimateRequestText, result, error: null }))
+      .catch((err) => !cancelled && setEstimate({ requestText: debouncedEstimateRequestText, result: null, error: errorMessage(err, "Could not estimate the session.") }));
+    return () => {
+      cancelled = true;
+    };
+  }, [debouncedEstimateRequestText]);
+  const estimateIsCurrent = estimate !== null && estimate.requestText === estimateRequestText;
   const changedCount = settingRows.filter((row) => row.editable && isSettingChanged(row, valueByPath[row.path] ?? String(row.now))).length;
 
   const problems: string[] = [];
   if (name.trim() === "") problems.push("Name the session.");
-  if (!selectedFile) problems.push("Choose a symbol with a downloaded file.");
+  if (selectedFiles.length === 0) problems.push("Pick at least one symbol with a downloaded file.");
+  else if (selectedFiles.length > backtestMaxSymbolsPerSession) problems.push(`Pick at most ${backtestMaxSymbolsPerSession} symbols.`);
+  else if (!coverage) problems.push("The picked files share no period: drop the symbol whose file starts after another's ends.");
   if (!startDate || !endDate) problems.push("Choose a start and an end date.");
   else if (startDate >= endDate) problems.push("The start date must be before the end date.");
-  else if (selectedFile && (startDate < selectedFile.firstDate! || endDate > selectedFile.lastDate!)) {
-    problems.push(`The period must fall within ${selectedFile.symbol}'s file: ${selectedFile.firstDate} → ${selectedFile.lastDate}.`);
+  else if (coverage && (startDate < coverage.firstDate || endDate > coverage.lastDate)) {
+    problems.push(`The period must fall within every picked file: ${coverage.firstDate} → ${coverage.lastDate}.`);
   }
   if (!(startingValue > 0)) problems.push("The starting account value must be a positive dollar amount.");
   for (const row of settingRows) {
@@ -145,16 +202,23 @@ export function NewBacktestSessionPage() {
     setSubmitting(true);
     setSubmitError(null);
     try {
-      await createBacktestSession({
+      const response = await createBacktestSession({
         name: name.trim(),
-        symbol,
+        symbols,
         startDate,
         endDate,
         startingValue,
         tablesMode,
         overrides: buildBacktestOverrides(template.rows, valueByPath),
       });
-      navigate("/backtest");
+      // What the session will do differently because of its files (it still runs) stays on screen; otherwise straight back.
+      if (response.warnings.length > 0) {
+        setCreated(response);
+        setSubmitting(false);
+        window.scrollTo({ top: 0 });
+      } else {
+        navigate("/backtest");
+      }
     } catch (err) {
       setSubmitError(errorMessage(err, "Could not start the backtest."));
       setSubmitting(false);
@@ -162,6 +226,7 @@ export function NewBacktestSessionPage() {
   };
 
   const loadError = overviewError ?? templateError;
+  const looks = template ? describeLooks(template) : null;
   if (loadError) {
     return (
       <>
@@ -181,6 +246,40 @@ export function NewBacktestSessionPage() {
           <Spinner label="Loading the session form" />
         </div>
       </>
+    );
+  }
+
+  if (created) {
+    return (
+      <div style={{ maxWidth: "1100px" }}>
+        <BacktestBackLink />
+        <PageHeader title={pageTitle} subtitle={pageSubtitle} />
+        {/* Tabler's .alert is a flex row: each alert's content sits in one block so it reads top to bottom. */}
+        <div className="alert alert-success" role="status">
+          <div>
+            <strong>{created.session.name}</strong> ({created.session.symbol}) is queued; its progress shows under Background jobs.
+            {created.llmEstimate && <div className="mt-1">The AI model decides. {describeLlmEstimate(created.llmEstimate)}.</div>}
+          </div>
+        </div>
+        <div className="alert alert-warning" role="status">
+          <div>
+            <div className="fw-semibold mb-1">It runs, with {created.warnings.length === 1 ? "this difference" : "these differences"} from what its files hold:</div>
+            <ul className="mb-0 ps-3">
+              {created.warnings.map((warning) => (
+                <li key={warning}>{warning}</li>
+              ))}
+            </ul>
+          </div>
+        </div>
+        <div className="d-flex gap-2 flex-wrap justify-content-end">
+          <Link to="/backtest" className="btn btn-outline-secondary">
+            Back to Backtesting
+          </Link>
+          <Link to={`/backtest/sessions/${created.session.id}`} className="btn btn-primary">
+            Open the session
+          </Link>
+        </div>
+      </div>
     );
   }
 
@@ -205,7 +304,7 @@ export function NewBacktestSessionPage() {
         <BacktestCard title="Session" className="mb-3">
           <div className="card-body">
             <div className="row g-3">
-              <div className="col-12 col-lg-5">
+              <div className="col-12 col-lg-6">
                 <label htmlFor="backtest-session-name" className="form-label">
                   Name
                 </label>
@@ -217,23 +316,6 @@ export function NewBacktestSessionPage() {
                   value={name}
                   onChange={(event) => setName(event.target.value)}
                 />
-              </div>
-              <div className="col-12 col-sm-6 col-lg-4">
-                <label htmlFor="backtest-session-symbol" className="form-label">
-                  Symbol (downloaded files)
-                </label>
-                <select id="backtest-session-symbol" className="form-select" value={symbol} onChange={(event) => changeSymbol(event.target.value)}>
-                  {files.map((file) => (
-                    <option key={file.symbol} value={file.symbol}>
-                      {describeFileOption(file)}
-                    </option>
-                  ))}
-                </select>
-                {selectedFile && selectedFile.missingWeekdays > 0 && (
-                  <div className="iorio-note-amber mt-1" style={{ fontSize: "0.75rem" }}>
-                    {pluralize(selectedFile.missingWeekdays, "weekday")} missing in this file: Update it first, or the session has gaps.
-                  </div>
-                )}
               </div>
               <div className="col-12 col-sm-6 col-lg-3">
                 <label htmlFor="backtest-session-capital" className="form-label">
@@ -253,49 +335,71 @@ export function NewBacktestSessionPage() {
                 </div>
               </div>
               <div className="col-12 col-sm-6 col-lg-3">
-                <label htmlFor="backtest-session-start" className="form-label">
-                  Start date
-                </label>
-                <input
-                  id="backtest-session-start"
-                  type="date"
-                  className="form-control font-mono"
-                  min={selectedFile?.firstDate ?? undefined}
-                  max={selectedFile?.lastDate ?? undefined}
-                  value={startDate}
-                  onChange={(event) => setStartDate(event.target.value)}
-                />
-              </div>
-              <div className="col-12 col-sm-6 col-lg-3">
-                <label htmlFor="backtest-session-end" className="form-label">
-                  End date
-                </label>
-                <input
-                  id="backtest-session-end"
-                  type="date"
-                  className="form-control font-mono"
-                  min={selectedFile?.firstDate ?? undefined}
-                  max={selectedFile?.lastDate ?? undefined}
-                  value={endDate}
-                  onChange={(event) => setEndDate(event.target.value)}
-                />
-              </div>
-              <div className="col-12 col-sm-6 col-lg-3">
-                <label htmlFor="backtest-session-time" className="form-label">
-                  Decision time
-                </label>
-                <input id="backtest-session-time" type="text" className="form-control font-mono" value="10:00 ET" disabled readOnly />
-              </div>
-              <div className="col-12 col-sm-6 col-lg-3">
                 <label htmlFor="backtest-session-positions" className="form-label">
                   Positions
                 </label>
-                <select id="backtest-session-positions" className="form-select" value="held" onChange={() => undefined}>
-                  <option value="held">Held to expiry</option>
-                  <option value="managed" disabled>
-                    Pluto's buybacks and rolls (later)
-                  </option>
-                </select>
+                <input id="backtest-session-positions" type="text" className="form-control" value="The full wheel" disabled readOnly aria-describedby="backtest-session-positions-hint" />
+                <div id="backtest-session-positions-hint" className="text-secondary mt-1" style={{ fontSize: "0.75rem" }}>
+                  assignment, calls on the shares, rolls and buybacks
+                </div>
+              </div>
+              <div className="col-12 col-lg-6">
+                <BacktestSymbolPicker files={files} selected={symbols} onChange={changeSymbols} invalid={submitAttempted && (selectedFiles.length === 0 || !coverage)} />
+                {selectedFiles.length > 1 && (
+                  <div className="text-secondary mt-1" style={{ fontSize: "0.75rem" }}>
+                    {symbols.join(", ")} share one book: one cash balance, one account.
+                  </div>
+                )}
+              </div>
+              <div className="col-12 col-lg-6">
+                <div className="row g-3">
+                  <div className="col-12 col-sm-6">
+                    <label htmlFor="backtest-session-start" className="form-label">
+                      Start date
+                    </label>
+                    <input
+                      id="backtest-session-start"
+                      type="date"
+                      className="form-control font-mono"
+                      min={coverage?.firstDate}
+                      max={coverage?.lastDate}
+                      value={startDate}
+                      onChange={(event) => setStartDate(event.target.value)}
+                    />
+                  </div>
+                  <div className="col-12 col-sm-6">
+                    <label htmlFor="backtest-session-end" className="form-label">
+                      End date
+                    </label>
+                    <input
+                      id="backtest-session-end"
+                      type="date"
+                      className="form-control font-mono"
+                      min={coverage?.firstDate}
+                      max={coverage?.lastDate}
+                      value={endDate}
+                      onChange={(event) => setEndDate(event.target.value)}
+                    />
+                  </div>
+                  <div className="col-12 text-secondary" style={{ fontSize: "0.75rem", marginTop: "0.25rem" }}>
+                    {coverage
+                      ? `${selectedFiles.length > 1 ? "Every picked file covers" : "The file covers"} ${coverage.firstDate} → ${coverage.lastDate}; the period must lie inside it.`
+                      : selectedFiles.length > 1
+                        ? "The picked files share no period."
+                        : "Pick a symbol to set the period."}
+                  </div>
+                  {looks && (
+                    <div className="col-12">
+                      <label htmlFor="backtest-session-looks" className="form-label">
+                        Looks
+                      </label>
+                      <input id="backtest-session-looks" type="text" className="form-control font-mono" value={looks} disabled readOnly aria-describedby="backtest-session-looks-hint" />
+                      <div id="backtest-session-looks-hint" className="text-secondary mt-1" style={{ fontSize: "0.75rem" }}>
+                        a look every 30 minutes in Pluto's window on the days a file holds intraday quotes; one look at 10:00 on the others
+                      </div>
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
             <fieldset className="row g-3 mt-1">
@@ -328,7 +432,7 @@ export function NewBacktestSessionPage() {
 
         <BacktestCard
           title="Settings"
-          description={changedCount === 0 ? "Pluto's settings as they are now" : `${pluralize(changedCount, "setting")} changed for this session`}
+          description={changedCount === 0 ? "Pluto's settings as they are now" : `${pluralizeCount(changedCount, "setting")} changed for this session`}
           actions={
             changedCount > 0 && (
               <button type="button" className="btn btn-link p-0" style={{ fontSize: "0.8rem" }} onClick={() => setValueByPath(initialValueByPath(template, null))}>
@@ -359,6 +463,34 @@ export function NewBacktestSessionPage() {
           )}
         </BacktestCard>
 
+        {decidedByModel && (
+          <BacktestCard title="The AI model" description="what the session may take, before it starts" className="mb-3">
+            <div className="card-body py-2" style={{ fontSize: "0.85rem", lineHeight: 1.5 }} aria-live="polite">
+              {estimateRequestText === null ? (
+                <div className="text-secondary">Pick the symbols, the period and the starting value for an estimate.</div>
+              ) : !estimateIsCurrent ? (
+                <Spinner size="sm" label="Estimating the model calls" />
+              ) : estimate.error ? (
+                <div className="text-danger">{estimate.error}</div>
+              ) : estimate.result?.llmEstimate ? (
+                <div className="fw-semibold">
+                  {describeLlmEstimate(estimate.result.llmEstimate)}
+                  <span className="text-secondary fw-normal"> · over {pluralizeCount(estimate.result.llmEstimate.tradingDays, "trading day")}, an upper bound</span>
+                </div>
+              ) : (
+                <div className="text-secondary">No estimate: the session would run on the rules.</div>
+              )}
+              <div className="text-secondary mt-1">{llmSessionNote}</div>
+              {estimateIsCurrent && estimate.result && estimate.result.warnings.length > 0 && (
+                <ul className="mb-0 mt-2 ps-3 iorio-note-amber">
+                  {estimate.result.warnings.map((warning) => (
+                    <li key={warning}>{warning}</li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          </BacktestCard>
+        )}
         {submitAttempted && problems.length > 0 && (
           <div className="alert alert-danger">
             <ul className="mb-0 ps-3">

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useLayoutEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { errorMessage } from "../../api/client";
 import { cancelBacktestJob, resumeBacktestJob, type BacktestJobView } from "../../api/backtest";
@@ -15,11 +15,27 @@ interface BacktestJobsCardProps {
 
 type JobAction = "cancel" | "resume";
 
+/** The list shows this many jobs; the rest scroll. */
+const visibleJobRows = 6;
+
 /** Background jobs: downloads and backtest runs, each in its own process, with progress read from the database. */
 export function BacktestJobsCard({ jobs, now, onJobsChanged }: BacktestJobsCardProps) {
   const [pendingAction, setPendingAction] = useState<{ jobId: string; action: JobAction } | null>(null);
   const [jobToCancel, setJobToCancel] = useState<BacktestJobView | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
+  const jobListRef = useRef<HTMLDivElement>(null);
+  const [jobListMaxHeight, setJobListMaxHeight] = useState<number | null>(null);
+
+  // Rows differ in height (an error line, a phone's stacked layout), so the cap is measured: the first six rows' height.
+  useLayoutEffect(() => {
+    const measure = () => {
+      const rows = jobListRef.current ? Array.from(jobListRef.current.children) : [];
+      setJobListMaxHeight(rows.length > visibleJobRows ? rows.slice(0, visibleJobRows).reduce((total, row) => total + (row as HTMLElement).offsetHeight, 0) : null);
+    };
+    measure();
+    window.addEventListener("resize", measure);
+    return () => window.removeEventListener("resize", measure);
+  }, [jobs]);
 
   const runAction = async (job: BacktestJobView, action: JobAction) => {
     setPendingAction({ jobId: job.id, action });
@@ -50,7 +66,7 @@ export function BacktestJobsCard({ jobs, now, onJobsChanged }: BacktestJobsCardP
           No background jobs. Downloads and backtests appear here while they run.
         </div>
       ) : (
-        <div>
+        <div ref={jobListRef} className="backtest-job-list" style={jobListMaxHeight === null ? undefined : { maxHeight: jobListMaxHeight, overflowY: "auto" }}>
           {jobs.map((job) => {
             const status = job.displayStatus;
             const canCancel = status === "queued" || status === "running" || status === "stopped";
@@ -71,7 +87,7 @@ export function BacktestJobsCard({ jobs, now, onJobsChanged }: BacktestJobsCardP
                 </div>
                 <BacktestJobProgress job={job} now={now} />
                 <div className="d-flex gap-2 justify-content-md-end">
-                  {status === "stopped" && (
+                  {(status === "stopped" || status === "failed") && (
                     <button type="button" className="btn btn-outline-primary d-inline-flex align-items-center gap-1" disabled={pendingAction !== null} onClick={() => void runAction(job, "resume")}>
                       {isPending(job, "resume") && <Spinner size="sm" />}
                       Resume

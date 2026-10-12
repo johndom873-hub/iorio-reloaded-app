@@ -5,7 +5,7 @@ import { BacktestJobsCard } from "../../components/backtest/BacktestJobsCard";
 import { BacktestSessionsTable } from "../../components/backtest/BacktestSessionsTable";
 import { useBacktestOverview } from "../../components/backtest/useBacktestPolling";
 import { useTickingNow } from "../../hooks/useTickingNow";
-import { formatFileSize, pluralize } from "../../lib/formatters";
+import { formatFileSize, pluralizeCount } from "../../lib/formatters";
 
 const pageTitle = "Backtesting";
 const pageSubtitle = "Replay the valuation model and Pluto's rules on ThetaData option prices from 2020. Runs on this Mac only.";
@@ -48,7 +48,7 @@ export function BacktestPage() {
             <span className="subheader">Local only</span>
             <span className="font-mono text-break">{overview.dataDirectory}</span>
             <span className="text-secondary">
-              · {pluralize(overview.files.length, "file")} · {formatFileSize(totalBytes)}
+              · {pluralizeCount(overview.files.length, "file")} · {formatFileSize(totalBytes)}
             </span>
           </span>
         }

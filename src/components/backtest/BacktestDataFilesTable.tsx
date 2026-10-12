@@ -2,7 +2,7 @@ import { useState, type FormEvent } from "react";
 import { errorMessage } from "../../api/client";
 import { resumeBacktestJob, startBacktestDownload, type BacktestDataFileSummary, type BacktestJobView } from "../../api/backtest";
 import { formatFileSize, formatNumber } from "../../lib/formatters";
-import { describeDetectedSplits, splitsNotAnalysedExplanation } from "../../lib/backtestPresentation";
+import { describeDetectedSplits, intradayDaysMissingExplanation, splitsNotAnalysedExplanation } from "../../lib/backtestPresentation";
 import { DataTable, type DataTableColumn } from "../DataTable/DataTable";
 import { Spinner } from "../Spinner";
 import { TooltipSpan } from "../TooltipSpan";
@@ -86,6 +86,34 @@ export function BacktestDataFilesTable({ files, jobs, onFilesChanged }: Backtest
       headerTitle: "Weekdays between From and To with nothing stored (a gap to fill). Holidays are stored as days without data, so they do not count.",
       align: "right",
       render: (file) => <span className={file.missingWeekdays > 0 ? "iorio-note-amber" : "text-secondary"}>{formatNumber(file.missingWeekdays)}</span>,
+    },
+    {
+      key: "issues",
+      header: "Issues",
+      headerTitle: "Stored days of which the downloader could not retrieve a part or an expiration: the day is stored with what was retrieved.",
+      align: "right",
+      render: (file) => <span className={file.daysWithIssues > 0 ? "iorio-note-amber" : "text-secondary"}>{formatNumber(file.daysWithIssues ?? 0)}</span>,
+    },
+    {
+      key: "unavailable",
+      header: "Unavailable",
+      headerTitle: "Days the downloader could not retrieve at all, or whose intraday quotes it could not. Every later download asks for them again.",
+      align: "right",
+      render: (file) => <span className={file.unavailableDays > 0 ? "iorio-note-amber" : "text-secondary"}>{formatNumber(file.unavailableDays ?? 0)}</span>,
+    },
+    {
+      key: "intraday",
+      header: "Intraday days",
+      headerTitle: "Days with complete intraday quotes.",
+      align: "right",
+      render: (file) =>
+        file.intradayDays === null || file.intradayDays === undefined ? (
+          <TooltipSpan text={intradayDaysMissingExplanation} className="text-secondary">
+            —
+          </TooltipSpan>
+        ) : (
+          formatNumber(file.intradayDays)
+        ),
     },
     {
       key: "bars",

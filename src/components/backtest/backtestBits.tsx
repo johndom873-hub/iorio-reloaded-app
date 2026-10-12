@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import { Link } from "react-router-dom";
-import { IconArrowLeft } from "@tabler/icons-react";
+import { IconArrowLeft, IconChevronDown } from "@tabler/icons-react";
 import type { BacktestJobDisplayStatus, BacktestJobKind, BacktestJobView } from "../../api/backtest";
 import { formatRelativeAge, formatSecondsInWords, formatShortAgeWithSeconds } from "../../lib/formatters";
 import {
@@ -13,6 +13,7 @@ import {
   jobStatusBadgeClass,
   jobStatusLabel,
   signedPercentDisplay,
+  type BacktestValueScale,
 } from "../../lib/backtestPresentation";
 import { TooltipSpan } from "../TooltipSpan";
 
@@ -49,6 +50,39 @@ export function BacktestCard({ title, description, actions, children, className 
 export function SignedPercent({ fraction, decimalPlaces = 1 }: { fraction: number | null | undefined; decimalPlaces?: number }) {
   const display = signedPercentDisplay(fraction, decimalPlaces);
   return <span className={display.className}>{display.text}</span>;
+}
+
+/** A chart line's legend swatch for a table row or column: solid for a session, dashed for buy and hold of the symbols,
+ *  dotted for SPY. The colour is the chart's own (backtestPresentation's palettes). */
+export function BacktestSeriesSwatch({ color, line }: { color: string; line: "solid" | "dashed" | "dotted" }) {
+  return <span aria-hidden="true" className="d-inline-block flex-shrink-0" style={{ width: "1rem", height: 0, borderTop: `3px ${line} ${color}` }} />;
+}
+
+/** The account value charts' Linear / Log switch (a card action). */
+export function BacktestValueScaleSwitch({ scale, onChange }: { scale: BacktestValueScale; onChange: (scale: BacktestValueScale) => void }) {
+  const options: { value: BacktestValueScale; label: string }[] = [
+    { value: "linear", label: "Linear" },
+    { value: "log", label: "Log" },
+  ];
+  return (
+    <div className="btn-group" role="group" aria-label="Value axis">
+      {options.map((option) => (
+        <button key={option.value} type="button" className={`btn ${scale === option.value ? "btn-primary" : "btn-outline-secondary"}`} aria-pressed={scale === option.value} onClick={() => onChange(option.value)}>
+          {option.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+/** The Show / Hide button of a collapsible results card (its state remembered by useCollapsibleCard). */
+export function BacktestCollapseToggle({ isOpen, onToggle }: { isOpen: boolean; onToggle: () => void }) {
+  return (
+    <button type="button" className="btn btn-outline-secondary d-inline-flex align-items-center gap-1" aria-expanded={isOpen} onClick={onToggle}>
+      <IconChevronDown size={16} aria-hidden="true" style={{ transform: isOpen ? "rotate(180deg)" : "none", transition: "transform 0.15s ease" }} />
+      {isOpen ? "Hide" : "Show"}
+    </button>
+  );
 }
 
 export function BacktestBackLink() {

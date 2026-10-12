@@ -1,8 +1,8 @@
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import type { BacktestJobView, BacktestSessionListItem } from "../../api/backtest";
-import { formatBrowserClockTime, formatBrowserDayMonth, formatNumber, formatPercentage, formatRatio } from "../../lib/formatters";
-import { backtestMetricExplanation, describeOverrideCount, jobProgressFraction } from "../../lib/backtestPresentation";
+import { formatBrowserClockTime, formatBrowserDayMonth, formatNumber, formatPercentage, formatRatio, formatSignedPnl, pnlTextClass } from "../../lib/formatters";
+import { backtestCycleMetricExplanation, backtestMetricExplanation, describeOpenCyclesShort, describeOverrideCount, edgeCaptureEitherBasisExplanation, jobProgressFraction } from "../../lib/backtestPresentation";
 import { DataTable, type DataTableColumn } from "../DataTable/DataTable";
 import { BacktestCard, BacktestCardTitle, BacktestJobStatusBadge, SignedPercent } from "./backtestBits";
 
@@ -50,6 +50,7 @@ export function BacktestSessionsTable({ sessions, jobs }: BacktestSessionsTableP
     {
       key: "session",
       header: "Session",
+      cellClassName: "backtest-session-name-cell",
       render: (session) => (
         <span>
           <Link to={`/backtest/sessions/${session.id}`} className="fw-semibold text-decoration-none">
@@ -71,6 +72,13 @@ export function BacktestSessionsTable({ sessions, jobs }: BacktestSessionsTableP
       ),
     },
     {
+      key: "cyclePnl",
+      header: "Cycle P&L",
+      headerTitle: `${backtestCycleMetricExplanation.cyclePnl} "—" until the run finishes, and on a session measured per option.`,
+      align: "right",
+      render: (session) => (session.wheelCycles ? <span className={`fw-semibold ${pnlTextClass(session.wheelCycles.totalPnlDollars)}`}>{formatSignedPnl(session.wheelCycles.totalPnlDollars, 0)}</span> : "—"),
+    },
+    {
       key: "totalReturn",
       header: "Total return",
       headerTitle: backtestMetricExplanation.totalReturn,
@@ -86,9 +94,33 @@ export function BacktestSessionsTable({ sessions, jobs }: BacktestSessionsTableP
       align: "right",
       render: (session) => <SignedPercent fraction={session.metrics?.maxDrawdown} />,
     },
-    { key: "trades", header: "Trades", headerTitle: "Trades opened in the period.", align: "right", render: (session) => formatNumber(session.metrics?.tradeCount) },
-    { key: "winRate", header: "Win rate", headerTitle: backtestMetricExplanation.winRate, align: "right", render: (session) => formatPercentage(session.metrics?.winRate, 0) },
-    { key: "edgeCapture", header: "Edge capture", headerTitle: backtestMetricExplanation.edgeCapture, align: "right", render: (session) => formatRatio(session.metrics?.edgeCapture, 2) },
+    { key: "trades", header: "Options sold", headerTitle: backtestCycleMetricExplanation.optionsSold, align: "right", render: (session) => formatNumber(session.metrics?.tradeCount) },
+    {
+      key: "cycles",
+      header: "Cycles",
+      headerTitle: `${backtestCycleMetricExplanation.cycles} "—" on a session measured per option (run before cycles carried the P&L).`,
+      align: "right",
+      cellClassName: "text-nowrap",
+      render: (session) => (session.wheelCycles ? `${formatNumber(session.wheelCycles.cycleCount)} · ${formatNumber(session.wheelCycles.openCycleCount)} open` : "—"),
+    },
+    {
+      key: "winRate",
+      header: "Win rate",
+      headerTitle: `${backtestCycleMetricExplanation.winRate} Beside it: the open cycles and their P&L at the last marks. On a session measured per option: trades with P&L > 0 ÷ all closed trades.`,
+      align: "right",
+      cellClassName: "text-nowrap",
+      render: (session) => (
+        <div className="d-flex flex-column align-items-end">
+          <span>{formatPercentage(session.metrics?.winRate, 0)}</span>
+          {session.wheelCycles && (
+            <span className="text-secondary" style={{ fontSize: "0.72rem" }}>
+              {describeOpenCyclesShort(session.wheelCycles)}
+            </span>
+          )}
+        </div>
+      ),
+    },
+    { key: "edgeCapture", header: "Edge capture", headerTitle: edgeCaptureEitherBasisExplanation, align: "right", render: (session) => formatRatio(session.metrics?.edgeCapture, 2) },
     {
       key: "run",
       header: "Run",
@@ -148,7 +180,7 @@ export function BacktestSessionsTable({ sessions, jobs }: BacktestSessionsTableP
       }
       afterTable={
         <div className="card-footer text-secondary" style={{ fontSize: "0.78rem", lineHeight: 1.5 }}>
-          <strong>Total return</strong>: the account's growth over the period, after costs. <strong>CAGR</strong>: the same as a yearly rate on calendar time. <strong>Sortino</strong>: average daily return over the downside wobble, yearly. <strong>Max drawdown</strong>: the deepest fall from a peak. <strong>Edge capture</strong>: what the trades made ÷ the Edge $ the model predicted for them.
+          <strong>Total return</strong>: the account's growth over the period, after costs. <strong>CAGR</strong>: the same as a yearly rate on calendar time. <strong>Sortino</strong>: average daily return over the downside wobble, yearly. <strong>Max drawdown</strong>: the deepest fall from a peak. <strong>Cycle P&amp;L</strong>: what the wheel cycles made, as the platform counts it. <strong>Edge capture</strong>: what the closed cycles made ÷ the Edge $ the model predicted for their options; the shares' gains count on purpose, so it can run above 1.0.
         </div>
       }
     />

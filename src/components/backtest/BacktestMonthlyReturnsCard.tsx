@@ -1,39 +1,42 @@
 import { useState } from "react";
 import type { BacktestMonthlyReturn } from "../../api/backtest";
 import { formatSignedNumber } from "../../lib/formatters";
-import { buildMonthlyReturnYears, monthLabels, monthlyReturnCellClass, roundToShownPercent } from "../../lib/backtestPresentation";
+import { buildMonthlyReturnYears, hasSpyMonthlyReturns, monthLabels, monthlyReturnCellClass, roundToShownPercent, type MonthlyReturnSeries } from "../../lib/backtestPresentation";
 import { BacktestCard, SignedPercent } from "./backtestBits";
 
-type MonthlySeries = "session" | "baseline";
+interface BacktestMonthlyReturnsCardProps {
+  monthlyReturns: BacktestMonthlyReturn[];
+  /** "Buy and hold · SMCI, HOOD" and "Buy and hold · SPY": the series the card can switch to, for comparison only. */
+  baselineLabel: string;
+  spyBaselineLabel: string;
+}
 
-const seriesOptions: { key: MonthlySeries; label: string }[] = [
-  { key: "session", label: "This session" },
-  { key: "baseline", label: "Buy and hold" },
-];
-
-/** Monthly returns as a year × month heat table (green gain, red loss), with the year compounded; switchable to buy and hold. */
-export function BacktestMonthlyReturnsCard({ monthlyReturns }: { monthlyReturns: BacktestMonthlyReturn[] }) {
-  const [series, setSeries] = useState<MonthlySeries>("session");
-  const years = buildMonthlyReturnYears(monthlyReturns, series);
+/** Monthly returns as a year × month heat table (green gain, red loss), with the year compounded; switchable to either buy and
+ *  hold (comparison only). SPY's is offered only when the session kept it. */
+export function BacktestMonthlyReturnsCard({ monthlyReturns, baselineLabel, spyBaselineLabel }: BacktestMonthlyReturnsCardProps) {
+  const [series, setSeries] = useState<MonthlyReturnSeries>("session");
+  // Short option names (a session's symbols can be 30 long); the card's description names the series in full.
+  const seriesOptions: { key: MonthlyReturnSeries; label: string; fullName: string }[] = [
+    { key: "session", label: "This session", fullName: "This session" },
+    { key: "baseline", label: "Buy and hold of the symbols", fullName: `${baselineLabel}, for comparison only` },
+    ...(hasSpyMonthlyReturns(monthlyReturns) ? [{ key: "spy" as const, label: "Buy and hold of SPY", fullName: `${spyBaselineLabel}, for comparison only` }] : []),
+  ];
+  const shown = seriesOptions.find((option) => option.key === series) ?? seriesOptions[0]!;
+  const shownSeries = shown.key;
+  const years = buildMonthlyReturnYears(monthlyReturns, shownSeries);
 
   return (
     <BacktestCard
       title="Monthly returns"
-      description="% of the account at the start of each month; the year compounds its months"
+      description={shownSeries === "session" ? "% of the account at the start of each month; the year compounds its months" : `${shown.fullName}: % at the start of each month; the year compounds its months`}
       actions={
-        <div className="btn-group" role="group" aria-label="Monthly returns of">
+        <select className="form-select w-auto backtest-monthly-series" aria-label="Monthly returns of" value={shownSeries} onChange={(event) => setSeries(event.target.value as MonthlyReturnSeries)}>
           {seriesOptions.map((option) => (
-            <button
-              key={option.key}
-              type="button"
-              className={`btn ${series === option.key ? "btn-primary" : "btn-outline-secondary"}`}
-              aria-pressed={series === option.key}
-              onClick={() => setSeries(option.key)}
-            >
+            <option key={option.key} value={option.key}>
               {option.label}
-            </button>
+            </option>
           ))}
-        </div>
+        </select>
       }
       className="h-100"
     >
