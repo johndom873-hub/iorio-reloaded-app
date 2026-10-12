@@ -21,9 +21,12 @@ export function RollBadge({ row, onClick }: { row: Pick<SignalsScreenRow, "bestR
   const ref = useTooltip<HTMLButtonElement>(tooltip);
   if (!best || !model || row.rollCount === 0) return null;
   return (
-    <button ref={ref} type="button" className={`badge border-0 d-inline-flex align-items-center gap-1 px-2 py-1 text-nowrap ${gradeBadgeClass[model.grade]}`} style={{ fontSize: "0.72rem", cursor: "pointer" }} onClick={() => onClick(best.legId)}>
-      <IconRefresh size={12} />
-      {row.rollCount} roll{row.rollCount === 1 ? "" : "s"} · {gradeLabel[model.grade]}
+    // The button is the tap target (44px tall on a phone, theme.css .roll-badge-hit); the badge inside keeps its size.
+    <button ref={ref} type="button" className="roll-badge-hit" onClick={() => onClick(best.legId)}>
+      <span className={`badge d-inline-flex align-items-center gap-1 px-2 py-1 text-nowrap ${gradeBadgeClass[model.grade]}`} style={{ fontSize: "0.72rem" }}>
+        <IconRefresh size={12} aria-hidden="true" />
+        {row.rollCount} roll{row.rollCount === 1 ? "" : "s"} · {gradeLabel[model.grade]}
+      </span>
     </button>
   );
 }

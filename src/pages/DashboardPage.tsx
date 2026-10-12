@@ -42,6 +42,7 @@ import {
   pnlTextClass,
 } from "../lib/formatters";
 import { portfolioFromExposure } from "../lib/portfolioFromExposure";
+import { positionCloseReasonLabel } from "../lib/positionPnl";
 import { useRefreshAfterSignalsTickerModal, useSignalsTickerModal } from "../hooks/useSignalsTickerModal";
 import { TooltipSpan } from "../components/TooltipSpan";
 import { PerformanceCard } from "../components/PerformanceCard";
@@ -52,15 +53,6 @@ const strategyLabels: Record<string, string> = {
   unstructured: "No strategy",
   hedge: "Hedges",
   unallocated: "Unallocated (cash)",
-};
-
-const closeReasonLabels: Record<string, string> = {
-  assigned: "Assigned",
-  expired_worthless: "Expired",
-  closed_via_app: "closed",
-  closed_via_external_trade: "closed outside the app",
-  stock_rolled_into_covered_call: "shares rolled into a covered call",
-  unknown: "closed (reason unclear)",
 };
 
 const unstructuredReasonLabels: Record<string, string> = {
@@ -383,7 +375,7 @@ function EventRow({ event, onSymbolClick }: { event: PositionEvent; onSymbolClic
     statusLabel = "No strategy";
     statusBadgeClass = eventStatusBadge.unstructured;
   } else {
-    statusLabel = closeReasonLabels[event.closeReason ?? ""] ?? event.closeReason ?? "Closed";
+    statusLabel = positionCloseReasonLabel(event.closeReason);
     if (event.closeReason === "unknown" || event.closeReason === "closed_via_external_trade") {
       statusBadgeClass = eventStatusBadge.closed_flagged;
     } else if (event.closeReason === "assigned" && event.strategyKey === "cash_secured_put") {

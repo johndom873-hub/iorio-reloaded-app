@@ -52,6 +52,7 @@ import {
   pnlTextClass,
 } from "./formatters";
 import { plutoParameterLabelByField } from "./plutoParameters";
+import { positionCloseReasonLabel } from "./positionPnl";
 import { gateLabel, humanizeKey } from "./plutoPresentation";
 import { gradeBadgeClass, gradeLabel } from "./signalsPresentation";
 
@@ -705,19 +706,10 @@ export function describeBreakEven(breakEvenPerShare: number | null): string {
 
 // ---- Positions (the simulated book, as the platform's position rows would read) ----
 
-const positionCloseReasonLabel: Record<string, string> = {
-  expired_worthless: "Expired",
-  assigned: "Assigned",
-  closed_via_app: "Closed",
-  stock_rolled_into_covered_call: "Shares to a covered call",
-  unknown: "Closed (reason unclear)",
-};
-
-/** How a position ended ("Expired", "Assigned", "Closed", "Shares to a covered call"), or "Open". */
+/** How a position ended, in the platform's close-reason labels ("Expired", "Assigned", "Shares rolled into a covered call"), or "Open". */
 export function describePositionEnding(position: Pick<BacktestPosition, "status" | "closeReason">): string {
   if (position.status === "open") return "Open";
-  if (position.closeReason === null) return "Closed";
-  return positionCloseReasonLabel[position.closeReason] ?? humanizeKey(position.closeReason);
+  return positionCloseReasonLabel(position.closeReason);
 }
 
 const unstructuredReasonLabel: Record<string, string> = {

@@ -1,5 +1,6 @@
 import type { Position, PositionStrategyKey, UnrealizedPnlResult } from "../api/positions";
 import { easternIsoDate, todayInEasternIso } from "./formatters";
+import { humanizeKey } from "./plutoPresentation";
 
 // A position synced straight from IBKR that doesn't cleanly pair into a
 // known strategy shape shows up as "unstructured" (needs review) rather
@@ -10,6 +11,22 @@ export function strategyLabel(strategyKey: PositionStrategyKey): string {
   if (strategyKey === "cash_secured_put") return "Cash-Secured Put";
   if (strategyKey === "hedge") return "Hedge";
   return "Needs Review";
+}
+
+/** How a position closed, worded as a standalone badge: the Dashboard's events and the backtest's Positions both use it. */
+const positionCloseReasonLabels: Record<string, string> = {
+  assigned: "Assigned",
+  expired_worthless: "Expired",
+  closed_via_app: "Closed",
+  closed_via_external_trade: "Closed outside the app",
+  stock_rolled_into_covered_call: "Shares rolled into a covered call",
+  unknown: "Closed (reason unclear)",
+};
+
+/** A close reason's label; "Closed" when none is stored, and an unlisted reason in words ("partially_filled" → "Partially filled"). */
+export function positionCloseReasonLabel(closeReason: string | null | undefined): string {
+  if (!closeReason) return "Closed";
+  return positionCloseReasonLabels[closeReason] ?? humanizeKey(closeReason);
 }
 
 // The one short code for each strategy, shown in every badge on the platform.

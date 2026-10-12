@@ -16,14 +16,15 @@ export function Pagination({ page, pageSize, totalRows, onPageChange }: Paginati
 
   return (
     <div className="d-flex flex-column flex-sm-row align-items-center justify-content-between gap-2 mt-3">
-      <div className="text-muted" style={{ fontSize: "0.8rem" }}>
+      <div className="text-secondary" style={{ fontSize: "0.8rem" }}>
         {firstRow}–{lastRow} of {totalRows}
       </div>
       <div className="btn-group" role="group" aria-label="Pagination">
         <button type="button" className="btn btn-outline-secondary" disabled={page <= 1} onClick={() => onPageChange(page - 1)}>
           Previous
         </button>
-        <span className="btn btn-outline-secondary disabled text-nowrap">
+        {/* Information, not a control: the button group's look without .disabled's dimming, and no pointer events. */}
+        <span className="btn btn-outline-secondary pe-none text-nowrap" aria-current="page">
           Page {page} of {totalPages}
         </span>
         <button type="button" className="btn btn-outline-secondary" disabled={page >= totalPages} onClick={() => onPageChange(page + 1)}>

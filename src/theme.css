@@ -1830,3 +1830,31 @@
   min-width: 13rem;
   white-space: normal;
 }
+/* Green text, light theme: Tabler's .text-success (#2fb344) is 2.74:1 on a white card and 2.63:1 on the #f9fafb page,
+   under WCAG AA. The same hue darkened to the first shade that also passes on a hovered table row (#eeeff0): #217d30,
+   5.20:1 on white, 4.97:1 on #f9fafb, 4.51:1 on a hovered row. Only the text utility changes (not --tblr-success,
+   bg-success, btn-success or badges); the dark theme keeps Tabler's own rule. */
+.text-success {
+  color: #217d30 !important;
+}
+:root[data-bs-theme="dark"] .text-success {
+  color: color-mix(in srgb, var(--tblr-success) calc(var(--tblr-text-opacity) * 100%), transparent) !important;
+}
+/* Roll Signals badge (RollBadge): the button around the badge is the tap target. On a phone it reaches 44px tall while the
+   badge keeps its size; the negative margin keeps the row's height as it was. */
+.roll-badge-hit {
+  display: inline-flex;
+  align-items: center;
+  padding: 0;
+  border: 0;
+  background: none;
+  line-height: 1;
+  cursor: pointer;
+}
+@media (max-width: 767.98px) {
+  .roll-badge-hit {
+    min-height: 2.75rem;
+    padding: 0 0.25rem;
+    margin: -0.625rem -0.25rem;
+  }
+}
