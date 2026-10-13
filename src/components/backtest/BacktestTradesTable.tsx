@@ -118,7 +118,7 @@ export function BacktestTradesTable({ symbol, sessionName, pnlBasis, trades }: B
     { key: "qty", header: "Qty", align: "right", render: (trade) => formatNumber(trade.contracts) },
     { key: "soldAt", header: "Sold at", headerTitle: "Sale price = mid − spread cost share × (ask − bid) ÷ 2, before the commission.", align: "right", render: (trade) => formatQuotePrice(trade.fillPrice) },
     { key: "exposure", header: "EXP $", headerTitle: "EXP $ when it was sold: the position's capital at risk as Positions shows it (a put's strike, or a call's shares at their cost in the book, less the premium after its commission).", align: "right", render: (trade) => formatCurrency(trade.exposureDollars, 0) },
-    { key: "grade", header: "Grade", headerTitle: modelColumnExplanation.grade, render: (trade) => <span className={`badge ${tradeGradeBadgeClass(trade.grade)}`}>{tradeGradeLabel(trade.grade)}</span> },
+    { key: "grade", header: "Grade", headerTitle: modelColumnExplanation.grade, render: (trade) => (trade.grade === null ? tradeGradeLabel(null) : <span className={`badge ${tradeGradeBadgeClass(trade.grade)}`}>{tradeGradeLabel(trade.grade)}</span>) },
     { key: "margin", header: "Edge margin", headerTitle: modelColumnExplanation.margin, align: "right", render: (trade) => formatPercentage(trade.edgeMargin, 0) },
     { key: "edgeYield", header: "Edge Yield", headerTitle: modelColumnExplanation.edgeYield, align: "right", render: (trade) => formatSignedPercentage(trade.edgeYield, 0) },
     { key: "histYield", header: "Hist Yield", headerTitle: modelColumnExplanation.histYield, align: "right", render: (trade) => formatSignedPercentage(trade.histYield, 0) },

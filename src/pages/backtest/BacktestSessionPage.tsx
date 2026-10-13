@@ -30,6 +30,7 @@ import {
   describeSessionSplits,
   isBacktestJobActive,
   sessionDecisionMaker,
+  decidedByPhrase,
   sessionSplitsNotePrefix,
   summarizeCycleTotals,
   tablesModeLabel,
@@ -116,7 +117,7 @@ export function BacktestSessionPage() {
     `${session.startDate} → ${session.endDate}`,
     `${formatCurrency(session.startingValue, 0)} start`,
     tablesModeLabel[session.tablesMode],
-    `decided by ${decisionMaker === "llm" ? "the AI model" : "the rules"}`,
+    `decided by ${decidedByPhrase[decisionMaker]}`,
     session.finishedAt ? `ran ${runMoment}, ${formatDuration(session.createdAt, session.finishedAt)}` : `started ${runMoment}`,
   ].join(" · ");
 

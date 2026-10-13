@@ -231,7 +231,7 @@ export function closedTradeTotals(trades: BacktestTrade[]): { madeDollars: numbe
   const closed = trades.filter((trade) => trade.pnlDollars !== null);
   return {
     madeDollars: closed.reduce((sum, trade) => sum + (trade.pnlDollars ?? 0), 0),
-    predictedDollars: closed.reduce((sum, trade) => sum + trade.expectedPnlDollars, 0),
+    predictedDollars: closed.reduce((sum, trade) => sum + (trade.expectedPnlDollars ?? 0), 0),
   };
 }
 
@@ -334,11 +334,14 @@ export function describeBacktestTradeContract(sessionSymbol: string, trade: Back
   return `${trade.symbol ?? sessionSymbol} Sell ${formatOptionContractLabel({ strike: trade.strike, right: trade.optionRight, expiry: trade.expiry, dte: trade.dte })}`;
 }
 
-export function tradeGradeLabel(grade: string): string {
+/** "—" for a baseline wheel's sale, which has no grade. */
+export function tradeGradeLabel(grade: string | null): string {
+  if (grade === null) return "—";
   return gradeLabel[grade as SignalGrade] ?? grade;
 }
 
-export function tradeGradeBadgeClass(grade: string): string {
+export function tradeGradeBadgeClass(grade: string | null): string {
+  if (grade === null) return "";
   return gradeBadgeClass[grade as SignalGrade] ?? "bg-secondary";
 }
 
@@ -839,7 +842,10 @@ export function roundValueAxis(low: number, high: number, maxTicks: number): { m
 
 // ---- Decision maker (the stand-in rules, or the AI model through the Claude subscription) ----
 
-export const decisionMakerLabel: Record<BacktestDecisionMaker, string> = { rules: "Rules", llm: "The AI model" };
+export const decisionMakerLabel: Record<BacktestDecisionMaker, string> = { rules: "Rules", llm: "The AI model", baseline: "Baseline wheel" };
+
+/** "decided by the rules", in a session's subtitle. */
+export const decidedByPhrase: Record<BacktestDecisionMaker, string> = { rules: "the rules", llm: "the AI model", baseline: "the baseline wheel" };
 
 /** Who decided a session's choices: its override, else its frozen settings; "rules" on sessions saved before the choice existed. */
 export function sessionDecisionMaker(session: { overrides: BacktestSettingsOverrides; settingsSnapshot: BacktestSettings }): BacktestDecisionMaker {

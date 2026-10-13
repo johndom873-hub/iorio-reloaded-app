@@ -13,7 +13,28 @@ export type BacktestJobDisplayStatus = BacktestJobStatus | "stopped";
 export type BacktestTablesMode = "walk_forward" | "current";
 
 /** Who makes the choices the AI model makes live: the stand-in rules (BacktestPolicySettings), or the model itself (Claude through the subscription, src/backtest/llm/). */
-export type BacktestDecisionMaker = "rules" | "llm";
+export type BacktestDecisionMaker = "rules" | "llm" | "baseline";
+
+/** The baseline wheel (decision maker "baseline"): no Pluto rules and no Signals, everything held to expiry. */
+export interface BacktestBaselineSettings {
+  entry: "put" | "buy_write";
+  minAbsDelta: number;
+  maxAbsDelta: number;
+  minDte: number;
+  maxDte: number;
+  callStrike: "delta_range" | "above_share_cost" | "above_break_even" | "none";
+  callDeltaRange: "entry_range" | "own_range";
+  callMinAbsDelta: number;
+  callMaxAbsDelta: number;
+  takeProfitPct: number;
+  shareStopLossPct: number;
+  earnings: "ignore" | "skip_spanning";
+  maxAccountPctPerStock: number;
+  looks: "every_look" | "first_look";
+  volatilityEdgeFilter: "off" | "entries" | "all_sales";
+  minVolatilityEdgePoints: number;
+  ranking: "premium_yield" | "edge_yield";
+}
 
 /**
  * The stand-in for the AI model's choices (docs/backtesting/FULL-FIDELITY-DESIGN.md §5). Everything else in a pass is
@@ -50,6 +71,8 @@ export interface BacktestSettings {
   policy?: BacktestPolicySettings;
   /** Absent on older sessions: "rules". */
   decisionMaker?: BacktestDecisionMaker;
+  /** Absent on sessions created before the baseline wheel existed. */
+  baseline?: BacktestBaselineSettings;
 }
 
 export interface BacktestSettingsOverrides {
@@ -58,6 +81,7 @@ export interface BacktestSettingsOverrides {
   kellyFraction?: number;
   policy?: Partial<BacktestPolicySettings>;
   decisionMaker?: BacktestDecisionMaker;
+  baseline?: Partial<BacktestBaselineSettings>;
 }
 
 /** A session's settings with its overrides applied and every default filled in: what the engine runs on. */
@@ -206,7 +230,7 @@ export interface BacktestSettingChoice {
 /** One row of the New session settings table. `path` addresses the value inside BacktestSettings, e.g. "pluto.minEdgeYieldPct" or "policy.roll". */
 export interface BacktestSettingRow {
   path: string;
-  group: "Capital and sizing" | "Candidate quality" | "Model" | "Trading window and system checks" | "Decisions (stand-in for the AI)";
+  group: "Capital and sizing" | "Candidate quality" | "Model" | "Trading window and system checks" | "Decisions (stand-in for the AI)" | "Baseline wheel";
   label: string;
   /** "time" is a clock time, "HH:MM" Eastern. */
   unit: "percent" | "number" | "integer" | "dollars" | "grade" | "days" | "time" | "choice";
@@ -330,10 +354,11 @@ export interface BacktestTrade {
   exposureDollars: number;
   dte: number;
   delta: number | null;
-  grade: string;
-  edgeMargin: number;
-  expectedPnlDollars: number;
-  calibratedExpectedPnlDollars: number;
+  /** The model's figures when it was sold; null for a baseline wheel's sale (no model). */
+  grade: string | null;
+  edgeMargin: number | null;
+  expectedPnlDollars: number | null;
+  calibratedExpectedPnlDollars: number | null;
   edgeYield: number | null;
   histYield: number | null;
   kellyContracts: number | null;
