@@ -316,13 +316,18 @@ export function formatStrike(strike: number): string {
   return `$${Number.isInteger(strike) ? strike : strike.toFixed(2).replace(/\.?0+$/, "")}`;
 }
 
+/** An expiry as the contract label writes it: "9 Oct (2DTE)", or "9 Oct" when the DTE is null. */
+export function formatExpiryDayMonthWithDte(expiryIsoDate: string, dte: number | null): string {
+  return `${formatDayMonth(expiryIsoDate)}${dte === null ? "" : ` (${dte}DTE)`}`;
+}
+
 /**
  * The platform's contract label: "SMCI $47 Call · 9 Oct (2DTE)", or "$47 Call · 9 Oct (2DTE)" without a symbol (a table
  * with its own Ticker column); DTE left out when null. Where space is tight, formatOptionContractShort ("47C 2DTE").
  */
 export function formatOptionContractLabel(contract: { symbol?: string; strike: number; right: "C" | "P"; expiry: string; dte: number | null }): string {
   const symbol = contract.symbol ? `${contract.symbol} ` : "";
-  return `${symbol}${formatStrike(contract.strike)} ${contract.right === "C" ? "Call" : "Put"} · ${formatDayMonth(contract.expiry)}${contract.dte === null ? "" : ` (${contract.dte}DTE)`}`;
+  return `${symbol}${formatStrike(contract.strike)} ${contract.right === "C" ? "Call" : "Put"} · ${formatExpiryDayMonthWithDte(contract.expiry, contract.dte)}`;
 }
 
 /** The order size after a contract label: " · 11× @ 0.39", or " · 11×" without a price. */

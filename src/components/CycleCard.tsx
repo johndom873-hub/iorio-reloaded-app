@@ -5,7 +5,7 @@ import { useColumnVisibility } from "./DataTable/useColumnVisibility";
 import { CycleBucketBadge } from "./CycleBucketBadge";
 import { Spinner } from "./Spinner";
 import { fetchCycles, type Cycle } from "../api/positions";
-import { formatCurrency, formatDate, formatNumber, formatSignedPnl, pnlTextClass } from "../lib/formatters";
+import { daysToExpiry, easternIsoDate, formatCurrency, formatDate, formatExpiryDayMonthWithDte, formatNumber, formatSignedPnl, pnlTextClass, todayInEasternIso } from "../lib/formatters";
 import { TooltipSpan } from "./TooltipSpan";
 
 // Timeline columns; every data table gets the per-column show/hide gear (project rule), saved in localStorage.
@@ -16,6 +16,7 @@ const timelineColumns = [
   { key: "owner", header: "Strategy" },
   { key: "quantity", header: "Qty" },
   { key: "strike", header: "Strike" },
+  { key: "expiry", header: "Expiry" },
   { key: "stockPrice", header: "Stock price" },
   { key: "premium", header: "Premium" },
   { key: "stock", header: "Stock" },
@@ -146,6 +147,7 @@ export function CycleCard({ symbol }: { symbol: string }) {
                   {visible("owner") && <th>{headerLabel("owner", "Strategy")}</th>}
                   {visible("quantity") && <TooltipSpan as="th" className="text-end" text="Shares-equivalent: 1 option contract = 100">{headerLabel("quantity", "Qty", true)}</TooltipSpan>}
                   {visible("strike") && <th className="text-end">{headerLabel("strike", "Strike", true)}</th>}
+                  {visible("expiry") && <TooltipSpan as="th" className="text-end" text="Days to expiry counted from the row's date (US Eastern); the open-option mark counts from today">{headerLabel("expiry", "Expiry", true)}</TooltipSpan>}
                   {visible("stockPrice") && <TooltipSpan as="th" className="text-end" text="Real fill for stock trades, otherwise that day's closing price of the stock">{headerLabel("stockPrice", "Stock price", true)}</TooltipSpan>}
                   {visible("premium") && <th className="text-end">{headerLabel("premium", "Premium", true)}</th>}
                   {visible("stock") && <th className="text-end">{headerLabel("stock", "Stock", true)}</th>}
@@ -166,6 +168,11 @@ export function CycleCard({ symbol }: { symbol: string }) {
                     {visible("owner") && <td><CycleBucketBadge bucket={row.bucket} /></td>}
                     {visible("quantity") && <td className="text-end font-mono">{formatNumber(row.quantity)}</td>}
                     {visible("strike") && <td className={`text-end font-mono ${row.strike === null ? "text-muted" : ""}`}>{row.strike === null ? "—" : formatCurrency(row.strike, 2)}</td>}
+                    {visible("expiry") && (
+                      <td className={`text-end font-mono text-nowrap ${row.expiryDate === null ? "text-muted" : ""}`}>
+                        {row.expiryDate === null ? "—" : formatExpiryDayMonthWithDte(row.expiryDate, daysToExpiry(row.expiryDate, row.at ? easternIsoDate(row.at) : todayInEasternIso()))}
+                      </td>
+                    )}
                     {visible("stockPrice") && <td className={`text-end font-mono ${row.stockPrice === null ? "text-muted" : ""}`}>{row.stockPrice === null ? "—" : formatCurrency(row.stockPrice, 2)}</td>}
                     {visible("premium") && <td className={`text-end font-mono ${row.premium === 0 ? "text-muted" : pnlTextClass(row.premium)}`}>{row.premium === 0 ? "—" : formatSignedPnl(row.premium)}</td>}
                     {visible("stock") && <td className={`text-end font-mono ${row.stock === 0 ? "text-muted" : pnlTextClass(row.stock)}`}>{row.stock === 0 ? "—" : formatSignedPnl(row.stock)}</td>}
@@ -177,7 +184,7 @@ export function CycleCard({ symbol }: { symbol: string }) {
                   {timelineColumns
                     .filter((column) => visible(column.key))
                     .map((column) => (
-                      <td key={column.key} className={["quantity", "strike", "stockPrice", "premium", "stock"].includes(column.key) ? "text-end font-mono" : undefined}>
+                      <td key={column.key} className={["quantity", "strike", "expiry", "stockPrice", "premium", "stock"].includes(column.key) ? "text-end font-mono" : undefined}>
                         {column.key === "date" ? "Cycle total" : null}
                         {column.key === "premium" ? <span className={pnlTextClass(cycle.netPremium)}>{formatSignedPnl(cycle.netPremium)}</span> : null}
                         {column.key === "stock" ? <span className={pnlTextClass(cycle.total - cycle.netPremium)}>{formatSignedPnl(cycle.total - cycle.netPremium)}</span> : null}

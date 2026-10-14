@@ -584,6 +584,8 @@ export interface CycleTimelineRow {
   quantity: number;
   /** Option strike; null for stock rows. */
   strike: number | null;
+  /** Option expiry ("YYYY-MM-DD"); null for stock rows, and for a mark row whose open legs expire on different dates. */
+  expiryDate: string | null;
   /** Real fill for stock trades, else that date's daily close. */
   stockPrice: number | null;
 }
