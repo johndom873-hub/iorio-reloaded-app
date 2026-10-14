@@ -2,6 +2,7 @@ import { apiBaseUrl, apiRequest } from "./client";
 import { openMultiplexedStream } from "./streamMultiplexer";
 import type { OrderCancellationReason, OrderLeg, OrderRequestStatus } from "./positions";
 import type { MarketDataFeedRefusal } from "./environment";
+import type { JobRunStatus } from "./systemHealth";
 
 export type AppNotification =
   | { type: "order_status"; orderId: string }
@@ -9,7 +10,7 @@ export type AppNotification =
   | { type: "position_opened"; positionId: string; symbol: string }
   // Iorio Pulse — see notificationChannel.ts on the backend.
   | { type: "job_started"; jobName: string }
-  | { type: "job_completed"; jobName: string; status: "success" | "failure" }
+  | { type: "job_completed"; jobName: string; status: Exclude<JobRunStatus, "running"> }
   // Day Signals: a pooled contract's grade went up between two refresh cycles.
   | { type: "signal_upgraded"; symbol: string; strategyKey: string; strike: number; expiry: string; dte: number; previousGrade: string; grade: string; netEdge: number; edgeDollars: number; annualizedYield: number }
   // Roll Signals: a (held leg, replacement) roll's grade went up between two refresh cycles.

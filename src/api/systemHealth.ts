@@ -1,6 +1,7 @@
 import { apiRequest, apiStreamedRequest } from "./client";
 
-export type JobRunStatus = "running" | "success" | "failure";
+// "completed_with_errors": the run did its work but part of it had errors (one ticker of 26 without IV); "failure": nothing usable.
+export type JobRunStatus = "running" | "success" | "failure" | "completed_with_errors";
 
 export interface JobRun {
   id: string;

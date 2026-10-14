@@ -86,14 +86,14 @@ export function SystemHealthPage() {
       key: "details",
       header: "Details",
       render: (row) => {
-        if (row.status === "failure") {
+        if (row.status === "failure" || row.status === "completed_with_errors") {
           return (
             <TooltipSpan
-              className="text-danger text-truncate d-inline-block align-bottom"
+              className={`${row.status === "failure" ? "text-danger" : "text-warning"} text-truncate d-inline-block align-bottom`}
               style={{ maxWidth: "20rem" }}
               text={row.errorMessage}
             >
-              {row.errorMessage ?? "Failed"}
+              {row.errorMessage ?? (row.status === "failure" ? "Failed" : "Completed with errors")}
             </TooltipSpan>
           );
         }

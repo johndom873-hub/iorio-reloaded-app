@@ -29,6 +29,7 @@ import {
 import { fetchSignalsScreen, type SignalCandidate, type SignalsScreenRow } from "../api/signals";
 import { fetchTradeBlotter, type Trade } from "../api/tradeBlotter";
 import { openNotificationStream, fetchRecentNotifications, type AppNotification } from "../api/notifications";
+import type { JobRunStatus } from "../api/systemHealth";
 import {
   fetchPresence,
   fetchSystemHealthSummary,
@@ -114,6 +115,12 @@ const strategyBadgeModifier: Record<string, string> = { covered_call: "cc", cash
 // orderRequestStatusLabel's fuller labels used in OrderReviewPanel/Trade
 // Blotter, which have more room) — the three most frequent statuses get a
 // short standalone word; everything else keeps the "Order <status>" form.
+function describeJobCompleted(status: Exclude<JobRunStatus, "running">): { label: string; color: string } {
+  if (status === "success") return { label: "done", color: "var(--accent-glow)" };
+  if (status === "completed_with_errors") return { label: "done with errors", color: "var(--warning)" };
+  return { label: "failed", color: "var(--danger)" };
+}
+
 function orderEventStatusLabel(status: OrderRequestStatus, cancellationReason: OrderCancellationReason | null): string {
   if (cancellationReason && (status === "cancelled" || status === "cancelled_partially_filled")) return orderRequestStatusLabel(status, cancellationReason);
   switch (status) {
@@ -614,8 +621,8 @@ export function PulsePage() {
           }
           case "job_completed": {
             if (notification.jobName === "ibkr_health_check") return null;
-            const color = notification.status === "success" ? "var(--accent-glow)" : "var(--danger)";
-            return { occurredAt, text: `Job ${notification.status === "success" ? "done" : "failed"} — ${notification.jobName}`, color };
+            const { label, color } = describeJobCompleted(notification.status);
+            return { occurredAt, text: `Job ${label} — ${notification.jobName}`, color };
           }
           case "assignment_risk":
             return { occurredAt, text: `Assignment risk — ${describeAssignmentRisk(notification)}`, color: "var(--warning)" };
@@ -696,12 +703,12 @@ export function PulsePage() {
           break;
         }
         case "job_completed": {
-          const color = notification.status === "success" ? "var(--accent-glow)" : "var(--danger)";
+          const { label, color } = describeJobCompleted(notification.status);
           firePulse("heroku-gateway", color);
           // Runs every 10 minutes — logging it here would crowd out every other
           // event; its own status already surfaces on the Gateway node/status pill.
           if (notification.jobName !== "ibkr_health_check") {
-            appendEvent(`Job ${notification.status === "success" ? "done" : "failed"} — ${notification.jobName}`, color);
+            appendEvent(`Job ${label} — ${notification.jobName}`, color);
           }
           break;
         }

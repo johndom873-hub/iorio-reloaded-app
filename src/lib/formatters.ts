@@ -79,11 +79,13 @@ export function jobRunStatusBadgeClass(
   if (status === "success" && jobRunHasProblems(details)) return "bg-warning-lt";
   if (status === "success") return "bg-success-lt";
   if (status === "failure") return "bg-danger-lt";
+  if (status === "completed_with_errors") return "bg-warning-lt";
   return "bg-azure-lt";
 }
 
 export function jobRunStatusLabel(status: JobRunStatus, details?: Record<string, unknown> | null): string {
   if (status === "success" && jobRunHasProblems(details)) return "issues found";
+  if (status === "completed_with_errors") return "completed with errors";
   return status;
 }
 
