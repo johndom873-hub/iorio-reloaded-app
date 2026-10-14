@@ -116,9 +116,8 @@ export interface AccountValue {
   asOf: string | null;
 }
 
-// Last night's snapshot, not live — see the route's own comment for why
-// (IBKR pacing makes a live call unsuitable for call sites that fetch
-// this often, e.g. every Positions table load or order-form keystroke).
+// Last night's snapshot, not live. For "what is the account worth now"
+// use fetchCurrentAccountValue below.
 export function fetchAccountValue(): Promise<AccountValue> {
   return apiRequest<AccountValue>("/dashboard/account-value");
 }
@@ -135,6 +134,16 @@ export interface AvailableCash {
 // (can this specific order be afforded right now) and the Dashboard.
 export function fetchAvailableCash(): Promise<AvailableCash> {
   return apiRequest<AvailableCash>("/dashboard/available-cash");
+}
+
+// The account value Pulse and the Dashboard show: live from IBKR, else last
+// night's snapshot when the live call fails. For one-shot loads (EXP% bases);
+// pages that already fetch available cash read its netLiquidationValue instead.
+export async function fetchCurrentAccountValue(): Promise<number | null> {
+  const [live, snapshot] = await Promise.allSettled([fetchAvailableCash(), fetchAccountValue()]);
+  if (live.status === "fulfilled" && live.value.netLiquidationValue !== null) return live.value.netLiquidationValue;
+  if (snapshot.status === "fulfilled" && snapshot.value.netLiquidationValue !== null) return Number(snapshot.value.netLiquidationValue);
+  return null;
 }
 
 export interface PerformancePeriod {

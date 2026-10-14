@@ -37,7 +37,7 @@ interface PositionCardProps {
   greeksFetchFailed: boolean;
   unrealizedPnlByPositionId: Record<string, UnrealizedPnlResult>;
   unrealizedPnlFetchFailed: boolean;
-  /** Last-known total account value, for EXP% — see PositionsPage's own prop of the same name. */
+  /** Total account value for EXP% (live, snapshot fallback) — see fetchCurrentAccountValue. */
   totalAccountValue: number | null;
   currentPrice: number | null;
   onChanged: () => void;

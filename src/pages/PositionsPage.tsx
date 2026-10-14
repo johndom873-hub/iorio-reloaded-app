@@ -20,7 +20,7 @@ import {
   type UnrealizedPnlResult,
 } from "../api/positions";
 import { fetchSignalsScreen, type SignalsScreenRow } from "../api/signals";
-import { fetchAccountValue } from "../api/dashboard";
+import { fetchCurrentAccountValue } from "../api/dashboard";
 import { openNotificationStream } from "../api/notifications";
 import {
   daysToExpiry,
@@ -72,8 +72,8 @@ export function PositionsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [greeksByLegId, setGreeksByLegId] = useState<Record<string, Greeks>>({});
-  // Last-known (not live) total account value — see fetchAccountValue's own
-  // comment for why EXP% doesn't use a live IBKR round trip here.
+  // Total account value for EXP%: the live value Pulse and the Dashboard
+  // show, the nightly snapshot only when the live call fails.
   const [totalAccountValue, setTotalAccountValue] = useState<number | null>(null);
   const [greeksFetchFailed, setGreeksFetchFailed] = useState(false);
   const [unrealizedPnlByPositionId, setUnrealizedPnlByPositionId] = useState<Record<string, UnrealizedPnlResult>>({});
@@ -131,8 +131,8 @@ export function PositionsPage() {
   }, [loadPositions]);
 
   useEffect(() => {
-    fetchAccountValue()
-      .then((result) => setTotalAccountValue(result.netLiquidationValue))
+    fetchCurrentAccountValue()
+      .then(setTotalAccountValue)
       .catch(() => setTotalAccountValue(null));
   }, []);
 

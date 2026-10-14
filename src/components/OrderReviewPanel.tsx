@@ -167,22 +167,27 @@ export function OrderReviewPanel({ order: initialOrder, initialAdaptivePriority,
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [order.status]);
 
-  // So Capital at Risk (below) can show what % of the account this order
-  // would commit, before the user confirms — approved 2026-08-25 so this
-  // is visible at the decision point, not just after the fact on Positions.
-  useEffect(() => {
-    fetchAccountValue()
-      .then((result) => setTotalAccountValue(result.netLiquidationValue))
-      .catch(() => setTotalAccountValue(null));
-  }, []);
-
   // Live (approved 2026-08-27, see fetchAvailableCash) -- shown below the
   // Live Quote card so "can I afford this" is answered with a genuinely
-  // current cash figure, not last night's snapshot.
+  // current cash figure, not last night's snapshot. The same call's account
+  // value is the base for Capital at Risk's % of the account (approved
+  // 2026-08-25, visible at the decision point), matching Pulse, Dashboard and
+  // Positions; the nightly snapshot only when the live value is missing.
   useEffect(() => {
+    const loadSnapshotAccountValue = () =>
+      fetchAccountValue()
+        .then((result) => setTotalAccountValue(result.netLiquidationValue === null ? null : Number(result.netLiquidationValue)))
+        .catch(() => setTotalAccountValue(null));
     fetchAvailableCash()
-      .then((result) => setAvailableCashToTrade(result.availableCashToTrade))
-      .catch(() => setAvailableCashToTrade(null));
+      .then((result) => {
+        setAvailableCashToTrade(result.availableCashToTrade);
+        if (result.netLiquidationValue !== null) setTotalAccountValue(result.netLiquidationValue);
+        else void loadSnapshotAccountValue();
+      })
+      .catch(() => {
+        setAvailableCashToTrade(null);
+        void loadSnapshotAccountValue();
+      });
   }, []);
 
   // Streams for as long as the panel stays open (approved 2026-08-27,

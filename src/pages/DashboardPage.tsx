@@ -622,7 +622,12 @@ export function DashboardPage() {
     );
   }, [needsAttentionSymbols]);
 
-  const accountValueNumber = summary?.netLiquidationValue ? Number(summary.netLiquidationValue) : null;
+  // Same rule as Pulse: the live value from the account-summary call, the
+  // nightly snapshot only when that call fails. Yesterday's P&L and the
+  // unrealised % base deliberately keep using the snapshot.
+  const snapshotAccountValue = summary?.netLiquidationValue ? Number(summary.netLiquidationValue) : null;
+  const liveNetLiquidationValue = cash?.netLiquidationValue ?? null;
+  const accountValueNumber = liveNetLiquidationValue ?? snapshotAccountValue;
   const yesterdaysPnl = summary?.periods.day ? Number(summary.periods.day) : null;
   const availableCashPercent =
     accountValueNumber !== null && accountValueNumber > 0 && cash?.availableCashToTrade != null ? (cash.availableCashToTrade / accountValueNumber) * 100 : null;
@@ -631,23 +636,30 @@ export function DashboardPage() {
   const totalUnrealizedPnl = unrealizedPnlByPositionId
     ? Object.values(unrealizedPnlByPositionId).reduce((sum, row) => sum + (row.unrealizedPnl ?? 0), 0)
     : null;
-  const accountValueBeforeUnrealizedPnl = totalUnrealizedPnl !== null && accountValueNumber !== null ? accountValueNumber - totalUnrealizedPnl : null;
+  const accountValueBeforeUnrealizedPnl = totalUnrealizedPnl !== null && snapshotAccountValue !== null ? snapshotAccountValue - totalUnrealizedPnl : null;
   const totalUnrealizedPnlPercent =
     totalUnrealizedPnl !== null && accountValueBeforeUnrealizedPnl ? (totalUnrealizedPnl / accountValueBeforeUnrealizedPnl) * 100 : null;
 
-  // Same basis as Pulse's Allocation bar: each strategy's notional over total account value.
+  // Same basis as Pulse's Allocation bar: each strategy's notional over the
+  // live account value, else the stream's open-time one.
+  const allocationDenominator = liveNetLiquidationValue ?? exposure?.totalAccountValue;
   const allocationPercentFor = (strategyKey: string) => {
-    if (!exposure?.totalAccountValue) return 0;
+    if (!exposure || !allocationDenominator) return 0;
     const row = exposure.strategyAllocation.find((candidate) => candidate.strategyKey === strategyKey);
-    return ((row ? Number(row.notionalValue) : 0) / exposure.totalAccountValue) * 100;
+    return ((row ? Number(row.notionalValue) : 0) / allocationDenominator) * 100;
   };
-  const allocationSegments = [
+  const strategyAllocationSegments = [
     { label: "Covered Calls", percent: allocationPercentFor("covered_call"), color: ALLOCATION_COLORS.coveredCalls },
     { label: "Cash-Secured Puts", percent: allocationPercentFor("cash_secured_put"), color: ALLOCATION_COLORS.cashSecuredPuts },
     { label: "No strategy", percent: allocationPercentFor("unstructured"), color: ALLOCATION_COLORS.unstructured },
     { label: "Hedges", percent: allocationPercentFor("hedge"), color: ALLOCATION_COLORS.hedge },
-    { label: "Cash", percent: allocationPercentFor("unallocated"), color: ALLOCATION_COLORS.cash },
   ];
+  // Remainder rather than the server's "unallocated" row, which is computed
+  // against the account value at stream open and would not sum to 100%
+  // against the live denominator above.
+  const cashAllocationPercent =
+    exposure && allocationDenominator ? Math.max(0, 100 - strategyAllocationSegments.reduce((sum, segment) => sum + segment.percent, 0)) : 0;
+  const allocationSegments = [...strategyAllocationSegments, { label: "Cash", percent: cashAllocationPercent, color: ALLOCATION_COLORS.cash }];
 
   const sectorRows = (exposure?.concentrationBySector ?? []).filter((row: ConcentrationRow) => row.sector !== "Unallocated");
 
@@ -662,7 +674,7 @@ export function DashboardPage() {
       <div className="row g-3 mb-3">
         <TopStat
           label="Account Value"
-          loading={summaryLoading}
+          loading={cashLoading || summaryLoading}
           value={formatCurrency(accountValueNumber, 0)}
         />
         <TopStat

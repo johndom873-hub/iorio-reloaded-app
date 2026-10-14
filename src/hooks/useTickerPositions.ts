@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { ApiError } from "../api/client";
-import { fetchAccountValue } from "../api/dashboard";
+import { fetchCurrentAccountValue } from "../api/dashboard";
 import { openNotificationStream } from "../api/notifications";
 import { fetchPositionsBySymbol, openGreeksStream, openUnrealizedPnlStream, type Greeks, type Position, type UnrealizedPnlResult } from "../api/positions";
 
@@ -14,7 +14,7 @@ export interface TickerPositionsData {
   greeksFetchFailed: boolean;
   unrealizedPnlByPositionId: Record<string, UnrealizedPnlResult>;
   unrealizedPnlFetchFailed: boolean;
-  /** Last-known (not live) total account value, same source/reasoning as PositionsPage's EXP% column. */
+  /** Total account value for EXP%, live with the snapshot as fallback (fetchCurrentAccountValue), as on the Positions page. */
   totalAccountValue: number | null;
   /** Re-loads every position for the symbol (after a Close/Roll/Save action or a fill). */
   loadPositions: () => Promise<void>;
@@ -92,8 +92,8 @@ export function useTickerPositions(symbol: string): TickerPositionsData {
   }, [positions]);
 
   useEffect(() => {
-    fetchAccountValue()
-      .then((result) => setTotalAccountValue(result.netLiquidationValue))
+    fetchCurrentAccountValue()
+      .then(setTotalAccountValue)
       .catch(() => setTotalAccountValue(null));
   }, []);
 
