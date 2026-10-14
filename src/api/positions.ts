@@ -574,7 +574,7 @@ export interface CycleBucketResult {
 }
 
 export interface CycleTimelineRow {
-  at: string | null; // null = the "today" mark row
+  at: string | null; // null = a mark row of what is still open (dated by markDate; undated = live, "Today")
   label: string;
   bucket: CycleBucketKey;
   premium: number;
@@ -588,6 +588,20 @@ export interface CycleTimelineRow {
   expiryDate: string | null;
   /** Real fill for stock trades, else that date's daily close. */
   stockPrice: number | null;
+  /** Mark rows only: the trading date ("YYYY-MM-DD") the mark is priced at (the close for shares, the nightly snapshot for options). */
+  markDate?: string;
+}
+
+export interface CycleOpenOptionPosition {
+  positionId: string;
+  /** The premium P&L the cycle counts it at: its nightly snapshot, else the credit (a hedge without a snapshot at 0). */
+  premiumPnl: number;
+  bucket: CycleBucketKey;
+  optionType: "call" | "put";
+  /** Shares-equivalent (1 contract = 100). */
+  quantity: number;
+  strike: number | null;
+  expiryDate: string | null;
 }
 
 export interface Cycle {
@@ -600,6 +614,8 @@ export interface Cycle {
   sharesHeld: number;
   breakEvenPerShare: number | null;
   timeline: CycleTimelineRow[];
+  /** Open cycle only (empty when closed): the open option positions and what the cycle counts each at. */
+  openOptionPositions: CycleOpenOptionPosition[];
   dataFlags: string[];
 }
 

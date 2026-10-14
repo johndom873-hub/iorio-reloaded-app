@@ -60,7 +60,7 @@ export function TickerPositionsCards({ symbol, data, currentPrice, focusPosition
           ))}
         </CollapsibleCard>
       )}
-      <CycleCard symbol={symbol} />
+      <CycleCard symbol={symbol} unrealizedPnlByPositionId={data.unrealizedPnlByPositionId} />
     </div>
   );
 }

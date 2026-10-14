@@ -4,7 +4,8 @@ import { ColumnVisibilityPopover } from "./DataTable/ColumnVisibilityPopover";
 import { useColumnVisibility } from "./DataTable/useColumnVisibility";
 import { CycleBucketBadge } from "./CycleBucketBadge";
 import { Spinner } from "./Spinner";
-import { fetchCycles, type Cycle } from "../api/positions";
+import { fetchCycles, type Cycle, type UnrealizedPnlResult } from "../api/positions";
+import { liveCycleTimelineRows } from "../lib/cycleLivePnl";
 import { daysToExpiry, easternIsoDate, formatCurrency, formatDate, formatExpiryDayMonthWithDte, formatNumber, formatSignedPnl, pnlTextClass, todayInEasternIso } from "../lib/formatters";
 import { TooltipSpan } from "./TooltipSpan";
 
@@ -23,9 +24,10 @@ const timelineColumns = [
 ];
 
 // The symbol's wheel cycle (approved 2026-09-19): summary tiles + a dated timeline where every event is owned by
-// exactly one bucket (CSP / Unstructured / CC / Hedge). Figures are as of the latest daily close (open shares marked at it,
-// open options at the last nightly snapshot), not live ticks.
-export function CycleCard({ symbol }: { symbol: string }) {
+// exactly one bucket (CSP / Unstructured / CC / Hedge). Open shares are marked at the latest daily close and open options
+// at the last nightly snapshot, each row dated by its mark; while live prices stream, "Today" rows add the move since
+// then and the tiles and totals include it (liveCycleTimelineRows).
+export function CycleCard({ symbol, unrealizedPnlByPositionId = {} }: { symbol: string; unrealizedPnlByPositionId?: Record<string, UnrealizedPnlResult> }) {
   const [cycles, setCycles] = useState<Cycle[] | null>(null);
   const [failed, setFailed] = useState(false);
   const [selectedIndex, setSelectedIndex] = useState(0);
@@ -56,8 +58,16 @@ export function CycleCard({ symbol }: { symbol: string }) {
   }, [symbol]);
 
   if (cycles !== null && cycles.length === 0) return null;
-  const cycle = cycles?.[selectedIndex];
-  const newest = cycles?.[0];
+  // A cycle with its live "Today" rows (open cycle only) and the tiles / totals including them.
+  const withLiveRows = (base: Cycle) => {
+    const liveRows = liveCycleTimelineRows(base, unrealizedPnlByPositionId);
+    const livePremium = liveRows.reduce((sum, row) => sum + row.premium, 0);
+    const liveStock = liveRows.reduce((sum, row) => sum + row.stock, 0);
+    const stock = base.buckets.csp.stock + base.buckets.unstructured.stock + base.buckets.cc.stock + liveStock;
+    return { ...base, timeline: [...base.timeline, ...liveRows], total: base.total + livePremium + liveStock, netPremium: base.netPremium + livePremium, stock };
+  };
+  const cycle = cycles?.[selectedIndex] && withLiveRows(cycles[selectedIndex]);
+  const newest = cycles?.[0] && withLiveRows(cycles[0]);
   const summaryItem = (label: string, value: number) => (
     <span key={label} className="text-nowrap" style={{ fontSize: "0.8rem" }}>
       <span className="text-muted">{label} </span>
@@ -68,7 +78,7 @@ export function CycleCard({ symbol }: { symbol: string }) {
     <>
       {summaryItem("Cycle P&L", newest.total)}
       {summaryItem("Premium", newest.netPremium)}
-      {summaryItem("Stock", newest.buckets.csp.stock + newest.buckets.unstructured.stock + newest.buckets.cc.stock)}
+      {summaryItem("Stock", newest.stock)}
     </>
   );
 
@@ -88,7 +98,7 @@ export function CycleCard({ symbol }: { symbol: string }) {
       {cycle && (
         <div className="d-flex flex-column gap-3">
           <p className="text-muted mb-0" style={{ fontSize: "0.8rem" }}>
-            Every event since this symbol's cycle began, owned by one strategy. Shares are marked at the latest daily close and open options at the last nightly snapshot.
+            Every event since this symbol's cycle began, owned by one strategy. Shares are marked at the latest daily close and open options at the last nightly snapshot; while live prices stream, Today rows add the move since then.
           </p>
           {cycles!.length > 1 && (
             <select
@@ -124,10 +134,7 @@ export function CycleCard({ symbol }: { symbol: string }) {
             </div>
             <div className="col-6 col-md-3">
               <div className="text-muted" style={{ fontSize: "0.72rem", textTransform: "uppercase" }}>Stock P&amp;L</div>
-              {(() => {
-                const stock = cycle.buckets.csp.stock + cycle.buckets.unstructured.stock + cycle.buckets.cc.stock;
-                return <div className={`fw-bold font-mono ${pnlTextClass(stock)}`} style={{ fontSize: "1.25rem" }}>{formatSignedPnl(stock)}</div>;
-              })()}
+              <div className={`fw-bold font-mono ${pnlTextClass(cycle.stock)}`} style={{ fontSize: "1.25rem" }}>{formatSignedPnl(cycle.stock)}</div>
             </div>
             <div className="col-6 col-md-3">
               <div className="text-muted" style={{ fontSize: "0.72rem", textTransform: "uppercase" }}>Break-even</div>
@@ -147,7 +154,7 @@ export function CycleCard({ symbol }: { symbol: string }) {
                   {visible("owner") && <th>{headerLabel("owner", "Strategy")}</th>}
                   {visible("quantity") && <TooltipSpan as="th" className="text-end" text="Shares-equivalent: 1 option contract = 100">{headerLabel("quantity", "Qty", true)}</TooltipSpan>}
                   {visible("strike") && <th className="text-end">{headerLabel("strike", "Strike", true)}</th>}
-                  {visible("expiry") && <TooltipSpan as="th" className="text-end" text="Days to expiry counted from the row's date (US Eastern); the open-option mark counts from today">{headerLabel("expiry", "Expiry", true)}</TooltipSpan>}
+                  {visible("expiry") && <TooltipSpan as="th" className="text-end" text="Days to expiry counted from the row's date (US Eastern)">{headerLabel("expiry", "Expiry", true)}</TooltipSpan>}
                   {visible("stockPrice") && <TooltipSpan as="th" className="text-end" text="Real fill for stock trades, otherwise that day's closing price of the stock">{headerLabel("stockPrice", "Stock price", true)}</TooltipSpan>}
                   {visible("premium") && <th className="text-end">{headerLabel("premium", "Premium", true)}</th>}
                   {visible("stock") && <th className="text-end">{headerLabel("stock", "Stock", true)}</th>}
@@ -155,8 +162,8 @@ export function CycleCard({ symbol }: { symbol: string }) {
               </thead>
               <tbody>
                 {cycle.timeline.map((row, index) => (
-                  <tr key={`${row.at ?? "now"}-${index}`}>
-                    {visible("date") && <td>{row.at ? formatDate(row.at) : "Today"}</td>}
+                  <tr key={`${row.at ?? row.markDate ?? "now"}-${index}`}>
+                    {visible("date") && <td>{row.at ? formatDate(row.at) : row.markDate ? formatDate(row.markDate) : "Today"}</td>}
                     {visible("type") && (
                       <td>
                         <span className={`badge ${row.instrument === "stock" ? "bg-teal text-teal-fg" : "bg-pink text-pink-fg"}`} style={{ fontSize: "0.72rem" }}>
@@ -170,7 +177,7 @@ export function CycleCard({ symbol }: { symbol: string }) {
                     {visible("strike") && <td className={`text-end font-mono ${row.strike === null ? "text-muted" : ""}`}>{row.strike === null ? "—" : formatCurrency(row.strike, 2)}</td>}
                     {visible("expiry") && (
                       <td className={`text-end font-mono text-nowrap ${row.expiryDate === null ? "text-muted" : ""}`}>
-                        {row.expiryDate === null ? "—" : formatExpiryDayMonthWithDte(row.expiryDate, daysToExpiry(row.expiryDate, row.at ? easternIsoDate(row.at) : todayInEasternIso()))}
+                        {row.expiryDate === null ? "—" : formatExpiryDayMonthWithDte(row.expiryDate, daysToExpiry(row.expiryDate, row.at ? easternIsoDate(row.at) : (row.markDate ?? todayInEasternIso())))}
                       </td>
                     )}
                     {visible("stockPrice") && <td className={`text-end font-mono ${row.stockPrice === null ? "text-muted" : ""}`}>{row.stockPrice === null ? "—" : formatCurrency(row.stockPrice, 2)}</td>}
