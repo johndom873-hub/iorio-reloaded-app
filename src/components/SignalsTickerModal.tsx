@@ -327,7 +327,9 @@ function signalCandidateToQuoteSeed(candidate: SignalCandidate | null): OrderRev
     impliedVolatility: candidate.midImpliedVolatility ?? candidate.surfaceImpliedVolatility,
     delta: candidate.delta,
     theta: null,
-    vega: candidate.vega,
+    // The candidate's vega is per 1.00 of volatility (the API's Edge $ uses it so); IBKR's live vega, which replaces this
+    // seed, is per volatility point: without the ÷ 100 the first value shown was 100× the live one.
+    vega: candidate.vega / 100,
   };
 }
 
