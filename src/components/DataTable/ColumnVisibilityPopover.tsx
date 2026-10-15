@@ -68,10 +68,9 @@ export function ColumnVisibilityPopover({ columns, isColumnVisible, onToggleColu
           tooltipRef.current = el;
         }}
         type="button"
-        className={variant === "toolbar" ? "pm-iconbtn bordered" : "btn btn-icon"}
+        className={variant === "toolbar" ? "pm-iconbtn bordered" : "btn btn-icon column-visibility-toggle"}
         aria-label="Choose visible columns"
         onClick={() => setIsOpen((open) => !open)}
-        style={variant === "toolbar" ? undefined : { width: "1.4rem", height: "1.4rem", padding: 0, minWidth: 0 }}
       >
         <IconSettings size={variant === "toolbar" ? 16 : 14} />
       </button>

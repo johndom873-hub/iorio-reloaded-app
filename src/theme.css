@@ -217,6 +217,24 @@
   background-color: var(--tblr-border-color);
 }
 
+/* The column gear in a table header: compact on desktop, a real 44px tap target on a phone (an invisible hit area
+   would be clipped by the table's scroll box). The negative vertical margin overlaps the header cell's own padding,
+   so the row grows only to the gear's height. */
+.btn.column-visibility-toggle {
+  width: 1.4rem;
+  height: 1.4rem;
+  min-width: 0;
+  min-height: 0;
+  padding: 0;
+}
+@media (max-width: 767.98px) {
+  .btn.column-visibility-toggle {
+    width: 2.75rem;
+    height: 2.75rem;
+    margin-block: -0.5rem;
+  }
+}
+
 /* Disabled dropdown items (Actions menu) were too easy to mistake for enabled ones -- Tabler's default
    --tblr-dropdown-link-disabled-color is only a 50%-opacity tint of the body text, a small enough step
    that a greyed item still read as plain clickable text at a glance (Marcelo, 2026-09-23). Considered
