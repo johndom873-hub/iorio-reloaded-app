@@ -124,7 +124,7 @@
 .pm-master { display: flex; align-items: center; gap: 10px; }
 .pm-master-label { font-size: 11.5px; color: var(--muted); font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; }
 .pm-seg { display: inline-flex; border: 1px solid var(--border); border-radius: 7px; padding: 2px; background: var(--surface-2); gap: 2px; }
-.pm-seg button { border: 0; background: transparent; color: var(--muted); font: inherit; font-size: 13px; font-weight: 500; padding: 0 14px; height: 30px; border-radius: 5px; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
+.pm-seg button { border: 0; background: transparent; color: var(--text); font: inherit; font-size: 13px; font-weight: 500; padding: 0 14px; height: 30px; border-radius: 5px; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
 .pm-seg button.on { background: var(--surface); color: var(--strong); box-shadow: 0 1px 2px rgba(0, 0, 0, 0.16); font-weight: 600; }
 .pm-seg button.on.good { color: var(--success-text); }
 .pm-seg button.on .dot { width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
@@ -330,7 +330,7 @@ a.pm-b:hover, button.pm-b.link:hover { text-decoration: underline; }
 
 /* Toolbar / filters */
 .pm-toolbar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 12px 18px; border-bottom: 1px solid var(--border); }
-.pm-toolbar .pm-seg button .cnt { color: var(--muted); font-weight: 500; }
+.pm-toolbar .pm-seg button .cnt { color: inherit; font-weight: 400; }
 .pm-select, .pm-search { height: 34px; border: 1px solid var(--border-strong); border-radius: 6px; background: var(--input-bg); color: var(--strong); font: inherit; font-size: 13px; padding: 0 10px; display: inline-flex; align-items: center; gap: 8px; }
 .pm-select { padding-right: 28px; appearance: none; -webkit-appearance: none; background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%236b7280' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='M6 9l6 6 6-6'/></svg>"); background-repeat: no-repeat; background-position: right 8px center; background-size: 14px; cursor: pointer; }
 .pm-search { min-width: 240px; color: var(--muted); }
@@ -588,8 +588,6 @@ a.pm-b:hover, button.pm-b.link:hover { text-decoration: underline; }
 /* How it works tab (mockup approved 2026-10-15): each strategy's rules in plain language, numbers from the live settings. */
 .pm-how { display: flex; flex-direction: column; gap: 1rem; }
 .pm-how-switch { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem 0.75rem; }
-/* The shared .pm-seg's unselected muted text is 4.42:1 on its light track; the switch uses the body text instead. */
-.pm-how-switch .pm-seg button:not(.on) { color: var(--text); }
 .pm-how-active { font-size: 0.72rem; font-weight: 600; padding: 0.05rem 0.45rem; border-radius: 4px; background: var(--success-lt); color: var(--strong); }
 .pm-how-body { display: flex; flex-direction: column; gap: 0.75rem; }
 .pm-how-lead { margin: 0; font-size: 0.95rem; line-height: 1.6; color: var(--strong); max-width: 62rem; }
