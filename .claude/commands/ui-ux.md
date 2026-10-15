@@ -104,7 +104,9 @@ Every modal is hand-built (no Bootstrap `Modal` instance), so each one needs:
 - `modal-dialog-centered` on `.modal-dialog` (full-height `modal-dialog-inset` modals excepted), plus `modal-dialog-scrollable` if content can exceed the viewport.
 - Body scroll lock: `document.body.style.overflow = "hidden"` on mount, restored on unmount.
 - Backdrop `zIndex: 1050` (`1100` for a modal or toast stacked above an open modal), `backgroundColor: "rgba(0,0,0,0.5)"` and **`opacity: 1`**. Tabler's `--tblr-backdrop-opacity` (0.24) otherwise multiplies the alpha down to 0.12.
-- Informational modals close on **ESC and backdrop click**. Confirmation, order and destructive-action modals must not close on backdrop click; ESC still closes them, acting as Cancel.
+- Informational modals close on **ESC and backdrop click**.
+- Confirmation dialogs (`ConfirmModal`) close on **neither**: Cancel/X is the only way out, so a dismissal is never mistaken for a confirm.
+- Order/form modals with their own cancel path (e.g. `ClosePositionModal`) close on ESC through that cancel handler, never on backdrop click.
 
 ### HIGH — Ticker Symbols Open the Ticker Modal
 
@@ -164,7 +166,7 @@ Use `g-3` between cards; don't mix `g-2` and `g-3` in one row group.
 - [ ] Formatting, contract labels and P&L colours via `formatters.ts`; established terminology kept
 - [ ] Buttons: real variants, outline standard from `theme.css`, `btn-sm` only in compact contexts
 - [ ] Icon + text uses `d-inline-flex align-items-center gap-1`
-- [ ] Modals: centered (unless inset), scrollable where needed, scroll lock, backdrop 1050/0.5/`opacity: 1`, ESC closes every modal, backdrop click only informational ones
+- [ ] Modals: centered (unless inset), scrollable where needed, scroll lock, backdrop 1050/0.5/`opacity: 1`, dismiss behaviour matches the modal type (informational: ESC + backdrop; ConfirmModal: neither; order/form: ESC via cancel only)
 - [ ] Every ticker symbol opens `SignalsTickerModal`
 - [ ] Standalone controls ≥ 44px tap area at 390px (measured)
 - [ ] Free-text cells capped; row heights sane at 390px
