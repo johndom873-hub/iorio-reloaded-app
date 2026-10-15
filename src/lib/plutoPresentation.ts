@@ -1,4 +1,4 @@
-import type { DaySignalsWatchStatus, PlutoAction, PlutoActionContract, PlutoActionKind, PlutoActionOutcome, PlutoEvent, PlutoEventCategory, PlutoPass, PlutoReadinessResult, PlutoState, PlutoSystemCheck, PlutoWorkingOrder } from "../api/pluto";
+import type { DaySignalsWatchStatus, PlutoSettings, PlutoAction, PlutoActionContract, PlutoActionKind, PlutoActionOutcome, PlutoEvent, PlutoEventCategory, PlutoPass, PlutoReadinessResult, PlutoState, PlutoSystemCheck, PlutoWorkingOrder } from "../api/pluto";
 import { plutoParameterLabelByField } from "./plutoParameters";
 import { daysToExpiry, easternIsoDate, formatBrowserClockTime, formatCurrency, formatDayMonth, formatEasternTime, formatOptionContractLabel, formatOrderSize, formatPercentageValue, formatRelativeAge, formatSignedPercentageValue, formatSignedPnl, formatRelativeTime, formatDateTime, formatStrike, pluralize, todayInEasternIso } from "./formatters";
 
@@ -151,6 +151,13 @@ export function spyStressFromState(state: PlutoState): { blocking: boolean; spyD
   if (!check) return null;
   const match = check.detail.match(/SPY ([-+]?\d+(?:\.\d+)?)%/);
   return { blocking: !check.ok, spyDayChangePct: match ? Number(match[1]) : null, detail: check.detail };
+}
+
+/** The SPY stress limit the active strategy stops at, and what still runs while it holds (the ladder has no rolls or buybacks). */
+export function spyStressLimitForStrategy(settings: Pick<PlutoSettings, "executionStrategy" | "spyStressBreakerPct" | "ladderSpyStressBreakerPct">): { limitPct: number; stillRuns: string } {
+  return settings.executionStrategy === "cc_put_ladder"
+    ? { limitPct: settings.ladderSpyStressBreakerPct, stillRuns: "The ladder sells nothing new." }
+    : { limitPct: settings.spyStressBreakerPct, stillRuns: "Rolls and closes continue." };
 }
 
 /** "8 min" / "45 s" / "2 h" — how long ago, the way the boards write it. */

@@ -4,7 +4,7 @@ import { cancelOrder } from "../../api/positions";
 import { pausePluto, resetPlutoBreaker, resumePluto, updatePlutoMode, updatePlutoStressOverride, type PlutoSettings, type PlutoState, type PlutoStateCore } from "../../api/pluto";
 import { formatCompactDollarsTrimmed, formatCurrency, formatEasternTime, formatHoursMinutesUntil, pluralize, todayInEasternIso } from "../../lib/formatters";
 import { executionStrategyLabels } from "../../lib/plutoParameters";
-import { checkLabel, describeOrderLine, formatAgeInWords, humanizeKey, orderedChecks, sentenceCase, spyStressFromState, type PlutoStatus } from "../../lib/plutoPresentation";
+import { checkLabel, describeOrderLine, formatAgeInWords, humanizeKey, orderedChecks, sentenceCase, spyStressFromState, spyStressLimitForStrategy, type PlutoStatus } from "../../lib/plutoPresentation";
 import { ConfirmModal } from "../ConfirmModal";
 import { Spinner } from "../Spinner";
 import { CheckIcon, CrossIcon, Meter, PauseIcon, PlayIcon, ResetIcon, StopIcon, WarningIcon } from "./plutoBits";
@@ -75,6 +75,7 @@ export function PlutoStatusCard({ state, status, settings, now, isPhone, showKpi
   const breakerNames = Object.keys(state.breakers);
   const working = state.workingOrders;
   const stress = spyStressFromState(state);
+  const stressLimit = settings ? spyStressLimitForStrategy(settings) : null;
   const stressOverrideOn = state.stressOverrideDate === todayInEasternIso();
   const session = state.session;
   const tickers = state.enabledTickers.count;
@@ -345,7 +346,7 @@ export function PlutoStatusCard({ state, status, settings, now, isPhone, showKpi
               ) : (
                 <>
                   <span className="strong">No new positions while SPY is down {stress.spyDayChangePct === null ? "" : `${Math.abs(stress.spyDayChangePct).toFixed(1)}% `}today</span>{" "}
-                  <span className="muted">(the limit is {settings?.spyStressBreakerPct ?? "—"}%). Rolls and closes continue. Lifts by itself if SPY recovers.</span>
+                  <span className="muted">(the limit is {stressLimit?.limitPct ?? "—"}%). {stressLimit?.stillRuns ?? ""} Lifts by itself if SPY recovers.</span>
                 </>
               )}
             </span>
