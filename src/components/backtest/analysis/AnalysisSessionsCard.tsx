@@ -18,6 +18,7 @@ function sessionColumns(analysisSessionId: string | null): DataTableColumn<Analy
       key: "name",
       header: "Session",
       sortValue: (row) => row.name,
+      cellClassName: "analysis-session-cell",
       render: (row) => (
         <span className="d-inline-flex flex-wrap align-items-center gap-1">
           <Link to={`/backtest/sessions/${row.id}`} className="analysis-link">

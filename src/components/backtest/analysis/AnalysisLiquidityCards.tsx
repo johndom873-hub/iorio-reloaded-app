@@ -8,7 +8,7 @@ import { useTheme } from "../../../contexts/ThemeContext";
 import { ApexChart } from "../../charts/ApexChart";
 import { TooltipSpan } from "../../TooltipSpan";
 import { BacktestSegmentedSwitch } from "../backtestBits";
-import { AnalysisCard } from "./analysisBits";
+import { AnalysisCard, AnalysisSeriesKey } from "./analysisBits";
 
 // Option liquidity and yield by year and days to expiry, coloured by the share of days with a passing contract (no
 // minimum yield: Marcelo 2026-10-15), and the monthly chart of contracts passing, Calls and Puts stacked. The Puts toggle
@@ -121,7 +121,7 @@ export function AnalysisLiquidityCards({ figures, computedWith, putsCapped, onPu
       colors: [colors.series1, colors.series2],
       plotOptions: { bar: { columnWidth: "78%", borderRadius: 0 } },
       stroke: { width: 1, colors: [colors.surface] },
-      legend: { position: "top", horizontalAlign: "left", markers: { size: 5 } },
+      legend: { show: false },
       xaxis: { type: "datetime", labels: { datetimeUTC: true }, tooltip: { enabled: false } },
       yaxis: { labels: { formatter: (value: number) => String(Math.round(value)) }, title: { text: "a day", style: { color: colors.secondary, fontWeight: 400 } } },
       dataLabels: { enabled: false },
@@ -214,6 +214,7 @@ export function AnalysisLiquidityCards({ figures, computedWith, putsCapped, onPu
       </AnalysisCard>
       <AnalysisCard title="Contracts passing the strategy's filters, by month" description="Median a day at the 10:00 quote, Calls and Puts stacked" actions={<AnalysisPutsSwitch capped={putsCapped} onChange={onPutsCappedChange} />} stale={stale}>
         <div className="card-body">
+          <AnalysisSeriesKey items={monthlyChart.series.map((series, index) => ({ label: series.name, color: [colors.series1, colors.series2][index]! }))} />
           <ApexChart type="bar" series={monthlyChart.series} options={monthlyChart.options} height={230} />
         </div>
       </AnalysisCard>

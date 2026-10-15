@@ -46,6 +46,20 @@ export function AnalysisNote({ tone, icon, children, actions, live = false }: { 
   );
 }
 
+/** A chart's series key: a dot in each series' colour and its name. Not a control (ApexCharts' own legend makes each name a toggle button). */
+export function AnalysisSeriesKey({ items }: { items: { label: string; color: string }[] }) {
+  return (
+    <div className="analysis-legend mb-1">
+      {items.map((item) => (
+        <span key={item.label} className="analysis-legend-item">
+          <span className="analysis-series-dot" style={{ background: item.color }} aria-hidden="true" />
+          {item.label}
+        </span>
+      ))}
+    </div>
+  );
+}
+
 /** A progress bar for a background job, 0–1. */
 export function AnalysisProgressBar({ fraction, label }: { fraction: number | null; label: string }) {
   return (

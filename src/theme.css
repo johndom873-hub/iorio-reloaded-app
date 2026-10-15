@@ -1953,6 +1953,7 @@
   --analysis-density-rgb: 3, 105, 161;
   --analysis-density-out-rgb: 107, 114, 128;
   --analysis-link: #0369a1;
+  --analysis-link-hover: #075985;
 }
 :root[data-bs-theme="dark"] {
   --analysis-good: #2b5247;
@@ -1969,6 +1970,7 @@
   --analysis-density-rgb: 14, 165, 233;
   --analysis-density-out-rgb: 156, 163, 175;
   --analysis-link: #38bdf8;
+  --analysis-link-hover: #7dd3fc;
 }
 .analysis-modal .modal-header { flex-wrap: wrap; gap: 0.5rem 1rem; }
 .analysis-modal .modal-body { display: flex; flex-direction: column; gap: 1rem; padding: 1.25rem 1.5rem 1.5rem; }
@@ -1978,6 +1980,10 @@
 .analysis-ink-fair { color: var(--analysis-fair-ink); }
 .analysis-ink-poor { color: var(--analysis-poor-ink); }
 .analysis-link { color: var(--analysis-link); background: none; border: 0; padding: 0; font: inherit; text-decoration: underline; text-underline-offset: 2px; cursor: pointer; }
+/* Tabler's a:hover (0,1,1) would turn a Link's colour dark blue, near invisible on a dark hovered row. */
+.analysis-link:hover, .analysis-link:focus-visible { color: var(--analysis-link-hover); }
+/* A session's name keeps a readable width: the table scrolls sideways instead of wrapping the name a word a line. */
+.analysis-session-cell { min-width: 16rem; }
 .analysis-note { display: flex; gap: 0.6rem; align-items: flex-start; padding: 0.65rem 0.9rem; border: 1px solid var(--tblr-border-color); border-left-width: 4px; border-radius: var(--tblr-border-radius); font-size: 0.8125rem; color: var(--tblr-body-color); }
 .analysis-note > svg { flex: 0 0 auto; margin-top: 0.1rem; }
 .analysis-note-body { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 0.5rem; }
@@ -2014,6 +2020,7 @@
 .analysis-stat-list dd { margin: 0; font-family: var(--tblr-font-monospace); font-variant-numeric: tabular-nums; font-weight: 500; }
 .analysis-plain { font-family: var(--tblr-font-sans-serif); font-weight: 400; color: var(--tblr-secondary-color); font-size: 0.75rem; }
 .analysis-vol-layout { display: grid; grid-template-columns: minmax(0, 1fr); gap: 1rem; }
+.analysis-vol-chart { min-width: 0; }
 .analysis-chart-caption { margin-top: 0.25rem; color: var(--tblr-secondary-color); font-size: 0.78rem; }
 .analysis-rag-grids { display: grid; grid-template-columns: minmax(0, 1fr); gap: 1rem; }
 .analysis-rag-title { font-size: 0.8125rem; font-weight: 600; margin: 0 0 0.35rem; }
@@ -2029,6 +2036,7 @@
 .analysis-cell-poor svg { stroke: var(--analysis-poor-ink); }
 .analysis-legend { display: flex; flex-wrap: wrap; gap: 0.4rem 1rem; align-items: center; color: var(--tblr-secondary-color); font-size: 0.75rem; }
 .analysis-legend-item { display: inline-flex; align-items: center; gap: 0.35rem; }
+.analysis-series-dot { width: 0.625rem; height: 0.625rem; border-radius: 50%; flex: none; }
 .analysis-legend-swatch { display: inline-flex; align-items: center; justify-content: center; width: 1.1rem; height: 1.1rem; border-radius: 3px; border: 1px solid var(--tblr-border-color); }
 .analysis-legend-swatch.analysis-cell-good { background: var(--analysis-good); }
 .analysis-legend-swatch.analysis-cell-fair { background: var(--analysis-fair); }

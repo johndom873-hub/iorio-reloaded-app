@@ -5,7 +5,7 @@ import { analysisChartColors, dateRuns, lotPriceCeiling, potOnDayFrom, rungPrice
 import { formatCurrency, formatDayMonthYear, formatNumber, formatPercentage, formatVolatilityPoints } from "../../../lib/formatters";
 import { useTheme } from "../../../contexts/ThemeContext";
 import { ApexChart } from "../../charts/ApexChart";
-import { AnalysisCard, AnalysisNote } from "./analysisBits";
+import { AnalysisCard, AnalysisNote, AnalysisSeriesKey } from "./analysisBits";
 
 // Price and Max drawdown (daily candles, the drawdown band, the fit's two price ceilings, the days the pot was too small
 // and the days an order needed more than one strike), and volatility (21-day Yang-Zhang and IBKR's implied, implied minus
@@ -130,7 +130,7 @@ export function AnalysisPriceCards({ symbol, figures, shown, showingTrial, stale
       chart: { animations: { enabled: false }, zoom: { enabled: false }, background: "transparent", parentHeightOffset: 0 },
       colors: [colors.series1, colors.series2],
       stroke: { width: 1.75, curve: "straight" },
-      legend: { position: "top", horizontalAlign: "left", markers: { size: 5 } },
+      legend: { show: false },
       xaxis: { type: "datetime", labels: { datetimeUTC: true }, tooltip: { enabled: false } },
       yaxis: { min: 0, labels: { formatter: (value: number) => `${Math.round(value)}%` } },
       tooltip: { shared: true, x: { format: "d MMM yyyy" }, y: { formatter: (value: number | null | undefined) => (value === undefined || value === null ? "—" : `${value.toFixed(1)}%`) } },
@@ -231,7 +231,10 @@ export function AnalysisPriceCards({ symbol, figures, shown, showingTrial, stale
       >
         <div className="card-body">
           <div className="analysis-vol-layout">
-            <ApexChart type="line" series={volatilityChart.series} options={volatilityChart.options} height={250} />
+            <div className="analysis-vol-chart">
+              <AnalysisSeriesKey items={volatilityChart.series.map((series, index) => ({ label: series.name, color: [colors.series1, colors.series2][index]! }))} />
+              <ApexChart type="line" series={volatilityChart.series} options={volatilityChart.options} height={250} />
+            </div>
             <dl className="analysis-stat-list">
               <div>
                 <dt>Implied (IBKR, about 30 days)</dt>
