@@ -6,7 +6,11 @@ import { fastPollIntervalMs, idlePollIntervalMs, isBacktestJobActive } from "../
 
 // Progress lives in the API's database (each job runs in its own process), so the screens only poll: every 2 s while a job
 // can still move, every 15 s otherwise. A failed poll (the API restarting, a dropped connection) keeps the last data on
-// screen and tries again on the next tick.
+// screen and tries again on the next tick; the "cannot reach the API" note waits until the polls have failed for
+// refreshFailureNoticeAfterMs, as the local API restarts in a few seconds whenever its code changes and a note that comes
+// and goes moves the whole page.
+
+const refreshFailureNoticeAfterMs = 15_000;
 
 export const backtestRoutesMissingMessage =
   "This API has no backtest routes. They run only on the Mac with the ThetaData files: set BACKTEST_DATA_DIR in the API's .env and restart it.";
@@ -20,7 +24,7 @@ export interface PolledResource<TData> {
   data: TData | null;
   /** Set while there is nothing to show yet and the last attempt failed. */
   loadError: string | null;
-  /** The last refresh failed while older data is still on screen. */
+  /** The refreshes have failed for refreshFailureNoticeAfterMs or longer while older data is still on screen. */
   refreshFailing: boolean;
   reload: () => Promise<void>;
 }
@@ -34,6 +38,7 @@ export function usePolledBacktestResource<TData>(fetcher: () => Promise<TData>, 
   const [loadError, setLoadError] = useState<string | null>(null);
   const [refreshFailing, setRefreshFailing] = useState(false);
   const [pollMode, setPollMode] = useState<"fast" | "idle" | "off">("fast");
+  const failingSinceMsRef = useRef<number | null>(null);
   const fetcherRef = useRef(fetcher);
   const isActiveRef = useRef(isActive);
   useEffect(() => {
@@ -46,11 +51,13 @@ export function usePolledBacktestResource<TData>(fetcher: () => Promise<TData>, 
       const next = await fetcherRef.current();
       setData(next);
       setLoadError(null);
+      failingSinceMsRef.current = null;
       setRefreshFailing(false);
       const active = isActiveRef.current(next);
       setPollMode(active === null ? "off" : active ? "fast" : "idle");
     } catch (err) {
-      setRefreshFailing(true);
+      failingSinceMsRef.current ??= Date.now();
+      setRefreshFailing(Date.now() - failingSinceMsRef.current >= refreshFailureNoticeAfterMs);
       // A request the API refuses (a deleted session, a bad id) will not fix itself: stop. A dropped connection or a
       // restarting API (no response, 5xx) keeps the current pace and recovers on the next tick.
       if (isBacktestRoutesMissing(err)) setPollMode("idle");
