@@ -6,7 +6,7 @@ import type { TradingSettingsInput } from "./riskLimits";
 // API's src/backtest/backtestTypes.ts (keep them in step with it); figures are defined in the API's
 // docs/backtesting/FORMULAS.md. Ratios are fractions (0.418 = +41.8%).
 
-export type BacktestJobKind = "download" | "backtest";
+export type BacktestJobKind = "download" | "backtest" | "analysis";
 export type BacktestJobStatus = "queued" | "running" | "succeeded" | "failed" | "cancelled";
 /** What the screen shows: a running job with a heartbeat older than 60 s is "stopped". */
 export type BacktestJobDisplayStatus = BacktestJobStatus | "stopped";
@@ -22,13 +22,31 @@ export interface BacktestBaselineSettings {
   maxAbsDelta: number;
   minDte: number;
   maxDte: number;
-  callStrike: "delta_range" | "above_share_cost" | "above_break_even" | "above_latest_entry" | "above_average_cost" | "none";
+  /** Widest spread sold into, as a percent of the mid. */
+  maxSpreadPctOfMid: number;
+  callStrike: "delta_range" | "above_share_cost" | "above_break_even" | "above_latest_entry" | "above_average_cost" | "above_average_cost_else_break_even" | "none";
   entryCallStrike: "any" | "above_purchase_price" | "above_average_after_purchase";
   entryWhenSharesUncovered: "wait" | "buy";
   maxSharesPctOfAccount: number;
   minCallYieldPct: number;
-  putsWhenNoCall: "off" | "dte_budget";
+  putsWhenNoCall: "off" | "dte_budget" | "reserve_ladder";
   putBudgetPctPerDte: number;
+  /** The CC + Put Ladder (putsWhenNoCall "reserve_ladder"): the shares' share of the pot, the rungs and the shock. */
+  ladderSharesPct: number;
+  ladderRungs: number;
+  ladderShock: "history" | "fixed";
+  ladderShockPct: number;
+  ladderShockMinPct: number;
+  ladderShockMaxPct: number;
+  ladderShockNoHistoryPct: number;
+  ladderShockLookbackYears: number;
+  ladderTop: "break_even" | "price";
+  ladderPace: "any_look" | "one_open" | "no_puts";
+  ladderMinutesBetweenRungs: number;
+  ladderMaxRungsPerSession: number;
+  ladderPutVersusCall: "call_first" | "higher_yield";
+  ladderPutYieldMarginPct: number;
+  dayValueOptions: "marked" | "excluded";
   callDeltaRange: "entry_range" | "own_range";
   callMinAbsDelta: number;
   callMaxAbsDelta: number;
@@ -39,9 +57,38 @@ export interface BacktestBaselineSettings {
   looks: "every_look" | "first_look";
   volatilityEdgeFilter: "off" | "entries" | "all_sales";
   minVolatilityEdgePoints: number;
-  ranking: "premium_yield" | "edge_yield" | "time_value" | "premium_dollars";
+  ranking: "premium_yield" | "edge_yield" | "time_value" | "premium_dollars" | "premium_per_day";
   expiryChoice: "any_in_range" | "nearest_qualifying";
   coverage: "best_contract" | "fill_down_ranking";
+}
+
+/** "shared_account": one book for every ticker (the rules, the AI model); "pots": each ticker its pot of one shared account (the baseline). */
+export type BacktestBookMode = "shared_account" | "pots";
+
+/** The baseline values that can differ between the tickers of one session; every other value is the session's. */
+export const backtestTickerBaselineKeys = ["minAbsDelta", "maxAbsDelta", "ladderSharesPct", "ladderRungs", "ladderShock", "ladderShockPct", "ladderShockMinPct", "ladderShockMaxPct"] as const;
+export type BacktestTickerBaselineKey = (typeof backtestTickerBaselineKeys)[number];
+export type BacktestTickerBaselineSettings = Pick<BacktestBaselineSettings, BacktestTickerBaselineKey>;
+
+/** "per_ticker": each ticker's saved lab values apply; "global": the lab's global values for every ticker. */
+export type BacktestSettingsSource = "per_ticker" | "global";
+
+/** Where a ticker's value came from: the lab's global values, the ticker's lab values, the session-wide overrides, or the request's values for the ticker. */
+export type BacktestSymbolSettingSource = "global" | "ticker" | "session" | "request";
+
+/** A ticker's own values, as asked in a request or saved in the lab. */
+export interface BacktestTickerValues {
+  potDollars?: number;
+  baseline?: Partial<BacktestTickerBaselineSettings>;
+}
+
+/** A ticker of a "pots" session as it was created. */
+export interface BacktestSymbolSettings {
+  potDollars: number;
+  /** Its pot ÷ every pot: its share of the account for the ladder's base, fixed for the session. */
+  weight: number;
+  baseline: BacktestTickerBaselineSettings;
+  source: Record<BacktestTickerBaselineKey | "potDollars", BacktestSymbolSettingSource>;
 }
 
 /**
@@ -314,6 +361,8 @@ export interface CreateBacktestSessionResponse {
   session: BacktestSessionListItem;
   job: BacktestJobView;
   warnings: string[];
+  /** Each ticker's pot, weight and values as the session froze them ("pots"); null otherwise. */
+  resolvedBySymbol: Record<string, BacktestSymbolSettings> | null;
   /** With the AI model as decision maker: how many calls and how many hours of model time the session may take (an upper bound); null with the rules. */
   llmEstimate: LlmSessionEstimate | null;
 }
@@ -322,6 +371,10 @@ export interface CreateBacktestSessionResponse {
 export interface BacktestSessionEstimateResponse {
   warnings: string[];
   llmEstimate: LlmSessionEstimate | null;
+  /** The session's capital: the starting value given, else Σ the pots. */
+  capital: number;
+  bookMode: BacktestBookMode;
+  resolvedBySymbol: Record<string, BacktestSymbolSettings> | null;
 }
 
 export interface CreateBacktestSessionRequest {
@@ -332,9 +385,14 @@ export interface CreateBacktestSessionRequest {
   symbol?: string;
   startDate: string;
   endDate: string;
-  startingValue: number;
+  /** Optional with the baseline: the session's capital is then Σ the pots. */
+  startingValue?: number;
   tablesMode: BacktestTablesMode;
   overrides: BacktestSettingsOverrides;
+  /** The baseline only: each ticker's saved lab values ("per_ticker", the default) or the lab's global values for all. */
+  settingsSource?: BacktestSettingsSource;
+  /** The baseline only: values for some of the session's tickers, over the source's. */
+  symbolSettings?: Record<string, BacktestTickerValues>;
 }
 
 export interface BacktestSessionDay {
@@ -671,7 +729,12 @@ export interface BacktestSessionDetail {
     overrides: BacktestSettingsOverrides;
     /** What the win rate, the averages, edge capture and the accuracy table are measured on. */
     pnlBasis: BacktestPnlBasis;
-    /** Buy and hold of the session's symbols in equal dollar parts, and of SPY: for comparison only. Neither counts dividends. */
+    bookMode: BacktestBookMode;
+    /** Each ticker's pot, weight and values in a "pots" session; null in a "shared_account" one. */
+    symbolSettings: Record<string, BacktestSymbolSettings> | null;
+    /** A "pots" session: per ticker in its turn order, the looks and days at which the cash cut one of its orders; null in a "shared_account" one. */
+    cashBoundBySymbol: { symbol: string; looks: number; days: number }[] | null;
+    /** Buy and hold of the session's symbols, each with its pot ("pots") or in equal dollar parts, and of SPY: for comparison only. Neither counts dividends. */
     baselineMetrics: BacktestMetrics | null;
     baselineLabel: string;
     spyBaselineMetrics: BacktestMetrics | null;
