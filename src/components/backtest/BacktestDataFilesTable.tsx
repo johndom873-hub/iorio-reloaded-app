@@ -7,6 +7,7 @@ import { DataTable, type DataTableColumn } from "../DataTable/DataTable";
 import { Spinner } from "../Spinner";
 import { TooltipSpan } from "../TooltipSpan";
 import { BacktestCard, BacktestCardTitle } from "./backtestBits";
+import { usePutDownloadFirst } from "./usePutDownloadFirst";
 
 interface BacktestDataFilesTableProps {
   files: BacktestDataFileSummary[];
@@ -29,12 +30,16 @@ export function BacktestDataFilesTable({ files, jobs, onFilesChanged }: Backtest
   const [pendingSymbol, setPendingSymbol] = useState<string | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
   const [rowError, setRowError] = useState<string | null>(null);
+  const { requestPutFirst, putFirstModal } = usePutDownloadFirst(jobs);
 
-  /** Update sends the file's own first day, so it fills the gaps and adds the days since, never extending the file back in time. */
-  const requestDownload = async (symbol: string, startDate: string | undefined, source: "form" | "row") => {
+  /**
+   * Update sends the file's own first day, so it fills the gaps and adds the days since, never extending the file back in
+   * time. `first` puts the download at the top of the queue (pausing the running one when asked).
+   */
+  const requestDownload = async (symbol: string, startDate: string | undefined, source: "form" | "row", first?: { pauseRunning: boolean }) => {
     setPendingSymbol(symbol);
     try {
-      await startBacktestDownload(startDate ? { symbol, startDate } : { symbol });
+      await startBacktestDownload({ symbol, ...(startDate ? { startDate } : {}), ...(first ? { putFirst: true, pauseRunning: first.pauseRunning } : {}) });
       await onFilesChanged();
       return true;
     } catch (err) {
@@ -60,19 +65,35 @@ export function BacktestDataFilesTable({ files, jobs, onFilesChanged }: Backtest
     }
   };
 
-  const handleAddSymbol = async (event: FormEvent) => {
-    event.preventDefault();
+  const requestDownloadFirst = (symbol: string, startDate: string | undefined, source: "form" | "row") =>
+    requestPutFirst(symbol, async (pauseRunning) => {
+      if ((await requestDownload(symbol, startDate, source, { pauseRunning })) && source === "form") setNewSymbol("");
+    });
+
+  /** The form's symbol and start date, checked; null after showing what is wrong. */
+  const readAddSymbolForm = (): string | null => {
     const symbol = newSymbol.trim().toUpperCase();
     if (!symbolPattern.test(symbol)) {
       setFormError("Type a ticker symbol, e.g. HOOD.");
-      return;
+      return null;
     }
     if (!newStartDate) {
       setFormError("Choose the first day to download.");
-      return;
+      return null;
     }
     setFormError(null);
-    if (await requestDownload(symbol, newStartDate, "form")) setNewSymbol("");
+    return symbol;
+  };
+
+  const handleAddSymbol = async (event: FormEvent) => {
+    event.preventDefault();
+    const symbol = readAddSymbolForm();
+    if (symbol && (await requestDownload(symbol, newStartDate, "form"))) setNewSymbol("");
+  };
+
+  const handleAddSymbolFirst = async () => {
+    const symbol = readAddSymbolForm();
+    if (symbol) await requestDownloadFirst(symbol, newStartDate, "form");
   };
 
   const columns: DataTableColumn<BacktestDataFileSummary>[] = [
@@ -149,13 +170,13 @@ export function BacktestDataFilesTable({ files, jobs, onFilesChanged }: Backtest
             <div className="text-end">
               <button type="button" className="btn btn-outline-secondary d-inline-flex align-items-center gap-1" disabled>
                 <Spinner size="sm" />
-                {status === "queued" ? "Queued" : "Downloading"}
+                {status === "queued" ? "Queued" : job?.pauseRequested ? "Pausing" : "Downloading"}
               </button>
             </div>
           );
         }
         return (
-          <div className="text-end">
+          <div className="d-flex justify-content-end gap-2">
             <button
               type="button"
               className={`btn ${status === "stopped" ? "btn-outline-primary" : "btn-outline-secondary"} d-inline-flex align-items-center gap-1`}
@@ -169,6 +190,20 @@ export function BacktestDataFilesTable({ files, jobs, onFilesChanged }: Backtest
               {busy && <Spinner size="sm" />}
               {status === "stopped" ? "Resume" : "Update"}
             </button>
+            {status !== "stopped" && (
+              <button
+                type="button"
+                className="btn btn-outline-secondary text-nowrap"
+                title="Download the missing days before everything else in the queue"
+                disabled={pendingSymbol !== null}
+                onClick={() => {
+                  setRowError(null);
+                  void requestDownloadFirst(file.symbol, file.firstDate ?? undefined, "row");
+                }}
+              >
+                Update first
+              </button>
+            )}
           </div>
         );
       },
@@ -203,6 +238,9 @@ export function BacktestDataFilesTable({ files, jobs, onFilesChanged }: Backtest
         {pendingSymbol !== null && pendingSymbol === newSymbol.trim().toUpperCase() && <Spinner size="sm" />}
         Download
       </button>
+      <button type="button" className="btn btn-outline-primary" title="Download before everything else in the queue" disabled={pendingSymbol !== null} onClick={() => void handleAddSymbolFirst()}>
+        Download first
+      </button>
     </form>
   );
 
@@ -223,6 +261,7 @@ export function BacktestDataFilesTable({ files, jobs, onFilesChanged }: Backtest
         <div className="text-secondary px-3 py-3" style={{ fontSize: "0.85rem" }}>
           No data files yet. Add a symbol to download its option history.
         </div>
+        {putFirstModal}
       </BacktestCard>
     );
   }
@@ -243,6 +282,7 @@ export function BacktestDataFilesTable({ files, jobs, onFilesChanged }: Backtest
         }
         beforeTable={errors}
       />
+      {putFirstModal}
     </div>
   );
 }

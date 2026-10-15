@@ -8,7 +8,6 @@ import {
   type BacktestDetectedSplit,
   type BacktestFill,
   type BacktestJobDisplayStatus,
-  type BacktestJobKind,
   type BacktestJobView,
   type BacktestMetrics,
   type BacktestMonthlyReturn,
@@ -61,8 +60,6 @@ import { gradeBadgeClass, gradeLabel } from "./signalsPresentation";
 
 // ---- Jobs ----
 
-export const jobKindLabel: Record<BacktestJobKind, string> = { download: "Download", backtest: "Backtest" };
-export const jobKindBadgeClass: Record<BacktestJobKind, string> = { download: "backtest-kind-download", backtest: "backtest-kind-run" };
 
 export const jobStatusLabel: Record<BacktestJobDisplayStatus, string> = {
   queued: "Queued",
@@ -104,7 +101,8 @@ export function isBacktestJobActive(job: BacktestJobView, now: Date): boolean {
   return now.getTime() - new Date(lastSign).getTime() < stoppedJobFastPollWindowMs;
 }
 
-export function jobProgressFraction(job: BacktestJobView): number {
+/** A job's progress, or a session's latest run's, as a fraction: 1 once it succeeded. */
+export function jobProgressFraction(job: Pick<BacktestJobView, "status" | "progressDone" | "progressTotal">): number {
   if (job.status === "succeeded") return 1;
   return job.progressTotal > 0 ? Math.min(1, job.progressDone / job.progressTotal) : 0;
 }

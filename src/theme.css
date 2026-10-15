@@ -1540,24 +1540,7 @@
 }
 
 
-/* Backtesting screens (local only; mockup approved 2026-10-12). Job kind badges are light tints with dark text in light mode
-   and the reverse in dark mode: #0b4f78 on #e3eff8 7.5:1, #a5dcfb on #1e3a52 8.0:1, #5b2a86 on #efe7f8 8.2:1, #d9c2f5 on #3a2a52 8.0:1. */
-.badge.backtest-kind-download {
-  background-color: #e3eff8;
-  color: #0b4f78;
-}
-:root[data-bs-theme="dark"] .badge.backtest-kind-download {
-  background-color: #1e3a52;
-  color: #a5dcfb;
-}
-.badge.backtest-kind-run {
-  background-color: #efe7f8;
-  color: #5b2a86;
-}
-:root[data-bs-theme="dark"] .badge.backtest-kind-run {
-  background-color: #3a2a52;
-  color: #d9c2f5;
-}
+/* Backtesting screens (local only; mockup approved 2026-10-12). */
 /* The data folder chip in the page header. */
 .backtest-source-chip {
   display: inline-flex;
@@ -1570,20 +1553,83 @@
   border-radius: var(--tblr-border-radius);
   background-color: var(--tblr-bg-surface);
 }
-/* One background job: badges and title, progress, action. Stacks on a phone. */
-.backtest-job-row {
+/* Background jobs: downloads and backtests side by side on wide screens, stacked below. */
+.backtest-job-columns {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
-  gap: 0.5rem 1.25rem;
+}
+.backtest-job-column + .backtest-job-column {
+  border-top: 1px solid var(--tblr-border-color);
+}
+@media (min-width: 992px) {
+  .backtest-job-columns {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .backtest-job-column + .backtest-job-column {
+    border-top: 0;
+    border-left: 1px solid var(--tblr-border-color);
+  }
+}
+.backtest-job-column-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 1rem;
+  font-size: 0.8rem;
+  border-bottom: 1px solid var(--tblr-border-color);
+  background-color: var(--tblr-bg-surface-secondary);
+}
+/* One background job: status and title with the actions on the right, the progress across the row below. */
+.backtest-job-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0.5rem 1rem;
   align-items: center;
   padding: 0.75rem 1rem;
+}
+.backtest-job-row .badge {
+  flex-shrink: 0;
+}
+/* A 44px tap target for the session link on a phone; the row is already that tall beside its button. */
+@media (max-width: 767.98px) {
+  .backtest-job-row a {
+    padding-block: 0.75rem;
+  }
+}
+.backtest-job-row-progress {
+  grid-column: 1 / -1;
+  min-width: 0;
 }
 .backtest-job-row + .backtest-job-row {
   border-top: 1px solid var(--tblr-border-color);
 }
-@media (min-width: 768px) {
-  .backtest-job-row {
-    grid-template-columns: 13rem minmax(0, 1fr) auto;
+/* A job list has a fixed height, about six standard rows (82.8px on a wide screen, ~150px on a phone with the link's tap
+   target), so the card never resizes as jobs update and the page below never moves; longer lists scroll. Its scrollbar
+   is styled, so Chrome and Safari always draw it: macOS hides an idle scrollbar, which made the rows below look missing.
+   Firefox gets a thin themed one. */
+.backtest-job-list-scroll {
+  height: 31rem;
+  overflow-y: auto;
+}
+@media (max-width: 767.98px) {
+  .backtest-job-list-scroll {
+    height: 56.5rem;
+  }
+}
+.backtest-job-list-scroll::-webkit-scrollbar {
+  width: 0.5rem;
+}
+.backtest-job-list-scroll::-webkit-scrollbar-track {
+  background-color: var(--tblr-bg-surface-secondary);
+}
+.backtest-job-list-scroll::-webkit-scrollbar-thumb {
+  background-color: var(--tblr-secondary);
+  border-radius: 0.25rem;
+}
+@supports not selector(::-webkit-scrollbar) {
+  .backtest-job-list-scroll {
+    scrollbar-width: thin;
+    scrollbar-color: var(--tblr-secondary) var(--tblr-bg-surface-secondary);
   }
 }
 /* Ten headline tiles: five a row on wide screens, two on a phone. */

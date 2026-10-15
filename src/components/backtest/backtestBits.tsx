@@ -1,13 +1,11 @@
 import type { ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { IconArrowLeft, IconChevronDown } from "@tabler/icons-react";
-import type { BacktestJobDisplayStatus, BacktestJobKind, BacktestJobView } from "../../api/backtest";
+import type { BacktestJobDisplayStatus, BacktestJobView } from "../../api/backtest";
 import { formatRelativeAge, formatSecondsInWords, formatShortAgeWithSeconds } from "../../lib/formatters";
 import {
   describeJobProgress,
   describeJobRunTime,
-  jobKindBadgeClass,
-  jobKindLabel,
   jobProgressBarClass,
   jobProgressFraction,
   jobStatusBadgeClass,
@@ -98,10 +96,6 @@ export function BacktestBackLink() {
       Backtesting
     </Link>
   );
-}
-
-export function BacktestJobKindBadge({ kind }: { kind: BacktestJobKind }) {
-  return <span className={`badge ${jobKindBadgeClass[kind]}`}>{jobKindLabel[kind]}</span>;
 }
 
 export function BacktestJobStatusBadge({ status }: { status: BacktestJobDisplayStatus }) {

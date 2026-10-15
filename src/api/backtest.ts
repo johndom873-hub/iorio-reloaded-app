@@ -22,7 +22,13 @@ export interface BacktestBaselineSettings {
   maxAbsDelta: number;
   minDte: number;
   maxDte: number;
-  callStrike: "delta_range" | "above_share_cost" | "above_break_even" | "none";
+  callStrike: "delta_range" | "above_share_cost" | "above_break_even" | "above_latest_entry" | "above_average_cost" | "none";
+  entryCallStrike: "any" | "above_purchase_price" | "above_average_after_purchase";
+  entryWhenSharesUncovered: "wait" | "buy";
+  maxSharesPctOfAccount: number;
+  minCallYieldPct: number;
+  putsWhenNoCall: "off" | "dte_budget";
+  putBudgetPctPerDte: number;
   callDeltaRange: "entry_range" | "own_range";
   callMinAbsDelta: number;
   callMaxAbsDelta: number;
@@ -33,7 +39,9 @@ export interface BacktestBaselineSettings {
   looks: "every_look" | "first_look";
   volatilityEdgeFilter: "off" | "entries" | "all_sales";
   minVolatilityEdgePoints: number;
-  ranking: "premium_yield" | "edge_yield";
+  ranking: "premium_yield" | "edge_yield" | "time_value" | "premium_dollars";
+  expiryChoice: "any_in_range" | "nearest_qualifying";
+  coverage: "best_contract" | "fill_down_ranking";
 }
 
 /**
@@ -110,6 +118,10 @@ export interface BacktestJobView {
   startedAt: string | null;
   finishedAt: string | null;
   error: string | null;
+  /** A queued download put at the top of the queue (the latest put first starts first). */
+  putFirst: boolean;
+  /** A running download asked to pause: it goes back into the queue once it stops. */
+  pauseRequested: boolean;
 }
 
 /** A split the engine found by comparing the options' closing parity price with IBKR's split-adjusted close. */
@@ -210,13 +222,50 @@ export interface BacktestSessionListItem {
   /** The wheel cycles of a finished session measured per cycle; null otherwise. */
   wheelCycles: BacktestWheelCycleSummary | null;
   createdAt: string;
+  /** Its latest job's run; null on the session list items that do not carry it (a comparison) or when the job is gone. */
+  latestRun: BacktestSessionRunState | null;
+}
+
+/** A session's latest job as the Sessions list shows it: a running job whose heartbeat stopped shows as stopped. */
+export interface BacktestSessionRunState {
+  status: BacktestJobStatus;
+  displayStatus: BacktestJobDisplayStatus;
+  progressDone: number;
+  progressTotal: number;
+}
+
+/** The Sessions list's status filter; "running" also matches a session still queued. */
+export type BacktestSessionStatusFilter = "succeeded" | "running" | "failed" | "cancelled";
+
+/** Filters of GET /backtest/sessions, as query parameters. */
+export interface BacktestSessionsPageQuery {
+  /** Any part of the name, ignoring case. */
+  search?: string;
+  symbol?: string;
+  status?: BacktestSessionStatusFilter;
+  limit?: number;
+  offset?: number;
+}
+
+/** One page of the Sessions list, newest first. `total` counts every session the filters match; `symbols` lists every
+ *  symbol any session has, for the Symbol filter. */
+export interface BacktestSessionsPage {
+  sessions: BacktestSessionListItem[];
+  total: number;
+  limit: number;
+  offset: number;
+  symbols: string[];
 }
 
 export interface BacktestOverview {
   dataDirectory: string;
   files: BacktestDataFileSummary[];
+  /**
+   * The backtests, then the downloads. Backtests: the 50 latest, finished or not, latest activity first. Downloads: the
+   * running one, the stopped ones, the queue in the order it starts them, then the finished ones, the last to end first;
+   * every unfinished one is listed, the finished ones fill up to 50. The sessions are read page by page.
+   */
   jobs: BacktestJobView[];
-  sessions: BacktestSessionListItem[];
 }
 
 /** One value a "choice" row can take. */
@@ -674,9 +723,18 @@ export function fetchBacktestOverview(): Promise<BacktestOverview> {
   return apiRequest<BacktestOverview>("/backtest/overview");
 }
 
-/** Queues a download for the symbol from startDate (the API's default start without it) to the last finished session: only days not in the file are fetched. */
-export async function startBacktestDownload(request: { symbol: string; startDate?: string }): Promise<void> {
+/**
+ * Queues a download for the symbol from startDate (the API's default start without it) to the last finished session: only
+ * days not in the file are fetched. putFirst puts it at the top of the queue; pauseRunning also pauses the running download,
+ * which goes back into the queue right after it.
+ */
+export async function startBacktestDownload(request: { symbol: string; startDate?: string; putFirst?: boolean; pauseRunning?: boolean }): Promise<void> {
   await apiRequest<unknown>("/backtest/downloads", { method: "POST", body: JSON.stringify(request) });
+}
+
+/** Moves a queued download to the top of the queue; pauseRunning also pauses the running download, which goes back in right after it. */
+export async function putBacktestDownloadFirst(jobId: string, pauseRunning: boolean): Promise<void> {
+  await apiRequest<unknown>(`/backtest/jobs/${encodeURIComponent(jobId)}/put-first`, { method: "POST", body: JSON.stringify({ pauseRunning }) });
 }
 
 export async function cancelBacktestJob(jobId: string): Promise<void> {
@@ -705,21 +763,26 @@ export function fetchBacktestSession(sessionId: string): Promise<BacktestSession
   return apiRequest<BacktestSessionDetail>(`/backtest/sessions/${encodeURIComponent(sessionId)}`);
 }
 
-function bookPageQueryString(query: BacktestBookPageQuery): string {
+function pageQueryString(query: BacktestBookPageQuery | BacktestSessionsPageQuery): string {
   const parameters = new URLSearchParams();
   for (const [key, value] of Object.entries(query)) if (value !== undefined) parameters.set(key, String(value));
   const text = parameters.toString();
   return text === "" ? "" : `?${text}`;
 }
 
+/** One page of the Sessions list, newest first, filtered by name, symbol and status. */
+export function fetchBacktestSessionsPage(query: BacktestSessionsPageQuery = {}): Promise<BacktestSessionsPage> {
+  return apiRequest<BacktestSessionsPage>(`/backtest/sessions${pageQueryString(query)}`);
+}
+
 /** One page of what Pluto did or tried in the session, in the order taken. */
 export function fetchBacktestSessionActions(sessionId: string, query: BacktestBookPageQuery = {}): Promise<BacktestActionsPage> {
-  return apiRequest<BacktestActionsPage>(`/backtest/sessions/${encodeURIComponent(sessionId)}/actions${bookPageQueryString(query)}`);
+  return apiRequest<BacktestActionsPage>(`/backtest/sessions/${encodeURIComponent(sessionId)}/actions${pageQueryString(query)}`);
 }
 
 /** One page of the session's simulated fills, in the order they executed. */
 export function fetchBacktestSessionFills(sessionId: string, query: BacktestBookPageQuery = {}): Promise<BacktestFillsPage> {
-  return apiRequest<BacktestFillsPage>(`/backtest/sessions/${encodeURIComponent(sessionId)}/fills${bookPageQueryString(query)}`);
+  return apiRequest<BacktestFillsPage>(`/backtest/sessions/${encodeURIComponent(sessionId)}/fills${pageQueryString(query)}`);
 }
 
 export function fetchBacktestComparison(sessionIds: string[]): Promise<BacktestCompareResponse> {

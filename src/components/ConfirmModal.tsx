@@ -8,6 +8,9 @@ interface ConfirmModalProps {
   confirmLabel?: string;
   danger?: boolean;
   confirming?: boolean;
+  /** A second choice between Cancel and the confirm button (e.g. "Keep it running"); the dialog widens to fit three buttons. */
+  secondaryLabel?: string;
+  onSecondary?: () => void;
   onConfirm: () => void;
   onCancel: () => void;
 }
@@ -18,7 +21,7 @@ interface ConfirmModalProps {
 // Confirmation modal per the app's convention: does NOT close on backdrop
 // click or ESC, since accidentally dismissing it should never be mistaken
 // for confirming — Cancel is the only way out besides the actual buttons.
-export function ConfirmModal({ title, message, confirmLabel = "Confirm", danger = true, confirming = false, onConfirm, onCancel }: ConfirmModalProps) {
+export function ConfirmModal({ title, message, confirmLabel = "Confirm", danger = true, confirming = false, secondaryLabel, onSecondary, onConfirm, onCancel }: ConfirmModalProps) {
   useEffect(() => {
     const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
@@ -31,7 +34,7 @@ export function ConfirmModal({ title, message, confirmLabel = "Confirm", danger 
     <>
       <div className="modal-backdrop show" style={{ zIndex: 1050, backgroundColor: "rgba(0,0,0,0.5)", opacity: 1 }} />
       <div className="modal show d-block" style={{ zIndex: 1050 }}>
-        <div className="modal-dialog modal-dialog-centered modal-dialog-scrollable modal-sm">
+        <div className={`modal-dialog modal-dialog-centered modal-dialog-scrollable ${secondaryLabel ? "" : "modal-sm"}`}>
           <div className="modal-content">
             <div className="modal-header">
               <h5 className="modal-title">{title}</h5>
@@ -42,6 +45,11 @@ export function ConfirmModal({ title, message, confirmLabel = "Confirm", danger 
               <button type="button" className="btn btn-link text-secondary" onClick={onCancel} disabled={confirming}>
                 Cancel
               </button>
+              {secondaryLabel && onSecondary && (
+                <button type="button" className="btn btn-outline-secondary" onClick={onSecondary} disabled={confirming}>
+                  {secondaryLabel}
+                </button>
+              )}
               <button
                 type="button"
                 className={`btn ${danger ? "btn-danger" : "btn-primary"} d-inline-flex align-items-center gap-1`}

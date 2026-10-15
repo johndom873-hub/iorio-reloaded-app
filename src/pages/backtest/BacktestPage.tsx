@@ -4,7 +4,6 @@ import { BacktestDataFilesTable } from "../../components/backtest/BacktestDataFi
 import { BacktestJobsCard } from "../../components/backtest/BacktestJobsCard";
 import { BacktestSessionsTable } from "../../components/backtest/BacktestSessionsTable";
 import { useBacktestOverview } from "../../components/backtest/useBacktestPolling";
-import { useTickingNow } from "../../hooks/useTickingNow";
 import { formatFileSize, pluralizeCount } from "../../lib/formatters";
 
 const pageTitle = "Backtesting";
@@ -13,8 +12,6 @@ const pageSubtitle = "Replay the valuation model and Pluto's rules on ThetaData 
 // Backtesting home (mockup approved 2026-10-12): background jobs, the downloaded data files, and the sessions.
 export function BacktestPage() {
   const { data: overview, loadError, refreshFailing, reload } = useBacktestOverview();
-  const newestHeartbeat = overview?.jobs.map((job) => job.heartbeatAt).filter((value): value is string => value !== null).sort().at(-1) ?? null;
-  const now = useTickingNow(newestHeartbeat);
 
   if (loadError) {
     return (
@@ -58,9 +55,9 @@ export function BacktestPage() {
           Cannot reach the API right now; showing the last update and retrying.
         </div>
       )}
-      <BacktestJobsCard jobs={overview.jobs} now={now} onJobsChanged={reload} />
+      <BacktestJobsCard jobs={overview.jobs} onJobsChanged={reload} />
       <BacktestDataFilesTable files={overview.files} jobs={overview.jobs} onFilesChanged={reload} />
-      <BacktestSessionsTable sessions={overview.sessions} jobs={overview.jobs} />
+      <BacktestSessionsTable />
     </>
   );
 }
