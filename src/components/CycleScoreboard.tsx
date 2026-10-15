@@ -31,7 +31,7 @@ export function CycleScoreboard() {
           <Spinner size="sm" label="Loading scoreboard" />
         </div>
       )}
-      {failed && <div className="text-muted">Couldn't load the scoreboard.</div>}
+      {failed && <div className="text-secondary">Couldn't load the scoreboard.</div>}
       {data && (
         <>
           <div className="table-responsive table-flush">
@@ -70,7 +70,7 @@ export function CycleScoreboard() {
             </table>
           </div>
           {data.cyclesExcluded.length > 0 && (
-            <div className="text-muted" style={{ fontSize: "0.8rem", marginTop: "calc(var(--tblr-card-spacer-y) + 0.5rem)" }}>
+            <div className="text-secondary" style={{ fontSize: "0.8rem", marginTop: "calc(var(--tblr-card-spacer-y) + 0.5rem)" }}>
               {data.cyclesExcluded.length} cycle(s) left out because their fills are incomplete: {data.cyclesExcluded.map((item) => `${item.symbol} (${item.reason})`).join("; ")}.
             </div>
           )}

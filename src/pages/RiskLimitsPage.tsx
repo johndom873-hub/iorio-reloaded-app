@@ -178,7 +178,7 @@ function TradingHaltCard() {
                 {halt.reason ? ` — ${halt.reason}` : ""}. No order from any origin (screens, Genosuke, bots) reaches IBKR until it is lifted; cancels still work.
               </div>
             ) : (
-              <div className="text-muted" style={{ fontSize: "0.8rem" }}>
+              <div className="text-secondary" style={{ fontSize: "0.8rem" }}>
                 The kill switch. Halting stops every order from every origin at confirm and again inside the trading worker, immediately.
                 {halt.setAt && ` Last lifted by ${halt.setByDisplayName ?? "an operator"} ${formatRelativeTime(halt.setAt) ?? formatDateTime(halt.setAt)}.`}
               </div>
@@ -244,7 +244,7 @@ function ConcentrationList({ title, rows, labelKey, totalAccountValue, limitPct,
     <div className="col-12 col-md-6">
       <h4 style={{ fontSize: "0.9rem" }}>{title}</h4>
       {rows.length === 0 ? (
-        <div className="text-muted" style={{ fontSize: "0.8rem" }}>
+        <div className="text-secondary" style={{ fontSize: "0.8rem" }}>
           No open positions yet.
         </div>
       ) : (
@@ -261,7 +261,7 @@ function ConcentrationList({ title, rows, labelKey, totalAccountValue, limitPct,
                     {label}
                   </button>
                 ) : (
-                  <span className={isUnallocated ? "text-muted" : ""}>{label}</span>
+                  <span className={isUnallocated ? "text-secondary" : ""}>{label}</span>
                 )}
                 <span className="d-flex align-items-center gap-2">
                   {isOverLimit && (
@@ -395,25 +395,25 @@ export function RiskLimitsPage() {
 
             <div className="row mb-3">
               <div className="col-12 col-sm-6 col-md-3">
-                <div className="text-muted" style={{ fontSize: "0.75rem" }}>
+                <div className="text-secondary" style={{ fontSize: "0.75rem" }}>
                   Net Liquidation Value
                 </div>
                 <div className="fw-bold">{formatCurrency(exposure?.account?.netLiquidationValue ?? null, 0)}</div>
               </div>
               <div className="col-12 col-sm-6 col-md-3">
-                <div className="text-muted" style={{ fontSize: "0.75rem" }}>
+                <div className="text-secondary" style={{ fontSize: "0.75rem" }}>
                   Total Cash
                 </div>
                 <div className="fw-bold">{formatCurrency(exposure?.account?.totalCashValue ?? null, 0)}</div>
               </div>
               <div className="col-12 col-sm-6 col-md-3">
-                <div className="text-muted" style={{ fontSize: "0.75rem" }}>
+                <div className="text-secondary" style={{ fontSize: "0.75rem" }}>
                   Available Cash
                 </div>
                 <div className="fw-bold">{formatCurrency(exposure?.availableCash ?? null, 0)}</div>
               </div>
               <div className="col-12 col-sm-6 col-md-3">
-                <div className="text-muted" style={{ fontSize: "0.75rem" }}>
+                <div className="text-secondary" style={{ fontSize: "0.75rem" }}>
                   Gross Position Value
                 </div>
                 <div className="fw-bold">{formatCurrency(exposure?.account?.grossPositionValue ?? null, 0)}</div>
@@ -443,7 +443,7 @@ export function RiskLimitsPage() {
                 unallocatedLabel="Unallocated"
               />
             </div>
-            <div className="text-muted mt-2" style={{ fontSize: "0.72rem" }}>
+            <div className="text-secondary mt-2" style={{ fontSize: "0.72rem" }}>
               % of total account value (net liquidation value, including cash). "over limit" compares against the Max exposure per ticker % limit below.
             </div>
           </>
@@ -457,7 +457,7 @@ export function RiskLimitsPage() {
           ) : settingsError ? (
             <div className="alert alert-danger">{settingsError}</div>
           ) : !formState ? (
-            <div className="text-muted">No settings found.</div>
+            <div className="text-secondary">No settings found.</div>
           ) : (
             <>
               {saveError && <div className="alert alert-danger">{saveError}</div>}

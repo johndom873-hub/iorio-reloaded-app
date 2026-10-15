@@ -213,15 +213,15 @@ export function PositionsPage() {
 
   function renderSuccessProbabilityByDelta(row: Position) {
     const optionLeg = row.legs.find((leg) => leg.legType === "option" && !leg.exitAt);
-    if (!optionLeg) return <span className="text-muted">—</span>;
-    if (optionLeg.side !== "short") return <TooltipSpan className="text-muted" text="Only a short option has a chance of success">—</TooltipSpan>;
+    if (!optionLeg) return <span className="text-secondary">—</span>;
+    if (optionLeg.side !== "short") return <TooltipSpan className="text-secondary" text="Only a short option has a chance of success">—</TooltipSpan>;
     const greeks = greeksByLegId[optionLeg.id];
     if (!greeks) {
-      if (greeksFetchFailed) return <TooltipSpan className="text-muted" text="Failed to load">—</TooltipSpan>;
+      if (greeksFetchFailed) return <TooltipSpan className="text-secondary" text="Failed to load">—</TooltipSpan>;
       return <Spinner size="sm" label="Loading P(Δ)" />;
     }
     const value = successProbabilityFromDelta(optionLeg, greeks.delta);
-    if (value === null) return <TooltipSpan className="text-muted" text="No delta available">—</TooltipSpan>;
+    if (value === null) return <TooltipSpan className="text-secondary" text="No delta available">—</TooltipSpan>;
     return (
       <FlashingNumber value={value} precision={2} title={greeks.asOfDate ? `As of ${formatDate(greeks.asOfDate)} close` : undefined}>
         {formatSuccessProbability(value)}
@@ -307,7 +307,7 @@ export function PositionsPage() {
               </TooltipSpan>
             );
           }
-          return <span className="text-muted">—</span>;
+          return <span className="text-secondary">—</span>;
         }
         return <FlashingNumber value={price} precision={2}>{formatCurrency(price, 2)}</FlashingNumber>;
       },
@@ -319,7 +319,7 @@ export function PositionsPage() {
       align: "right",
       render: (row) => {
         if (row.breakEven === null || row.breakEven === undefined) {
-          return <TooltipSpan className="text-muted" text={row.breakEvenUnavailableReason ?? "No break-even for this position"}>—</TooltipSpan>;
+          return <TooltipSpan className="text-secondary" text={row.breakEvenUnavailableReason ?? "No break-even for this position"}>—</TooltipSpan>;
         }
         if (row.breakEven <= 0) return <span className="badge bg-success-lt">Free</span>;
         const { price } = resolvePrice(row);
@@ -338,7 +338,7 @@ export function PositionsPage() {
         if (result.state === "loading") return <Spinner size="sm" label="Loading cycle P&L" />;
         if (result.state === "unavailable") {
           return (
-            <TooltipSpan className="text-muted" text={result.reason}>
+            <TooltipSpan className="text-secondary" text={result.reason}>
               —
             </TooltipSpan>
           );
@@ -359,7 +359,7 @@ export function PositionsPage() {
         if (pnl === "loading") {
           if (unrealizedPnlFetchFailed) {
             return (
-              <TooltipSpan className="text-muted" text="Failed to load live P&L data">
+              <TooltipSpan className="text-secondary" text="Failed to load live P&L data">
                 —
               </TooltipSpan>
             );
@@ -369,7 +369,7 @@ export function PositionsPage() {
         const pct = positionTotalPnlPercent(row, pnl);
         if (pct === null)
           return (
-            <TooltipSpan className="text-muted" text="No live price or recent snapshot available for this position">
+            <TooltipSpan className="text-secondary" text="No live price or recent snapshot available for this position">
               —
             </TooltipSpan>
           );
@@ -392,7 +392,7 @@ export function PositionsPage() {
         if (pnl === "loading") {
           if (unrealizedPnlFetchFailed) {
             return (
-              <TooltipSpan className="text-muted" text="Failed to load live P&L data">
+              <TooltipSpan className="text-secondary" text="Failed to load live P&L data">
                 —
               </TooltipSpan>
             );
@@ -401,7 +401,7 @@ export function PositionsPage() {
         }
         if (pnl === null)
           return (
-            <TooltipSpan className="text-muted" text="No live price or recent snapshot available for this position">
+            <TooltipSpan className="text-secondary" text="No live price or recent snapshot available for this position">
               —
             </TooltipSpan>
           );
@@ -421,7 +421,7 @@ export function PositionsPage() {
       render: (row) => {
         if (positionIsStockOnly(row))
           return (
-            <TooltipSpan className="text-muted" text="No live option leg — all P&L on this position is stock P&L">
+            <TooltipSpan className="text-secondary" text="No live option leg — all P&L on this position is stock P&L">
               —
             </TooltipSpan>
           );
@@ -429,7 +429,7 @@ export function PositionsPage() {
         if (pnl === "loading") return <Spinner size="sm" label="Loading premium P&L" />;
         if (pnl === null)
           return (
-            <TooltipSpan className="text-muted" text="No live price or recent snapshot available for this position">
+            <TooltipSpan className="text-secondary" text="No live price or recent snapshot available for this position">
               —
             </TooltipSpan>
           );
@@ -446,12 +446,12 @@ export function PositionsPage() {
       headerTitle: "Stock price movement vs. entry — positions with a stock leg only (covered calls, and unstructured stock-only positions); a cash-secured put never has one",
       align: "right",
       render: (row) => {
-        if (!positionHasStockLeg(row)) return <span className="text-muted">—</span>;
+        if (!positionHasStockLeg(row)) return <span className="text-secondary">—</span>;
         const pnl = positionStockPnl(row, unrealizedPnlByPositionId);
         if (pnl === "loading") return <Spinner size="sm" label="Loading stock P&L" />;
         if (pnl === null)
           return (
-            <TooltipSpan className="text-muted" text="No live price or recent snapshot available for this position">
+            <TooltipSpan className="text-secondary" text="No live price or recent snapshot available for this position">
               —
             </TooltipSpan>
           );

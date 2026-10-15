@@ -151,7 +151,7 @@ export function DataTable<TRow>({
               </tr>
             ) : rows.length === 0 ? (
               <tr>
-                <td colSpan={visibleColumns.length} className="text-center text-muted py-4">
+                <td colSpan={visibleColumns.length} className="text-center text-secondary py-4">
                   {emptyMessage}
                 </td>
               </tr>

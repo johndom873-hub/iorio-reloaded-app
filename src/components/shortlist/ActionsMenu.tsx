@@ -47,8 +47,8 @@ interface MenuPlacement {
   right: number;
 }
 
-// Same manual open-state/click-outside pattern as ColumnVisibilityPopover.tsx -- this app never loads
-// Bootstrap's JS bundle, so data-bs-toggle="dropdown" alone does nothing.
+// Same manual open-state/click-outside pattern as ColumnVisibilityPopover.tsx -- React state rather than
+// Bootstrap's data-bs-toggle="dropdown", whose data-API toggles classes outside React's control.
 //
 // Portaled to <body> with fixed positioning for the same reason as ColumnVisibilityPopover: this button
 // lives inside a table row, inside `.table-responsive` (overflow-x: auto, which per spec forces

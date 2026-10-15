@@ -44,20 +44,20 @@ export function DailyBarsCell({ row }: { row: ShortlistRow }) {
 }
 
 export function EarningsCell({ row }: { row: ShortlistRow }) {
-  if (row.isEtf) return <span className="text-muted small">N/A — ETF</span>;
+  if (row.isEtf) return <span className="text-secondary small">N/A — ETF</span>;
   const thin = row.earningsCount < quartersForEarningsAdjustment;
   const nextInDays = row.nextEarningsDateIso ? formatDaysToExpiry(daysToExpiry(row.nextEarningsDateIso)) : null;
   return (
     <span className="d-inline-flex align-items-center gap-1">
       {thin && <WarningTriangle reason={`Only ${row.earningsCount} quarter${row.earningsCount === 1 ? "" : "s"} on record; the vol forecast can't correct for earnings until ${quartersForEarningsAdjustment}. Fix: Actions → Backfill Earnings.`} />}
       {row.earningsCount}
-      {nextInDays && <span className="text-muted small">({nextInDays})</span>}
+      {nextInDays && <span className="text-secondary small">({nextInDays})</span>}
     </span>
   );
 }
 
 export function DividendCell({ row }: { row: ShortlistRow }) {
-  if (row.dividendHistoryCount === 0) return <span className="text-muted">—</span>;
+  if (row.dividendHistoryCount === 0) return <span className="text-secondary">—</span>;
   if (row.dividendCadenceUnknown) {
     return (
       <span className="d-inline-flex align-items-center gap-1">
@@ -72,7 +72,7 @@ export function DividendCell({ row }: { row: ShortlistRow }) {
 /** The option-chain cells of a Signals-off ticker: nothing is captured for it, so there is nothing to warn about. */
 export function SignalsOffCell() {
   return (
-    <TooltipSpan className="text-muted" text="Signals is off: no option chain is captured for this ticker.">
+    <TooltipSpan className="text-secondary" text="Signals is off: no option chain is captured for this ticker.">
       —
     </TooltipSpan>
   );
@@ -102,7 +102,7 @@ export function OptionChainExpiriesCell({ expiries }: { expiries: ShortlistRow["
 
 /** Fitted/total expiries; the figure opens the volatility surface. `linkClassName` lets a host restyle the link (the Pluto screen uses its own). */
 export function SurfaceFitCell({ row, onOpenSurface, linkClassName = "btn btn-link p-0 text-decoration-none font-mono" }: { row: ShortlistRow; onOpenSurface: () => void; linkClassName?: string }) {
-  if (row.latestTotalSliceCount === null) return <span className="text-muted">—</span>;
+  if (row.latestTotalSliceCount === null) return <span className="text-secondary">—</span>;
   const partial = (row.latestFittedSliceCount ?? 0) < row.latestTotalSliceCount;
   return (
     <span className="d-inline-flex align-items-center gap-1">

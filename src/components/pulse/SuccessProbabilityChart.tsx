@@ -78,7 +78,7 @@ export function SuccessProbabilityChart({ seriesByPosition, referenceLine, times
               .join(" ");
             return <polyline key={series.id} points={points} fill="none" stroke={series.color} strokeWidth={0.6} opacity={0.8} />;
           })}
-          {hoverFraction !== null && <line x1={hoverFraction * 300} y1={0} x2={hoverFraction * 300} y2={100} stroke="var(--text-muted)" strokeWidth={0.4} />}
+          {hoverFraction !== null && <line x1={hoverFraction * 300} y1={0} x2={hoverFraction * 300} y2={100} stroke="var(--text-secondary)" strokeWidth={0.4} />}
         </svg>
         {hoverFraction !== null && hoverEntries.length > 0 && (
           <div

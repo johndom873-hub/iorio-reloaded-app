@@ -240,7 +240,7 @@ export function ShortlistTab({ onOpenTickerModal }: ShortlistTabProps) {
       ),
     },
     { key: "companyName", header: "Name", render: (row) => row.companyName ?? "—" },
-    { key: "sector", header: "Sector", render: (row) => (row.isEtf ? <span className="text-muted fst-italic">ETF</span> : row.sector ?? "—") },
+    { key: "sector", header: "Sector", render: (row) => (row.isEtf ? <span className="text-secondary fst-italic">ETF</span> : row.sector ?? "—") },
     {
       key: "dailyBars",
       header: "Daily Bars",
@@ -299,7 +299,7 @@ export function ShortlistTab({ onOpenTickerModal }: ShortlistTabProps) {
             onClick={() => setPrepTicker({ tickerId: row.tickerId, symbol: row.symbol, companyName: row.companyName })}
           />
         ) : (
-          <span className="text-muted">—</span>
+          <span className="text-secondary">—</span>
         ),
     },
     {
@@ -427,7 +427,7 @@ export function ShortlistTab({ onOpenTickerModal }: ShortlistTabProps) {
                     <Spinner size="sm" label="Searching" />
                   </div>
                 ) : searchResults.length === 0 ? (
-                  <div className="p-3 text-muted small">No optionable US tickers match "{newSymbol.trim()}".</div>
+                  <div className="p-3 text-secondary small">No optionable US tickers match "{newSymbol.trim()}".</div>
                 ) : (
                   <ul className="list-group list-group-flush">
                     {searchResults.map((result) => (
@@ -439,7 +439,7 @@ export function ShortlistTab({ onOpenTickerModal }: ShortlistTabProps) {
                           onClick={() => handleAdd(result.symbol)}
                         >
                           <strong>{result.symbol}</strong>
-                          <span className="text-muted small text-truncate ms-2">{result.companyName ?? "—"}</span>
+                          <span className="text-secondary small text-truncate ms-2">{result.companyName ?? "—"}</span>
                         </button>
                       </li>
                     ))}

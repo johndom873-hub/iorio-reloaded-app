@@ -46,7 +46,7 @@ export function CollapsibleCard({
         {!isOpen && collapsedSummary && <div className="ms-auto me-3 d-flex flex-wrap justify-content-end column-gap-3 row-gap-1">{collapsedSummary}</div>}
         <IconChevronDown
           size={18}
-          className="text-muted"
+          className="text-secondary"
           style={{ transform: isOpen ? "rotate(180deg)" : "none", transition: "transform 0.15s ease" }}
         />
       </div>

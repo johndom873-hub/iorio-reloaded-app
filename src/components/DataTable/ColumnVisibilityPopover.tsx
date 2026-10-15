@@ -11,11 +11,10 @@ interface ColumnVisibilityPopoverProps {
   variant?: "header" | "toolbar";
 }
 
-// Bootstrap's data-bs-toggle="dropdown" needs Bootstrap's JS bundle, which
-// this app never loads (only @tabler/core's CSS) — that markup alone was a
-// dead button. Driven manually here instead: open state + click-outside to
-// close, with the menu's own position/visibility set explicitly rather than
-// relying on Popper (also JS the app doesn't load).
+// Driven by React state (open flag + click-outside to close, menu position
+// set explicitly) rather than Bootstrap's data-bs-toggle="dropdown" and
+// Popper: main.tsx does load Bootstrap's JS via tabler.esm.min.js, but its
+// data-API toggles classes outside React's control.
 //
 // The trigger now lives inside a table's <thead>, itself inside a
 // `.table-responsive` (overflow-x: auto, which per spec forces overflow-y to

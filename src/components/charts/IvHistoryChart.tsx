@@ -191,7 +191,7 @@ export function IvHistoryChart({ symbol }: IvHistoryChartProps) {
         )}
         {isError && (
           <div className="d-flex align-items-center justify-content-center" style={{ height: chartHeight }}>
-            <span className="text-muted small">
+            <span className="text-secondary small">
               {status === "empty" ? "No IV history available for this range." : "Failed to load IV history."}
             </span>
           </div>

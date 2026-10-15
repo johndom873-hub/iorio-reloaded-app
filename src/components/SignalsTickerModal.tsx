@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, useCallback } from "react";
+import { useEffect, useMemo, useRef, useState, useCallback, type ReactNode } from "react";
 import { usePlutoEnabledSymbols } from "../hooks/usePlutoEnabledSymbols";
 import { fetchNextTickerCalendarEvents, type NextTickerCalendarEvents } from "../api/calendarEvents";
 import { ApiError } from "../api/client";
@@ -28,6 +28,8 @@ import { TooltipSpan } from "./TooltipSpan";
 import { QuoteAgeLabel } from "./QuoteAgeLabel";
 import { useTooltip } from "../hooks/useTooltip";
 import { useMediaQuery } from "../hooks/useMediaQuery";
+import { ColumnVisibilityPopover } from "./DataTable/ColumnVisibilityPopover";
+import { useColumnVisibility } from "./DataTable/useColumnVisibility";
 
 // Signals modal (stage 4; mockup approved 2026-09-22, v3): the one ticker
 // modal, opened from every ticker link (mounted once by
@@ -117,7 +119,37 @@ function RollFlagBadges({ roll, held }: { roll: RollSignalCandidate; held: HeldL
  */
 const liveContractsSettleMs = 300;
 
+// The leading radio column has no header, so it is never hideable (same as DataTable).
+const rollCandidateColumns = [
+  { key: "rollTo", header: "Roll to" },
+  { key: "grade", header: "Grade" },
+  { key: "rollMargin", header: "Roll margin" },
+  { key: "netRoll", header: "Net roll $" },
+  { key: "perContract", header: "Per contract" },
+  { key: "netCredit", header: "Net credit" },
+  { key: "deltaNew", header: "Δ new" },
+  { key: "dte", header: "DTE" },
+  { key: "oldNetRollEdge", header: "Old net roll Edge" },
+  { key: "flags", header: "Flags" },
+];
+
 function HeldLegRolls({ held, rolls, showAvoid, selectedRollKey, disabled, onSelect }: { held: HeldLegScore; rolls: RollSignalCandidate[]; showAvoid: boolean; selectedRollKey: string | null; disabled: boolean; onSelect: (roll: RollSignalCandidate) => void }) {
+  const { isColumnVisible, toggleColumn } = useColumnVisibility(
+    "signals-roll-candidates",
+    rollCandidateColumns.map((column) => column.key),
+  );
+  const visibleColumnKeys = rollCandidateColumns.filter((column) => isColumnVisible(column.key)).map((column) => column.key);
+  const lastVisibleColumnKey = visibleColumnKeys[visibleColumnKeys.length - 1];
+  const gearPopover = <ColumnVisibilityPopover columns={rollCandidateColumns} isColumnVisible={isColumnVisible} onToggleColumn={toggleColumn} />;
+  const headerLabel = (key: string, label: ReactNode, justify: "start" | "center" | "end") =>
+    key === lastVisibleColumnKey ? (
+      <div className={`d-flex align-items-center gap-1 justify-content-${justify}`}>
+        <span>{label}</span>
+        {gearPopover}
+      </div>
+    ) : (
+      label
+    );
   // Pluto's order and grade (the valuation model's); a roll the model could not value counts with Avoid.
   const ordered = [...rolls].sort(compareRollsByModel);
   const shown = showAvoid ? ordered : ordered.filter((roll) => roll.model !== null && roll.model.grade !== "avoid");
@@ -186,17 +218,17 @@ function HeldLegRolls({ held, rolls, showAvoid, selectedRollKey, disabled, onSel
           <table className="table table-sm table-hover table-vcenter card-table mb-0" style={{ fontSize: "0.8rem" }}>
             <thead className="table-light">
               <tr>
-                <th></th>
-                <th>Roll to</th>
-                <TooltipSpan as="th" className="text-center" text={rollModelExplanation}>Grade</TooltipSpan>
-                <TooltipSpan as="th" className="text-end" text="The roll's edge margin: the new leg's margin after what holding the current leg is still worth.">Roll margin</TooltipSpan>
-                <TooltipSpan as="th" className="text-end" text="Net roll $ across the held quantity.">Net roll $</TooltipSpan>
-                <th className="text-end">Per contract</th>
-                <th className="text-end">Net credit</th>
-                <th className="text-end">Δ new</th>
-                <th className="text-end">DTE</th>
-                <TooltipSpan as="th" className="text-end" text={netRollEdgeExplanation}>Old net roll Edge</TooltipSpan>
-                <th className="text-center">Flags</th>
+                <th>{visibleColumnKeys.length === 0 && gearPopover}</th>
+                {isColumnVisible("rollTo") && <th>{headerLabel("rollTo", "Roll to", "start")}</th>}
+                {isColumnVisible("grade") && <TooltipSpan as="th" className="text-center" text={rollModelExplanation}>{headerLabel("grade", "Grade", "center")}</TooltipSpan>}
+                {isColumnVisible("rollMargin") && <TooltipSpan as="th" className="text-end" text="The roll's edge margin: the new leg's margin after what holding the current leg is still worth.">{headerLabel("rollMargin", "Roll margin", "end")}</TooltipSpan>}
+                {isColumnVisible("netRoll") && <TooltipSpan as="th" className="text-end" text="Net roll $ across the held quantity.">{headerLabel("netRoll", "Net roll $", "end")}</TooltipSpan>}
+                {isColumnVisible("perContract") && <th className="text-end">{headerLabel("perContract", "Per contract", "end")}</th>}
+                {isColumnVisible("netCredit") && <th className="text-end">{headerLabel("netCredit", "Net credit", "end")}</th>}
+                {isColumnVisible("deltaNew") && <th className="text-end">{headerLabel("deltaNew", "Δ new", "end")}</th>}
+                {isColumnVisible("dte") && <th className="text-end">{headerLabel("dte", "DTE", "end")}</th>}
+                {isColumnVisible("oldNetRollEdge") && <TooltipSpan as="th" className="text-end" text={netRollEdgeExplanation}>{headerLabel("oldNetRollEdge", "Old net roll Edge", "end")}</TooltipSpan>}
+                {isColumnVisible("flags") && <th className="text-center">{headerLabel("flags", "Flags", "center")}</th>}
               </tr>
             </thead>
             <tbody>
@@ -210,30 +242,40 @@ function HeldLegRolls({ held, rolls, showAvoid, selectedRollKey, disabled, onSel
                     <td>
                       <input type="radio" className="form-check-input" checked={selectedRollKey === key} readOnly aria-label={`Select roll to ${describeHeldLeg({ right: isCall ? "C" : "P", strike: roll.replacement.strike, dte: roll.replacement.dte })}`} />
                     </td>
-                    <td className="text-nowrap">
-                      <strong>
-                        {isCall ? "C" : "P"}
-                        {formatCurrencyTrimmed(roll.replacement.strike).replace("$", "")}
-                      </strong>{" "}
-                      <span className="text-secondary">{formatDate(roll.replacement.expiry)}</span>
-                    </td>
-                    <td className="text-center">
-                      <ModelGradeBadge grade={roll.model?.grade ?? null} explanation={rollModelExplanation} />
-                    </td>
-                    <td className="text-end font-mono">{roll.model ? formatPercentage(roll.model.edgeMargin, 0) : "—"}</td>
-                    <td className="text-end">
-                      <SignedDollars value={roll.model?.netExpectedPnl} />
-                    </td>
-                    <td className="text-end">
-                      <SignedDollars value={roll.model?.netExpectedPnlPerContract} />
-                    </td>
-                    <td className="text-end font-mono">{formatCurrency(roll.netCreditPerShare)}</td>
-                    <td className="text-end font-mono">{formatSignedDelta(roll.replacement.delta)}</td>
-                    <td className="text-end font-mono">{roll.replacement.dte}</td>
-                    <td className="text-end font-mono text-secondary">{formatVolatilityPoints(roll.netRollEdge)}</td>
-                    <td className="text-center">
-                      <RollFlagBadges roll={roll} held={held} />
-                    </td>
+                    {isColumnVisible("rollTo") && (
+                      <td className="text-nowrap">
+                        <strong>
+                          {isCall ? "C" : "P"}
+                          {formatCurrencyTrimmed(roll.replacement.strike).replace("$", "")}
+                        </strong>{" "}
+                        <span className="text-secondary">{formatDate(roll.replacement.expiry)}</span>
+                      </td>
+                    )}
+                    {isColumnVisible("grade") && (
+                      <td className="text-center">
+                        <ModelGradeBadge grade={roll.model?.grade ?? null} explanation={rollModelExplanation} />
+                      </td>
+                    )}
+                    {isColumnVisible("rollMargin") && <td className="text-end font-mono">{roll.model ? formatPercentage(roll.model.edgeMargin, 0) : "—"}</td>}
+                    {isColumnVisible("netRoll") && (
+                      <td className="text-end">
+                        <SignedDollars value={roll.model?.netExpectedPnl} />
+                      </td>
+                    )}
+                    {isColumnVisible("perContract") && (
+                      <td className="text-end">
+                        <SignedDollars value={roll.model?.netExpectedPnlPerContract} />
+                      </td>
+                    )}
+                    {isColumnVisible("netCredit") && <td className="text-end font-mono">{formatCurrency(roll.netCreditPerShare)}</td>}
+                    {isColumnVisible("deltaNew") && <td className="text-end font-mono">{formatSignedDelta(roll.replacement.delta)}</td>}
+                    {isColumnVisible("dte") && <td className="text-end font-mono">{roll.replacement.dte}</td>}
+                    {isColumnVisible("oldNetRollEdge") && <td className="text-end font-mono text-secondary">{formatVolatilityPoints(roll.netRollEdge)}</td>}
+                    {isColumnVisible("flags") && (
+                      <td className="text-center">
+                        <RollFlagBadges roll={roll} held={held} />
+                      </td>
+                    )}
                   </tr>
                 );
               })}

@@ -248,105 +248,103 @@ export function PlutoPage() {
   }
 
   return (
-    <div className="page-body">
-      <div className="container-fluid px-3 pm">
-        <div className="pm-pagehead">
-          <div>
-            <h1 className="pm-title">Pluto</h1>
-            <div className="pm-subtitle">Autonomous trading agent</div>
-          </div>
+    <div className="pm">
+      <div className="pm-pagehead">
+        <div>
+          <h1 className="pm-title">Pluto</h1>
+          <div className="pm-subtitle">Autonomous trading agent</div>
         </div>
-
-        {stateError ? (
-          <div className="alert alert-danger">{stateError}</div>
-        ) : state === null || status === null ? (
-          <div className="py-4"><Spinner label="Loading Pluto" /></div>
-        ) : (
-          <PlutoStatusCard
-            state={state}
-            status={status}
-            settings={settings}
-            now={now}
-            isPhone={isPhone}
-            showKpis={!isPhone || tab === "live"}
-            onStateChanged={(core) => {
-              setState((previous) => (previous ? { ...previous, ...core } : previous));
-              void loadState();
-              refreshEventLog();
-              void loadFeedEvents();
-            }}
-            onOrdersChanged={() => {
-              void loadState();
-              void loadActions();
-              refreshHistoryLists();
-              refreshEventLog();
-              void loadFeedEvents();
-            }}
-          />
-        )}
-
-        <nav className="pm-tabs" aria-label="Pluto sections">
-          {tabs.map((entry) => (
-            <button key={entry.key} type="button" role="tab" aria-selected={tab === entry.key} className={`pm-tab${tab === entry.key ? " active" : ""}`} onClick={() => selectTab(entry.key)}>
-              {entry.label}
-              {entry.key === "tickers" && <span className="count">{enabledCount}{isPhone ? "/" : " / "}{maxEnabled}</span>}
-            </button>
-          ))}
-        </nav>
-
-        {tab === "live" && (
-          <PlutoLiveTab state={state} actions={actions} actionsLoading={actionsLoading} actionsError={actionsError} latestModelPass={latestModelPass} latestModelPassLoading={latestModelPassLoading} latestModelPassError={latestModelPassError} feedEvents={feedEvents} feedEventsLoading={feedEventsLoading} feedEventsError={feedEventsError} now={now} isPhone={isPhone} onOpenTicker={openTickerModal} />
-        )}
-        {tab === "history" && (
-          <PlutoHistoryTab
-            view={historyView}
-            onViewChange={selectHistoryView}
-            scoreboard={scoreboard}
-            scoreboardError={scoreboardError}
-            actions={actions}
-            eventLogRefreshToken={eventLogRefreshToken}
-            historyListsRefreshToken={historyListsRefreshToken}
-            state={state}
-            now={now}
-            isPhone={isPhone}
-            onOpenTicker={openTickerModal}
-          />
-        )}
-        {tab === "tickers" && (
-          <PlutoTickersTab
-            rows={shortlist}
-            loading={shortlistLoading}
-            error={shortlistError}
-            state={state}
-            daySignalsWatch={daySignalsWatch}
-            maxEnabled={maxEnabled}
-            isPhone={isPhone}
-            onOpenTicker={openTickerModal}
-            onToggled={(entryId, enabled) => {
-              setShortlist((previous) => previous.map((row) => (row.id === entryId ? { ...row, botEnabled: enabled } : row)));
-              void loadShortlist();
-              void loadState();
-              void loadDaySignalsWatch();
-            }}
-            onPrepRunChange={() => void loadShortlist()}
-          />
-        )}
-        {tab === "settings" && (
-          <PlutoSettingsTab
-            settings={settings}
-            audit={audit}
-            loading={settingsLoading}
-            error={settingsError}
-            state={state}
-            isPhone={isPhone}
-            onSaved={(saved) => {
-              setSettings(saved);
-              void loadSettings();
-              void loadState();
-            }}
-          />
-        )}
       </div>
+
+      {stateError ? (
+        <div className="alert alert-danger">{stateError}</div>
+      ) : state === null || status === null ? (
+        <div className="py-4"><Spinner label="Loading Pluto" /></div>
+      ) : (
+        <PlutoStatusCard
+          state={state}
+          status={status}
+          settings={settings}
+          now={now}
+          isPhone={isPhone}
+          showKpis={!isPhone || tab === "live"}
+          onStateChanged={(core) => {
+            setState((previous) => (previous ? { ...previous, ...core } : previous));
+            void loadState();
+            refreshEventLog();
+            void loadFeedEvents();
+          }}
+          onOrdersChanged={() => {
+            void loadState();
+            void loadActions();
+            refreshHistoryLists();
+            refreshEventLog();
+            void loadFeedEvents();
+          }}
+        />
+      )}
+
+      <nav className="pm-tabs" aria-label="Pluto sections">
+        {tabs.map((entry) => (
+          <button key={entry.key} type="button" role="tab" aria-selected={tab === entry.key} className={`pm-tab${tab === entry.key ? " active" : ""}`} onClick={() => selectTab(entry.key)}>
+            {entry.label}
+            {entry.key === "tickers" && <span className="count">{enabledCount}{isPhone ? "/" : " / "}{maxEnabled}</span>}
+          </button>
+        ))}
+      </nav>
+
+      {tab === "live" && (
+        <PlutoLiveTab state={state} actions={actions} actionsLoading={actionsLoading} actionsError={actionsError} latestModelPass={latestModelPass} latestModelPassLoading={latestModelPassLoading} latestModelPassError={latestModelPassError} feedEvents={feedEvents} feedEventsLoading={feedEventsLoading} feedEventsError={feedEventsError} now={now} isPhone={isPhone} onOpenTicker={openTickerModal} />
+      )}
+      {tab === "history" && (
+        <PlutoHistoryTab
+          view={historyView}
+          onViewChange={selectHistoryView}
+          scoreboard={scoreboard}
+          scoreboardError={scoreboardError}
+          actions={actions}
+          eventLogRefreshToken={eventLogRefreshToken}
+          historyListsRefreshToken={historyListsRefreshToken}
+          state={state}
+          now={now}
+          isPhone={isPhone}
+          onOpenTicker={openTickerModal}
+        />
+      )}
+      {tab === "tickers" && (
+        <PlutoTickersTab
+          rows={shortlist}
+          loading={shortlistLoading}
+          error={shortlistError}
+          state={state}
+          daySignalsWatch={daySignalsWatch}
+          maxEnabled={maxEnabled}
+          isPhone={isPhone}
+          onOpenTicker={openTickerModal}
+          onToggled={(entryId, enabled) => {
+            setShortlist((previous) => previous.map((row) => (row.id === entryId ? { ...row, botEnabled: enabled } : row)));
+            void loadShortlist();
+            void loadState();
+            void loadDaySignalsWatch();
+          }}
+          onPrepRunChange={() => void loadShortlist()}
+        />
+      )}
+      {tab === "settings" && (
+        <PlutoSettingsTab
+          settings={settings}
+          audit={audit}
+          loading={settingsLoading}
+          error={settingsError}
+          state={state}
+          isPhone={isPhone}
+          onSaved={(saved) => {
+            setSettings(saved);
+            void loadSettings();
+            void loadState();
+          }}
+        />
+      )}
     </div>
   );
 }

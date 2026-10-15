@@ -46,6 +46,8 @@ import { positionCloseReasonLabel } from "../lib/positionPnl";
 import { useRefreshAfterSignalsTickerModal, useSignalsTickerModal } from "../hooks/useSignalsTickerModal";
 import { TooltipSpan } from "../components/TooltipSpan";
 import { PerformanceCard } from "../components/PerformanceCard";
+import { ColumnVisibilityPopover } from "../components/DataTable/ColumnVisibilityPopover";
+import { useColumnVisibility } from "../components/DataTable/useColumnVisibility";
 
 const strategyLabels: Record<string, string> = {
   covered_call: "Covered Calls",
@@ -171,7 +173,7 @@ function AllocationList({ title, emptyMessage, rows, donutTotalLabel, onTickerCl
     <div className="col-12 col-md-4">
       <h4 style={{ fontSize: "0.9rem" }}>{title}</h4>
       {rows.length === 0 ? (
-        <div className="text-muted" style={{ fontSize: "0.8rem" }}>
+        <div className="text-secondary" style={{ fontSize: "0.8rem" }}>
           {emptyMessage}
         </div>
       ) : (
@@ -182,7 +184,7 @@ function AllocationList({ title, emptyMessage, rows, donutTotalLabel, onTickerCl
               const fraction = sectionTotal ? Number(row.notionalValue) / sectionTotal : null;
               return (
                 <li key={row.key} className="list-group-item d-flex justify-content-between align-items-center px-0">
-                  <span className={`d-inline-flex align-items-center gap-2 ${row.isUnallocated ? "text-muted" : ""}`}>
+                  <span className={`d-inline-flex align-items-center gap-2 ${row.isUnallocated ? "text-secondary" : ""}`}>
                     <span
                       aria-hidden="true"
                       style={{ width: "0.6rem", height: "0.6rem", borderRadius: "50%", backgroundColor: colors[index], flexShrink: 0 }}
@@ -198,9 +200,9 @@ function AllocationList({ title, emptyMessage, rows, donutTotalLabel, onTickerCl
                     ) : (
                       row.label
                     )}
-                    {row.sublabel && <span className="text-muted ms-1" style={{ fontSize: "0.72rem" }}>{row.sublabel}</span>}
+                    {row.sublabel && <span className="text-secondary ms-1" style={{ fontSize: "0.72rem" }}>{row.sublabel}</span>}
                   </span>
-                  <span className="text-muted text-nowrap font-mono" style={{ fontSize: "0.8rem" }}>
+                  <span className="text-secondary text-nowrap font-mono" style={{ fontSize: "0.8rem" }}>
                     {formatCurrency(Number(row.notionalValue), 0)}
                     {fraction !== null && ` (${formatPercentage(fraction, 0)})`}
                   </span>
@@ -238,7 +240,7 @@ function TopStat({ label, value, loading, valueClassName, tooltip, delta, deltaC
               padding's layout contribution without shrinking the actual
               hoverable target. The gap-1 on the container supplies the
               visible space between label and icon instead. */}
-          <div className="text-muted text-uppercase fw-semibold mb-1 d-flex align-items-center gap-1" style={{ fontSize: "0.75rem", lineHeight: 1 }}>
+          <div className="text-secondary text-uppercase fw-semibold mb-1 d-flex align-items-center gap-1" style={{ fontSize: "0.75rem", lineHeight: 1 }}>
             {label}
             {tooltip && (
               <span style={{ margin: "-4px" }}>
@@ -269,7 +271,7 @@ function TopStat({ label, value, loading, valueClassName, tooltip, delta, deltaC
 function PortfolioTile({ label, value, swatchColor }: { label: string; value: number | null; swatchColor: string }) {
   return (
     <div className="col-6 col-md">
-      <div className="text-muted mb-1 d-flex align-items-center gap-2" style={{ fontSize: "0.75rem" }}>
+      <div className="text-secondary mb-1 d-flex align-items-center gap-2" style={{ fontSize: "0.75rem" }}>
         <span className="allocation-swatch" style={{ background: swatchColor }} />
         {label}
       </div>
@@ -432,7 +434,7 @@ function EventRow({ event, onSymbolClick }: { event: PositionEvent; onSymbolClic
       >
         {description}
         {event.eventType === "unstructured" && event.unstructuredReason && (
-          <span className="text-muted" style={{ fontSize: "0.75rem" }}>
+          <span className="text-secondary" style={{ fontSize: "0.75rem" }}>
             {" "}
             ({unstructuredReasonLabels[event.unstructuredReason] ?? event.unstructuredReason})
           </span>
@@ -457,6 +459,15 @@ function extendZeroLineToFullPlotWidth(chartContext: unknown) {
   zeroLine.setAttribute("x1", String(-inset));
   zeroLine.setAttribute("x2", String(globals.gridWidth + inset));
 }
+
+// The trailing actions column has no header, so it is never hideable (same as DataTable).
+const needsAttentionColumns = [
+  { key: "ticker", header: "Ticker" },
+  { key: "shares", header: "Shares" },
+  { key: "price", header: "Price" },
+  { key: "value", header: "Value" },
+  { key: "reason", header: "Reason" },
+];
 
 export function DashboardPage() {
   const { theme } = useTheme();
@@ -503,6 +514,10 @@ export function DashboardPage() {
   const [needsAttentionError, setNeedsAttentionError] = useState<string | null>(null);
   const [needsAttentionPriceBySymbol, setNeedsAttentionPriceBySymbol] = useState<Record<string, number | null>>({});
   const [needsAttentionPriceStreamFailed, setNeedsAttentionPriceStreamFailed] = useState(false);
+  const { isColumnVisible: isNeedsAttentionColumnVisible, toggleColumn: toggleNeedsAttentionColumn } = useColumnVisibility(
+    "needs-attention",
+    needsAttentionColumns.map((column) => column.key),
+  );
   const { open: openTickerModal } = useSignalsTickerModal();
   const [closePosition, setClosePosition] = useState<Position | null>(null);
   const openTickerModalAtPosition = useCallback(
@@ -752,12 +767,20 @@ export function DashboardPage() {
               <table className="table table-sm table-vcenter card-table mb-0">
                 <thead className="table-light">
                   <tr>
-                    <th>Ticker</th>
-                    <th>Shares</th>
-                    <th>Price</th>
-                    <th>Value</th>
-                    <th>Reason</th>
-                    <th className="text-end"></th>
+                    {isNeedsAttentionColumnVisible("ticker") && <th>Ticker</th>}
+                    {isNeedsAttentionColumnVisible("shares") && <th className="text-end">Shares</th>}
+                    {isNeedsAttentionColumnVisible("price") && <th className="text-end">Price</th>}
+                    {isNeedsAttentionColumnVisible("value") && <th className="text-end">Value</th>}
+                    {isNeedsAttentionColumnVisible("reason") && <th>Reason</th>}
+                    <th>
+                      <div className="d-flex align-items-center justify-content-end">
+                        <ColumnVisibilityPopover
+                          columns={needsAttentionColumns}
+                          isColumnVisible={isNeedsAttentionColumnVisible}
+                          onToggleColumn={toggleNeedsAttentionColumn}
+                        />
+                      </div>
+                    </th>
                   </tr>
                 </thead>
                 <tbody>
@@ -768,31 +791,37 @@ export function DashboardPage() {
                     const value = shares !== null && currentPrice != null ? shares * currentPrice : null;
                     return (
                       <tr key={position.id}>
-                        <td>
-                          <button
-                            type="button"
-                            className="btn btn-link px-0 py-0 text-decoration-none fw-bold"
-                            onClick={() => openTickerModalAtPosition({ symbol: position.symbol, focusPositionId: position.id })}
-                          >
-                            {position.symbol}
-                          </button>
-                        </td>
-                        <td className="font-mono">{shares ?? "—"}</td>
-                        <td className="font-mono">
-                          {currentPrice === undefined ? (
-                            needsAttentionPriceStreamFailed ? "—" : <Spinner size="sm" label="Loading current price" />
-                          ) : currentPrice === null ? (
-                            "—"
-                          ) : (
-                            <TickColoredPrice value={currentPrice} initialReference={null} precision={2} title="Live current price">
-                              {formatCurrency(currentPrice)}
-                            </TickColoredPrice>
-                          )}
-                        </td>
-                        <td className="font-mono">{value !== null ? formatCurrency(value, 0) : "—"}</td>
-                        <td className="text-secondary">
-                          {(position.unstructuredReason && unstructuredReasonLabels[position.unstructuredReason]) ?? "cause unclear — flagged for review"}
-                        </td>
+                        {isNeedsAttentionColumnVisible("ticker") && (
+                          <td>
+                            <button
+                              type="button"
+                              className="btn btn-link px-0 py-0 text-decoration-none fw-bold"
+                              onClick={() => openTickerModalAtPosition({ symbol: position.symbol, focusPositionId: position.id })}
+                            >
+                              {position.symbol}
+                            </button>
+                          </td>
+                        )}
+                        {isNeedsAttentionColumnVisible("shares") && <td className="text-end">{shares ?? "—"}</td>}
+                        {isNeedsAttentionColumnVisible("price") && (
+                          <td className="text-end">
+                            {currentPrice === undefined ? (
+                              needsAttentionPriceStreamFailed ? "—" : <Spinner size="sm" label="Loading current price" />
+                            ) : currentPrice === null ? (
+                              "—"
+                            ) : (
+                              <TickColoredPrice value={currentPrice} initialReference={null} precision={2} title="Live current price">
+                                {formatCurrency(currentPrice)}
+                              </TickColoredPrice>
+                            )}
+                          </td>
+                        )}
+                        {isNeedsAttentionColumnVisible("value") && <td className="text-end">{value !== null ? formatCurrency(value, 0) : "—"}</td>}
+                        {isNeedsAttentionColumnVisible("reason") && (
+                          <td className="text-secondary">
+                            {(position.unstructuredReason && unstructuredReasonLabels[position.unstructuredReason]) ?? "cause unclear — flagged for review"}
+                          </td>
+                        )}
                         <td className="text-end">
                           <div className="d-flex gap-1 justify-content-end">
                             <button
@@ -822,7 +851,7 @@ export function DashboardPage() {
         {eventsLoading ? (
           <Spinner size="sm" label="Loading events" />
         ) : events.length === 0 ? (
-          <div className="text-muted">No recent activity.</div>
+          <div className="text-secondary">No recent activity.</div>
         ) : (
           <div className="table-responsive table-flush" style={{ maxHeight: "26rem", overflowY: "auto" }}>
             <table className="table table-sm table-vcenter card-table mb-0" style={{ tableLayout: "fixed", minWidth: "62rem" }}>
@@ -892,7 +921,7 @@ export function DashboardPage() {
             {summaryLoading ? (
               <Spinner size="sm" label="Loading breakdown" />
             ) : !summary ? (
-              <div className="text-muted">No data yet.</div>
+              <div className="text-secondary">No data yet.</div>
             ) : (
               (() => {
                 // Fixed rows (matching P&L by Period's convention) rather
@@ -1015,7 +1044,7 @@ export function DashboardPage() {
                 }))}
               />
             </div>
-            <div className="text-muted mt-2" style={{ fontSize: "0.72rem" }}>
+            <div className="text-secondary mt-2" style={{ fontSize: "0.72rem" }}>
               % of total account value (net liquidation value, including cash). See Risk &amp; Limits for concentration limits.
             </div>
           </>
@@ -1030,7 +1059,7 @@ export function DashboardPage() {
             <Spinner label="Loading history" />
           </div>
         ) : history.length < 2 ? (
-          <div className="text-muted">Not enough snapshot history yet to chart a trend.</div>
+          <div className="text-secondary">Not enough snapshot history yet to chart a trend.</div>
         ) : (
           <ApexChart
             type="bar"

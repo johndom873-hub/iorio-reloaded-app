@@ -420,7 +420,7 @@ export function SignalsPage() {
         </span>
         <IconChevronDown
           size={18}
-          className="text-muted ms-auto"
+          className="text-secondary ms-auto"
           style={{ transform: roadmapOpen ? "rotate(180deg)" : "none", transition: "transform 0.15s ease" }}
         />
       </summary>

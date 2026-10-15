@@ -62,7 +62,7 @@ export function TotalPnlChart({ series, timestamps, formatValue }: TotalPnlChart
                 y1={0}
                 x2={(hoverIndex / (series.length - 1)) * 300}
                 y2={100}
-                stroke="var(--text-muted)"
+                stroke="var(--text-secondary)"
                 strokeWidth={0.4}
               />
               <circle cx={(hoverIndex / (series.length - 1)) * 300} cy={y(series[hoverIndex]!)} r={2.2} fill="var(--pnl-line)" />

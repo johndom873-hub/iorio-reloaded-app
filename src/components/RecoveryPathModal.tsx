@@ -72,7 +72,7 @@ export function RecoveryPathModal({ positionId, symbol, onClose, onSellCandidate
         }}
       />
       <div className="modal show d-block" style={{ zIndex: 1050 }} onClick={(event) => { if (event.target === event.currentTarget) onClose(); }}>
-        <div className="modal-dialog modal-dialog-scrollable">
+        <div className="modal-dialog modal-dialog-centered modal-dialog-scrollable">
           <div className="modal-content">
             <div className="modal-header">
               <h5 className="modal-title d-inline-flex align-items-center gap-1">

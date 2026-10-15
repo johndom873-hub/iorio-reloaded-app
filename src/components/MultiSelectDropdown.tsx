@@ -14,8 +14,8 @@ interface MultiSelectDropdownProps {
 }
 
 // Same manual portal-based dropdown mechanics as ColumnVisibilityPopover
-// (this app never loads Bootstrap's JS bundle, so data-bs-toggle="dropdown"
-// and native <select multiple> checkbox-list UX aren't options) — factored
+// (React state rather than Bootstrap's data-bs-toggle="dropdown", and a
+// checkbox list rather than native <select multiple>) — factored
 // out here since a second filter needing "pick several of these" is exactly
 // the kind of thing worth sharing rather than re-implementing the portal/
 // click-outside/position logic inline again.

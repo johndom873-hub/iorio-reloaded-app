@@ -166,14 +166,14 @@ export function ScreenerTab({ onOpenTickerModal }: ScreenerTabProps) {
       header: "Best Rank",
       headerTitle: "Rank among tonight's scan matches (lowest = best). Unmatched means this ticker didn't clear any of the discovery queries on the last refresh.",
       align: "right",
-      render: (row) => (row.bestRank >= 999 ? <span className="text-muted">Unmatched</span> : <span className="fw-bold">#{row.bestRank + 1}</span>),
+      render: (row) => (row.bestRank >= 999 ? <span className="text-secondary">Unmatched</span> : <span className="fw-bold">#{row.bestRank + 1}</span>),
     },
     {
       key: "matchedScanCodes",
       header: "Match Type",
       render: (row) =>
         row.matchedScanCodes.length === 0 ? (
-          <span className="text-muted">—</span>
+          <span className="text-secondary">—</span>
         ) : (
           row.matchedScanCodes.map((code) => (
             <span key={code} className={scanCodeBadgeClass(code)}>

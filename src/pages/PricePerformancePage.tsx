@@ -28,7 +28,7 @@ import { TooltipSpan } from "../components/TooltipSpan";
 // solid green/red backgrounds. Only the Current price cell (TickColoredPrice)
 // flashes on live updates.
 function ChangeBadge({ value }: { value: number | null }) {
-  if (value === null) return <span className="text-muted">—</span>;
+  if (value === null) return <span className="text-secondary">—</span>;
   return (
     <span className={`badge ${pnlBadgeClass(value)}`}>
       {value > 0 ? "+" : ""}
@@ -50,7 +50,7 @@ function MacdTrendBadge({ trend }: { trend: MacdSignal | null }) {
   const ref = useTooltip<HTMLSpanElement>(tooltipText);
   if (trend === null)
     return (
-      <span ref={ref} className="text-muted" tabIndex={0}>
+      <span ref={ref} className="text-secondary" tabIndex={0}>
         —
       </span>
     );
@@ -77,7 +77,7 @@ function MaTrendBadge({ trend }: { trend: MaTrend | null }) {
   const ref = useTooltip<HTMLSpanElement>(tooltipText);
   if (trend === null)
     return (
-      <span ref={ref} className="text-muted" tabIndex={0}>
+      <span ref={ref} className="text-secondary" tabIndex={0}>
         —
       </span>
     );
@@ -91,7 +91,7 @@ function MaTrendBadge({ trend }: { trend: MaTrend | null }) {
 // A Signals-off ticker gets no nightly IV snapshot: the add-day value would be stale, so the server sends none.
 function SignalsOffDash() {
   return (
-    <TooltipSpan className="text-muted" text="Signals is off for this ticker: no daily implied-volatility snapshot is captured.">
+    <TooltipSpan className="text-secondary" text="Signals is off for this ticker: no daily implied-volatility snapshot is captured.">
       —
     </TooltipSpan>
   );
@@ -243,13 +243,13 @@ export function PricePerformancePage() {
           // Nothing has arrived for this ticker: still connecting, or it will not.
           if (liveConnection === "unavailable")
             return (
-              <TooltipSpan className="text-muted" text="Live prices are unavailable right now">
+              <TooltipSpan className="text-secondary" text="Live prices are unavailable right now">
                 —
               </TooltipSpan>
             );
           if (liveWaitExpired)
             return (
-              <TooltipSpan className="text-muted" text="No live price yet — the market may be closed, or IBKR is slow to respond">
+              <TooltipSpan className="text-secondary" text="No live price yet — the market may be closed, or IBKR is slow to respond">
                 —
               </TooltipSpan>
             );
@@ -257,13 +257,13 @@ export function PricePerformancePage() {
         }
         if (feedRefusal)
           return (
-            <TooltipSpan className="text-muted" text={`IBKR stopped sending prices at ${formatEasternTime(feedRefusal.since)} (error 10197) — this is the last price received`}>
+            <TooltipSpan className="text-secondary" text={`IBKR stopped sending prices at ${formatEasternTime(feedRefusal.since)} (error 10197) — this is the last price received`}>
               {price === null ? "—" : formatCurrency(price)}
             </TooltipSpan>
           );
         if (price === null)
           return (
-            <TooltipSpan className="text-muted" text="No live quote for this ticker right now (outside market hours or no market data)">
+            <TooltipSpan className="text-secondary" text="No live quote for this ticker right now (outside market hours or no market data)">
               —
             </TooltipSpan>
           );
@@ -359,7 +359,7 @@ export function PricePerformancePage() {
           "—"
         ) : (
           <span>
-            {formatPercentageValue(row.ivRank)} <span className="text-muted small">({row.ivWindowDays}d)</span>
+            {formatPercentageValue(row.ivRank)} <span className="text-secondary small">({row.ivWindowDays}d)</span>
           </span>
         ),
     },
@@ -373,7 +373,7 @@ export function PricePerformancePage() {
           "—"
         ) : (
           <span>
-            {formatPercentageValue(row.ivPercentile)} <span className="text-muted small">({row.ivWindowDays}d)</span>
+            {formatPercentageValue(row.ivPercentile)} <span className="text-secondary small">({row.ivWindowDays}d)</span>
           </span>
         ),
     },
@@ -406,7 +406,7 @@ export function PricePerformancePage() {
       )}
 
       {meta && (
-        <div className="d-flex flex-wrap align-items-center gap-2 mb-3 text-muted small">
+        <div className="d-flex flex-wrap align-items-center gap-2 mb-3 text-secondary small">
           <span>Daily data as of the {formatDate(meta.completedThroughDate)} close</span>
           <span className={`badge ${liveStatus.className}`} style={{ fontSize: "0.72rem" }} role="status">
             {liveStatus.label}

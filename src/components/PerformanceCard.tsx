@@ -24,7 +24,7 @@ export function PerformanceCard({ performance, loading }: PerformanceCardProps) 
   const spanDays = performance?.trackingSpanDays ?? null;
 
   const percentCell = (percent: number | undefined, key: string, extraClassName = "") => (
-    <td key={key} className={`text-end font-mono ${percent === undefined ? "text-muted" : pnlTextClass(percent)} ${extraClassName}`}>
+    <td key={key} className={`text-end font-mono ${percent === undefined ? "text-secondary" : pnlTextClass(percent)} ${extraClassName}`}>
       {formatSignedPercentageValue(percent ?? null, 2)}
     </td>
   );
@@ -33,7 +33,7 @@ export function PerformanceCard({ performance, loading }: PerformanceCardProps) 
     <CollapsibleCard
       title="Performance"
       subtitle={
-        <span className="text-muted fw-normal" style={{ fontSize: "0.75rem" }}>
+        <span className="text-secondary fw-normal" style={{ fontSize: "0.75rem" }}>
           Time-weighted, net of deposits and withdrawals
         </span>
       }
@@ -41,30 +41,30 @@ export function PerformanceCard({ performance, loading }: PerformanceCardProps) 
       className="mb-3"
     >
       {loading && <Spinner size="sm" label="Loading performance" />}
-      {!loading && !performance?.trackingSince && <div className="text-muted">No account snapshots yet.</div>}
+      {!loading && !performance?.trackingSince && <div className="text-secondary">No account snapshots yet.</div>}
       {!loading && performance?.trackingSince && (
         <>
           <div className="d-flex flex-wrap column-gap-5 row-gap-2 mb-3">
             <div>
-              <div className="text-muted text-uppercase fw-semibold mb-1" style={{ fontSize: "0.75rem" }}>
+              <div className="text-secondary text-uppercase fw-semibold mb-1" style={{ fontSize: "0.75rem" }}>
                 Since inception
               </div>
               <span className={`fw-bold font-mono ${pnlTextClass(performance.sinceInceptionPercent)}`} style={{ fontSize: "1.25rem" }}>
                 {formatSignedPercentageValue(performance.sinceInceptionPercent, 2)}
               </span>
-              <span className="text-muted ms-2" style={{ fontSize: "0.75rem" }}>
+              <span className="text-secondary ms-2" style={{ fontSize: "0.75rem" }}>
                 since {formatDate(performance.trackingSince)}
               </span>
             </div>
             <div>
-              <div className="text-muted text-uppercase fw-semibold mb-1" style={{ fontSize: "0.75rem" }}>
+              <div className="text-secondary text-uppercase fw-semibold mb-1" style={{ fontSize: "0.75rem" }}>
                 CAGR
               </div>
               <span className={`fw-bold font-mono ${pnlTextClass(performance.compoundAnnualGrowthRatePercent)}`} style={{ fontSize: "1.25rem" }}>
                 {formatSignedPercentageValue(performance.compoundAnnualGrowthRatePercent, 2)}
               </span>
               {spanDays !== null && (
-                <span className="text-muted ms-2" style={{ fontSize: "0.75rem" }}>
+                <span className="text-secondary ms-2" style={{ fontSize: "0.75rem" }}>
                   {spanDays < daysPerYear ? `annualised from ${spanDays} ${spanDays === 1 ? "day" : "days"}` : "per year"}
                 </span>
               )}

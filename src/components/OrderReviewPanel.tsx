@@ -458,7 +458,7 @@ export function OrderReviewPanel({ order: initialOrder, initialAdaptivePriority,
           </div>
           {!displayQuote && !quoteStreamError && <Spinner size="sm" label="Loading live quote" />}
           {quoteStreamError && !displayQuote && (
-            <span ref={quoteStreamErrorTooltipRef} className="text-muted" tabIndex={0}>
+            <span ref={quoteStreamErrorTooltipRef} className="text-secondary" tabIndex={0}>
               Live quote unavailable
             </span>
           )}

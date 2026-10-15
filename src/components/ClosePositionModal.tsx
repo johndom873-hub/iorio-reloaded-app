@@ -44,7 +44,7 @@ function LiveMidQuote({ quote, error }: { quote: CloseLiveLegQuote | null; error
   const tooltipRef = useTooltip<HTMLSpanElement>(error);
   if (error) {
     return (
-      <span ref={tooltipRef} className="text-muted" tabIndex={0}>
+      <span ref={tooltipRef} className="text-secondary" tabIndex={0}>
         Live quote unavailable
       </span>
     );
@@ -343,7 +343,7 @@ export function ClosePositionModal({ position, onClose, onClosed }: ClosePositio
     <>
       <div className="modal-backdrop show" style={{ zIndex: 1050, backgroundColor: "rgba(0,0,0,0.5)", opacity: 1 }} />
       <div className="modal show d-block" style={{ zIndex: 1050 }}>
-        <div className="modal-dialog modal-dialog-scrollable">
+        <div className="modal-dialog modal-dialog-centered modal-dialog-scrollable">
           <div className="modal-content">
             <div className="modal-header">
               <h5 className="modal-title">Close {position.symbol}</h5>

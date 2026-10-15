@@ -1,5 +1,7 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 import { Spinner } from "./Spinner";
+import { ColumnVisibilityPopover } from "./DataTable/ColumnVisibilityPopover";
+import { useColumnVisibility } from "./DataTable/useColumnVisibility";
 import { ApexChart } from "./charts/ApexChart";
 import { ClosePositionModal } from "./ClosePositionModal";
 import { RecoveryPathModal } from "./RecoveryPathModal";
@@ -78,6 +80,19 @@ function buildPayoffYAxis(payoff: ReturnType<typeof computePayoff>): { min?: num
   return { min: -stepsBelowZero * top, max: top, tickAmount: stepsBelowZero + 1 };
 }
 
+// One visibility setting shared by every position card's legs table.
+const legColumns = [
+  { key: "leg", header: "Leg" },
+  { key: "side", header: "Side" },
+  { key: "quantity", header: "Qty" },
+  { key: "strike", header: "Strike" },
+  { key: "expiry", header: "Expiry" },
+  { key: "entry", header: "Entry" },
+  { key: "pnl", header: "P&L" },
+  { key: "delta", header: "Delta" },
+  { key: "gamma", header: "Gamma" },
+];
+
 export function PositionCard({
   position,
   greeksByLegId,
@@ -92,6 +107,23 @@ export function PositionCard({
 }: PositionCardProps) {
   const { theme } = useTheme();
   const annotationColors = annotationColorsByTheme[theme];
+  const { isColumnVisible, toggleColumn } = useColumnVisibility(
+    "position-legs",
+    legColumns.map((column) => column.key),
+  );
+  const visibleLegColumnKeys = legColumns.filter((column) => isColumnVisible(column.key)).map((column) => column.key);
+  // The gear sits in the last visible header; with every column hidden it gets a header cell of its own.
+  const lastVisibleLegColumnKey = visibleLegColumnKeys[visibleLegColumnKeys.length - 1];
+  const gearPopover = <ColumnVisibilityPopover columns={legColumns} isColumnVisible={isColumnVisible} onToggleColumn={toggleColumn} />;
+  const headerLabel = (key: string, label: ReactNode, alignRight = false) =>
+    key === lastVisibleLegColumnKey ? (
+      <div className={`d-flex align-items-center gap-1 ${alignRight ? "justify-content-end" : ""}`}>
+        <span>{label}</span>
+        {gearPopover}
+      </div>
+    ) : (
+      label
+    );
 
   const [showClose, setShowClose] = useState(false);
   const [showRecoveryPath, setShowRecoveryPath] = useState(false);
@@ -135,7 +167,7 @@ export function PositionCard({
     const isOption = leg.legType === "option";
     if ((isOption ? optionLegCount : stockLegCount) > 1) {
       return (
-        <TooltipSpan className="text-muted" text="P&L is tracked per leg type, not per leg">
+        <TooltipSpan className="text-secondary" text="P&L is tracked per leg type, not per leg">
           —
         </TooltipSpan>
       );
@@ -144,7 +176,7 @@ export function PositionCard({
     const meaning = isOption ? "Premium collected vs. current buy-back cost of the option contract" : "Stock P&L: price movement of the shares held vs. entry, plus any shares already sold (realized, net of closing commissions)";
     if (pnl === "loading" || pnl === null) {
       return (
-        <TooltipSpan className="text-muted" text={pnl === null ? "No live price or recent snapshot available" : "Loading"}>
+        <TooltipSpan className="text-secondary" text={pnl === null ? "No live price or recent snapshot available" : "Loading"}>
           —
         </TooltipSpan>
       );
@@ -235,60 +267,68 @@ export function PositionCard({
           <table className="table table-sm table-vcenter card-table mb-0 text-nowrap">
             <thead className="table-light">
               <tr>
-                <th>Leg</th>
-                <th>Side</th>
-                <th className="text-end">Qty</th>
-                <th className="text-end">Strike</th>
-                <th>Expiry</th>
-                <th className="text-end">Entry</th>
-                <th className="text-end">P&L</th>
-                <th className="text-end">Delta</th>
-                <TooltipSpan as="th" className="text-end" text="Rate of change of delta per $1 move in the underlying — higher gamma means delta (and assignment risk) can shift faster">
-                  Gamma
-                </TooltipSpan>
+                {isColumnVisible("leg") && <th>{headerLabel("leg", "Leg")}</th>}
+                {isColumnVisible("side") && <th>{headerLabel("side", "Side")}</th>}
+                {isColumnVisible("quantity") && <th className="text-end">{headerLabel("quantity", "Qty", true)}</th>}
+                {isColumnVisible("strike") && <th className="text-end">{headerLabel("strike", "Strike", true)}</th>}
+                {isColumnVisible("expiry") && <th>{headerLabel("expiry", "Expiry")}</th>}
+                {isColumnVisible("entry") && <th className="text-end">{headerLabel("entry", "Entry", true)}</th>}
+                {isColumnVisible("pnl") && <th className="text-end">{headerLabel("pnl", "P&L", true)}</th>}
+                {isColumnVisible("delta") && <th className="text-end">{headerLabel("delta", "Delta", true)}</th>}
+                {isColumnVisible("gamma") && (
+                  <TooltipSpan as="th" className="text-end" text="Rate of change of delta per $1 move in the underlying — higher gamma means delta (and assignment risk) can shift faster">
+                    {headerLabel("gamma", "Gamma", true)}
+                  </TooltipSpan>
+                )}
+                {visibleLegColumnKeys.length === 0 && <th>{gearPopover}</th>}
               </tr>
             </thead>
             <tbody>
               {displayedLegs.map((leg) => {
                 return (
                   <tr key={leg.id}>
-                    <td>{leg.legType === "stock" ? "Stock" : leg.optionType === "call" ? "Call" : "Put"}</td>
-                    <td>{leg.side}</td>
-                    <td className="text-end">{leg.quantity}</td>
-                    <td className="text-end">{leg.strikePrice ? formatCurrencyTrimmed(Number(leg.strikePrice)) : "—"}</td>
-                    <td>{formatExpiryWithDte(leg.expiryDate, position.status === "closed" ? position.openedAt : todayInEasternIso())}</td>
-                    <td className="text-end">{formatCurrency(Number(leg.entryPrice))}</td>
-                    <td className="text-end">{renderLegPnl(leg)}</td>
-                    <td className="text-end">
-                      {leg.legType === "option" ? (
-                        leg.id in greeksByLegId ? (
-                          formatNumber(greeksByLegId[leg.id].delta, 2)
-                        ) : greeksFetchFailed ? (
-                          <TooltipSpan className="text-muted" text="Failed to load delta">
-                            —
-                          </TooltipSpan>
+                    {isColumnVisible("leg") && <td>{leg.legType === "stock" ? "Stock" : leg.optionType === "call" ? "Call" : "Put"}</td>}
+                    {isColumnVisible("side") && <td>{leg.side}</td>}
+                    {isColumnVisible("quantity") && <td className="text-end">{leg.quantity}</td>}
+                    {isColumnVisible("strike") && <td className="text-end">{leg.strikePrice ? formatCurrencyTrimmed(Number(leg.strikePrice)) : "—"}</td>}
+                    {isColumnVisible("expiry") && <td>{formatExpiryWithDte(leg.expiryDate, position.status === "closed" ? position.openedAt : todayInEasternIso())}</td>}
+                    {isColumnVisible("entry") && <td className="text-end">{formatCurrency(Number(leg.entryPrice))}</td>}
+                    {isColumnVisible("pnl") && <td className="text-end">{renderLegPnl(leg)}</td>}
+                    {isColumnVisible("delta") && (
+                      <td className="text-end">
+                        {leg.legType === "option" ? (
+                          leg.id in greeksByLegId ? (
+                            formatNumber(greeksByLegId[leg.id].delta, 2)
+                          ) : greeksFetchFailed ? (
+                            <TooltipSpan className="text-secondary" text="Failed to load delta">
+                              —
+                            </TooltipSpan>
+                          ) : (
+                            "—"
+                          )
                         ) : (
                           "—"
-                        )
-                      ) : (
-                        "—"
-                      )}
-                    </td>
-                    <td className="text-end">
-                      {leg.legType === "option" ? (
-                        leg.id in greeksByLegId ? (
-                          formatNumber(greeksByLegId[leg.id].gamma, 3)
-                        ) : greeksFetchFailed ? (
-                          <TooltipSpan className="text-muted" text="Failed to load gamma">
-                            —
-                          </TooltipSpan>
+                        )}
+                      </td>
+                    )}
+                    {isColumnVisible("gamma") && (
+                      <td className="text-end">
+                        {leg.legType === "option" ? (
+                          leg.id in greeksByLegId ? (
+                            formatNumber(greeksByLegId[leg.id].gamma, 3)
+                          ) : greeksFetchFailed ? (
+                            <TooltipSpan className="text-secondary" text="Failed to load gamma">
+                              —
+                            </TooltipSpan>
+                          ) : (
+                            "—"
+                          )
                         ) : (
                           "—"
-                        )
-                      ) : (
-                        "—"
-                      )}
-                    </td>
+                        )}
+                      </td>
+                    )}
+                    {visibleLegColumnKeys.length === 0 && <td />}
                   </tr>
                 );
               })}

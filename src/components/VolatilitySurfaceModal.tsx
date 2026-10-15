@@ -1,7 +1,9 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import Plotly from "plotly.js-dist-min";
 import { Spinner } from "./Spinner";
 import { TooltipSpan } from "./TooltipSpan";
+import { ColumnVisibilityPopover } from "./DataTable/ColumnVisibilityPopover";
+import { useColumnVisibility } from "./DataTable/useColumnVisibility";
 import { useTheme } from "../contexts/ThemeContext";
 import { ApiError } from "../api/client";
 import { fetchTickerSignals, type SignalSurfaceSlice, type SviSliceStatus, type TickerSignalsDetail } from "../api/signals";
@@ -163,10 +165,39 @@ function buildSurfaceTraces(slices: SignalSurfaceSlice[], theme: "light" | "dark
   return { surface, knots };
 }
 
+const expiryFitColumns = [
+  { key: "expiry", header: "Expiry" },
+  { key: "yearsToExpiry", header: "T (yrs)" },
+  { key: "forward", header: "Forward" },
+  { key: "status", header: "Status" },
+  { key: "points", header: "Points" },
+  { key: "rmse", header: "RMSE (vol)" },
+  { key: "mbd", header: "MBD" },
+  { key: "kRange", header: "k range" },
+  { key: "calendarViolations", header: "CV" },
+];
+
 // Informational, read-only modal (no form/submission) -- closes on backdrop click per the app's convention
 // for display-only modals.
 export function VolatilitySurfaceModal({ symbol, onClose }: VolatilitySurfaceModalProps) {
   const { theme } = useTheme();
+  const { isColumnVisible, toggleColumn } = useColumnVisibility(
+    "volatility-surface-expiries",
+    expiryFitColumns.map((column) => column.key),
+  );
+  const visibleColumnKeys = expiryFitColumns.filter((column) => isColumnVisible(column.key)).map((column) => column.key);
+  // The gear sits in the last visible header; with every column hidden it gets a header cell of its own.
+  const lastVisibleColumnKey = visibleColumnKeys[visibleColumnKeys.length - 1];
+  const gearPopover = <ColumnVisibilityPopover columns={expiryFitColumns} isColumnVisible={isColumnVisible} onToggleColumn={toggleColumn} />;
+  const headerLabel = (key: string, label: ReactNode, justify: "start" | "center" | "end") =>
+    key === lastVisibleColumnKey ? (
+      <div className={`d-flex align-items-center gap-1 justify-content-${justify}`}>
+        <span>{label}</span>
+        {gearPopover}
+      </div>
+    ) : (
+      label
+    );
   const containerRef = useRef<HTMLDivElement>(null);
   const modalContentRef = useRef<HTMLDivElement>(null);
   const plottedRef = useRef(false);
@@ -340,45 +371,61 @@ export function VolatilitySurfaceModal({ symbol, onClose }: VolatilitySurfaceMod
                     <table className="table table-sm card-table" style={{ fontSize: "0.75rem" }}>
                       <thead className="table-light">
                         <tr>
-                          <th>Expiry</th>
-                          <TooltipSpan as="th" className="text-end" text="Time to expiry in years — the T in the SVI total-variance formula, w(k) = IV² × T">
-                            T (yrs)
-                          </TooltipSpan>
-                          <th className="text-end">Forward</th>
-                          <th className="text-center">Status</th>
-                          <th className="text-end">Points</th>
-                          <TooltipSpan as="th" className="text-end" text="Root-mean-square difference between the fitted SVI curve and the market's quoted implied vols, in volatility points (e.g. 0.0172 = 1.72 vol points)">
-                            RMSE (vol)
-                          </TooltipSpan>
-                          <TooltipSpan as="th" className="text-end" text="Minimum Butterfly Density">
-                            MBD
-                          </TooltipSpan>
-                          <TooltipSpan as="th" className="text-end" text="Log-moneyness range ln(K/F) this expiry's quotes actually covered — the curve is only evaluated inside this range; outside it would be extrapolation past the fit">
-                            k range
-                          </TooltipSpan>
-                          <TooltipSpan as="th" className="text-end" text="Calendar Violations">
-                            CV
-                          </TooltipSpan>
+                          {isColumnVisible("expiry") && <th>{headerLabel("expiry", "Expiry", "start")}</th>}
+                          {isColumnVisible("yearsToExpiry") && (
+                            <TooltipSpan as="th" className="text-end" text="Time to expiry in years — the T in the SVI total-variance formula, w(k) = IV² × T">
+                              {headerLabel("yearsToExpiry", "T (yrs)", "end")}
+                            </TooltipSpan>
+                          )}
+                          {isColumnVisible("forward") && <th className="text-end">{headerLabel("forward", "Forward", "end")}</th>}
+                          {isColumnVisible("status") && <th className="text-center">{headerLabel("status", "Status", "center")}</th>}
+                          {isColumnVisible("points") && <th className="text-end">{headerLabel("points", "Points", "end")}</th>}
+                          {isColumnVisible("rmse") && (
+                            <TooltipSpan as="th" className="text-end" text="Root-mean-square difference between the fitted SVI curve and the market's quoted implied vols, in volatility points (e.g. 0.0172 = 1.72 vol points)">
+                              {headerLabel("rmse", "RMSE (vol)", "end")}
+                            </TooltipSpan>
+                          )}
+                          {isColumnVisible("mbd") && (
+                            <TooltipSpan as="th" className="text-end" text="Minimum Butterfly Density">
+                              {headerLabel("mbd", "MBD", "end")}
+                            </TooltipSpan>
+                          )}
+                          {isColumnVisible("kRange") && (
+                            <TooltipSpan as="th" className="text-end" text="Log-moneyness range ln(K/F) this expiry's quotes actually covered — the curve is only evaluated inside this range; outside it would be extrapolation past the fit">
+                              {headerLabel("kRange", "k range", "end")}
+                            </TooltipSpan>
+                          )}
+                          {isColumnVisible("calendarViolations") && (
+                            <TooltipSpan as="th" className="text-end" text="Calendar Violations">
+                              {headerLabel("calendarViolations", "CV", "end")}
+                            </TooltipSpan>
+                          )}
+                          {visibleColumnKeys.length === 0 && <th>{gearPopover}</th>}
                         </tr>
                       </thead>
                       <tbody>
                         {signals.slices.map((slice) => (
                           <tr key={slice.expiry}>
-                            <td className="font-mono">{formatDate(slice.expiry)}</td>
-                            <td className="text-end font-mono">{slice.yearsToExpiry.toFixed(3)}</td>
-                            <td className="text-end font-mono">{formatCurrency(slice.forwardPrice)}</td>
-                            <td className="text-center">
-                              <span className={statusBadgeClass[slice.status]} style={{ fontSize: "0.72rem" }}>
-                                {statusLabel[slice.status]}
-                              </span>
-                            </td>
-                            <td className="text-end font-mono">{slice.pointCount}</td>
-                            <td className="text-end font-mono">{formatPercentage(slice.rmseVolatility, 2)}</td>
-                            <td className="text-end font-mono">{slice.minButterflyDensity !== null ? slice.minButterflyDensity.toFixed(3) : "—"}</td>
-                            <td className="text-end font-mono">{slice.kMin !== null && slice.kMax !== null ? `[${slice.kMin.toFixed(2)}, ${slice.kMax.toFixed(2)}]` : "—"}</td>
-                            <td className="text-end font-mono">
-                              {slice.calendarChecks > 0 ? `${slice.calendarViolations}/${slice.calendarChecks}` : "—"}
-                            </td>
+                            {isColumnVisible("expiry") && <td className="font-mono">{formatDate(slice.expiry)}</td>}
+                            {isColumnVisible("yearsToExpiry") && <td className="text-end font-mono">{slice.yearsToExpiry.toFixed(3)}</td>}
+                            {isColumnVisible("forward") && <td className="text-end font-mono">{formatCurrency(slice.forwardPrice)}</td>}
+                            {isColumnVisible("status") && (
+                              <td className="text-center">
+                                <span className={statusBadgeClass[slice.status]} style={{ fontSize: "0.72rem" }}>
+                                  {statusLabel[slice.status]}
+                                </span>
+                              </td>
+                            )}
+                            {isColumnVisible("points") && <td className="text-end font-mono">{slice.pointCount}</td>}
+                            {isColumnVisible("rmse") && <td className="text-end font-mono">{formatPercentage(slice.rmseVolatility, 2)}</td>}
+                            {isColumnVisible("mbd") && <td className="text-end font-mono">{slice.minButterflyDensity !== null ? slice.minButterflyDensity.toFixed(3) : "—"}</td>}
+                            {isColumnVisible("kRange") && <td className="text-end font-mono">{slice.kMin !== null && slice.kMax !== null ? `[${slice.kMin.toFixed(2)}, ${slice.kMax.toFixed(2)}]` : "—"}</td>}
+                            {isColumnVisible("calendarViolations") && (
+                              <td className="text-end font-mono">
+                                {slice.calendarChecks > 0 ? `${slice.calendarViolations}/${slice.calendarChecks}` : "—"}
+                              </td>
+                            )}
+                            {visibleColumnKeys.length === 0 && <td />}
                           </tr>
                         ))}
                       </tbody>

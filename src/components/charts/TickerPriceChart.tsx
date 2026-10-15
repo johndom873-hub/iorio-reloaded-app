@@ -672,7 +672,7 @@ export function TickerPriceChart({ symbol, initialBars, technicals }: TickerPric
                 <strong>C</strong> <span >{fmt(displayBar.c)}</span>
               </span>
               {change != null && (
-                <strong className={change > 0 ? "text-success" : change < 0 ? "text-danger" : "text-muted"}>
+                <strong className={change > 0 ? "text-success" : change < 0 ? "text-danger" : "text-secondary"}>
                   {change >= 0 ? "+" : ""}
                   {fmt(change)} ({(changePct ?? 0) >= 0 ? "+" : ""}
                   {fmt(changePct)}%)
@@ -683,7 +683,7 @@ export function TickerPriceChart({ symbol, initialBars, technicals }: TickerPric
               </span>
             </>
           ) : (
-            <span className="text-muted">—</span>
+            <span className="text-secondary">—</span>
           )}
         </div>
         </div>
@@ -723,7 +723,7 @@ export function TickerPriceChart({ symbol, initialBars, technicals }: TickerPric
         )}
         {isError && (
           <div className="d-flex align-items-center justify-content-center" style={{ height: chartHeight }}>
-            <span className="text-muted small">
+            <span className="text-secondary small">
               {status === "empty" ? "No price history available for this range." : "Failed to load chart data."}
             </span>
           </div>

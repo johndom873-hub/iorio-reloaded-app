@@ -70,7 +70,7 @@ export function CycleCard({ symbol, unrealizedPnlByPositionId = {} }: { symbol: 
   const newest = cycles?.[0] && withLiveRows(cycles[0]);
   const summaryItem = (label: string, value: number) => (
     <span key={label} className="text-nowrap" style={{ fontSize: "0.8rem" }}>
-      <span className="text-muted">{label} </span>
+      <span className="text-secondary">{label} </span>
       <span className={`fw-bold font-mono ${pnlTextClass(value)}`}>{formatSignedPnl(value)}</span>
     </span>
   );
@@ -94,10 +94,10 @@ export function CycleCard({ symbol, unrealizedPnlByPositionId = {} }: { symbol: 
           <Spinner size="sm" label="Loading cycle" />
         </div>
       )}
-      {failed && <div className="text-muted">Couldn't load the cycle.</div>}
+      {failed && <div className="text-secondary">Couldn't load the cycle.</div>}
       {cycle && (
         <div className="d-flex flex-column gap-3">
-          <p className="text-muted mb-0" style={{ fontSize: "0.8rem" }}>
+          <p className="text-secondary mb-0" style={{ fontSize: "0.8rem" }}>
             Every event since this symbol's cycle began, owned by one strategy. Shares are marked at the latest daily close and open options at the last nightly snapshot; while live prices stream, Today rows add the move since then.
           </p>
           {cycles!.length > 1 && (
@@ -125,19 +125,19 @@ export function CycleCard({ symbol, unrealizedPnlByPositionId = {} }: { symbol: 
 
           <div className="row g-3">
             <div className="col-6 col-md-3">
-              <div className="text-muted" style={{ fontSize: "0.72rem", textTransform: "uppercase" }}>Cycle P&amp;L</div>
+              <div className="text-secondary" style={{ fontSize: "0.72rem", textTransform: "uppercase" }}>Cycle P&amp;L</div>
               <div className={`fw-bold font-mono ${pnlTextClass(cycle.total)}`} style={{ fontSize: "1.25rem" }}>{formatSignedPnl(cycle.total)}</div>
             </div>
             <div className="col-6 col-md-3">
-              <div className="text-muted" style={{ fontSize: "0.72rem", textTransform: "uppercase" }}>Net premium</div>
+              <div className="text-secondary" style={{ fontSize: "0.72rem", textTransform: "uppercase" }}>Net premium</div>
               <div className={`fw-bold font-mono ${pnlTextClass(cycle.netPremium)}`} style={{ fontSize: "1.25rem" }}>{formatSignedPnl(cycle.netPremium)}</div>
             </div>
             <div className="col-6 col-md-3">
-              <div className="text-muted" style={{ fontSize: "0.72rem", textTransform: "uppercase" }}>Stock P&amp;L</div>
+              <div className="text-secondary" style={{ fontSize: "0.72rem", textTransform: "uppercase" }}>Stock P&amp;L</div>
               <div className={`fw-bold font-mono ${pnlTextClass(cycle.stock)}`} style={{ fontSize: "1.25rem" }}>{formatSignedPnl(cycle.stock)}</div>
             </div>
             <div className="col-6 col-md-3">
-              <div className="text-muted" style={{ fontSize: "0.72rem", textTransform: "uppercase" }}>Break-even</div>
+              <div className="text-secondary" style={{ fontSize: "0.72rem", textTransform: "uppercase" }}>Break-even</div>
               <div className="fw-bold font-mono" style={{ fontSize: "1.25rem" }}>
                 {cycle.breakEvenPerShare === null ? "—" : cycle.breakEvenPerShare <= 0 ? "Free" : formatCurrency(cycle.breakEvenPerShare, 2)}
               </div>
@@ -174,15 +174,15 @@ export function CycleCard({ symbol, unrealizedPnlByPositionId = {} }: { symbol: 
                     {visible("event") && <td>{row.label}</td>}
                     {visible("owner") && <td><CycleBucketBadge bucket={row.bucket} /></td>}
                     {visible("quantity") && <td className="text-end font-mono">{formatNumber(row.quantity)}</td>}
-                    {visible("strike") && <td className={`text-end font-mono ${row.strike === null ? "text-muted" : ""}`}>{row.strike === null ? "—" : formatCurrency(row.strike, 2)}</td>}
+                    {visible("strike") && <td className={`text-end font-mono ${row.strike === null ? "text-secondary" : ""}`}>{row.strike === null ? "—" : formatCurrency(row.strike, 2)}</td>}
                     {visible("expiry") && (
-                      <td className={`text-end font-mono text-nowrap ${row.expiryDate === null ? "text-muted" : ""}`}>
+                      <td className={`text-end font-mono text-nowrap ${row.expiryDate === null ? "text-secondary" : ""}`}>
                         {row.expiryDate === null ? "—" : formatExpiryDayMonthWithDte(row.expiryDate, daysToExpiry(row.expiryDate, row.at ? easternIsoDate(row.at) : (row.markDate ?? todayInEasternIso())))}
                       </td>
                     )}
-                    {visible("stockPrice") && <td className={`text-end font-mono ${row.stockPrice === null ? "text-muted" : ""}`}>{row.stockPrice === null ? "—" : formatCurrency(row.stockPrice, 2)}</td>}
-                    {visible("premium") && <td className={`text-end font-mono ${row.premium === 0 ? "text-muted" : pnlTextClass(row.premium)}`}>{row.premium === 0 ? "—" : formatSignedPnl(row.premium)}</td>}
-                    {visible("stock") && <td className={`text-end font-mono ${row.stock === 0 ? "text-muted" : pnlTextClass(row.stock)}`}>{row.stock === 0 ? "—" : formatSignedPnl(row.stock)}</td>}
+                    {visible("stockPrice") && <td className={`text-end font-mono ${row.stockPrice === null ? "text-secondary" : ""}`}>{row.stockPrice === null ? "—" : formatCurrency(row.stockPrice, 2)}</td>}
+                    {visible("premium") && <td className={`text-end font-mono ${row.premium === 0 ? "text-secondary" : pnlTextClass(row.premium)}`}>{row.premium === 0 ? "—" : formatSignedPnl(row.premium)}</td>}
+                    {visible("stock") && <td className={`text-end font-mono ${row.stock === 0 ? "text-secondary" : pnlTextClass(row.stock)}`}>{row.stock === 0 ? "—" : formatSignedPnl(row.stock)}</td>}
                   </tr>
                 ))}
               </tbody>

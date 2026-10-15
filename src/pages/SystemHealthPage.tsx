@@ -104,7 +104,7 @@ export function SystemHealthPage() {
               <summary className="text-warning" style={{ cursor: "pointer" }}>
                 {problems.length} issue(s) found — see below
               </summary>
-              <pre className="text-muted small mb-0 mt-1" style={{ maxWidth: "100%", overflowX: "auto", whiteSpace: "pre-wrap", wordBreak: "break-word" }}>
+              <pre className="text-secondary small mb-0 mt-1" style={{ maxWidth: "100%", overflowX: "auto", whiteSpace: "pre-wrap", wordBreak: "break-word" }}>
                 {JSON.stringify(row.details, null, 2)}
               </pre>
             </details>
@@ -113,10 +113,10 @@ export function SystemHealthPage() {
         if (!row.details) return "—";
         return (
           <details>
-            <summary className="text-muted small" style={{ cursor: "pointer" }}>
+            <summary className="text-secondary small" style={{ cursor: "pointer" }}>
               View output
             </summary>
-            <pre className="text-muted small mb-0 mt-1">{JSON.stringify(row.details, null, 2)}</pre>
+            <pre className="text-secondary small mb-0 mt-1">{JSON.stringify(row.details, null, 2)}</pre>
           </details>
         );
       },
@@ -153,18 +153,18 @@ export function SystemHealthPage() {
         <div className="row g-3 mb-3">
           {statuses.length === 0 ? (
             <div className="col-12">
-              <div className="text-muted">No job runs recorded yet.</div>
+              <div className="text-secondary">No job runs recorded yet.</div>
             </div>
           ) : (
             statuses.map((job) => (
               <div className="col-12 col-sm-6 col-md-3" key={job.jobName}>
                 <div className="card">
                   <div className="card-body">
-                    <div className="text-muted mb-1" style={{ fontSize: "0.75rem" }}>
+                    <div className="text-secondary mb-1" style={{ fontSize: "0.75rem" }}>
                       {jobLabel(job.jobName)}
                     </div>
                     <StatusBadge status={job.status} details={job.details} />
-                    <div className="text-muted mt-2" style={{ fontSize: "0.72rem" }}>
+                    <div className="text-secondary mt-2" style={{ fontSize: "0.72rem" }}>
                       Last run {formatDateTime(job.startedAt)}
                     </div>
                   </div>

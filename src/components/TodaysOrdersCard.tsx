@@ -128,7 +128,7 @@ export function TodaysOrdersCard() {
       render: (row) => (
         <div className="text-nowrap">
           {row.legs.map((leg, index) => (
-            <div key={index} className={leg.filledQuantity === 0 ? "text-muted" : undefined}>
+            <div key={index} className={leg.filledQuantity === 0 ? "text-secondary" : undefined}>
               {legFillDescription(leg)}
             </div>
           ))}
@@ -188,7 +188,7 @@ export function TodaysOrdersCard() {
         toolbar={
           <h3 className="card-title mb-0 d-flex align-items-baseline gap-2" style={{ fontSize: "1rem" }}>
             Today's Orders
-            <span className="text-muted fw-normal d-none d-md-inline" style={{ fontSize: "0.8rem" }}>
+            <span className="text-secondary fw-normal d-none d-md-inline" style={{ fontSize: "0.8rem" }}>
               last update today (ET), plus any still active
             </span>
           </h3>
