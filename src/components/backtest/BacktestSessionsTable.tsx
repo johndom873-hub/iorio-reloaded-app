@@ -1,12 +1,13 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type RefObject } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { fetchBacktestSessionsPage, type BacktestSessionListItem, type BacktestSessionsPageQuery, type BacktestSessionStatusFilter } from "../../api/backtest";
+import { fetchBacktestSessionsPage, type BacktestSessionListItem, type BacktestSessionsPage, type BacktestSessionsPageQuery, type BacktestSessionStatusFilter } from "../../api/backtest";
 import { useDebouncedValue } from "../../hooks/useDebouncedValue";
 import { usePollWhileVisible } from "../../hooks/usePollWhileVisible";
 import { formatBrowserClockTime, formatBrowserDayMonth, formatNumber, formatPercentage, formatRatio, formatSignedPnl, pnlTextClass } from "../../lib/formatters";
 import {
   backtestCycleMetricExplanation,
   backtestMetricExplanation,
+  describeNewSessionsLink,
   describeOpenCyclesShort,
   describeOverrideCount,
   edgeCaptureEitherBasisExplanation,
@@ -26,8 +27,46 @@ const sessionsPerPage = 50;
 const searchPauseMs = 300;
 const statusFilters: BacktestSessionStatusFilter[] = ["succeeded", "running", "failed", "cancelled"];
 
+/** A fetched page, with the sessions created after the reader started reading (left out of it). */
+interface SessionsPageRead {
+  page: BacktestSessionsPage;
+  /** Sessions newer than the watermark, not shown; `newSessionsAtLeast` when there may be more than counted. */
+  newSessionCount: number;
+  newSessionsAtLeast: boolean;
+  /** Read at the top of page 1 (nothing held back): its newest session moves the watermark. */
+  live: boolean;
+}
+
+/** The list is being read: scrolled past its first rows (the marker above the table has gone under the window's top, or
+ *  under the fixed top bar: its scroll-margin-top, theme.css). */
+function useScrolledPast(marker: RefObject<HTMLElement | null>): boolean {
+  const [scrolledPast, setScrolledPast] = useState(false);
+  useEffect(() => {
+    let frame = 0;
+    const measure = () => {
+      frame = 0;
+      const element = marker.current;
+      setScrolledPast(element !== null && element.getBoundingClientRect().top < (Number.parseFloat(getComputedStyle(element).scrollMarginTop) || 0) - 1);
+    };
+    const schedule = () => {
+      if (frame === 0) frame = window.requestAnimationFrame(measure);
+    };
+    measure();
+    window.addEventListener("scroll", schedule, { passive: true });
+    window.addEventListener("resize", schedule);
+    return () => {
+      if (frame !== 0) window.cancelAnimationFrame(frame);
+      window.removeEventListener("scroll", schedule);
+      window.removeEventListener("resize", schedule);
+    };
+  }, [marker]);
+  return scrolledPast;
+}
+
 /** Sessions, read page by page from the API (50 a page, newest first) and filtered by name, symbol and status: each keeps its
- *  settings, period and every day's result; tick two or more finished ones, on any page, to compare. */
+ *  settings, period and every day's result; tick two or more finished ones, on any page, to compare. At the top of page 1
+ *  new sessions come in as they are created; while the list is scrolled or on a later page they are held back behind a
+ *  "3 new sessions" link, so the rows being read do not move. */
 export function BacktestSessionsTable() {
   const navigate = useNavigate();
   const [search, setSearch] = useState("");
@@ -41,14 +80,46 @@ export function BacktestSessionsTable() {
   const [refreshTick, setRefreshTick] = useState(0);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 
-  const fetchPage = useCallback(() => {
-    const query: BacktestSessionsPageQuery = { limit: sessionsPerPage, offset };
-    if (searchAsked) query.search = searchAsked;
-    if (symbolFilter) query.symbol = symbolFilter;
-    if (statusFilter) query.status = statusFilter;
-    return fetchBacktestSessionsPage(query);
-  }, [searchAsked, symbolFilter, statusFilter, offset]);
-  const { page, error } = useBacktestBookPage(fetchPage, true, "Could not load the sessions.", refreshTick);
+  // Reading: scrolled into the list, or on a later page. The watermark is the newest session seen at the top of page 1;
+  // while reading, sessions created after it are counted, not shown, and the page is read past them.
+  const listTopMarker = useRef<HTMLDivElement>(null);
+  const scrolledIntoList = useScrolledPast(listTopMarker);
+  const reading = offset > 0 || scrolledIntoList;
+  const [newestSeenCreatedAt, setNewestSeenCreatedAt] = useState<string | null>(null);
+  const watermark = reading ? newestSeenCreatedAt : null;
+
+  const fetchPage = useCallback(async (): Promise<SessionsPageRead> => {
+    const filters: BacktestSessionsPageQuery = {};
+    if (searchAsked) filters.search = searchAsked;
+    if (symbolFilter) filters.symbol = symbolFilter;
+    if (statusFilter) filters.status = statusFilter;
+    if (watermark === null) {
+      const page = await fetchBacktestSessionsPage({ ...filters, limit: sessionsPerPage, offset });
+      return { page, newSessionCount: 0, newSessionsAtLeast: false, live: offset === 0 };
+    }
+    // Newest first: the sessions above the watermark lead the first page.
+    const head = await fetchBacktestSessionsPage({ ...filters, limit: sessionsPerPage, offset: 0 });
+    const newSessionCount = head.sessions.filter((session) => session.createdAt > watermark).length;
+    const page = offset === 0 && newSessionCount === 0 ? head : await fetchBacktestSessionsPage({ ...filters, limit: sessionsPerPage, offset: offset + newSessionCount });
+    return { page: { ...page, offset, total: Math.max(0, page.total - newSessionCount) }, newSessionCount, newSessionsAtLeast: newSessionCount === sessionsPerPage, live: false };
+  }, [searchAsked, symbolFilter, statusFilter, offset, watermark]);
+  const { page: read, error } = useBacktestBookPage(fetchPage, true, "Could not load the sessions.", refreshTick);
+  const page = read?.page ?? null;
+
+  useEffect(() => {
+    if (!read?.live) return;
+    const newest = read.page.sessions[0]?.createdAt;
+    if (newest) setNewestSeenCreatedAt((previous) => (previous === null || newest > previous ? newest : previous));
+  }, [read]);
+
+  /** The link: page 1, scrolled to the list's top, where the new sessions come in. */
+  const showNewSessions = () => {
+    setPagePosition({ filtersKey, offset: 0 });
+    listTopMarker.current?.scrollIntoView({ block: "start" });
+    // The watermark moves with the next live read; until then no session counts as new.
+    setNewestSeenCreatedAt(null);
+    setRefreshTick((tick) => tick + 1);
+  };
   // Every 2 s while a session on the page runs, every 15 s otherwise (new sessions come in on the first page).
   const pageRuns = page?.sessions.some((session) => session.latestRun?.displayStatus === "running" || session.latestRun?.displayStatus === "queued") ?? false;
   const refresh = useCallback(() => setRefreshTick((tick) => tick + 1), []);
@@ -244,6 +315,18 @@ export function BacktestSessionsTable() {
           <BacktestCardTitle title={title} description={description} />
           {actions}
           {filters}
+        </>
+      }
+      beforeTable={
+        <>
+          <div ref={listTopMarker} className="backtest-new-sessions-marker" aria-hidden="true" />
+          {read !== null && read.newSessionCount > 0 && (
+            <div className="backtest-new-sessions-bar" role="status">
+              <button type="button" className="btn btn-sm btn-outline-secondary" onClick={showNewSessions}>
+                {describeNewSessionsLink(read.newSessionCount, read.newSessionsAtLeast)}
+              </button>
+            </div>
+          )}
         </>
       }
       afterTable={

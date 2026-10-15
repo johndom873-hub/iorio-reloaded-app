@@ -11,6 +11,11 @@ interface ConfirmModalProps {
   /** A second choice between Cancel and the confirm button (e.g. "Keep it running"); the dialog widens to fit three buttons. */
   secondaryLabel?: string;
   onSecondary?: () => void;
+  /** The dialog's width: "lg" for a confirmation that shows a table (New session's Start session). Without it: small, or the
+   *  default width when there is a second choice. */
+  size?: "sm" | "lg";
+  /** Disables the confirm button (e.g. while what it confirms is still being worked out). */
+  confirmDisabled?: boolean;
   onConfirm: () => void;
   onCancel: () => void;
 }
@@ -21,7 +26,7 @@ interface ConfirmModalProps {
 // Confirmation modal per the app's convention: does NOT close on backdrop
 // click or ESC, since accidentally dismissing it should never be mistaken
 // for confirming — Cancel is the only way out besides the actual buttons.
-export function ConfirmModal({ title, message, confirmLabel = "Confirm", danger = true, confirming = false, secondaryLabel, onSecondary, onConfirm, onCancel }: ConfirmModalProps) {
+export function ConfirmModal({ title, message, confirmLabel = "Confirm", danger = true, confirming = false, secondaryLabel, onSecondary, size, confirmDisabled = false, onConfirm, onCancel }: ConfirmModalProps) {
   useEffect(() => {
     const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
@@ -34,7 +39,7 @@ export function ConfirmModal({ title, message, confirmLabel = "Confirm", danger 
     <>
       <div className="modal-backdrop show" style={{ zIndex: 1050, backgroundColor: "rgba(0,0,0,0.5)", opacity: 1 }} />
       <div className="modal show d-block" style={{ zIndex: 1050 }}>
-        <div className={`modal-dialog modal-dialog-centered modal-dialog-scrollable ${secondaryLabel ? "" : "modal-sm"}`}>
+        <div className={`modal-dialog modal-dialog-centered modal-dialog-scrollable ${size ? `modal-${size}` : secondaryLabel ? "" : "modal-sm"}`}>
           <div className="modal-content">
             <div className="modal-header">
               <h5 className="modal-title">{title}</h5>
@@ -54,7 +59,7 @@ export function ConfirmModal({ title, message, confirmLabel = "Confirm", danger 
                 type="button"
                 className={`btn ${danger ? "btn-danger" : "btn-primary"} d-inline-flex align-items-center gap-1`}
                 onClick={onConfirm}
-                disabled={confirming}
+                disabled={confirming || confirmDisabled}
               >
                 {confirming && <Spinner size="sm" />}
                 {confirmLabel}

@@ -2163,3 +2163,257 @@
   .analysis-modal .form-switch { min-height: 2.75rem; }
   .analysis-chip .btn-icon { width: 2.75rem !important; height: 2.75rem !important; margin: -0.5rem -0.4rem -0.5rem -0.4rem; }
 }
+
+/* ---- New session: per-ticker pots (mockup approved 2026-10-15) ---- */
+/* Where a ticker's value came from: solid fills, the same in both themes (white on #6c757d 4.7:1, on #0369a1 5.9:1,
+   on #0f766e 5.5:1; black on #f59f00 9.8:1). */
+.badge.backtest-value-source-global {
+  background-color: #6c757d;
+  color: #fff;
+}
+.badge.backtest-value-source-ticker {
+  background-color: #0369a1;
+  color: #fff;
+}
+.badge.backtest-value-source-session {
+  background-color: #0f766e;
+  color: #fff;
+}
+.badge.backtest-value-source-request {
+  background-color: #f59f00;
+  color: #000;
+}
+/* A ticker value changed for this session: the same tint as a changed setting row. */
+.backtest-ticker-values td.backtest-ticker-value-changed {
+  --tblr-table-bg: #fff7e8;
+}
+:root[data-bs-theme="dark"] .backtest-ticker-values td.backtest-ticker-value-changed {
+  --tblr-table-bg: #4a3517;
+}
+.backtest-ticker-block-changed {
+  background-color: #fff7e8;
+}
+:root[data-bs-theme="dark"] .backtest-ticker-block-changed {
+  background-color: #4a3517;
+}
+.backtest-ticker-values td {
+  vertical-align: top;
+}
+.backtest-ticker-cell {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.25rem;
+}
+.backtest-ticker-cell-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.25rem;
+}
+.backtest-ticker-values .backtest-ticker-symbol-cell {
+  padding-top: 0.6rem;
+  font-weight: 600;
+}
+.backtest-ticker-values .backtest-ticker-weight-cell {
+  padding-top: 0.6rem;
+}
+.backtest-ticker-input-pot {
+  width: 9.5rem;
+}
+.backtest-ticker-input-share {
+  width: 5.75rem;
+}
+.backtest-ticker-input-rungs {
+  width: 4rem;
+}
+.backtest-ticker-input-shock .form-select {
+  flex: 0 0 7.5rem;
+}
+.backtest-ticker-input-shock .form-control {
+  flex: 0 0 3.25rem;
+  width: 3.25rem;
+}
+.backtest-ticker-input-delta .form-control {
+  flex: 0 0 4.25rem;
+  width: 4.25rem;
+}
+.backtest-ticker-input-shock .input-group-text,
+.backtest-ticker-input-delta .input-group-text,
+.backtest-ticker-input-share .input-group-text {
+  padding-left: 0.45rem;
+  padding-right: 0.45rem;
+}
+.table-totals-row > tr > td.backtest-ticker-totals-note {
+  font-weight: 400;
+}
+.backtest-ticker-error-row > td {
+  padding-top: 0;
+}
+.backtest-ticker-legend {
+  font-size: 0.78rem;
+  line-height: 1.5;
+}
+.backtest-ticker-legend-list {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem 0.5rem;
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+.backtest-ticker-legend-list li {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+.backtest-ticker-legend-list li + li::before {
+  content: "→";
+  color: var(--tblr-secondary);
+  margin-right: 0.15rem;
+}
+.backtest-ticker-legend-list .badge,
+.backtest-ticker-cell-meta .badge,
+.backtest-ticker-phone-label .badge {
+  flex-shrink: 0;
+}
+/* A ticker's problem (no pot): Tabler's danger is 2.6:1 on the dark card; these reach 6.8:1 (white) and 6.9:1 (#2a3648). */
+.backtest-ticker-problem {
+  color: #b42318;
+}
+:root[data-bs-theme="dark"] .backtest-ticker-problem {
+  color: #fca5a5;
+}
+/* Tabler's dark input-group addon ($, %, days) is #6b7280 on #111827, 3.7:1; gray-400 reaches 7.4:1. */
+:root[data-bs-theme="dark"] .backtest-screen .input-group-text {
+  color: #9ca3af;
+}
+/* Two-way switches with long labels fill the width and wrap their labels on a phone. */
+@media (max-width: 575.98px) {
+  .btn-group.backtest-switch-wrap {
+    display: flex;
+    width: 100%;
+  }
+  .btn-group.backtest-switch-wrap > .btn {
+    flex: 1 1 0;
+    white-space: normal;
+    line-height: 1.2;
+  }
+}
+/* The Tickers card on a phone: one block per ticker, two fields a row, the wide ones (pot, shock, |delta| range) alone. */
+.backtest-ticker-phone-fields {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 0.6rem 0.75rem;
+  margin-top: 0.5rem;
+}
+.backtest-ticker-phone-field {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+.backtest-ticker-phone-field.backtest-ticker-phone-wide {
+  grid-column: 1 / -1;
+}
+.backtest-ticker-phone-field.backtest-ticker-block-changed {
+  padding: 0.4rem;
+  margin: -0.4rem;
+  border-radius: var(--tblr-border-radius);
+}
+.backtest-ticker-phone-label {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  font-size: 0.75rem;
+  color: var(--tblr-secondary);
+}
+.backtest-ticker-phone-control {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-width: 0;
+}
+.backtest-ticker-phone-control > .input-group,
+.backtest-ticker-phone-control > .form-control {
+  flex: 1 1 auto;
+  min-width: 0;
+  width: auto;
+}
+.backtest-ticker-phone-control-stack {
+  flex-direction: column;
+  align-items: stretch;
+}
+.backtest-ticker-phone-control .backtest-ticker-input-shock .form-control,
+.backtest-ticker-phone-control .backtest-ticker-input-delta .form-control {
+  flex: 1 1 0;
+  width: auto;
+  min-width: 0;
+}
+.backtest-ticker-phone-totals {
+  background-color: var(--tblr-bg-surface-tertiary);
+}
+.backtest-ticker-phone-totals-head {
+  border-top: 2px solid var(--tblr-border-color);
+}
+.btn-group.backtest-switch-full {
+  display: flex;
+  width: 100%;
+}
+.btn-group.backtest-switch-full > .btn {
+  flex: 1 1 0;
+  white-space: normal;
+  line-height: 1.2;
+}
+/* The Start session confirmation: the facts as a two-column list, the tickers' values each over its badge. */
+.backtest-confirm-facts {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: 0.35rem 1rem;
+  margin: 0 0 1rem;
+  font-size: 0.85rem;
+}
+.backtest-confirm-facts dt {
+  font-weight: 500;
+  color: var(--tblr-secondary);
+}
+.backtest-confirm-facts dd {
+  margin: 0;
+}
+.backtest-confirm-table td {
+  vertical-align: top;
+}
+.backtest-confirm-value {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.2rem;
+}
+/* The Sessions list's "3 new sessions" link: stays in sight at the top of the list while it is scrolled, under the top bar
+   where it is fixed (desktop). The marker above the table carries the same offset: the list counts as scrolled once the
+   marker passes under it, and the link scrolls back to it. */
+.backtest-new-sessions-marker {
+  scroll-margin-top: 0;
+}
+@media (min-width: 992px) {
+  .backtest-new-sessions-marker {
+    scroll-margin-top: var(--iorio-topbar-height);
+  }
+}
+.backtest-new-sessions-bar {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  display: flex;
+  justify-content: center;
+  padding: 0.375rem 0.75rem;
+  background-color: var(--tblr-bg-surface);
+  border-bottom: 1px solid var(--tblr-border-color);
+}
+@media (min-width: 992px) {
+  .backtest-new-sessions-bar {
+    top: var(--iorio-topbar-height);
+  }
+}

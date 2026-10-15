@@ -7,7 +7,12 @@ interface BacktestSettingsTableProps {
   valueByPath: Record<string, string>;
   onValueChange: (path: string, value: string) => void;
   onReset: (path: string) => void;
+  /** The Baseline deciding with per-ticker pots: the per-ticker rows say so, with a line on how they meet the Tickers card. */
+  showPerTicker?: boolean;
 }
+
+const perTickerGroup = "Baseline wheel";
+const perTickerExplanation = "A change here goes to every ticker, over its lab value; a value set under Tickers still wins.";
 
 function groupedRows(rows: BacktestSettingRow[]): { group: string; rows: BacktestSettingRow[] }[] {
   const groups: { group: string; rows: BacktestSettingRow[] }[] = [];
@@ -83,9 +88,25 @@ function SettingInput({ row, value, changed, invalid, onValueChange }: { row: Ba
 
 function ResetButton({ onReset }: { onReset: () => void }) {
   return (
-    <button type="button" className="btn btn-link p-0" style={{ fontSize: "0.75rem" }} onClick={onReset}>
+    <button type="button" className="btn btn-sm btn-outline-secondary" onClick={onReset}>
       Reset
     </button>
+  );
+}
+
+function PerTickerMark() {
+  return (
+    <div className="text-secondary fw-normal" style={{ fontSize: "0.75rem" }}>
+      per ticker
+    </div>
+  );
+}
+
+function PerTickerIntro() {
+  return (
+    <>
+      Rows marked <strong>per ticker</strong> can differ by ticker. {perTickerExplanation}
+    </>
   );
 }
 
@@ -101,9 +122,10 @@ function rowState(row: BacktestSettingRow, valueByPath: Record<string, string>) 
   };
 }
 
-/** "Pluto now" vs "This session": rows, groups, labels, choices and notes come from the API's settings template. A table on
- *  wider screens; on a phone each setting stacks (label and note, then Pluto's value and the session's input). */
-export function BacktestSettingsTable({ rows, valueByPath, onValueChange, onReset }: BacktestSettingsTableProps) {
+/** "Lab now" vs "This session": rows, groups, labels, choices and notes come from the API's settings template (the backtesting
+ *  lab's values). A table on wider screens; on a phone each setting stacks (label and note, then the lab's value and the
+ *  session's input). */
+export function BacktestSettingsTable({ rows, valueByPath, onValueChange, onReset, showPerTicker = false }: BacktestSettingsTableProps) {
   const isPhone = useMediaQuery("(max-width: 767px)");
   const groups = groupedRows(rows);
 
@@ -115,6 +137,11 @@ export function BacktestSettingsTable({ rows, valueByPath, onValueChange, onRese
             <div className="backtest-settings-group-band px-3 py-1">
               <h4 className="subheader mb-0">{group}</h4>
             </div>
+            {showPerTicker && group === perTickerGroup && (
+              <div className="px-3 py-2 border-bottom text-secondary" style={{ fontSize: "0.78rem" }}>
+                <PerTickerIntro />
+              </div>
+            )}
             {groupRows.map((row) => {
               const { value, changed, invalid, note, isChoice } = rowState(row, valueByPath);
               const control = row.editable ? (
@@ -127,6 +154,7 @@ export function BacktestSettingsTable({ rows, valueByPath, onValueChange, onRese
               return (
                 <div key={row.path} className={`px-3 py-2 border-bottom${changed ? " backtest-setting-changed-block" : ""}`}>
                   <div className="fw-medium">{row.label}</div>
+                  {showPerTicker && row.perTicker && <PerTickerMark />}
                   {note && (
                     <div className="text-secondary" style={{ fontSize: "0.75rem", lineHeight: 1.35 }}>
                       {note}
@@ -135,7 +163,7 @@ export function BacktestSettingsTable({ rows, valueByPath, onValueChange, onRese
                   {isChoice ? (
                     <>
                       <div className="text-secondary mt-1" style={{ fontSize: "0.78rem" }}>
-                        Pluto now: {formatSettingRowValue(row, row.now)}
+                        Lab now: {formatSettingRowValue(row, row.now)}
                       </div>
                       {row.editable && (
                         <div className="d-flex align-items-start gap-2 mt-1">
@@ -149,7 +177,7 @@ export function BacktestSettingsTable({ rows, valueByPath, onValueChange, onRese
                   ) : (
                     <div className="d-flex align-items-center gap-2 mt-1">
                       <span className="text-secondary text-nowrap" style={{ fontSize: "0.78rem" }}>
-                        Pluto now <span className="font-mono">{formatSettingRowValue(row, row.now)}</span>
+                        Lab now <span className="font-mono">{formatSettingRowValue(row, row.now)}</span>
                       </span>
                       <span className="ms-auto d-inline-flex align-items-center gap-2">
                         {changed && <ResetButton onReset={() => onReset(row.path)} />}
@@ -172,7 +200,7 @@ export function BacktestSettingsTable({ rows, valueByPath, onValueChange, onRese
         <thead className="table-light">
           <tr>
             <th>Setting</th>
-            <th>Pluto now</th>
+            <th>Lab now</th>
             <th>This session</th>
             <th>Note</th>
             <th>
@@ -187,12 +215,22 @@ export function BacktestSettingsTable({ rows, valueByPath, onValueChange, onRese
                 <span className="subheader">{group}</span>
               </td>
             </tr>,
+            showPerTicker && group === perTickerGroup && (
+              <tr key={`group-${group}-per-ticker`}>
+                <td colSpan={5} className="text-secondary" style={{ fontSize: "0.78rem", whiteSpace: "normal" }}>
+                  <PerTickerIntro />
+                </td>
+              </tr>
+            ),
             ...groupRows.map((row) => {
               const { value, changed, invalid, note, isChoice } = rowState(row, valueByPath);
               const nowClassName = isChoice ? "text-secondary backtest-setting-choice-now" : "font-mono text-secondary text-nowrap";
               return (
                 <tr key={row.path} className={changed ? "backtest-setting-changed" : undefined}>
-                  <td className="fw-medium">{row.label}</td>
+                  <td className="fw-medium">
+                    {row.label}
+                    {showPerTicker && row.perTicker && <PerTickerMark />}
+                  </td>
                   <td className={nowClassName}>{formatSettingRowValue(row, row.now)}</td>
                   <td>
                     {row.editable ? (

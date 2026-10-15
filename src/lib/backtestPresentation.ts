@@ -943,3 +943,141 @@ export function wholeYearsContaining(startDate: string, endDate: string, period:
   const toYear = yearOfDate(endDate ? clamp(endDate) : period.lastDate);
   return { fromYear, toYear: Math.max(fromYear, toYear) };
 }
+
+// ---- New session: per-ticker pots and values (mockup approved 2026-10-15) ----
+
+// Type-only, so it can sit with the section it serves (appended to this file).
+import type { BacktestSymbolSettingSource, BacktestTickerProblem, BacktestTickerValueKey } from "../api/backtest";
+
+/** A dollar amount as typed: "$1,000,000" → 1000000; NaN when blank or not a number. */
+export function parseDollarAmountText(text: string): number {
+  const cleaned = text.replace(/[$,\s]/g, "");
+  return cleaned === "" ? Number.NaN : Number(cleaned);
+}
+
+/** Under the Decision maker select: what the choice makes the form show. */
+export const decisionMakerHint: Record<BacktestDecisionMaker, string> = {
+  rules: "each pass looks at closes, then rolls, then opens",
+  llm: "Claude through the subscription, asked as live Pluto asks it; the estimate shows below the Settings",
+  baseline: "each ticker gets its own pot and ladder values (Tickers, below)",
+};
+
+/** Where a ticker's value came from, as its badge reads (lowest layer first: the order a reset walks back down). */
+export const backtestValueSourceOrder: BacktestSymbolSettingSource[] = ["global", "ticker", "session", "request"];
+export const backtestValueSourceLabel: Record<BacktestSymbolSettingSource, string> = { global: "Global", ticker: "Ticker lab", session: "Session", request: "This session" };
+export const backtestValueSourceBadgeClass: Record<BacktestSymbolSettingSource, string> = {
+  global: "backtest-value-source-global",
+  ticker: "backtest-value-source-ticker",
+  session: "backtest-value-source-session",
+  request: "backtest-value-source-request",
+};
+/** The badge's tooltip, and the "Back to …" of a Reset. */
+export const backtestValueSourceTitle: Record<BacktestSymbolSettingSource, string> = {
+  global: "the lab's global value",
+  ticker: "the ticker's saved lab value",
+  session: "changed for every ticker of this session",
+  request: "changed here for this ticker",
+};
+/** The legend under the Tickers table. */
+export const backtestValueSourceLegend: Record<BacktestSymbolSettingSource, string> = {
+  global: "the lab's global value",
+  ticker: "the ticker's lab value (Per ticker only)",
+  session: "changed for every ticker under Settings",
+  request: "changed here for this ticker",
+};
+
+/** The most specific of some values' sources (a cell showing several values carries one badge); null when none is given. */
+export function mostSpecificValueSource(sources: (BacktestSymbolSettingSource | null | undefined)[]): BacktestSymbolSettingSource | null {
+  let best: BacktestSymbolSettingSource | null = null;
+  for (const source of sources) if (source && (best === null || backtestValueSourceOrder.indexOf(source) > backtestValueSourceOrder.indexOf(best))) best = source;
+  return best;
+}
+
+/** The Tickers table's value columns: each shows one value, or several read together (the shock, the |delta| range). */
+export type BacktestTickerValueGroup = "pot" | "share" | "rungs" | "shock" | "delta";
+
+/** The keys a column shows: the shock's numbers follow its mode (a fixed % or a range from history). */
+export function tickerValueGroupKeys(group: BacktestTickerValueGroup, ladderShock: string): BacktestTickerValueKey[] {
+  if (group === "pot") return ["potDollars"];
+  if (group === "share") return ["ladderSharesPct"];
+  if (group === "rungs") return ["ladderRungs"];
+  if (group === "shock") return ladderShock === "fixed" ? ["ladderShock", "ladderShockPct"] : ["ladderShock", "ladderShockMinPct", "ladderShockMaxPct"];
+  return ["minAbsDelta", "maxAbsDelta"];
+}
+
+/** Every key a column's Reset clears (the shock's in both modes). */
+export function tickerValueGroupAllKeys(group: BacktestTickerValueGroup): BacktestTickerValueKey[] {
+  return group === "shock" ? ["ladderShock", "ladderShockPct", "ladderShockMinPct", "ladderShockMaxPct"] : tickerValueGroupKeys(group, "history");
+}
+
+/** One value's name, in a ticker's problems and the phone's labels. */
+export const tickerValueLabel: Record<BacktestTickerValueKey, string> = {
+  potDollars: "Pot",
+  ladderSharesPct: "Share level",
+  ladderRungs: "Rungs",
+  ladderShock: "Shock",
+  ladderShockPct: "Fixed shock",
+  ladderShockMinPct: "Shock at least",
+  ladderShockMaxPct: "Shock at most",
+  minAbsDelta: "|delta| from",
+  maxAbsDelta: "|delta| to",
+};
+
+/** A |delta| with at least two decimals (0.3 → "0.30", 0.055 → "0.055"). */
+function formatAbsDelta(value: number): string {
+  return Number.isInteger(Math.round(value * 1e6) / 1e4) ? value.toFixed(2) : formatInputNumber(value, 6);
+}
+
+/** What a ticker value's input shows: the pot with separators, a |delta| with two decimals, the rest as settingInputText. */
+export function tickerValueInputText(key: BacktestTickerValueKey, value: number | string | null | undefined): string {
+  if (value === null || value === undefined) return "";
+  if (typeof value === "string") return value;
+  if (key === "potDollars") return formatNumber(value);
+  if (key === "minAbsDelta" || key === "maxAbsDelta") return formatAbsDelta(value);
+  return settingInputText(value);
+}
+
+/** Why a typed ticker value cannot be sent, or null when it can (the API checks the rest once merged). */
+export function tickerValueTextProblem(key: BacktestTickerValueKey, text: string): string | null {
+  if (key === "ladderShock") return null;
+  const value = key === "potDollars" ? parseDollarAmountText(text) : text.trim() === "" ? Number.NaN : Number(text.trim());
+  if (!Number.isFinite(value)) return key === "potDollars" ? "Pot needs a dollar amount above 0." : `${tickerValueLabel[key]} needs a number.`;
+  if (key === "potDollars" && value <= 0) return "Pot needs a dollar amount above 0.";
+  if (key === "ladderRungs" && !Number.isInteger(value)) return "Rungs needs a whole number.";
+  return null;
+}
+
+/** "History 60–80%" or "Fixed 70%"; `withMode` false gives the numbers only ("Reset to 60–80%"). */
+function describeShock(values: Partial<Record<BacktestTickerValueKey, number | string | null>>, withMode: boolean): string {
+  const percent = (key: BacktestTickerValueKey) => formatInputNumber(Number(values[key]), 4);
+  if (values.ladderShock === "fixed") return `${withMode ? "Fixed " : ""}${percent("ladderShockPct")}%`;
+  return `${withMode ? "History " : ""}${percent("ladderShockMinPct")}–${percent("ladderShockMaxPct")}%`;
+}
+
+/** A column's values as text: "$150,000", "30%", "5", "History 60–80%", "0.05–0.30"; "—" for a missing pot. */
+export function describeTickerValueGroup(group: BacktestTickerValueGroup, values: Partial<Record<BacktestTickerValueKey, number | string | null>>): string {
+  if (group === "pot") return typeof values.potDollars === "number" ? formatCurrency(values.potDollars, 0) : "—";
+  if (group === "share") return `${formatInputNumber(Number(values.ladderSharesPct), 4)}%`;
+  if (group === "rungs") return formatNumber(Number(values.ladderRungs));
+  if (group === "shock") return describeShock(values, true);
+  return `${formatAbsDelta(Number(values.minAbsDelta))}–${formatAbsDelta(Number(values.maxAbsDelta))}`;
+}
+
+/** A Reset button's text: "Reset to 30%", "Reset to 60–80%"; "Clear" for a pot with nothing under it. */
+export function describeTickerResetTarget(group: BacktestTickerValueGroup, below: Partial<Record<BacktestTickerValueKey, number | string | null>>): string {
+  if (group === "pot" && typeof below.potDollars !== "number") return "Clear";
+  return `Reset to ${group === "shock" ? describeShock(below, false) : describeTickerValueGroup(group, below)}`;
+}
+
+/** A ticker's problem as the page lists it: the pot's sentence names the ticker already; the others get "HOOD: " and the
+ *  settings' labels in place of their paths ("baseline.ladderRungs" → "Ladder: rungs"). */
+export function describeTickerProblem(symbol: string, problem: BacktestTickerProblem, rows: BacktestSettingRow[]): string {
+  if (problem.key === "potDollars") return problem.message;
+  const message = problem.message.replace(/\b(baseline\.\w+)/g, (path) => rows.find((row) => row.path === path)?.label ?? path);
+  return `${symbol}: ${message}`;
+}
+
+/** The Sessions list's link to the sessions created while it was being read: "1 new session", "3 new sessions". */
+export function describeNewSessionsLink(count: number, atLeast: boolean): string {
+  return `${formatNumber(count)}${atLeast ? "+" : ""} new ${count === 1 && !atLeast ? "session" : "sessions"}`;
+}

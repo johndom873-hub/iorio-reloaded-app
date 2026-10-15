@@ -56,10 +56,23 @@ export function BacktestSeriesSwatch({ color, line }: { color: string; line: "so
   return <span aria-hidden="true" className="d-inline-block flex-shrink-0" style={{ width: "1rem", height: 0, borderTop: `3px ${line} ${color}` }} />;
 }
 
-/** A two-or-more-way choice as a button group, the chosen one filled (the Linear / Log switch, the New session's Period). */
-export function BacktestSegmentedSwitch<TValue extends string>({ options, value, onChange, ariaLabel }: { options: { value: TValue; label: string }[]; value: TValue; onChange: (value: TValue) => void; ariaLabel: string }) {
+/** A two-or-more-way choice as a button group, the chosen one filled (the Linear / Log switch, the New session's Period, Capital and Ticker values). */
+export function BacktestSegmentedSwitch<TValue extends string>({
+  options,
+  value,
+  onChange,
+  ariaLabel,
+  className,
+}: {
+  options: { value: TValue; label: string }[];
+  value: TValue;
+  onChange: (value: TValue) => void;
+  ariaLabel: string;
+  /** Extra classes on the group (backtest-switch-wrap: the buttons fill the width and wrap their labels on a phone). */
+  className?: string;
+}) {
   return (
-    <div className="btn-group" role="group" aria-label={ariaLabel}>
+    <div className={className ? `btn-group ${className}` : "btn-group"} role="group" aria-label={ariaLabel}>
       {options.map((option) => (
         <button key={option.value} type="button" className={`btn ${value === option.value ? "btn-primary" : "btn-outline-secondary"}`} aria-pressed={value === option.value} onClick={() => onChange(option.value)}>
           {option.label}

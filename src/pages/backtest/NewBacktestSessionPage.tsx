@@ -8,46 +8,81 @@ import {
   fetchBacktestSession,
   fetchBacktestSettingsTemplate,
   type BacktestDataFileSummary,
+  type BacktestDecisionMaker,
   type BacktestSessionDetail,
   type BacktestSessionEstimateResponse,
+  type BacktestSettingsOverrides,
+  type BacktestSettingsSource,
   type BacktestSettingsTemplate,
   type BacktestTablesMode,
+  type BacktestTickerValueKey,
+  type CreateBacktestSessionRequest,
   type CreateBacktestSessionResponse,
 } from "../../api/backtest";
+import { ConfirmModal } from "../../components/ConfirmModal";
 import { PageHeader } from "../../components/layout/PageHeader";
 import { Spinner } from "../../components/Spinner";
 import { BacktestBackLink, BacktestCard, BacktestSegmentedSwitch } from "../../components/backtest/backtestBits";
 import { BacktestSettingsTable } from "../../components/backtest/BacktestSettingsTable";
+import { BacktestStartSessionConfirmBody } from "../../components/backtest/BacktestStartSessionConfirmBody";
 import { BacktestSymbolPicker } from "../../components/backtest/BacktestSymbolPicker";
+import { BacktestTickerValuesCard } from "../../components/backtest/BacktestTickerValuesCard";
 import { useBacktestOverview } from "../../components/backtest/useBacktestPolling";
 import { useDebouncedValue } from "../../hooks/useDebouncedValue";
-import { formatNumber, pluralizeCount } from "../../lib/formatters";
+import { formatCurrency, formatNumber, pluralizeCount } from "../../lib/formatters";
 import {
   buildBacktestOverrides,
+  decisionMakerHint,
   describeLlmEstimate,
+  describeOverrideChanges,
+  describeTickerProblem,
+  describeUnavailableChoices,
   describeYearOption,
   formatSettingRowValue,
   isSettingChanged,
   llmSessionNote,
+  parseDollarAmountText,
+  sessionDecisionMaker,
   settingInputText,
   settingValueProblem,
+  tickerValueGroupAllKeys,
+  tickerValueInputText,
+  tickerValueTextProblem,
   valueAtSettingsPath,
   wholeYearsContaining,
   wholeYearsDates,
   wholeYearsMatching,
   yearsInPeriod,
   type BacktestPeriodMode,
+  type BacktestTickerValueGroup,
 } from "../../lib/backtestPresentation";
+import {
+  buildTickerSymbolSettings,
+  isTickerEditActive,
+  tickerEditProblems,
+  tickerEditsFromSession,
+  tickerValueBelowEdit,
+  type BacktestCapitalMode,
+  type BacktestTickerEdits,
+  type BacktestTickerResolution,
+} from "../../lib/backtestTickerValueEdits";
 
 const pageTitle = "New session";
-const pageSubtitle = "Starts from Pluto's settings as they are now (saved with the session). Change any of them for this session only; Pluto itself is not touched.";
+const pageSubtitle = "Starts from the lab's settings as they are now (saved with the session). Change any of them for this session only; the lab itself is not touched.";
 const defaultStartingValue = 1_000_000;
 /** The estimate is asked for once the form has stopped changing this long. */
 const estimateDebounceMs = 600;
+/** The Decision maker sits in the Session card, not in the Settings table. */
+const decisionMakerPath = "decisionMaker";
 
 const periodModeOptions: { value: BacktestPeriodMode; label: string }[] = [
   { value: "years", label: "Whole years" },
   { value: "custom", label: "Custom dates" },
+];
+
+const capitalModeOptions: { value: BacktestCapitalMode; label: string }[] = [
+  { value: "pots", label: "Each ticker's pot" },
+  { value: "split", label: "Split a starting value equally" },
 ];
 
 function usableFiles(files: BacktestDataFileSummary[]): BacktestDataFileSummary[] {
@@ -70,11 +105,6 @@ function describeLooks(template: BacktestSettingsTemplate): string | null {
   return `${String(from.now)} – ${formatSettingRowValue(until, until.now)}`;
 }
 
-function parseDollarText(text: string): number {
-  const cleaned = text.replace(/[$,\s]/g, "");
-  return cleaned === "" ? Number.NaN : Number(cleaned);
-}
-
 function initialValueByPath(template: BacktestSettingsTemplate, source: BacktestSessionDetail | null): Record<string, string> {
   const values: Record<string, string> = {};
   for (const row of template.rows) {
@@ -84,8 +114,21 @@ function initialValueByPath(template: BacktestSettingsTemplate, source: Backtest
   return values;
 }
 
-// New session (mockup approved 2026-10-12): the period, the start, the history tables, and Pluto's settings with the session's
-// own changes. "Run again with changes" opens it with ?from=<sessionId>, prefilled from that session.
+/** The overrides without some paths (the decision maker, or the per-ticker baseline values). */
+function overridesWithout(overrides: BacktestSettingsOverrides, keep: (path: string) => boolean): BacktestSettingsOverrides {
+  const result: Record<string, unknown> = {};
+  for (const [root, value] of Object.entries(overrides)) {
+    if (value !== null && typeof value === "object") {
+      const kept = Object.fromEntries(Object.entries(value).filter(([field]) => keep(`${root}.${field}`)));
+      if (Object.keys(kept).length > 0) result[root] = kept;
+    } else if (keep(root)) result[root] = value;
+  }
+  return result as BacktestSettingsOverrides;
+}
+
+// New session (mockups approved 2026-10-12 and, for per-ticker pots, 2026-10-15): the period, the decision maker, the capital,
+// each ticker's pot and values with the Baseline deciding, the history tables, and the lab's settings with the session's own
+// changes. "Run again with changes" opens it with ?from=<sessionId>, prefilled from that session.
 export function NewBacktestSessionPage() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
@@ -107,9 +150,14 @@ export function NewBacktestSessionPage() {
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
   const [startingValueText, setStartingValueText] = useState(formatNumber(defaultStartingValue));
+  // The Baseline deciding: each ticker's pot (the capital their sum), or one starting value split equally.
+  const [capitalMode, setCapitalMode] = useState<BacktestCapitalMode>("pots");
+  const [settingsSource, setSettingsSource] = useState<BacktestSettingsSource>("per_ticker");
+  const [tickerEdits, setTickerEdits] = useState<BacktestTickerEdits>({});
   const [tablesMode, setTablesMode] = useState<BacktestTablesMode>("walk_forward");
   const [valueByPath, setValueByPath] = useState<Record<string, string>>({});
   const [submitAttempted, setSubmitAttempted] = useState(false);
+  const [confirmOpen, setConfirmOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [created, setCreated] = useState<CreateBacktestSessionResponse | null>(null);
@@ -118,7 +166,7 @@ export function NewBacktestSessionPage() {
     let cancelled = false;
     fetchBacktestSettingsTemplate()
       .then((loaded) => !cancelled && setTemplate(loaded))
-      .catch((err) => !cancelled && setTemplateError(errorMessage(err, "Could not load Pluto's settings.")));
+      .catch((err) => !cancelled && setTemplateError(errorMessage(err, "Could not load the lab's settings.")));
     return () => {
       cancelled = true;
     };
@@ -161,6 +209,17 @@ export function NewBacktestSessionPage() {
       setName(source.name);
       setStartingValueText(formatNumber(source.startingValue));
       setTablesMode(source.tablesMode);
+      // A session of per-ticker pots comes back with how it was asked for: its ticker values' source, its capital (a starting
+      // value split equally, or each ticker's pot) and the values it gave its tickers itself; the rest come from the lab again.
+      if (source.bookMode === "pots") {
+        const potsFromStartingValue = source.potsFromStartingValue === true;
+        setSettingsSource(source.settingsSource ?? "per_ticker");
+        setCapitalMode(potsFromStartingValue ? "split" : "pots");
+        setTickerEdits(tickerEditsFromSession(source.symbolSettings, !potsFromStartingValue));
+      } else if (sessionDecisionMaker(source) === "baseline") {
+        // A Baseline session from before per-ticker pots ran on one starting value.
+        setCapitalMode("split");
+      }
     }
     setValueByPath(initialValueByPath(template, sourceSession));
     setInitialized(true);
@@ -212,30 +271,70 @@ export function NewBacktestSessionPage() {
     if (toYear === null || toYear < year) setToYear(year);
   };
 
-  const startingValue = parseDollarText(startingValueText);
-  const settingRows = template?.rows ?? [];
+  const startingValue = parseDollarAmountText(startingValueText);
+  const allRows = template?.rows ?? [];
+  const settingRows = allRows.filter((row) => row.path !== decisionMakerPath);
+  const decisionMakerRow = allRows.find((row) => row.path === decisionMakerPath) ?? null;
+  const decisionMaker = (valueByPath[decisionMakerPath] ?? "rules") as BacktestDecisionMaker;
+  const decidedByModel = decisionMaker === "llm";
+  // The Baseline runs per-ticker pots: each ticker its pot and ladder values. The rules and the AI model run one starting value.
+  const perTickerPots = decisionMaker === "baseline";
+  const showTickersCard = perTickerPots && selectedFiles.length > 0;
+  const usesStartingValue = !perTickerPots || capitalMode === "split";
 
-  // With the AI model deciding: the model calls and hours the session may take, and its warnings, before anything starts.
-  const decidedByModel = valueByPath["decisionMaker"] === "llm";
-  const estimateRequestText = useMemo(() => {
-    if (!template || !decidedByModel || symbols.length === 0 || !sessionStartDate || !sessionEndDate || !(startingValue > 0)) return null;
-    // The endpoint needs no name (an unnamed form still gets its estimate).
-    return JSON.stringify({ name: name.trim(), symbols, startDate: sessionStartDate, endDate: sessionEndDate, startingValue, tablesMode, overrides: buildBacktestOverrides(template.rows, valueByPath) });
-  }, [template, decidedByModel, name, symbols, sessionStartDate, sessionEndDate, startingValue, tablesMode, valueByPath]);
-  const debouncedEstimateRequestText = useDebouncedValue(estimateRequestText, estimateDebounceMs);
+  // The estimate: what the session will do differently because of its files, each ticker's values with the Baseline deciding,
+  // and the model's calls with the AI model. The latest answer stays on screen while the next is worked out.
   const [estimate, setEstimate] = useState<{ requestText: string; result: BacktestSessionEstimateResponse | null; error: string | null } | null>(null);
+  const [latestResult, setLatestResult] = useState<BacktestSessionEstimateResponse | null>(null);
+  const latestResolution = useMemo<BacktestTickerResolution | null>(
+    () => (latestResult?.resolvedBySymbol ? { capital: latestResult.capital, bySymbol: latestResult.resolvedBySymbol } : null),
+    [latestResult],
+  );
+  const overrides = useMemo(() => (template ? buildBacktestOverrides(template.rows, valueByPath) : {}), [template, valueByPath]);
+  const symbolSettings = useMemo(
+    () => (perTickerPots ? buildTickerSymbolSettings(symbols, tickerEdits, latestResolution, capitalMode) : null),
+    [perTickerPots, symbols, tickerEdits, latestResolution, capitalMode],
+  );
+  const requestText = useMemo(() => {
+    if (!template || symbols.length === 0 || !sessionStartDate || !sessionEndDate) return null;
+    if (usesStartingValue && !(startingValue > 0)) return null;
+    // The endpoint needs no name (an unnamed form still gets its estimate).
+    const request: CreateBacktestSessionRequest = { name: name.trim(), symbols, startDate: sessionStartDate, endDate: sessionEndDate, tablesMode, overrides };
+    if (usesStartingValue) request.startingValue = startingValue;
+    if (perTickerPots) {
+      request.settingsSource = settingsSource;
+      if (symbolSettings && Object.keys(symbolSettings).length > 0) request.symbolSettings = symbolSettings;
+    }
+    return JSON.stringify(request);
+  }, [template, name, symbols, sessionStartDate, sessionEndDate, usesStartingValue, startingValue, tablesMode, overrides, perTickerPots, settingsSource, symbolSettings]);
+  // The name does not change the estimate: it is asked again only when something else changes.
+  const estimateRequestText = useMemo(() => (requestText === null ? null : JSON.stringify({ ...JSON.parse(requestText), name: "" })), [requestText]);
+  const debouncedEstimateRequestText = useDebouncedValue(estimateRequestText, estimateDebounceMs);
   useEffect(() => {
     if (debouncedEstimateRequestText === null) return;
     let cancelled = false;
     estimateBacktestSession(JSON.parse(debouncedEstimateRequestText))
-      .then((result) => !cancelled && setEstimate({ requestText: debouncedEstimateRequestText, result, error: null }))
+      .then((result) => {
+        if (cancelled) return;
+        setEstimate({ requestText: debouncedEstimateRequestText, result, error: null });
+        setLatestResult(result);
+      })
       .catch((err) => !cancelled && setEstimate({ requestText: debouncedEstimateRequestText, result: null, error: errorMessage(err, "Could not estimate the session.") }));
     return () => {
       cancelled = true;
     };
   }, [debouncedEstimateRequestText]);
   const estimateIsCurrent = estimate !== null && estimate.requestText === estimateRequestText;
+  const currentResult = estimateIsCurrent ? estimate.result : null;
+  const estimatePending = estimateRequestText !== null && !estimateIsCurrent;
   const changedCount = settingRows.filter((row) => row.editable && isSettingChanged(row, valueByPath[row.path] ?? String(row.now))).length;
+  const orderedSymbols = [...symbols].sort();
+
+  /** A ticker's problems as the page lists them: values typed that cannot be sent, then what the estimate found. */
+  const tickerProblemsOf = (resolution: BacktestTickerResolution | null): string[] => [
+    ...tickerEditProblems(symbols, tickerEdits, capitalMode).map((problem) => `${problem.symbol}: ${problem.message}`),
+    ...orderedSymbols.flatMap((symbol) => (resolution?.bySymbol[symbol]?.problems ?? []).map((problem) => describeTickerProblem(symbol, problem, allRows))),
+  ];
 
   const problems: string[] = [];
   if (name.trim() === "") problems.push("Name the session.");
@@ -248,30 +347,68 @@ export function NewBacktestSessionPage() {
   else if (coverage && (sessionStartDate < coverage.firstDate || sessionEndDate > coverage.lastDate)) {
     problems.push(`The period must fall within every picked file: ${coverage.firstDate} → ${coverage.lastDate}.`);
   }
-  if (!(startingValue > 0)) problems.push("The starting account value must be a positive dollar amount.");
-  for (const row of settingRows) {
+  if (usesStartingValue && !(startingValue > 0)) problems.push("The starting account value must be a positive dollar amount.");
+  if (showTickersCard) problems.push(...tickerProblemsOf(latestResolution));
+  for (const row of allRows) {
     const problem = row.editable ? settingValueProblem(row, valueByPath[row.path] ?? String(row.now)) : null;
     if (problem) problems.push(problem);
   }
 
-  const handleSubmit = async (event: FormEvent) => {
+  // ---- The Tickers card's edits ----
+  const resolutionOf = (symbol: string) => latestResolution?.bySymbol[symbol];
+  const changeTickerValue = (symbol: string, key: BacktestTickerValueKey, text: string) => {
+    setTickerEdits((previous) => {
+      const symbolEdits = { ...previous[symbol] };
+      // A choice back on the value under it is no edit at once; a typed number waits for the field to be left.
+      if (key === "ladderShock" && !isTickerEditActive(resolutionOf(symbol), key, text)) delete symbolEdits[key];
+      else symbolEdits[key] = text;
+      return { ...previous, [symbol]: symbolEdits };
+    });
+  };
+  /** Leaving a field: a value equal to the one under it stops being an edit; a pot takes its separators. */
+  const settleTickerValue = (symbol: string, key: BacktestTickerValueKey) => {
+    setTickerEdits((previous) => {
+      const text = previous[symbol]?.[key];
+      if (text === undefined) return previous;
+      const symbolEdits = { ...previous[symbol] };
+      const below = tickerValueBelowEdit(resolutionOf(symbol), key);
+      if (below !== undefined && tickerValueTextProblem(key, text) === null && !isTickerEditActive(resolutionOf(symbol), key, text)) delete symbolEdits[key];
+      else if (key === "potDollars" && parseDollarAmountText(text) > 0) symbolEdits[key] = tickerValueInputText(key, parseDollarAmountText(text));
+      else return previous;
+      return { ...previous, [symbol]: symbolEdits };
+    });
+  };
+  const resetTickerGroup = (symbol: string, group: BacktestTickerValueGroup) => {
+    setTickerEdits((previous) => {
+      const symbolEdits = { ...previous[symbol] };
+      for (const key of tickerValueGroupAllKeys(group)) delete symbolEdits[key];
+      return { ...previous, [symbol]: symbolEdits };
+    });
+  };
+  /** Switching to a split starting value fills it with the pots' sum, so switching changes no dollar figure. */
+  const changeCapitalMode = (nextMode: BacktestCapitalMode) => {
+    if (nextMode === capitalMode) return;
+    if (nextMode === "split" && latestResolution?.capital) setStartingValueText(formatNumber(latestResolution.capital));
+    setCapitalMode(nextMode);
+  };
+
+  const handleSubmit = (event: FormEvent) => {
     event.preventDefault();
     setSubmitAttempted(true);
-    if (problems.length > 0 || !template) return;
+    setSubmitError(null);
+    if (problems.length > 0 || !template || requestText === null) return;
+    setConfirmOpen(true);
+  };
+
+  const startSession = async () => {
+    if (requestText === null) return;
     setSubmitting(true);
     setSubmitError(null);
     try {
-      const response = await createBacktestSession({
-        name: name.trim(),
-        symbols,
-        startDate: sessionStartDate,
-        endDate: sessionEndDate,
-        startingValue,
-        tablesMode,
-        overrides: buildBacktestOverrides(template.rows, valueByPath),
-      });
+      const response = await createBacktestSession(JSON.parse(requestText) as CreateBacktestSessionRequest);
       // What the session will do differently because of its files (it still runs) stays on screen; otherwise straight back.
       if (response.warnings.length > 0) {
+        setConfirmOpen(false);
         setCreated(response);
         setSubmitting(false);
         window.scrollTo({ top: 0 });
@@ -279,7 +416,8 @@ export function NewBacktestSessionPage() {
         navigate("/backtest");
       }
     } catch (err) {
-      setSubmitError(errorMessage(err, "Could not start the backtest."));
+      setConfirmOpen(false);
+      setSubmitError(errorMessage(err, "Could not start the session."));
       setSubmitting(false);
     }
   };
@@ -354,12 +492,31 @@ export function NewBacktestSessionPage() {
     );
   }
 
+  const resetAllSettings = () => setValueByPath((previous) => ({ ...initialValueByPath(template, null), [decisionMakerPath]: previous[decisionMakerPath] ?? String(decisionMakerRow?.now ?? "rules") }));
+  const splitShare = startingValue > 0 && selectedFiles.length > 0 ? startingValue / selectedFiles.length : null;
+  const unavailableDecisionMakers = decisionMakerRow ? describeUnavailableChoices(decisionMakerRow) : [];
+
+  // The confirmation: what changed for the whole session (the decision maker is a fact of its own), the per-ticker rows
+  // marked as reaching every ticker.
+  const perTickerPaths = new Set(allRows.filter((row) => row.perTicker).map((row) => row.path));
+  const changes = [
+    ...describeOverrideChanges(
+      overridesWithout(overrides, (path) => path !== decisionMakerPath && !(perTickerPots && perTickerPaths.has(path))),
+      template.settings,
+      template.rows,
+    ),
+    ...(perTickerPots ? describeOverrideChanges(overridesWithout(overrides, (path) => perTickerPaths.has(path)), template.settings, template.rows).map((change) => `${change} · every ticker`) : []),
+  ];
+  const currentResolution: BacktestTickerResolution | null = currentResult?.resolvedBySymbol ? { capital: currentResult.capital, bySymbol: currentResult.resolvedBySymbol } : null;
+  const confirmProblems = perTickerPots && currentResolution ? tickerProblemsOf(currentResolution) : [];
+  const periodNote = periodMode === "years" && fromYear !== null && toYear !== null ? (fromYear === toYear ? `whole year ${fromYear}` : `whole years ${fromYear} to ${toYear}`) : "custom dates";
+
   return (
     <div style={{ maxWidth: "1100px" }}>
       <BacktestBackLink />
       <PageHeader title={pageTitle} subtitle={pageSubtitle} />
-      {sourceSessionId && !sourceSession && <div className="iorio-note-amber mb-2">The session to copy could not be loaded; the form starts from Pluto's settings.</div>}
-      <form onSubmit={(event) => void handleSubmit(event)} noValidate>
+      {sourceSessionId && !sourceSession && <div className="iorio-note-amber mb-2">The session to copy could not be loaded; the form starts from the lab's settings.</div>}
+      <form onSubmit={handleSubmit} noValidate>
         <BacktestCard title="Session" className="mb-3">
           <div className="card-body">
             <div className="row g-3">
@@ -376,30 +533,102 @@ export function NewBacktestSessionPage() {
                   onChange={(event) => setName(event.target.value)}
                 />
               </div>
-              <div className="col-12 col-sm-6 col-lg-3">
-                <label htmlFor="backtest-session-capital" className="form-label">
-                  Starting account value
+              <div className="col-12 col-lg-6">
+                <label htmlFor="backtest-session-decision-maker" className="form-label">
+                  Decision maker
                 </label>
-                <div className="input-group">
-                  <span className="input-group-text">$</span>
-                  <input
-                    id="backtest-session-capital"
-                    type="text"
-                    inputMode="numeric"
-                    className={`form-control font-mono${submitAttempted && !(startingValue > 0) ? " is-invalid" : ""}`}
-                    value={startingValueText}
-                    onChange={(event) => setStartingValueText(event.target.value)}
-                    onBlur={() => startingValue > 0 && setStartingValueText(formatNumber(startingValue))}
-                  />
+                <select
+                  id="backtest-session-decision-maker"
+                  className="form-select"
+                  aria-describedby="backtest-session-decision-maker-hint"
+                  value={decisionMaker}
+                  onChange={(event) => setValueByPath((previous) => ({ ...previous, [decisionMakerPath]: event.target.value }))}
+                >
+                  {(decisionMakerRow?.choices ?? []).map((choice) => (
+                    <option key={choice.value} value={choice.value} disabled={Boolean(choice.unavailableReason)} title={choice.unavailableReason}>
+                      {choice.unavailableReason ? `${choice.label} (${choice.unavailableReason})` : choice.label}
+                    </option>
+                  ))}
+                </select>
+                <div id="backtest-session-decision-maker-hint" className="text-secondary mt-1" style={{ fontSize: "0.75rem" }}>
+                  {decisionMakerHint[decisionMaker]}
+                  {unavailableDecisionMakers.map((line) => (
+                    <div key={line}>{line}</div>
+                  ))}
                 </div>
               </div>
-              <div className="col-12 col-sm-6 col-lg-3">
+              <div className="col-12 col-lg-6">
+                {perTickerPots ? (
+                  <>
+                    <div className="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-2">
+                      <span className="form-label mb-0" id="backtest-session-capital-label">
+                        Capital
+                      </span>
+                      <BacktestSegmentedSwitch options={capitalModeOptions} value={capitalMode} onChange={changeCapitalMode} ariaLabel="Capital" className="backtest-switch-wrap" />
+                    </div>
+                    <div className="input-group">
+                      <span className="input-group-text">$</span>
+                      {capitalMode === "split" ? (
+                        <input
+                          id="backtest-session-capital"
+                          type="text"
+                          inputMode="numeric"
+                          className={`form-control font-mono${submitAttempted && !(startingValue > 0) ? " is-invalid" : ""}`}
+                          aria-labelledby="backtest-session-capital-label"
+                          aria-describedby="backtest-session-capital-hint"
+                          value={startingValueText}
+                          onChange={(event) => setStartingValueText(event.target.value)}
+                          onBlur={() => startingValue > 0 && setStartingValueText(formatNumber(startingValue))}
+                        />
+                      ) : (
+                        <input
+                          id="backtest-session-capital"
+                          type="text"
+                          className="form-control font-mono"
+                          aria-labelledby="backtest-session-capital-label"
+                          aria-describedby="backtest-session-capital-hint"
+                          value={latestResolution?.capital ? formatNumber(latestResolution.capital) : ""}
+                          placeholder="—"
+                          disabled
+                          readOnly
+                        />
+                      )}
+                    </div>
+                    <div id="backtest-session-capital-hint" className="text-secondary mt-1" style={{ fontSize: "0.75rem" }}>
+                      {capitalMode === "split"
+                        ? `split equally: ${splitShare !== null ? `${formatCurrency(splitShare, 0)} for each of ${pluralizeCount(selectedFiles.length, "ticker")}` : "a dollar amount above 0"}`
+                        : latestResolution?.capital
+                          ? "the sum of the tickers' pots (Tickers, below); each ticker's weight is its pot ÷ this"
+                          : "the sum of the tickers' pots, once every ticker has one"}
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <label htmlFor="backtest-session-capital" className="form-label">
+                      Starting account value
+                    </label>
+                    <div className="input-group">
+                      <span className="input-group-text">$</span>
+                      <input
+                        id="backtest-session-capital"
+                        type="text"
+                        inputMode="numeric"
+                        className={`form-control font-mono${submitAttempted && !(startingValue > 0) ? " is-invalid" : ""}`}
+                        value={startingValueText}
+                        onChange={(event) => setStartingValueText(event.target.value)}
+                        onBlur={() => startingValue > 0 && setStartingValueText(formatNumber(startingValue))}
+                      />
+                    </div>
+                  </>
+                )}
+              </div>
+              <div className="col-12 col-lg-6">
                 <label htmlFor="backtest-session-positions" className="form-label">
                   Positions
                 </label>
                 <input id="backtest-session-positions" type="text" className="form-control" value="The full wheel" disabled readOnly aria-describedby="backtest-session-positions-hint" />
                 <div id="backtest-session-positions-hint" className="text-secondary mt-1" style={{ fontSize: "0.75rem" }}>
-                  assignment, calls on the shares, rolls and buybacks
+                  assignment, Calls on the shares, rolls and buybacks
                 </div>
               </div>
               <div className="col-12 col-lg-6">
@@ -551,21 +780,41 @@ export function NewBacktestSessionPage() {
           </div>
         </BacktestCard>
 
+        {showTickersCard && (
+          <BacktestTickerValuesCard
+            symbols={symbols}
+            settingsSource={settingsSource}
+            onSettingsSourceChange={setSettingsSource}
+            capitalMode={capitalMode}
+            splitStartingValue={startingValue}
+            resolution={latestResolution}
+            resolving={estimatePending}
+            resolutionError={estimateIsCurrent ? estimate.error : null}
+            edits={tickerEdits}
+            onEditChange={changeTickerValue}
+            onEditBlur={settleTickerValue}
+            onResetGroup={resetTickerGroup}
+            onResetAll={() => setTickerEdits({})}
+            settingRows={allRows}
+          />
+        )}
+
         <BacktestCard
           title="Settings"
-          description={changedCount === 0 ? "Pluto's settings as they are now" : `${pluralizeCount(changedCount, "setting")} changed for this session`}
+          description={changedCount === 0 ? "the lab's settings as they are now" : `${pluralizeCount(changedCount, "setting")} changed for this session`}
           actions={
             changedCount > 0 && (
-              <button type="button" className="btn btn-link p-0" style={{ fontSize: "0.8rem" }} onClick={() => setValueByPath(initialValueByPath(template, null))}>
-                Reset all to Pluto's
+              <button type="button" className="btn btn-outline-secondary" onClick={resetAllSettings}>
+                Reset all to the lab's
               </button>
             )
           }
           className="mb-3"
         >
           <BacktestSettingsTable
-            rows={template.rows}
+            rows={settingRows}
             valueByPath={valueByPath}
+            showPerTicker={showTickersCard}
             onValueChange={(path, value) => setValueByPath((previous) => ({ ...previous, [path]: value }))}
             onReset={(path) => {
               const row = template.rows.find((candidate) => candidate.path === path);
@@ -592,7 +841,7 @@ export function NewBacktestSessionPage() {
               ) : !estimateIsCurrent ? (
                 <Spinner size="sm" label="Estimating the model calls" />
               ) : estimate.error ? (
-                <div className="text-danger">{estimate.error}</div>
+                <div className="backtest-ticker-problem">{estimate.error}</div>
               ) : estimate.result?.llmEstimate ? (
                 <div className="fw-semibold">
                   {describeLlmEstimate(estimate.result.llmEstimate)}
@@ -626,15 +875,47 @@ export function NewBacktestSessionPage() {
           <Link to="/backtest" className="btn btn-outline-secondary">
             Cancel
           </Link>
-          <button type="submit" className="btn btn-primary d-inline-flex align-items-center gap-1" disabled={submitting}>
-            {submitting && <Spinner size="sm" />}
-            Start backtest
+          <button type="submit" className="btn btn-primary">
+            Start session
           </button>
         </div>
         <div className="text-secondary text-end mt-2" style={{ fontSize: "0.78rem" }}>
           Runs in the background; its progress shows under Background jobs.
         </div>
       </form>
+      {confirmOpen && (
+        <ConfirmModal
+          title="Start this session?"
+          size="lg"
+          danger={false}
+          confirmLabel="Start session"
+          confirming={submitting}
+          confirmDisabled={estimatePending || confirmProblems.length > 0}
+          onConfirm={() => void startSession()}
+          onCancel={() => setConfirmOpen(false)}
+          message={
+            <BacktestStartSessionConfirmBody
+              name={name.trim()}
+              startDate={sessionStartDate}
+              endDate={sessionEndDate}
+              periodNote={periodNote}
+              decisionMakerLabel={decisionMakerRow?.choices?.find((choice) => choice.value === decisionMaker)?.label ?? decisionMaker}
+              perTickerPots={perTickerPots}
+              capitalMode={capitalMode}
+              startingValue={startingValue}
+              symbolCount={selectedFiles.length}
+              settingsSource={settingsSource}
+              tablesMode={tablesMode}
+              resolution={currentResolution}
+              estimatePending={estimatePending}
+              estimateError={estimateIsCurrent ? estimate.error : null}
+              changes={changes}
+              warnings={currentResult?.warnings ?? []}
+              problems={confirmProblems}
+            />
+          }
+        />
+      )}
     </div>
   );
 }
