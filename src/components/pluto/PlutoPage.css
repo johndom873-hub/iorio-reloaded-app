@@ -186,7 +186,7 @@
 .pm-b.bad { background: var(--danger-lt); color: var(--danger-text); }
 .pm-b.warn { background: var(--warning-lt); color: var(--warning-text); }
 .pm-b.info { background: var(--azure-lt); color: var(--azure-text); }
-.pm-b.neutral { background: var(--surface-2); color: var(--muted); border: 1px solid var(--border); padding: 3px 6px; }
+.pm-b.neutral { background: var(--surface-2); color: var(--text); border: 1px solid var(--border); padding: 3px 6px; }
 .pm-b .ic { width: 11px; height: 11px; }
 a.pm-b, button.pm-b.link { cursor: pointer; }
 a.pm-b:hover, button.pm-b.link:hover { text-decoration: underline; }
@@ -359,7 +359,7 @@ a.pm-b:hover, button.pm-b.link:hover { text-decoration: underline; }
 .pm-input select { text-align: left; appearance: none; -webkit-appearance: none; background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%236b7280' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='M6 9l6 6 6-6'/></svg>"); background-repeat: no-repeat; background-position: right 8px center; background-size: 14px; padding-right: 28px; cursor: pointer; }
 .pm-input select option { color: initial; }
 .pm-input input[type="time"] { text-align: left; }
-.pm-input .unit { padding: 0 10px; display: flex; align-items: center; background: var(--surface-2); color: var(--muted); font-size: 12.5px; border-left: 1px solid var(--border); white-space: nowrap; }
+.pm-input .unit { padding: 0 10px; display: flex; align-items: center; background: var(--surface-2); color: var(--text); font-size: 12.5px; border-left: 1px solid var(--border); white-space: nowrap; }
 .pm-pair { display: flex; gap: 8px; }
 .pm-pair .pm-input { flex: 1; min-width: 0; }
 .pm-field.changed { background: var(--warning-lt); }
@@ -381,6 +381,12 @@ a.pm-b:hover, button.pm-b.link:hover { text-decoration: underline; }
 .pm-check-row input { margin-top: 3px; width: 16px; height: 16px; accent-color: #0369a1; flex: none; }
 .pm-changes { margin: 10px 0 0; padding-left: 18px; }
 .pm-changes li { margin: 3px 0; }
+/* The Settings tab's Ticker checks card and the save dialog's "Ticker checks" list (Pluto Ladder Settings mockup, 2026-10-15). */
+.pm-tk-checks { list-style: none; margin: 0; padding: 0; }
+.pm-tk-checks li { display: grid; grid-template-columns: 4.5rem minmax(0, 1fr) auto; gap: 0.5rem; align-items: center; padding: 0.55rem 1.125rem; border-top: 1px solid var(--border-soft); font-size: 0.8125rem; }
+.pm-tk-checks li:first-child { border-top: 0; }
+.confirm-sub { margin-top: 0.75rem; font-size: 0.72rem; font-weight: 600; letter-spacing: 0.05em; text-transform: uppercase; color: var(--muted); }
+.confirm-sub + .pm-changes { margin-top: 0.25rem; }
 
 /* Decisions list */
 .pm-dec { border-top: 1px solid var(--border-soft); }
@@ -634,3 +640,116 @@ a.pm-b:hover, button.pm-b.link:hover { text-decoration: underline; }
   .pm-how-table td, .pm-how-table td:first-child, .pm-how-table td:last-child { display: block; padding: 0; border: 0; }
   .pm-how-table td.pm-how-meaning { grid-column: 1 / -1; min-width: 0; margin-top: 0.25rem; }
 }
+
+/* ---- CC + Put Ladder: the Tickers tab's allocation strip and columns, and the ticker window (Pluto Ladder Settings
+   mockup, approved 2026-10-15) ---- */
+.pm-alert.ok { border-color: rgba(47, 179, 68, 0.45); background: var(--success-lt); }
+.pm-saved-note { margin: 10px 18px 0; }
+.pm-input.invalid { border-color: var(--danger-border); }
+.pm-alloc { display: flex; flex-wrap: wrap; align-items: center; gap: 0.375rem 1.25rem; padding: 0.7rem 1.125rem; border-bottom: 1px solid var(--border); font-size: 0.8125rem; color: var(--text); }
+.pm-alloc b { color: var(--strong); font-weight: 600; font-variant-numeric: tabular-nums; }
+.pm-alloc .muted { color: var(--muted); }
+.pm-alloc-bar { display: flex; height: 0.5rem; width: 13rem; border-radius: 3px; overflow: hidden; background: var(--track); gap: 1px; }
+.pm-alloc-bar span { display: block; height: 100%; }
+.pm-alloc-bar .set { background: var(--primary); }
+.pm-alloc-bar .eq { background: var(--azure-text); opacity: 0.55; }
+.pm-m-ladder { grid-column: 1 / -1; display: flex; flex-wrap: wrap; align-items: center; gap: 0.25rem 0.75rem; font-size: 0.8125rem; }
+.pm-m-ladder-fig { display: inline-flex; align-items: baseline; gap: 0.3rem; }
+.pm-m-ladder .pm-tk-settings { margin-left: auto; min-height: 2.75rem; }
+.ts-modal .ts-dialog { max-width: 72rem; }
+.ts-modal .modal-content { background: var(--page); color: var(--text); container-type: inline-size; container-name: modal; }
+.ts-modal .modal-header { background: var(--surface); align-items: flex-start; }
+.ts-modal .modal-footer { background: var(--surface); }
+.mh-title { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 0.25rem; }
+.modal-eyebrow { font-size: 0.68rem; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }
+.ts-modal .modal-title { font-size: 1.125rem; font-weight: 600; color: var(--strong); margin: 0; }
+.ts-modal .modal-title .co { font-weight: 400; color: var(--muted); }
+.status-line { display: flex; flex-wrap: wrap; align-items: center; gap: 0.375rem 0.75rem; font-size: 0.78rem; color: var(--muted); }
+.status-line b { color: var(--strong); font-weight: 600; font-variant-numeric: tabular-nums; }
+.ts-grid { display: grid; grid-template-columns: minmax(0, 1fr); grid-template-areas: "form" "checks" "history"; gap: 1rem; align-items: start; }
+.ts-grid > .ts-form { grid-area: form; }
+.ts-grid > .ts-checks { grid-area: checks; }
+.ts-grid > .ts-history { grid-area: history; }
+@container modal (min-width: 1000px) { .ts-grid { grid-template-columns: minmax(0, 1fr) 21rem; grid-template-areas: "form checks" "history checks"; } }
+.ts-head-row { display: grid; grid-template-columns: minmax(11rem, 1fr) 6.5rem 10.75rem 7.75rem 4.75rem; gap: 0.75rem; padding: 0.5rem 1.125rem; background: var(--thead); border-bottom: 1px solid var(--border); font-size: 0.72rem; font-weight: 600; letter-spacing: 0.05em; text-transform: uppercase; color: var(--muted); }
+.ts-head-row .r { text-align: right; }
+.ts-row { display: grid; grid-template-columns: minmax(11rem, 1fr) 6.5rem 10.75rem 7.75rem 4.75rem; gap: 0.25rem 0.75rem; padding: 0.75rem 1.125rem; border-top: 1px solid var(--border-soft); align-items: start; }
+.ts-head-row + .ts-row { border-top: 0; }
+.ts-row.changed { background: var(--warning-lt); }
+.ts-row.changed .pm-help { color: var(--text); }
+.ts-row.changed .pm-input:not(.invalid) { border-color: var(--warning-border); }
+.ts-row .lbl { font-weight: 500; color: var(--strong); }
+.ts-cell-k { display: none; font-size: 0.68rem; font-weight: 600; letter-spacing: 0.05em; text-transform: uppercase; color: var(--muted); }
+.ts-strategy, .ts-eff { text-align: right; padding-top: 0.5rem; font-variant-numeric: tabular-nums; }
+.ts-strategy .v, .ts-eff .v { color: var(--strong); font-weight: 600; }
+.ts-strategy .s, .ts-eff .s { display: block; font-size: 0.75rem; color: var(--muted); margin-top: 2px; }
+.ts-row.changed .ts-strategy .s, .ts-row.changed .ts-eff .s { color: var(--text); }
+.ts-eff .pm-b { margin-top: 3px; margin-left: 4px; }
+.ts-reset { padding-top: 0.375rem; text-align: right; }
+.ts-reset .pm-link { font-size: 0.8125rem; min-height: 1.5rem; }
+.ts-msgs { grid-column: 1 / -1; display: flex; flex-direction: column; gap: 0.25rem; }
+.ts-msgs:empty { display: none; }
+.ts-msg { display: flex; gap: 0.4rem; align-items: flex-start; font-size: 0.78rem; line-height: 1.4; }
+.ts-msg .ic { margin-top: 2px; width: 0.875rem; height: 0.875rem; }
+.ts-msg.err { color: var(--danger-text); font-weight: 500; }
+.ts-msg.warn { color: var(--warning-text); font-weight: 500; }
+.ts-msg.info { color: var(--text); }
+.ts-msg.info .ic { color: var(--muted); }
+.ts-form-msg { padding: 0 1.125rem 0.75rem; }
+.ts-was { font-size: 0.75rem; color: var(--warning-text); font-weight: 600; margin-top: 4px; text-align: right; }
+.ts-intro { padding: 0.6rem 1.125rem; border-bottom: 1px solid var(--border-soft); display: block; }
+.ts-checks .chk { display: grid; grid-template-columns: 1.25rem minmax(0, 1fr); gap: 0.5rem; padding: 0.7rem 1.125rem; border-top: 1px solid var(--border-soft); font-size: 0.8125rem; }
+.ts-intro + .chk { border-top: 0; }
+.ts-checks .chk .ic { margin-top: 2px; }
+.ts-checks .chk.ok .ic { color: var(--success-text); }
+.ts-checks .chk.bad .ic { color: var(--danger-text); }
+.ts-checks .chk b { color: var(--strong); font-weight: 600; display: block; }
+.ts-checks .chk .detail { color: var(--text); margin-top: 2px; line-height: 1.45; }
+.ts-checks .chk .detail .t-bad { font-weight: 600; }
+.ts-sec { padding: 0.7rem 1.125rem 0.25rem; border-top: 1px solid var(--border); }
+.ts-sec h4 { margin: 0; font-size: 0.72rem; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }
+.ts-sec p { margin: 2px 0 0; font-size: 0.75rem; color: var(--muted); }
+.ts-ranges { padding: 0.25rem 1.125rem 0.8rem; display: flex; flex-direction: column; gap: 0.55rem; }
+.ts-range { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 0.2rem 0.75rem; font-size: 0.8125rem; align-items: baseline; }
+.ts-range .k { color: var(--text); }
+.ts-range .v { color: var(--strong); font-weight: 600; font-variant-numeric: tabular-nums; text-align: right; }
+.ts-range .v.t-bad { color: var(--danger-text); }
+.ts-range .sub { grid-column: 1 / -1; font-size: 0.75rem; color: var(--muted); }
+.ts-bar { grid-column: 1 / -1; position: relative; height: 0.5rem; border-radius: 3px; background: var(--track); margin-top: 2px; }
+.ts-bar .band { position: absolute; top: 0; bottom: 0; background: var(--success-solid); opacity: 0.55; border-radius: 3px; }
+.ts-bar .dot { position: absolute; top: 50%; width: 0.75rem; height: 0.75rem; border-radius: 50%; background: var(--strong); border: 2px solid var(--surface); transform: translate(-50%, -50%); }
+.ts-formulas { padding: 0.25rem 1.125rem 0.9rem; font-size: 0.78rem; }
+.ts-formulas summary { cursor: pointer; color: var(--link); font-weight: 500; min-height: 1.75rem; display: flex; align-items: center; }
+.ts-formulas ul { margin: 0.375rem 0 0; padding-left: 1rem; display: flex; flex-direction: column; gap: 3px; color: var(--text); }
+.ts-formulas code { font-family: inherit; color: var(--strong); background: none; padding: 0; }
+.ts-foot { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem 0.75rem; }
+.ts-foot-status { font-size: 0.8125rem; color: var(--muted); }
+@media (max-width: 575.98px) {
+  .ts-head-row { display: none; }
+  .ts-row { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 0.5rem 0.75rem; padding: 0.875rem 1rem; }
+  .ts-row .ts-label { grid-column: 1 / -1; }
+  .ts-cell-k { display: block; }
+  .ts-strategy, .ts-eff { text-align: left; padding-top: 0; }
+  .ts-strategy { grid-column: 1; grid-row: 2; }
+  .ts-eff { grid-column: 2; grid-row: 2; }
+  .ts-input { grid-column: 1; grid-row: 3; }
+  .ts-reset { grid-column: 2; grid-row: 3; padding-top: 0; text-align: left; }
+  .ts-reset .pm-link { min-height: 2.75rem; font-size: 0.875rem; }
+  .ts-msgs { grid-row: 4; }
+  .ts-was { text-align: left; }
+  .ts-checks .chk, .ts-sec { padding-left: 1rem; padding-right: 1rem; }
+  .ts-ranges, .ts-formulas { padding-left: 1rem; padding-right: 1rem; }
+  .ts-formulas summary { min-height: 2.75rem; }
+  .ts-foot .pm-btn, .ts-confirm .pm-btn, .ts-edit-strategy { min-height: 2.75rem; }
+  .ts-modal .modal-content { container-type: normal; }
+}
+/* A settings group the active strategy doesn't read (Marcelo 2026-10-15: shown and editable, with this note). */
+.pm-strategy-note { padding: 8px 18px; border-bottom: 1px solid var(--border-soft); font-size: 12.5px; color: var(--warning-text); background: var(--warning-lt); }
+/* Tinted rows and notes: muted, warning, link and badge text adjusted to keep 4.5:1 on the tint, both themes. */
+.pm-table tr.on, .pm-m-tk.on { --muted: #5f6673; --success-text: #17722f; }
+.ts-row.changed, .pm-field.changed, .pm-strategy-note { --muted: var(--text); --warning-text: #a05400; --azure-text: #1a62a3; }
+:root[data-bs-theme="dark"] .pm-table tr.on, :root[data-bs-theme="dark"] .pm-m-tk.on { --muted: #b0b8c4; --success-text: #4ade80; }
+:root[data-bs-theme="dark"] .ts-row.changed, :root[data-bs-theme="dark"] .pm-field.changed, :root[data-bs-theme="dark"] .pm-strategy-note { --warning-text: #fbbf24; --azure-text: #a5d8fd; --link: #7dd3fc; }
+/* Paired inputs share the 190px control column: tighter padding keeps values like 0.05 and units like "min %" whole. */
+.pm-pair .pm-input input { padding: 0 6px; }
+.pm-pair .pm-input .unit { padding: 0 6px; }

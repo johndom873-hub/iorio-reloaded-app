@@ -345,6 +345,8 @@ export function PlutoPage() {
             void loadDaySignalsWatch();
           }}
           onPrepRunChange={() => void loadShortlist()}
+          settings={settings}
+          onOpenSettingsTab={() => selectTab("settings")}
         />
       )}
       {tab === "settings" && (
@@ -355,6 +357,7 @@ export function PlutoPage() {
           error={settingsError}
           state={state}
           isPhone={isPhone}
+          onOpenTickersTab={() => selectTab("tickers")}
           onSaved={(saved) => {
             setSettings(saved);
             void loadSettings();

@@ -1,11 +1,12 @@
-import { useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import type { FrozenTicker } from "../../api/environment";
 import { FrozenTickerBadge } from "../FrozenTickerBadge";
 import { useFrozenTickers } from "../../hooks/useFrozenTickers";
 import { ApiError } from "../../api/client";
-import { updateShortlistBotEnabled, type DaySignalsWatch, type PlutoState } from "../../api/pluto";
+import { fetchPlutoLadderSettings, updateShortlistBotEnabled, type DaySignalsWatch, type PlutoLadderTickerSettings, type PlutoSettings, type PlutoState } from "../../api/pluto";
 import type { ShortlistRow, TickerBackfillRun } from "../../api/shortlist";
-import { formatBrowserDayMonth, pluralize } from "../../lib/formatters";
+import { formatBrowserDayMonth, formatCurrency, formatInputNumber, pluralize } from "../../lib/formatters";
+import { effectiveAllocationPct, ladderFit, recommendedShockAt } from "../../lib/plutoLadderPresentation";
 import { describeDaySignalsWatch } from "../../lib/plutoPresentation";
 import { ColumnVisibilityPopover } from "../DataTable/ColumnVisibilityPopover";
 import { useColumnVisibility } from "../DataTable/useColumnVisibility";
@@ -16,6 +17,7 @@ import { DailyBarsCell, DividendCell, EarningsCell, OptionChainExpiriesCell, Pre
 import { TickerPrepModal } from "../shortlist/TickerPrepModal";
 import { Meter, SearchIcon, TickerButton, ToneBadge } from "./plutoBits";
 import { PlutoStopsManagingConfirm, plutoStopsManagingPositions } from "./PlutoStopsManagingConfirm";
+import { PlutoLadderTickerWindow } from "./PlutoLadderTickerWindow";
 
 interface PlutoTickersTabProps {
   rows: ShortlistRow[];
@@ -28,6 +30,10 @@ interface PlutoTickersTabProps {
   onOpenTicker: (symbol: string) => void;
   onToggled: (entryId: string, enabled: boolean) => void;
   onPrepRunChange: (run: TickerBackfillRun | null) => void;
+  /** Pluto's settings: the ladder's strategy values the window shows beside each ticker's own. */
+  settings: PlutoSettings | null;
+  /** The window's "Edit the strategy values" link. */
+  onOpenSettingsTab: () => void;
 }
 
 type Filter = "all" | "on" | "off";
@@ -37,6 +43,10 @@ const columns = [
   { key: "ticker", header: "Ticker" },
   { key: "sector", header: "Sector" },
   { key: "now", header: "Pluto now" },
+  { key: "allocation", header: "Allocation", title: "% of Pluto's capital budget: set, or an equal share of what the set allocations leave", align: "right" },
+  { key: "pot", header: "Pot", title: "The allocation of Pluto's capital budget at last night's account value", align: "right" },
+  { key: "ladder", header: "Ladder", title: "The CC + Put Ladder values this ticker overrides" },
+  { key: "checks", header: "Checks", title: "Whether a lot and a ladder Put fit the pot at the last close" },
   { key: "daySignals", header: "Day Signals today", title: "Pluto analyses only the tickers Day Signals quotes today (plus one opening look). A ticker with no positive-edge contract at 10:00 is not quoted until a re-check finds one." },
   { key: "dailyBars", header: "Daily bars", title: "Daily price/IV history", align: "right" },
   { key: "earnings", header: "Earnings", title: "Earnings dates on record", align: "right" },
@@ -45,7 +55,42 @@ const columns = [
   { key: "expiries", header: "Chain expiries", title: "Expiries with strikes captured", align: "right" },
   { key: "surface", header: "Surface fit", title: "Fitted vs total expiries; click to open the surface", align: "right" },
   { key: "status", header: "Status" },
+  { key: "settings", header: "Settings" },
 ] as const;
+
+const percentText = (value: number) => `${formatInputNumber(+value.toFixed(2), 2)}%`;
+
+/** "6 rungs · |delta| ≤ 0.25": what a ticker overrides; empty when nothing. */
+function describeLadderOverrides(ticker: PlutoLadderTickerSettings): string[] {
+  const parts: string[] = [];
+  if (ticker.tickerOverrides.ladderSharesPct !== null) parts.push(`${percentText(ticker.tickerOverrides.ladderSharesPct)} shares`);
+  if (ticker.overrideShockPct !== null) parts.push(`shock ${percentText(ticker.overrideShockPct)}`);
+  if (ticker.tickerOverrides.ladderRungs !== null) parts.push(`${ticker.tickerOverrides.ladderRungs} rungs`);
+  const { minAbsDelta, maxAbsDelta } = ticker.tickerOverrides;
+  if (minAbsDelta !== null && maxAbsDelta !== null) parts.push(`|delta| ${minAbsDelta.toFixed(2)}–${maxAbsDelta.toFixed(2)}`);
+  else if (minAbsDelta !== null) parts.push(`|delta| ≥ ${minAbsDelta.toFixed(2)}`);
+  else if (maxAbsDelta !== null) parts.push(`|delta| ≤ ${maxAbsDelta.toFixed(2)}`);
+  return parts;
+}
+
+/** A ticker's checks at its saved values and its pot; null when there is nothing to check (no pot, no close, no shock). */
+function savedTickerFit(ticker: PlutoLadderTickerSettings, settings: PlutoSettings | null): { fits: boolean; reason: string | null } | null {
+  if (!settings || ticker.potDollars === null || ticker.lastClose === null) return null;
+  const shockPct = ticker.overrideShockPct ?? ticker.recommendedShockPct ?? recommendedShockAt(ticker.recommendedShockSource, { minPct: settings.ladderShockMinPct, maxPct: settings.ladderShockMaxPct, noHistoryPct: settings.ladderShockNoHistoryPct });
+  if (shockPct === null) return null;
+  const fit = ladderFit({ price: ticker.lastClose.price, pot: ticker.potDollars, sharesPct: ticker.baseline.ladderSharesPct, rungs: ticker.baseline.ladderRungs, shockPct });
+  return { fits: fit.lotFits && fit.putFits, reason: !fit.lotFits ? "The shares don't buy a lot" : !fit.putFits ? "A Put doesn't fit a rung" : null };
+}
+
+function ChecksBadge({ check }: { check: { fits: boolean; reason: string | null } | null }) {
+  if (!check) return <span className="muted">—</span>;
+  return (
+    <>
+      <span className={`pm-b ${check.fits ? "ok" : "bad"}`}>{check.fits ? "Fits" : "Doesn't fit"}</span>
+      {check.reason && <span className="pm-cell-sub">{check.reason}</span>}
+    </>
+  );
+}
 
 /** The per-ticker switch in the mockup's own style; saves on click, the cap error comes back from the API. */
 function TickerSwitch({ row, onToggled, onError, withLabel }: { row: ShortlistRow; onToggled: (enabled: boolean) => void; onError: (message: string) => void; withLabel: boolean }) {
@@ -112,7 +157,7 @@ function changedBy(row: ShortlistRow): string | null {
   return `${row.botEnabledChangedBy ?? "—"} · ${formatBrowserDayMonth(row.botEnabledChangedAt)}`;
 }
 
-export function PlutoTickersTab({ rows, loading, error, state, daySignalsWatch, maxEnabled, isPhone, onOpenTicker, onToggled, onPrepRunChange }: PlutoTickersTabProps) {
+export function PlutoTickersTab({ rows, loading, error, state, daySignalsWatch, maxEnabled, isPhone, onOpenTicker, onToggled, onPrepRunChange, settings, onOpenSettingsTab }: PlutoTickersTabProps) {
   const frozenTickers = useFrozenTickers();
   const [filter, setFilter] = useState<Filter>("all");
   const [search, setSearch] = useState("");
@@ -120,6 +165,26 @@ export function PlutoTickersTab({ rows, loading, error, state, daySignalsWatch, 
   const [surfaceSymbol, setSurfaceSymbol] = useState<string | null>(null);
   const [prepTicker, setPrepTicker] = useState<{ tickerId: string; symbol: string; companyName: string | null } | null>(null);
   const { isColumnVisible, toggleColumn } = useColumnVisibility("pluto-tickers", columns.map((column) => column.key));
+  const [ladderTickers, setLadderTickers] = useState<PlutoLadderTickerSettings[] | null>(null);
+  const [ladderError, setLadderError] = useState<string | null>(null);
+  const [settingsSymbol, setSettingsSymbol] = useState<string | null>(null);
+  const [savedNote, setSavedNote] = useState<string | null>(null);
+
+  // The ladder's per-ticker values; again whenever a ticker is switched on or off (its pot and the equal share change).
+  const enabledKey = rows.filter((row) => row.botEnabled).map((row) => row.symbol).join(",");
+  const loadLadder = useCallback(async () => {
+    try {
+      setLadderTickers(await fetchPlutoLadderSettings());
+      setLadderError(null);
+    } catch {
+      setLadderError("Could not load the tickers' ladder settings.");
+    }
+  }, []);
+  useEffect(() => {
+    void loadLadder();
+  }, [loadLadder, enabledKey]);
+  const ladderBySymbol = useMemo(() => new Map((ladderTickers ?? []).map((ticker) => [ticker.symbol, ticker])), [ladderTickers]);
+  const allocations = useMemo(() => effectiveAllocationPct(rows.filter((row) => row.botEnabled).map((row) => ({ symbol: row.symbol, setPct: ladderBySymbol.get(row.symbol)?.allocationPct ?? null }))), [rows, ladderBySymbol]);
 
   const enabledCount = rows.filter((row) => row.botEnabled).length;
   const needle = search.trim().toUpperCase();
@@ -151,6 +216,68 @@ export function PlutoTickersTab({ rows, loading, error, state, daySignalsWatch, 
       {!isPhone && <ColumnVisibilityPopover variant="toolbar" columns={columns.map((column) => ({ key: column.key, header: column.header }))} isColumnVisible={isColumnVisible} onToggleColumn={toggleColumn} />}
     </div>
   );
+
+  const budget = ladderTickers?.find((ticker) => ticker.capitalBudgetDollars !== null)?.capitalBudgetDollars ?? null;
+  const enabledRows = rows.filter((row) => row.botEnabled);
+  const setRows = enabledRows.filter((row) => ladderBySymbol.get(row.symbol)?.allocationPct != null);
+  const equalRows = enabledRows.filter((row) => ladderBySymbol.get(row.symbol)?.allocationPct == null);
+  const setTotal = setRows.reduce((sum, row) => sum + (ladderBySymbol.get(row.symbol)!.allocationPct ?? 0), 0);
+  const equalShare = equalRows.length === 0 ? null : Math.max(0, (100 - setTotal) / equalRows.length);
+  const allocationStrip = ladderTickers && enabledRows.length > 0 && (
+    <div className="pm-alloc">
+      <span>
+        Pluto's budget <b>{budget === null ? "—" : formatCurrency(budget, 0)}</b>
+        {budget !== null && settings && <span className="muted"> ({percentText(settings.capitalBudgetPct)} of last night's {formatCurrency((budget * 100) / settings.capitalBudgetPct, 0)})</span>}
+      </span>
+      <span className="pm-alloc-bar" aria-hidden="true">
+        {setRows.map((row) => (
+          <span key={row.symbol} className="set" style={{ width: `${ladderBySymbol.get(row.symbol)!.allocationPct}%` }} />
+        ))}
+        {equalShare !== null && equalRows.map((row) => <span key={row.symbol} className="eq" style={{ width: `${equalShare}%` }} />)}
+      </span>
+      <span>
+        Set <b>{percentText(setTotal)}</b>
+        {setRows.length > 0 && <span className="muted"> ({setRows.map((row) => `${row.symbol} ${percentText(ladderBySymbol.get(row.symbol)!.allocationPct!)}`).join(", ")})</span>}
+      </span>
+      {equalShare !== null && (
+        <span>
+          Equal share <b>{percentText(equalShare)}</b> each for {equalRows.map((row) => row.symbol).join(", ")}
+        </span>
+      )}
+    </div>
+  );
+  const ladderCells = (row: ShortlistRow) => {
+    const ladder = ladderBySymbol.get(row.symbol);
+    const allocation = row.botEnabled ? allocations.get(row.symbol) ?? null : null;
+    const overrides = ladder ? describeLadderOverrides(ladder) : [];
+    return {
+      allocation:
+        allocation === null ? (
+          <span className="muted">—</span>
+        ) : (
+          <>
+            <b className="strong num">{percentText(allocation)}</b>
+            <span className="pm-cell-sub">{ladder?.allocationPct != null ? "set" : "equal share"}</span>
+          </>
+        ),
+      pot: !row.botEnabled ? <span className="muted">Not enabled</span> : ladder?.potDollars != null ? formatCurrency(ladder.potDollars, 0) : <span className="muted">—</span>,
+      ladder:
+        overrides.length === 0 ? (
+          <span className="muted">Strategy values</span>
+        ) : (
+          <>
+            <span className="pm-b info">{pluralize(overrides.length, "override")}</span>
+            <span className="pm-cell-sub">{overrides.join(" · ")}</span>
+          </>
+        ),
+      checks: row.botEnabled && ladder ? <ChecksBadge check={savedTickerFit(ladder, settings)} /> : <span className="muted">—</span>,
+      settings: (
+        <button type="button" className="pm-btn sm pm-tk-settings" onClick={() => setSettingsSymbol(row.symbol)} disabled={!ladder || !settings}>
+          Settings
+        </button>
+      ),
+    };
+  };
 
   let body: React.ReactNode;
   if (error) body = <div className="alert alert-danger pm-error mb-0">{error}</div>;
@@ -185,6 +312,21 @@ export function PlutoTickersTab({ rows, loading, error, state, daySignalsWatch, 
                 <span className={`pm-switch-state ${row.botEnabled ? "on" : "off"}`}>{row.botEnabled ? "Allowed" : "Off"}</span>
                 {now && <ToneBadge tone={now.tone}>{now.label}</ToneBadge>}
               </span>
+              {(() => {
+                const cells = ladderCells(row);
+                return (
+                  <span className="pm-m-ladder">
+                    {row.botEnabled && (
+                      <>
+                        <span className="pm-m-ladder-fig">{cells.allocation}</span>
+                        <span className="pm-m-ladder-fig num">{cells.pot}</span>
+                        <span className="pm-m-ladder-fig">{cells.checks}</span>
+                      </>
+                    )}
+                    {cells.settings}
+                  </span>
+                );
+              })()}
             </li>
           );
         })}
@@ -233,6 +375,7 @@ export function PlutoTickersTab({ rows, loading, error, state, daySignalsWatch, 
                 expiries: <OptionChainExpiriesCell expiries={row.optionChainExpiries} />,
                 surface: <SurfaceFitCell row={row} onOpenSurface={() => setSurfaceSymbol(row.symbol)} linkClassName="pm-link num" />,
                 status: row.backfillStatus === "preparing" ? <PreparingStatusBadge progressPercent={row.backfillProgressPercent ?? 0} onClick={() => setPrepTicker({ tickerId: row.tickerId, symbol: row.symbol, companyName: row.companyName })} /> : <span className="muted">—</span>,
+                ...ladderCells(row),
               };
               return (
                 <tr key={row.id} className={row.botEnabled ? "on" : undefined}>
@@ -274,7 +417,16 @@ export function PlutoTickersTab({ rows, loading, error, state, daySignalsWatch, 
           )}
         </div>
         {toolbar}
+        {allocationStrip}
         {toggleError && <div className="alert alert-danger pm-error" role="alert">{toggleError}</div>}
+        {ladderError && <div className="alert alert-danger pm-error" role="alert">{ladderError}</div>}
+        {savedNote && (
+          <div className="pm-alert ok pm-saved-note" role="status">
+            <div className="pm-alert-body">
+              <div className="pm-alert-text">{savedNote}</div>
+            </div>
+          </div>
+        )}
         {body}
         {!loading && !error && visibleRows.length > 0 && visibleRows.length < rows.length && (
           <div className="pm-card-foot">
@@ -283,6 +435,25 @@ export function PlutoTickersTab({ rows, loading, error, state, daySignalsWatch, 
         )}
       </section>
       {surfaceSymbol && <VolatilitySurfaceModal symbol={surfaceSymbol} onClose={() => setSurfaceSymbol(null)} />}
+      {settingsSymbol && settings && ladderBySymbol.get(settingsSymbol) && (
+        <PlutoLadderTickerWindow
+          ticker={ladderBySymbol.get(settingsSymbol)!}
+          companyName={rows.find((row) => row.symbol === settingsSymbol)?.companyName ?? null}
+          enabledInPluto={rows.some((row) => row.symbol === settingsSymbol && row.botEnabled)}
+          allTickers={(ladderTickers ?? []).map((ticker) => ({ settings: ticker, enabled: rows.some((row) => row.symbol === ticker.symbol && row.botEnabled) }))}
+          settings={settings}
+          onClose={() => setSettingsSymbol(null)}
+          onEditStrategyValues={() => {
+            setSettingsSymbol(null);
+            onOpenSettingsTab();
+          }}
+          onSaved={(changeCount) => {
+            setSavedNote(`${settingsSymbol} saved: ${pluralize(changeCount, "change")}. Pluto uses them from its next look.`);
+            setSettingsSymbol(null);
+            void loadLadder();
+          }}
+        />
+      )}
       {prepTicker && <TickerPrepModal tickerId={prepTicker.tickerId} symbol={prepTicker.symbol} companyName={prepTicker.companyName} onRunChange={onPrepRunChange} onClose={() => setPrepTicker(null)} />}
     </>
   );

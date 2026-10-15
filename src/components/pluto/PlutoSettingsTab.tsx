@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ApiError } from "../../api/client";
-import { updatePlutoSettings, type PlutoSettings, type PlutoSettingsAuditRow, type PlutoSettingsField, type PlutoSettingsInput, type PlutoState } from "../../api/pluto";
-import { formatBrowserClockTime, formatBrowserDayMonth } from "../../lib/formatters";
-import { applySettingsEdit, changedSettingsFields, describeSettingsChange, executionStrategyLabels, formatSettingDisplay, formStateWithEdits, plutoParameterHelp, plutoParameterGroups, plutoParameterLabelByField, plutoParameterSpecByField, settingsChangedElsewhere, settingsInputValue, type PlutoParameterGroup, type PlutoParameterSpec, type PlutoSettingsChange, type PlutoSettingsEdits, type PlutoSettingsFormState } from "../../lib/plutoParameters";
+import { fetchPlutoLadderSettings, fetchPlutoSettingsVersion, updatePlutoSettings, type PlutoLadderTickerSettings, type PlutoSettings, type PlutoSettingsAuditRow, type PlutoSettingsField, type PlutoSettingsInput, type PlutoSettingsVersion, type PlutoState } from "../../api/pluto";
+import { formatBrowserClockTime, formatBrowserDayMonth, formatCurrency } from "../../lib/formatters";
+import { ladderFit, recommendedShockAt } from "../../lib/plutoLadderPresentation";
+import { applySettingsEdit, changedSettingsFields, describeSettingsChange, executionStrategyLabels, formatSettingDisplay, inactiveStrategyNote, formStateWithEdits, plutoParameterHelp, plutoParameterGroups, plutoParameterLabelByField, plutoParameterSpecByField, settingsChangedElsewhere, settingsInputValue, type PlutoParameterGroup, type PlutoParameterSpec, type PlutoSettingsChange, type PlutoSettingsEdits, type PlutoSettingsFormState } from "../../lib/plutoParameters";
 import { ConfirmModal } from "../ConfirmModal";
 import { CollapseButton, InfoIcon, ToggleHeader, WarningIcon } from "./plutoBits";
 
@@ -14,6 +15,41 @@ interface PlutoSettingsTabProps {
   state: PlutoState | null;
   isPhone: boolean;
   onSaved: (settings: PlutoSettings) => void;
+  /** The Ticker checks card's link to the Tickers tab, where each ticker's own values are edited. */
+  onOpenTickersTab: () => void;
+}
+
+/** A ticker whose effective |delta| range the edited strategy values would leave empty (a strategy save refuses it). */
+interface BrokenDeltaRange {
+  symbol: string;
+  from: number;
+  to: number;
+  ownLimit: "lower" | "upper" | "both";
+}
+
+function brokenDeltaRanges(tickers: PlutoLadderTickerSettings[], form: PlutoSettingsFormState): BrokenDeltaRange[] {
+  const strategyMin = Number(form.ladderMinAbsDelta);
+  const strategyMax = Number(form.ladderMaxAbsDelta);
+  return tickers.flatMap((ticker) => {
+    const { minAbsDelta, maxAbsDelta } = ticker.tickerOverrides;
+    if (minAbsDelta === null && maxAbsDelta === null) return [];
+    const from = minAbsDelta ?? strategyMin;
+    const to = maxAbsDelta ?? strategyMax;
+    return from > to ? [{ symbol: ticker.symbol, from, to, ownLimit: minAbsDelta !== null && maxAbsDelta !== null ? "both" : minAbsDelta !== null ? "lower" : "upper" }] : [];
+  });
+}
+
+/** Each enabled ticker's fit checks at a set of strategy values: its own overrides and pot, the last close. */
+function tickerFitsAt(tickers: PlutoLadderTickerSettings[], values: Pick<PlutoSettings, "ladderSharesPct" | "ladderRungs" | "ladderShockMinPct" | "ladderShockMaxPct" | "ladderShockNoHistoryPct" | "capitalBudgetPct">, savedBudgetPct: number) {
+  return tickers.flatMap((ticker) => {
+    if (ticker.potDollars === null || ticker.lastClose === null) return [];
+    const shockPct = ticker.overrideShockPct ?? recommendedShockAt(ticker.recommendedShockSource, { minPct: values.ladderShockMinPct, maxPct: values.ladderShockMaxPct, noHistoryPct: values.ladderShockNoHistoryPct });
+    if (shockPct === null) return [];
+    // The pot is the allocation of the capital budget: it follows a budget being edited.
+    const pot = (ticker.potDollars * values.capitalBudgetPct) / savedBudgetPct;
+    const fit = ladderFit({ price: ticker.lastClose.price, pot, sharesPct: ticker.tickerOverrides.ladderSharesPct ?? values.ladderSharesPct, rungs: ticker.tickerOverrides.ladderRungs ?? values.ladderRungs, shockPct });
+    return [{ symbol: ticker.symbol, pot, fit, fits: fit.lotFits && fit.putFits }];
+  });
 }
 
 function FieldInput({ spec, value, onChange, id, disabled = false }: { spec: PlutoParameterSpec; value: string; onChange: (value: string) => void; id: string; disabled?: boolean }) {
@@ -51,9 +87,9 @@ function readStoredOpenGroup(): string | null {
   }
 }
 
-function GroupCard({ group, settings, form, changed, state, onChange, isOpen, onToggle, anchorRef }: { group: PlutoParameterGroup; settings: PlutoSettings; form: PlutoSettingsFormState; changed: Set<string>; state: PlutoState | null; onChange: (field: PlutoSettingsField, value: string) => void; isOpen: boolean; onToggle: () => void; anchorRef: (element: HTMLElement | null) => void }) {
+function GroupCard({ group, settings, form, changed, state, ladderTickers, brokenRanges, onChange, isOpen, onToggle, anchorRef }: { group: PlutoParameterGroup; settings: PlutoSettings; form: PlutoSettingsFormState; changed: Set<string>; state: PlutoState | null; ladderTickers: PlutoLadderTickerSettings[] | null; brokenRanges: BrokenDeltaRange[]; onChange: (field: PlutoSettingsField, value: string) => void; isOpen: boolean; onToggle: () => void; anchorRef: (element: HTMLElement | null) => void }) {
   const changedCount = group.parameters.filter((parameter) => changed.has(parameter.field)).length;
-  const context = { netLiquidationValue: state?.book.netLiquidationValue ?? null, settings };
+  const context = { netLiquidationValue: state?.book.netLiquidationValue ?? null, settings, ladderTickers };
   const plutoRunning = state !== null && state.mode === "on" && !state.paused;
   const rows: PlutoParameterSpec[][] = [];
   for (const parameter of group.parameters) {
@@ -70,6 +106,11 @@ function GroupCard({ group, settings, form, changed, state, onChange, isOpen, on
         </h2>
         <CollapseButton open={isOpen} onToggle={onToggle} label={group.title} />
       </ToggleHeader>
+      {group.strategy && group.strategy !== settings.executionStrategy && (
+        <div className="pm-strategy-note">
+          {executionStrategyLabels[group.strategy]} only. {inactiveStrategyNote}
+        </div>
+      )}
       {isOpen &&
         rows.map((row, index) => {
           const lead = row[0]!;
@@ -81,6 +122,18 @@ function GroupCard({ group, settings, form, changed, state, onChange, isOpen, on
                 <label htmlFor={id}>{lead.label}</label>
                 <div className="pm-help">{plutoParameterHelp(lead, context)}</div>
                 {lead.lockedWhileRunning && plutoRunning && <div className="pm-help t-warn">{lead.lockedWhileRunning}</div>}
+                {/* A field one strategy reads, inside a group both read (Marcelo 2026-10-15): editable, with the note. */}
+                {!group.strategy && lead.strategy && lead.strategy !== settings.executionStrategy && (
+                  <div className="pm-help t-warn">
+                    {executionStrategyLabels[lead.strategy]} only. {inactiveStrategyNote}
+                  </div>
+                )}
+                {lead.field === "ladderMinAbsDelta" &&
+                  brokenRanges.map((range) => (
+                    <div key={range.symbol} className="pm-help t-bad">
+                      {range.symbol}'s range would be {range.from.toFixed(2)}–{range.to.toFixed(2)}: its {range.ownLimit === "both" ? "limits are" : `${range.ownLimit} limit is`} its own. Change its override on the Tickers tab first.
+                    </div>
+                  ))}
               </div>
               <div>
                 {row.length > 1 ? (
@@ -101,7 +154,7 @@ function GroupCard({ group, settings, form, changed, state, onChange, isOpen, on
   );
 }
 
-export function PlutoSettingsTab({ settings, audit, loading, error, state, isPhone, onSaved }: PlutoSettingsTabProps) {
+export function PlutoSettingsTab({ settings, audit, loading, error, state, isPhone, onSaved, onOpenTickersTab }: PlutoSettingsTabProps) {
   const [edits, setEdits] = useState<PlutoSettingsEdits>({});
   const [confirming, setConfirming] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -110,6 +163,26 @@ export function PlutoSettingsTab({ settings, audit, loading, error, state, isPho
   const [scrollTarget, setScrollTarget] = useState<string | null>(null);
   const [showAllAudit, setShowAllAudit] = useState(false);
   const groupRefs = useRef<Record<string, HTMLElement | null>>({});
+  const [ladderTickers, setLadderTickers] = useState<PlutoLadderTickerSettings[] | null>(null);
+  const [version, setVersion] = useState<PlutoSettingsVersion | null>(null);
+
+  // The ladder's ticker values (overrides, pots, last closes) and the settings version, again whenever the settings change.
+  const settingsUpdatedAt = settings?.updatedAt ?? null;
+  useEffect(() => {
+    let cancelled = false;
+    void Promise.all([fetchPlutoLadderSettings(), fetchPlutoSettingsVersion()])
+      .then(([tickers, current]) => {
+        if (cancelled) return;
+        setLadderTickers(tickers);
+        setVersion(current);
+      })
+      .catch(() => {
+        // The ticker checks and the version are extras: the settings stay editable without them.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [settingsUpdatedAt]);
 
   useEffect(() => {
     try {
@@ -132,6 +205,7 @@ export function PlutoSettingsTab({ settings, audit, loading, error, state, isPho
   const changedElsewhere = useMemo(() => (settings ? settingsChangedElsewhere(settings, edits) : new Map<PlutoSettingsField, string>()), [settings, edits]);
   const changes = useMemo(() => (settings && form ? changedSettingsFields(settings, form) : []), [settings, form]);
   const changedFields = useMemo(() => new Set(changes.map((change) => change.field as string)), [changes]);
+  const brokenRanges = useMemo(() => (ladderTickers && form ? brokenDeltaRanges(ladderTickers, form) : []), [ladderTickers, form]);
 
   if (error) return <div className="alert alert-danger">{error}</div>;
   if (loading || !settings || !form) return <div className="pm-card"><div className="pm-empty">Loading settings…</div></div>;
@@ -177,6 +251,49 @@ export function PlutoSettingsTab({ settings, audit, loading, error, state, isPho
   }
 
   const strategyChange = changes.find((change) => change.field === "executionStrategy") ?? null;
+  const numberAt = (field: PlutoSettingsField) => {
+    const value = Number(form[field]);
+    return Number.isFinite(value) && form[field].trim() !== "" ? value : Number(settings[field]);
+  };
+  const editedValues = { ladderSharesPct: numberAt("ladderSharesPct"), ladderRungs: numberAt("ladderRungs"), ladderShockMinPct: numberAt("ladderShockMinPct"), ladderShockMaxPct: numberAt("ladderShockMaxPct"), ladderShockNoHistoryPct: numberAt("ladderShockNoHistoryPct"), capitalBudgetPct: numberAt("capitalBudgetPct") };
+  const fitsNow = ladderTickers ? tickerFitsAt(ladderTickers, editedValues, settings.capitalBudgetPct) : [];
+  const fitsSaved = new Map((ladderTickers ? tickerFitsAt(ladderTickers, settings, settings.capitalBudgetPct) : []).map((entry) => [entry.symbol, entry.fits]));
+  const flips = fitsNow.filter((entry) => fitsSaved.has(entry.symbol) && fitsSaved.get(entry.symbol) !== entry.fits);
+  const checksCard = (
+    <section className="pm-card">
+      <div className="pm-card-h">
+        <h2 className="pm-card-t">Ticker checks</h2>
+        <span className="pm-card-meta">at these values</span>
+      </div>
+      {ladderTickers === null ? (
+        <div className="pm-empty">Loading the tickers…</div>
+      ) : fitsNow.length === 0 ? (
+        <div className="pm-empty">No enabled ticker with a pot and a last close.</div>
+      ) : (
+        <ul className="pm-tk-checks">
+          {fitsNow.map((entry) => {
+            const flipped = fitsSaved.has(entry.symbol) && fitsSaved.get(entry.symbol) !== entry.fits;
+            return (
+              <li key={entry.symbol}>
+                <b className="strong">{entry.symbol}</b>
+                <span className={flipped ? "t-warn" : "muted"}>
+                  {entry.fits ? `${formatCurrency(entry.pot, 0)} pot` : !entry.fit.lotFits ? "Shares don't buy a lot" : "A Put doesn't fit a rung"}
+                  {flipped ? (entry.fits ? " · now fits" : " · stops fitting") : ""}
+                </span>
+                <span className={`pm-b ${entry.fits ? "ok" : "bad"}`}>{entry.fits ? "Fits" : "Doesn't fit"}</span>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+      <div className="pm-card-foot">
+        Each enabled ticker with its own overrides and pot at its last close, recomputed as you type.{" "}
+        <button type="button" className="pm-link small" onClick={onOpenTickersTab}>
+          Open the Tickers tab
+        </button>
+      </div>
+    </section>
+  );
   const auditRows = showAllAudit ? audit : audit.slice(0, 4);
   const auditCard = (
     <section className="pm-card">
@@ -215,11 +332,12 @@ export function PlutoSettingsTab({ settings, audit, loading, error, state, isPho
       <div className="body">
         <span className="strong">{changes.length} unsaved {changes.length === 1 ? "change" : "changes"}</span> <span className="muted">· {changes.map(describeChange).join(" · ")}</span>
         {saveError && <div className="t-bad pm-wrap">{saveError}</div>}
+        {brokenRanges.length > 0 && <div className="t-bad pm-wrap">{brokenRanges.map((range) => `${range.symbol}'s |delta| range would be ${range.from.toFixed(2)}–${range.to.toFixed(2)}.`).join(" ")} Change {brokenRanges.length === 1 ? "its override" : "their overrides"} on the Tickers tab first.</div>}
       </div>
       <button type="button" className="pm-btn" onClick={discard} disabled={saving}>
         Discard
       </button>
-      <button type="button" className="pm-btn primary" onClick={() => setConfirming(true)} disabled={saving}>
+      <button type="button" className="pm-btn primary" onClick={() => setConfirming(true)} disabled={saving || brokenRanges.length > 0}>
         Review and save
       </button>
     </div>
@@ -242,15 +360,19 @@ export function PlutoSettingsTab({ settings, audit, loading, error, state, isPho
         <div className="pm-stack tight">
           {savebar}
           {plutoParameterGroups.map((group) => (
-            <GroupCard key={group.key} group={group} settings={settings} form={form} changed={changedFields} state={state} onChange={updateField} isOpen={openGroup === group.key} onToggle={() => setOpenGroup((current) => (current === group.key ? null : group.key))} anchorRef={(element) => { groupRefs.current[group.key] = element; }} />
+            <GroupCard key={group.key} group={group} settings={settings} form={form} changed={changedFields} state={state} ladderTickers={ladderTickers} brokenRanges={brokenRanges} onChange={updateField} isOpen={openGroup === group.key} onToggle={() => setOpenGroup((current) => (current === group.key ? null : group.key))} anchorRef={(element) => { groupRefs.current[group.key] = element; }} />
           ))}
         </div>
         <div className="pm-stack tight">
+          {checksCard}
           {auditCard}
           <div className="pm-alert info">
             <InfoIcon />
             <div className="pm-alert-body">
-              <div className="pm-alert-text">Saved changes apply at Pluto's next analysis. Each one is logged with who made it and shows in the activity feed.</div>
+              <div className="pm-alert-text">
+                Saved changes apply at Pluto's next analysis. Each one is logged with who made it and shows in the activity feed.
+                {version && ` Settings version ${version.number}${version.since ? ` · since ${formatBrowserDayMonth(version.since)} ${formatBrowserClockTime(version.since)}` : ""}.`}
+              </div>
             </div>
           </div>
         </div>
@@ -270,6 +392,18 @@ export function PlutoSettingsTab({ settings, audit, loading, error, state, isPho
                   <li key={change.field}>{describeChange(change)}</li>
                 ))}
               </ul>
+              {flips.length > 0 && (
+                <>
+                  <div className="confirm-sub">Ticker checks</div>
+                  <ul className="pm-changes">
+                    {flips.map((entry) => (
+                      <li key={entry.symbol}>
+                        {entry.symbol} {entry.fits ? "starts fitting" : "stops fitting"}
+                      </li>
+                    ))}
+                  </ul>
+                </>
+              )}
               {strategyChange && (
                 <div className="pm-alert warn">
                   <WarningIcon />
