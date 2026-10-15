@@ -440,7 +440,9 @@ export interface PlutoModelInputTicker {
   spot?: number;
   day_change_pct?: number;
   atm_iv?: number;
+  /** Prompts before v4.0; v4.0 renamed it forecast_vol (the same 21-session realized-volatility forecast). */
   forecast_rv?: number;
+  forecast_vol?: number;
   momentum_12_1?: number;
   skew_vp?: number;
   elevated_vol?: boolean;

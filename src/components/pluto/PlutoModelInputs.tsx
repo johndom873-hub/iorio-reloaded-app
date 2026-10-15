@@ -105,7 +105,7 @@ function TickerBlock({ ticker, isFiltered, sameMacroAs }: { ticker: PlutoModelIn
       </div>
       <div className="pm-seen-facts num">
         <Fact label="ATM IV" value={present(ticker.atm_iv, (value) => value.toFixed(1))} />
-        <Fact label="Forecast RV" value={present(ticker.forecast_rv, (value) => value.toFixed(1))} />
+        <Fact label="Forecast RV" value={present(ticker.forecast_vol ?? ticker.forecast_rv, (value) => value.toFixed(1))} />
         <Fact label="IV rank" value={present(move.iv_rank, (value) => formatNumber(value))} />
         <Fact label="Skew" value={present(ticker.skew_vp, (value) => `${formatSignedNumber(value, 1)} vp`)} />
         <Fact label="Expected daily move" value={present(move.expected_daily_move_pct, (value) => `${value.toFixed(1)}%`)} />
