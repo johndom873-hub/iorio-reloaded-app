@@ -22,7 +22,7 @@
   --danger-text: #b42323;
   --danger-lt: rgba(214, 57, 57, 0.08);
   --danger-border: rgba(214, 57, 57, 0.45);
-  --warning-text: #ad5b00;
+  --warning-text: #a05400; /* 5.1:1 on --warning-lt (#ad5b00 was 4.47:1) */
   --warning-lt: rgba(245, 159, 0, 0.13);
   --warning-border: rgba(245, 159, 0, 0.5);
   --azure-text: #1d6fb8;
@@ -149,7 +149,7 @@
 .pm-tabs { display: flex; gap: 2px; border-bottom: 1px solid var(--border); margin: 24px 0 20px; overflow-x: auto; }
 .pm-tab { background: none; border: 1px solid transparent; border-bottom: 0; border-radius: 6px 6px 0 0; padding: 9px 16px; color: var(--muted); font: inherit; font-weight: 500; margin-bottom: -1px; display: inline-flex; gap: 8px; align-items: center; cursor: pointer; white-space: nowrap; }
 .pm-tab.active { background: var(--page); border-color: var(--border); border-bottom: 1px solid var(--page); color: var(--strong); font-weight: 600; }
-.pm-tab .count { font-size: 11.5px; padding: 1px 7px; border-radius: 999px; background: var(--surface-2); border: 1px solid var(--border); color: var(--muted); font-weight: 600; }
+.pm-tab .count { font-size: 11.5px; padding: 1px 7px; border-radius: 999px; background: var(--surface-2); border: 1px solid var(--border); color: var(--text); font-weight: 600; }
 
 /* Layout grids */
 .pm-grid-live { display: grid; grid-template-columns: minmax(0, 1fr) 400px; gap: 20px; align-items: start; }
@@ -747,6 +747,8 @@ a.pm-b:hover, button.pm-b.link:hover { text-decoration: underline; }
 .pm-strategy-note { padding: 8px 18px; border-bottom: 1px solid var(--border-soft); font-size: 12.5px; color: var(--warning-text); background: var(--warning-lt); }
 /* Tinted rows and notes: muted, warning, link and badge text adjusted to keep 4.5:1 on the tint, both themes. */
 .pm-table tr.on, .pm-m-tk.on { --muted: #5f6673; --success-text: #17722f; }
+/* Bootstrap's text-secondary (shared cells such as Earnings' "(in Nd)") ignores the tokens above: it takes the row's muted shade. */
+.pm-table tr.on .text-secondary, .pm-m-tk.on .text-secondary { color: var(--muted) !important; }
 .ts-row.changed, .pm-field.changed, .pm-strategy-note { --muted: var(--text); --warning-text: #a05400; --azure-text: #1a62a3; }
 :root[data-bs-theme="dark"] .pm-table tr.on, :root[data-bs-theme="dark"] .pm-m-tk.on { --muted: #b0b8c4; --success-text: #4ade80; }
 :root[data-bs-theme="dark"] .ts-row.changed, :root[data-bs-theme="dark"] .pm-field.changed, :root[data-bs-theme="dark"] .pm-strategy-note { --warning-text: #fbbf24; --azure-text: #a5d8fd; --link: #7dd3fc; }
