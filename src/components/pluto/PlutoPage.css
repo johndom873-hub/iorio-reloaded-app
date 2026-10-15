@@ -583,3 +583,54 @@ a.pm-b:hover, button.pm-b.link:hover { text-decoration: underline; }
 .pm-date { height: 34px; border: 1px solid var(--border-strong); border-radius: 6px; background: var(--input-bg); color: var(--strong); font: inherit; font-size: 0.8rem; padding: 0 0.6rem; }
 :root[data-bs-theme="dark"] .pm-date { color-scheme: dark; }
 .pm-session-filter { display: inline-flex; align-items: center; gap: 0.5rem; }
+/* How it works tab (mockup approved 2026-10-15): each strategy's rules in plain language, numbers from the live settings. */
+.pm-how { display: flex; flex-direction: column; gap: 1rem; }
+.pm-how-switch { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem 0.75rem; }
+/* The shared .pm-seg's unselected muted text is 4.42:1 on its light track; the switch uses the body text instead. */
+.pm-how-switch .pm-seg button:not(.on) { color: var(--text); }
+.pm-how-active { font-size: 0.72rem; font-weight: 600; padding: 0.05rem 0.45rem; border-radius: 4px; background: var(--success-lt); color: var(--strong); }
+.pm-how-body { display: flex; flex-direction: column; gap: 0.75rem; }
+.pm-how-lead { margin: 0; font-size: 0.95rem; line-height: 1.6; color: var(--strong); max-width: 62rem; }
+.pm-how-text { margin: 0; font-size: 0.85rem; line-height: 1.55; max-width: 62rem; }
+.pm-how-note { margin: 0; font-size: 0.78rem; line-height: 1.5; color: var(--muted); max-width: 62rem; }
+.pm-how-v { font-family: var(--tblr-font-monospace); font-size: 0.8rem; color: var(--strong); white-space: nowrap; }
+.pm-how-steps { display: flex; flex-wrap: wrap; gap: 0.75rem; }
+.pm-how-step { flex: 1 1 15rem; min-width: 0; border: 1px solid var(--border); border-radius: 8px; padding: 0.875rem; display: flex; flex-direction: column; gap: 0.5rem; }
+.pm-how-step-h { margin: 0; display: flex; align-items: center; gap: 0.5rem; font-size: 0.9rem; font-weight: 600; color: var(--strong); }
+.pm-how-step-n { flex: none; width: 1.75rem; height: 1.75rem; border-radius: 999px; display: inline-flex; align-items: center; justify-content: center; font-size: 0.8rem; font-weight: 600; color: var(--strong); background: var(--primary-lt); }
+.pm-how-step-n.put { background: var(--warning-lt); }
+.pm-how-figures { display: flex; flex-wrap: wrap; gap: 0.75rem; }
+.pm-how-figure { flex: 1 1 12.5rem; min-width: 0; border-radius: 8px; padding: 0.75rem 1rem; background: var(--surface-2); }
+.pm-how-figure.call { background: var(--primary-lt); }
+.pm-how-figure.put { background: var(--warning-lt); }
+.pm-how-figure-l, .pm-how-figure-s { font-size: 0.75rem; color: var(--text); }
+.pm-how-figure-v { font-family: var(--tblr-font-monospace); font-size: 1.25rem; font-weight: 600; color: var(--strong); }
+.pm-how-bars { display: flex; flex-direction: column; gap: 0.6rem; }
+.pm-how-bar { display: grid; grid-template-columns: 7.5rem minmax(0, 1fr) 5.5rem; align-items: center; gap: 0.75rem; font-size: 0.8rem; color: var(--strong); }
+.pm-how-bar-track { height: 0.75rem; border-radius: 3px; background: var(--track); overflow: hidden; }
+.pm-how-bar-fill { height: 100%; border-radius: 3px; background: var(--primary); }
+.pm-how-bar-fill.put { background: var(--warning-text); }
+.pm-how-bar-v { text-align: right; font-family: var(--tblr-font-monospace); }
+.pm-how-table-wrap { border: 1px solid var(--border); border-radius: 8px; }
+.pm-how-table { min-width: 34rem; }
+.pm-how-table td.pm-how-meaning { line-height: 1.5; min-width: 16rem; }
+.pm-how-table tbody tr:hover td { background: transparent; }
+.pm-how-pair { display: flex; flex-wrap: wrap; gap: 1rem; align-items: stretch; }
+.pm-how-pair > .pm-card { flex: 1 1 22.5rem; min-width: 0; }
+.pm-how-list { margin: 0; padding-left: 1.1rem; display: flex; flex-direction: column; gap: 0.5rem; font-size: 0.85rem; line-height: 1.5; }
+.pm-how-formula { border-top: 1px solid var(--border); }
+.pm-how-formula summary { cursor: pointer; font-size: 0.85rem; font-weight: 600; color: var(--strong); min-height: 44px; display: flex; align-items: center; }
+.pm-how-formula-body { display: flex; flex-direction: column; gap: 0.4rem; font-size: 0.8rem; line-height: 1.55; padding-bottom: 0.25rem; }
+.pm-how-formula-line { font-family: var(--tblr-font-monospace); font-size: 0.85rem; font-weight: 600; color: var(--strong); overflow-wrap: anywhere; }
+@media (max-width: 767px) {
+  .pm-how-bar { grid-template-columns: 5.5rem minmax(0, 1fr) 4.5rem; gap: 0.5rem; }
+  .pm-how-switch .pm-seg { width: 100%; }
+  .pm-how-switch .pm-seg button { flex: 1; justify-content: center; }
+  /* A rule table stacks on a phone: name and value on one line, the plain words under them, no sideways scroll. */
+  .pm-how-table { min-width: 0; }
+  .pm-how-table thead { display: none; }
+  .pm-how-table tbody tr { display: grid; grid-template-columns: minmax(0, 1fr) auto; column-gap: 0.75rem; padding: 0.6rem 1rem; border-bottom: 1px solid var(--border-soft); }
+  .pm-how-table tbody tr:last-child { border-bottom: 0; }
+  .pm-how-table td, .pm-how-table td:first-child, .pm-how-table td:last-child { display: block; padding: 0; border: 0; }
+  .pm-how-table td.pm-how-meaning { grid-column: 1 / -1; min-width: 0; margin-top: 0.25rem; }
+}

@@ -23,6 +23,7 @@ import {
 } from "../api/pluto";
 import { fetchShortlist, type ShortlistRow } from "../api/shortlist";
 import { PlutoHistoryTab, type PlutoHistoryView } from "../components/pluto/PlutoHistoryTab";
+import { PlutoHowItWorksTab } from "../components/pluto/PlutoHowItWorksTab";
 import { PlutoLiveTab, activityFeedLength } from "../components/pluto/PlutoLiveTab";
 import { PlutoSettingsTab } from "../components/pluto/PlutoSettingsTab";
 import { PlutoStatusCard } from "../components/pluto/PlutoStatusCard";
@@ -35,15 +36,16 @@ import { activityFeedHiddenEventTypes, crashLoopRestartsFromEvents, derivePlutoS
 import "../components/pluto/PlutoPage.css";
 
 // The Pluto screen (redesign approved 2026-10-06): one status card that is always visible, then Live / History /
-// Tickers / Settings tabs. The tab and the History view live in the URL so the cards can link to each other.
+// Tickers / Settings / How it works tabs. The tab and the History view live in the URL so the cards can link to each other.
 
-type PlutoTab = "live" | "history" | "tickers" | "settings";
+type PlutoTab = "live" | "history" | "tickers" | "settings" | "how";
 
 const tabs: { key: PlutoTab; label: string }[] = [
   { key: "live", label: "Live" },
   { key: "history", label: "History" },
   { key: "tickers", label: "Tickers" },
   { key: "settings", label: "Settings" },
+  { key: "how", label: "How it works" },
 ];
 
 const stateRefreshIntervalMs = 30_000;
@@ -51,7 +53,7 @@ const notificationRefreshDebounceMs = 400;
 const liveActionsLimit = 100;
 
 function tabFromParam(value: string | null): PlutoTab {
-  return value === "history" || value === "tickers" || value === "settings" ? value : "live";
+  return value === "history" || value === "tickers" || value === "settings" || value === "how" ? value : "live";
 }
 
 function historyViewFromParam(value: string | null): PlutoHistoryView {
@@ -91,6 +93,21 @@ export function PlutoPage() {
   const [scoreboardError, setScoreboardError] = useState<string | null>(null);
 
   const now = useTickingNow(state?.lastPassAt ?? state?.updatedAt ?? null, [state?.session.windowStartAt, state?.session.windowEndAt]);
+  const tabBar = useRef<HTMLElement>(null);
+  // On a phone the tabs are wider than the screen and the bar scrolls sideways: keep the open tab in view.
+  useEffect(() => {
+    const bar = tabBar.current;
+    const active = bar?.querySelector<HTMLElement>(".pm-tab.active");
+    if (!bar || !active) return;
+    // The bar bleeds past the page padding on a phone: what shows is the bar inside the screen, less its padding.
+    const barBox = bar.getBoundingClientRect();
+    const barStyle = getComputedStyle(bar);
+    const visibleLeft = Math.max(barBox.left, 0) + parseFloat(barStyle.paddingLeft);
+    const visibleRight = Math.min(barBox.right, document.documentElement.clientWidth) - parseFloat(barStyle.paddingRight);
+    const tabBox = active.getBoundingClientRect();
+    if (tabBox.right > visibleRight) bar.scrollLeft += tabBox.right - visibleRight;
+    else if (tabBox.left < visibleLeft) bar.scrollLeft -= visibleLeft - tabBox.left;
+  }, [tab]);
 
   const loadState = useCallback(async () => {
     try {
@@ -284,7 +301,7 @@ export function PlutoPage() {
         />
       )}
 
-      <nav className="pm-tabs" aria-label="Pluto sections">
+      <nav ref={tabBar} className="pm-tabs" aria-label="Pluto sections">
         {tabs.map((entry) => (
           <button key={entry.key} type="button" role="tab" aria-selected={tab === entry.key} className={`pm-tab${tab === entry.key ? " active" : ""}`} onClick={() => selectTab(entry.key)}>
             {entry.label}
@@ -345,6 +362,7 @@ export function PlutoPage() {
           }}
         />
       )}
+      {tab === "how" && <PlutoHowItWorksTab />}
     </div>
   );
 }

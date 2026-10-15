@@ -641,6 +641,104 @@ export function fetchPlutoSettings(): Promise<PlutoSettings> {
   return apiRequest<PlutoSettings>("/pluto/settings");
 }
 
+/** Every number the How it works tab quotes (API src/pluto/howItWorks.ts): percentages in percent, deltas as fractions, money in dollars. */
+export interface PlutoHowItWorks {
+  activeStrategy: "edge_margin" | "cc_put_ladder";
+  shared: { capitalBudgetPct: number; dailyLossBreakerPct: number; unfilledOrderCancelMinutes: number };
+  ladder: {
+    minAbsDelta: number;
+    maxAbsDelta: number;
+    minDte: number;
+    maxDte: number;
+    maxSpreadPctOfMid: number;
+    minimumBid: number;
+    maxVolumeSharePct: number;
+    rungs: number;
+    sharesPct: number;
+    shockMinPct: number;
+    shockMaxPct: number;
+    shockNoHistoryPct: number;
+    shockLookbackYears: number;
+    putOverCallYieldMarginPct: number;
+    maxWorkingOrdersPerTicker: number;
+    maxOrdersPerTickerPerDay: number;
+    maxOpenPositionsPerTicker: number;
+    spyStressBreakerPct: number;
+    tickerCooldownMinutes: number;
+    example: {
+      accountValue: number;
+      allocationPct: number;
+      pot: number;
+      sharesBudget: number;
+      reserve: number;
+      rungCollateral: number;
+      averageCost: number;
+      breakEven: number;
+      shockPct: number;
+      floor: number;
+      rungs: { rung: number; strikeCap: number }[];
+    };
+  };
+  edgeMargin: {
+    windowStartEt: string;
+    windowEndEt: string;
+    windowEndMinutesBeforeCloseAtLeast: number;
+    minGrade: "strong" | "good" | "weak";
+    gradeCutsPct: { strong: number; good: number; weak: number };
+    minEdgeYieldPct: number;
+    minAnnualizedYieldPct: number;
+    maxAbsDelta: number;
+    minDte: number;
+    maxDte: number;
+    maxSpreadPct: number;
+    minOpenInterest: number;
+    minSessionVolume: number;
+    maxQuoteAgeMinutes: number;
+    maxDayMoveMultiple: number;
+    burstLines: number;
+    candidatesPerTickerPerStrategy: number;
+    confidenceFloor: number;
+    maxEdgeMarginDriftPts: number;
+    orderSizePctOfBudget: number;
+    maxTickerExposurePct: number;
+    minCashReservePct: number;
+    maxContractsVolumeSharePct: number;
+    stressRiskBudgetPct: number;
+    stressSigmas: number;
+    kellyFraction: number;
+    maxOpenPositions: number;
+    spyStressBreakerPct: number;
+    maxActionsPerSession: number;
+    tickerCooldownMinutes: number;
+    consecutiveModelFailuresBreaker: number;
+    dailyCostCeilingUsd: number;
+    heldShareCallMinProfitPct: number;
+    heldShareCallMinProfitDollars: number;
+    buybackMinDte: number;
+    buybackUnscoredMinKeptPremiumPct: number;
+    earningsCloseWindowSessions: number;
+    eventCloseWindowSessions: number;
+    example: {
+      contractLabel: string;
+      strike: number;
+      daysToExpiry: number;
+      mid: number;
+      fair: number;
+      frictionDollars: number;
+      exposure: number;
+      edgeMarginPct: number;
+      grade: string;
+      edgeDollars: number;
+      edgeYieldPct: number;
+      passesMinEdgeYield: boolean;
+    };
+  };
+}
+
+export function fetchPlutoHowItWorks(): Promise<PlutoHowItWorks> {
+  return apiRequest<PlutoHowItWorks>("/pluto/how-it-works");
+}
+
 export function updatePlutoSettings(input: PlutoSettingsInput): Promise<PlutoSettings> {
   return apiRequest<PlutoSettings>("/pluto/settings", { method: "PUT", body: JSON.stringify(input) });
 }

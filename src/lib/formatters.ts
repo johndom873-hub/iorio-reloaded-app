@@ -162,6 +162,18 @@ export function formatPercentageValue(percentOrNull: number | null | undefined, 
   return `${percentOrNull.toFixed(decimalPlaces)}%`;
 }
 
+/** "5%", "15.4%": a 0-100 value with at most `maxDecimalPlaces`, trailing zeros dropped. */
+export function formatPercentageValueTrimmed(percentOrNull: number | null | undefined, maxDecimalPlaces = 1): string {
+  if (percentOrNull === null || percentOrNull === undefined || Number.isNaN(percentOrNull)) return "—";
+  return `${Number(percentOrNull.toFixed(maxDecimalPlaces))}%`;
+}
+
+/** "0.30": an option's delta (or |delta|) to two places. */
+export function formatDelta(delta: number | null | undefined): string {
+  if (delta === null || delta === undefined || Number.isNaN(delta)) return "—";
+  return delta.toFixed(2);
+}
+
 // IBKR returns option expiries as "YYYYMMDD" (e.g. an order leg's expiry); the
 // rest of the app stores/sends dates as ISO "YYYY-MM-DD".
 export function ibkrExpiryToIsoDate(expiryYyyymmdd: string): string {
