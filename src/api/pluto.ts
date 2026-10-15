@@ -174,6 +174,23 @@ export interface PlutoSettings {
   unstructuredCloseMinPct: number;
   unstructuredCloseMinDollars: number;
   buybackMinDte: number;
+  // The CC + Put Ladder's strategy-wide values (a ticker may override shares, rungs and the |delta| range).
+  ladderSharesPct: number;
+  ladderRungs: number;
+  ladderMinAbsDelta: number;
+  ladderMaxAbsDelta: number;
+  ladderMinDte: number;
+  ladderMaxDte: number;
+  ladderMaxSpreadPctOfMid: number;
+  ladderShockMinPct: number;
+  ladderShockMaxPct: number;
+  ladderShockNoHistoryPct: number;
+  ladderShockLookbackYears: number;
+  ladderMaxWorkingOrdersPerTicker: number;
+  ladderMaxOpenPositionsPerTicker: number;
+  ladderMaxOrdersPerTickerPerDay: number;
+  ladderSpyStressBreakerPct: number;
+  ladderTickerCooldownMinutes: number;
   updatedAt: string;
   updatedByUserId: string | null;
 }
@@ -749,6 +766,88 @@ export function updatePlutoSettings(input: PlutoSettingsInput): Promise<PlutoSet
 
 export function fetchPlutoSettingsAudit(limit = 20): Promise<PlutoSettingsAuditRow[]> {
   return apiRequest<PlutoSettingsAuditRow[]>(`/pluto/settings/audit?limit=${limit}`);
+}
+
+/** The settings version a pass would record now (API settingsVersions.ts). */
+export interface PlutoSettingsVersion {
+  versionId: string;
+  /** Counted in the order versions were first stored. */
+  number: number;
+  /** When the settings last changed. */
+  since: string | null;
+}
+
+export function fetchPlutoSettingsVersion(): Promise<PlutoSettingsVersion> {
+  return apiRequest<PlutoSettingsVersion>("/pluto/settings/version");
+}
+
+/** The CC + Put Ladder's values in the backtest's names (API ladderSettings.ts LadderBaselineSettings, tunable part). */
+export interface PlutoLadderBaseline {
+  minAbsDelta: number;
+  maxAbsDelta: number;
+  minDte: number;
+  maxDte: number;
+  maxSpreadPctOfMid: number;
+  ladderRungs: number;
+  ladderSharesPct: number;
+  ladderShockMinPct: number;
+  ladderShockMaxPct: number;
+  ladderShockNoHistoryPct: number;
+  ladderShockLookbackYears: number;
+}
+
+/** A ticker's ladder settings as the Pluto screen shows them (GET /pluto/ladder-settings[/:symbol]). */
+export interface PlutoLadderTickerSettings {
+  symbol: string;
+  /** Enabled in Pluto while the CC + Put Ladder is the active strategy. */
+  enabled: boolean;
+  settingsVersionId: string | null;
+  /** Effective: the ticker's override where it has one, else the strategy's. */
+  baseline: PlutoLadderBaseline;
+  strategyBaseline: PlutoLadderBaseline;
+  tickerOverrides: { ladderSharesPct: number | null; ladderRungs: number | null; minAbsDelta: number | null; maxAbsDelta: number | null };
+  /** % of Pluto's capital budget; null = an equal share of what the set allocations leave. */
+  allocationPct: number | null;
+  /** The pot in dollars while the ticker is enabled in Pluto; null otherwise or with no account value. */
+  potDollars: number | null;
+  overrideShockPct: number | null;
+  recommendedShockPct: number | null;
+  /** The fit checks' price: the last daily close and its date. */
+  lastClose: { price: number; date: string } | null;
+  capitalBudgetDollars: number | null;
+  recommendedShockSource: { maxDrawdownPct: number | null; closesUsed: number; fromIso: string | null; toIso: string | null } | null;
+}
+
+export function fetchPlutoLadderSettings(): Promise<PlutoLadderTickerSettings[]> {
+  return apiRequest<PlutoLadderTickerSettings[]>("/pluto/ladder-settings");
+}
+
+export function fetchPlutoLadderTickerSettings(symbol: string): Promise<PlutoLadderTickerSettings> {
+  return apiRequest<PlutoLadderTickerSettings>(`/pluto/ladder-settings/${encodeURIComponent(symbol)}`);
+}
+
+export type PlutoTickerSettingsField = "allocationPct" | "ladderSharesPct" | "ladderShockOverridePct" | "ladderRungs" | "ladderMinAbsDelta" | "ladderMaxAbsDelta";
+
+/** A ticker's own values (pluto_ticker_settings); null = the default. */
+export type PlutoTickerSettingsValues = Record<PlutoTickerSettingsField, number | null> & { symbol: string; updatedAt: string | null };
+
+/** Each field a number, or null for the default again. */
+export function savePlutoTickerSettings(symbol: string, input: Partial<Record<PlutoTickerSettingsField, number | null>>): Promise<PlutoTickerSettingsValues> {
+  return apiRequest<PlutoTickerSettingsValues>(`/pluto/ticker-settings/${encodeURIComponent(symbol)}`, { method: "PUT", body: JSON.stringify(input) });
+}
+
+export interface PlutoTickerSettingsAuditRow {
+  id: number;
+  changedAt: string;
+  userDisplayName: string | null;
+  symbol: string;
+  field: PlutoTickerSettingsField;
+  oldValue: string | null;
+  newValue: string | null;
+}
+
+export function fetchPlutoTickerSettingsAudit(symbol: string, limit = 20): Promise<PlutoTickerSettingsAuditRow[]> {
+  return apiRequest<PlutoTickerSettingsAuditRow[]>(`/pluto/ticker-settings/audit?symbol=${encodeURIComponent(symbol)}&limit=${limit}`);
 }
 
 /** The newest pass that asked the model, however many skipped passes came after it (the Live tab's latest decision). */
