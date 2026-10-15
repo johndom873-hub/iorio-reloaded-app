@@ -42,8 +42,6 @@ export interface BacktestBaselineSettings {
   ladderShockLookbackYears: number;
   ladderTop: "break_even" | "price";
   ladderPace: "any_look" | "one_open" | "no_puts";
-  ladderMinutesBetweenRungs: number;
-  ladderMaxRungsPerSession: number;
   ladderPutVersusCall: "call_first" | "higher_yield";
   ladderPutYieldMarginPct: number;
   dayValueOptions: "marked" | "excluded";
