@@ -700,3 +700,9 @@ export function formatSignedPercentage(fractionOrNull: number | null | undefined
   if (fractionOrNull === null || fractionOrNull === undefined || Number.isNaN(fractionOrNull)) return "—";
   return formatSignedPercentageValue(fractionOrNull * 100, decimalPlaces);
 }
+
+/** A difference of two percentages given as fractions, in percentage points: 0.015 → "1.5 pts", -0.002 → "-0.2 pts". */
+export function formatPercentagePoints(fractionOrNull: number | null | undefined, decimalPlaces = 1): string {
+  if (fractionOrNull === null || fractionOrNull === undefined || Number.isNaN(fractionOrNull)) return "—";
+  return `${(fractionOrNull * 100).toFixed(decimalPlaces)} pts`;
+}

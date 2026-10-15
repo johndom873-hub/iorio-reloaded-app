@@ -1,4 +1,5 @@
-import type { ReactNode } from "react";
+import { useMemo, useState, type ReactNode } from "react";
+import { IconChevronDown, IconChevronUp, IconSelector } from "@tabler/icons-react";
 import { useColumnVisibility } from "./useColumnVisibility";
 import { ColumnVisibilityPopover } from "./ColumnVisibilityPopover";
 import { Spinner } from "../Spinner";
@@ -16,7 +17,11 @@ export interface DataTableColumn<TRow> {
   group?: { label: string; className?: string; title?: string };
   /** Extra class on the column's body cells (e.g. a tinted group). */
   cellClassName?: string;
+  /** Opt-in sorting: the header becomes a button ordering the rows by this value (nulls last either way). */
+  sortValue?: (row: TRow) => number | string | null;
 }
+
+export type DataTableSortDirection = "asc" | "desc";
 
 /** Adjacent visible columns with the same group label, as header cells; ungrouped runs get one blank cell. */
 function groupHeaderCells<TRow>(columns: DataTableColumn<TRow>[]): { key: string; label: string; className?: string; title?: string; span: number }[] {
@@ -55,6 +60,8 @@ interface DataTableProps<TRow> {
   dense?: boolean;
   /** Caps the table body to roughly this many rows and makes it scroll (sticky header) instead of growing the page. */
   maxVisibleRows?: number;
+  /** With sortable columns (sortValue): the order the rows start in. */
+  defaultSort?: { key: string; direction: DataTableSortDirection };
 }
 
 export function DataTable<TRow>({
@@ -73,12 +80,48 @@ export function DataTable<TRow>({
   rowAttributes,
   dense = false,
   maxVisibleRows,
+  defaultSort,
 }: DataTableProps<TRow>) {
   const { isColumnVisible, toggleColumn } = useColumnVisibility(
     tableId,
     columns.map((column) => column.key),
   );
   const visibleColumns = columns.filter((column) => isColumnVisible(column.key));
+  const [sort, setSort] = useState(defaultSort ?? null);
+  const sortedRows = useMemo(() => {
+    const column = sort ? columns.find((candidate) => candidate.key === sort.key && candidate.sortValue) : undefined;
+    if (!sort || !column?.sortValue) return rows;
+    const valueOf = column.sortValue;
+    const sign = sort.direction === "asc" ? 1 : -1;
+    return [...rows].sort((a, b) => {
+      const first = valueOf(a);
+      const second = valueOf(b);
+      if (first === null || second === null) return first === second ? 0 : first === null ? 1 : -1;
+      if (typeof first === "string" || typeof second === "string") return sign * String(first).localeCompare(String(second));
+      return sign * (first - second);
+    });
+  }, [rows, columns, sort]);
+  /** A first click orders text A to Z and numbers largest first; another click reverses it. */
+  const toggleSort = (column: DataTableColumn<TRow>) => {
+    if (sort?.key === column.key) {
+      setSort({ key: column.key, direction: sort.direction === "asc" ? "desc" : "asc" });
+      return;
+    }
+    const sample = rows.map((row) => column.sortValue!(row)).find((value) => value !== null);
+    setSort({ key: column.key, direction: typeof sample === "string" ? "asc" : "desc" });
+  };
+  const headerLabel = (column: DataTableColumn<TRow>) => {
+    if (!column.sortValue) return <span>{column.header}</span>;
+    const active = sort?.key === column.key;
+    const Indicator = !active ? IconSelector : sort!.direction === "asc" ? IconChevronUp : IconChevronDown;
+    return (
+      <button type="button" className="data-table-sort-button" onClick={() => toggleSort(column)}>
+        {column.header}
+        <Indicator size={12} className={active ? "is-active" : undefined} aria-hidden="true" />
+      </button>
+    );
+  };
+  const ariaSort = (column: DataTableColumn<TRow>) => (column.sortValue ? (sort?.key === column.key ? (sort.direction === "asc" ? "ascending" : "descending") : "none") : undefined);
   const alignClassName = (align: DataTableColumn<TRow>["align"]) => (align === "right" ? "text-end" : align === "center" ? "text-center" : undefined);
   const rowHeightRem = dense ? 1.9 : 2.25;
   const maxBodyHeight = maxVisibleRows ? `${(maxVisibleRows + 1) * rowHeightRem}rem` : undefined;
@@ -112,6 +155,7 @@ export function DataTable<TRow>({
                     key={column.key}
                     text={column.headerTitle}
                     className={alignClassName(column.align)}
+                    ariaSort={ariaSort(column)}
                   >
                     {isLastColumn ? (
                       // A blank-header trailing column (e.g. row actions) has no label to sit
@@ -123,7 +167,7 @@ export function DataTable<TRow>({
                       <div
                         className={`d-flex align-items-center gap-1 ${column.align === "right" || column.header === "" ? "justify-content-end" : column.align === "center" ? "justify-content-center" : ""}`}
                       >
-                        <span>{column.header}</span>
+                        {headerLabel(column)}
                         {/* A column with no header (e.g. a trailing actions column) has
                             nothing meaningful to label a checkbox with and is never meant
                             to be hidden — exclude it from the toggle list rather than show
@@ -134,6 +178,8 @@ export function DataTable<TRow>({
                           onToggleColumn={toggleColumn}
                         />
                       </div>
+                    ) : column.sortValue ? (
+                      headerLabel(column)
                     ) : (
                       column.header
                     )}
@@ -156,7 +202,7 @@ export function DataTable<TRow>({
                 </td>
               </tr>
             ) : (
-              rows.map((row, rowIndex) => (
+              sortedRows.map((row, rowIndex) => (
                 <tr
                   key={rowKey(row)}
                   {...rowAttributes?.(row, rowIndex)}

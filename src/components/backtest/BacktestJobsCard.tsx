@@ -64,7 +64,7 @@ export function BacktestJobsCard({ jobs, onJobsChanged }: BacktestJobsCardProps)
     >
       {actionError && <div className="alert alert-danger m-3 mb-0">{actionError}</div>}
       <div className="backtest-job-columns">
-        <BacktestJobList title="Backtests" emptyText="No backtests. They appear here while they run." jobs={jobs.filter((job) => job.kind === "backtest")} {...listProps} />
+        <BacktestJobList title="Backtests" emptyText="No backtests. They appear here while they run." jobs={jobs.filter((job) => job.kind === "backtest" || job.kind === "analysis")} {...listProps} />
         <BacktestJobList title="Downloads" emptyText="No downloads. They appear here while they run." jobs={jobs.filter((job) => job.kind === "download")} {...listProps} />
       </div>
       {jobToCancel && (
@@ -152,7 +152,7 @@ function BacktestJobList({ title, emptyText, jobs, now, pendingAction, isPending
                       {isFirstQueued ? "Start now" : "Move to top"}
                     </button>
                   )}
-                  {(status === "stopped" || status === "failed") && (
+                  {(status === "stopped" || status === "failed") && job.kind !== "analysis" && (
                     <button type="button" className="btn btn-outline-primary d-inline-flex align-items-center gap-1" disabled={pendingAction !== null} onClick={() => onResume(job)}>
                       {isPending(job, "resume") && <Spinner size="sm" />}
                       Resume

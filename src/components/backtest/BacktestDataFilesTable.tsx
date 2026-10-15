@@ -8,6 +8,8 @@ import { Spinner } from "../Spinner";
 import { TooltipSpan } from "../TooltipSpan";
 import { BacktestCard, BacktestCardTitle } from "./backtestBits";
 import { usePutDownloadFirst } from "./usePutDownloadFirst";
+import { IconChartCandle } from "@tabler/icons-react";
+import { TickerAnalysisModal } from "./analysis/TickerAnalysisModal";
 
 interface BacktestDataFilesTableProps {
   files: BacktestDataFileSummary[];
@@ -31,6 +33,13 @@ export function BacktestDataFilesTable({ files, jobs, onFilesChanged }: Backtest
   const [formError, setFormError] = useState<string | null>(null);
   const [rowError, setRowError] = useState<string | null>(null);
   const { requestPutFirst, putFirstModal } = usePutDownloadFirst(jobs);
+  const [analysedSymbol, setAnalysedSymbol] = useState<string | null>(null);
+  const analyseButton = (file: BacktestDataFileSummary) => (
+    <button type="button" className="btn btn-outline-secondary d-inline-flex align-items-center gap-1" disabled={!file.firstDate} title={file.firstDate ? `Analyse ${file.symbol} for the CC + Put Ladder` : "No complete days yet"} onClick={() => setAnalysedSymbol(file.symbol)}>
+      <IconChartCandle size={16} aria-hidden="true" />
+      Analyse
+    </button>
+  );
 
   /**
    * Update sends the file's own first day, so it fills the gaps and adds the days since, never extending the file back in
@@ -167,7 +176,8 @@ export function BacktestDataFilesTable({ files, jobs, onFilesChanged }: Backtest
         const busy = pendingSymbol === file.symbol;
         if (status === "queued" || status === "running") {
           return (
-            <div className="text-end">
+            <div className="d-flex justify-content-end gap-2">
+              {analyseButton(file)}
               <button type="button" className="btn btn-outline-secondary d-inline-flex align-items-center gap-1" disabled>
                 <Spinner size="sm" />
                 {status === "queued" ? "Queued" : job?.pauseRequested ? "Pausing" : "Downloading"}
@@ -177,6 +187,7 @@ export function BacktestDataFilesTable({ files, jobs, onFilesChanged }: Backtest
         }
         return (
           <div className="d-flex justify-content-end gap-2">
+            {analyseButton(file)}
             <button
               type="button"
               className={`btn ${status === "stopped" ? "btn-outline-primary" : "btn-outline-secondary"} d-inline-flex align-items-center gap-1`}
@@ -283,6 +294,16 @@ export function BacktestDataFilesTable({ files, jobs, onFilesChanged }: Backtest
         beforeTable={errors}
       />
       {putFirstModal}
+      {analysedSymbol && (
+        <TickerAnalysisModal
+          symbol={analysedSymbol}
+          onClose={() => setAnalysedSymbol(null)}
+          onEditGlobalSettings={() => {
+            setAnalysedSymbol(null);
+            document.getElementById("backtest-lab-settings")?.scrollIntoView({ behavior: "smooth", block: "start" });
+          }}
+        />
+      )}
     </div>
   );
 }

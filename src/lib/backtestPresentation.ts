@@ -1,3 +1,4 @@
+import { analysisStepLabels, type AnalysisStep } from "../api/backtestAnalysis";
 import {
   defaultBacktestPolicySettings,
   type BacktestAccuracyBand,
@@ -109,6 +110,12 @@ export function jobProgressFraction(job: Pick<BacktestJobView, "status" | "progr
 
 /** "612 of 1,701 trading days" (a download) or "980 of 1,690 days" (a backtest). With no total yet: "waiting" in the queue, "starting" while it runs, "never started" once it ended. */
 export function describeJobProgress(job: BacktestJobView): string {
+  // A ticker analysis reports its step as the label (the chain scan's and the backtest's days as done/total).
+  if (job.kind === "analysis") {
+    const step = job.progressLabel && job.progressLabel in analysisStepLabels ? analysisStepLabels[job.progressLabel as AnalysisStep] : null;
+    if (job.displayStatus !== "running" || step === null) return job.displayStatus === "running" ? "starting" : jobStatusLabel[job.displayStatus].toLowerCase();
+    return job.progressTotal > 0 ? `${step}, ${formatNumber(job.progressDone)} of ${formatNumber(job.progressTotal)} days` : step;
+  }
   if (job.progressTotal <= 0) return job.displayStatus === "queued" ? "waiting" : job.displayStatus === "running" ? "starting" : "never started";
   return `${formatNumber(job.progressDone)} of ${formatNumber(job.progressTotal)} ${job.kind === "download" ? "trading days" : "days"}`;
 }
@@ -123,6 +130,7 @@ export function describeJobRunTime(status: BacktestJobDisplayStatus, runSeconds:
 
 /** The job's title: the symbol for a download, "SMCI · Edge Yield 20%" for a backtest. */
 export function describeJobTitle(job: BacktestJobView): string {
+  if (job.kind === "analysis") return `${job.symbol} · Analysis`;
   return job.kind === "backtest" && job.sessionName ? `${job.symbol} · ${job.sessionName}` : job.symbol;
 }
 
