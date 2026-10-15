@@ -1750,10 +1750,6 @@
   .backtest-screen .btn-link {
     min-width: 2.75rem;
   }
-  /* The shared column gear sets min-width: 0 inline. */
-  .backtest-screen .btn-icon {
-    min-width: 2.75rem !important;
-  }
 }
 .backtest-checkbox-hit {
   display: inline-flex;
