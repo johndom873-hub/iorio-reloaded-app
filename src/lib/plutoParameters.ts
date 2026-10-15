@@ -1,4 +1,4 @@
-import type { PlutoSettings, PlutoSettingsField } from "../api/pluto";
+import type { PlutoExecutionStrategy, PlutoSettings, PlutoSettingsField } from "../api/pluto";
 import { formatCurrency, formatInputNumber } from "./formatters";
 
 // Every Pluto parameter the Settings tab edits, grouped as on the approved redesign (2026-10-06). Labels, units
@@ -19,6 +19,10 @@ export interface PlutoParameterSpec {
   unit?: string;
   step?: string;
   options?: readonly string[];
+  /** What a select shows for each option value; the value itself when missing. */
+  optionLabels?: Readonly<Record<string, string>>;
+  /** Disabled while Pluto runs (on and not paused), with this line under the help. */
+  lockedWhileRunning?: string;
   /** Rendered on one row with the parameter before it (min/max pairs). */
   pairedWithPrevious?: boolean;
 }
@@ -41,7 +45,26 @@ function orderSizeDollars(context: PlutoParameterContext): string {
   return ` (${formatCurrency((budget * context.settings.orderSizePctOfBudget) / 100, 0)} now)`;
 }
 
+/** The execution strategies' names as the screens show them. */
+export const executionStrategyLabels: Readonly<Record<PlutoExecutionStrategy, string>> = { edge_margin: "Edge Margin", cc_put_ladder: "CC + Put Ladder" };
+
 export const plutoParameterGroups: PlutoParameterGroup[] = [
+  {
+    key: "strategy",
+    title: "Strategy",
+    summary: (settings) => executionStrategyLabels[settings.executionStrategy],
+    parameters: [
+      {
+        field: "executionStrategy",
+        label: "Active strategy",
+        kind: "select",
+        options: ["edge_margin", "cc_put_ladder"],
+        optionLabels: executionStrategyLabels,
+        lockedWhileRunning: "Pause Pluto to switch strategy.",
+        help: "Which strategy places Pluto's orders. Switch only while Pluto is paused; the active strategy takes over every open position. Pluto's safety checks and the capital budget apply to both.",
+      },
+    ],
+  },
   {
     key: "capital",
     title: "Capital",
@@ -165,6 +188,11 @@ export const plutoParameterLabelByField: Record<string, string> = {
 
 export type PlutoSettingsFormState = Record<PlutoSettingsField, string>;
 
+/** A saved or typed value as the screen shows it: a select's option label ("Edge Margin"), else the value. */
+export function formatSettingDisplay(field: string, value: string): string {
+  return plutoParameterSpecByField[field]?.optionLabels?.[value] ?? value;
+}
+
 /** A number as the field shows it: at least the step's decimals ("0.30" for step 0.01), never fewer than the value
  *  has (2.5 stays "2.5" on a step-1 field, so the text never rounds the stored setting), integers bare. */
 export function formatSettingValue(spec: PlutoParameterSpec, value: string | number): string {
@@ -242,8 +270,9 @@ export function settingsChangedElsewhere(settings: PlutoSettings, edits: PlutoSe
   return changed;
 }
 
-/** "Min Edge $ 30 → 25" for the save bar and the audit list; a time or a select shows no unit. */
-export function describeSettingsChange(change: { label: string; unit: string | null; from: string; to: string }): string {
+/** "Min Edge $ 30 → 25" for the save bar and the audit list; a time or a select shows no unit, a select its option labels. */
+export function describeSettingsChange(change: { field?: string; label: string; unit: string | null; from: string; to: string }): string {
   const unit = change.unit && change.unit !== "ET" && change.unit !== "min" && change.unit !== "max" && !change.unit.startsWith("$") ? ` ${change.unit}` : "";
-  return `${change.label} ${change.from} → ${change.to}${unit}`;
+  const shown = (value: string) => (change.field ? formatSettingDisplay(change.field, value) : value);
+  return `${change.label} ${shown(change.from)} → ${shown(change.to)}${unit}`;
 }

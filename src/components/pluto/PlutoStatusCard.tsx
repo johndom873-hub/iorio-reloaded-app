@@ -3,6 +3,7 @@ import { ApiError } from "../../api/client";
 import { cancelOrder } from "../../api/positions";
 import { pausePluto, resetPlutoBreaker, resumePluto, updatePlutoMode, updatePlutoStressOverride, type PlutoSettings, type PlutoState, type PlutoStateCore } from "../../api/pluto";
 import { formatCompactDollarsTrimmed, formatCurrency, formatEasternTime, formatHoursMinutesUntil, pluralize, todayInEasternIso } from "../../lib/formatters";
+import { executionStrategyLabels } from "../../lib/plutoParameters";
 import { checkLabel, describeOrderLine, formatAgeInWords, humanizeKey, orderedChecks, sentenceCase, spyStressFromState, type PlutoStatus } from "../../lib/plutoPresentation";
 import { ConfirmModal } from "../ConfirmModal";
 import { Spinner } from "../Spinner";
@@ -266,7 +267,7 @@ export function PlutoStatusCard({ state, status, settings, now, isPhone, showKpi
             {status.label}
           </span>
           <div className="pm-cmd-text">
-            <div className="pm-cmd-headline">{status.headline}</div>
+            <div className="pm-cmd-headline">{status.headline}{settings && ` · ${executionStrategyLabels[settings.executionStrategy]}`}</div>
             <div className="pm-cmd-sub">
               <span>{subline}</span>
             </div>

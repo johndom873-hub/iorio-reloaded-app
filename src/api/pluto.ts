@@ -119,7 +119,11 @@ export interface PlutoState extends PlutoStateCore {
 export type PlutoReasoningEffort = "low" | "medium" | "high";
 export type PlutoTelegramVerbosity = "actions" | "off";
 
+/** Pluto's active execution strategy; switched only while Pluto is off or paused (PUT /pluto/settings refuses otherwise). */
+export type PlutoExecutionStrategy = "edge_margin" | "cc_put_ladder";
+
 export interface PlutoSettings {
+  executionStrategy: PlutoExecutionStrategy;
   capitalBudgetPct: number;
   maxTickerExposurePct: number;
   maxSectorExposurePct: number;
@@ -643,7 +647,7 @@ export function fetchPlutoSettings(): Promise<PlutoSettings> {
 
 /** Every number the How it works tab quotes (API src/pluto/howItWorks.ts): percentages in percent, deltas as fractions, money in dollars. */
 export interface PlutoHowItWorks {
-  activeStrategy: "edge_margin" | "cc_put_ladder";
+  activeStrategy: PlutoExecutionStrategy;
   shared: { capitalBudgetPct: number; dailyLossBreakerPct: number; unfilledOrderCancelMinutes: number };
   ladder: {
     minAbsDelta: number;

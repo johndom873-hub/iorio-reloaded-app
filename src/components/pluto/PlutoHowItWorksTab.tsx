@@ -2,6 +2,7 @@ import { useEffect, useState, type ReactNode } from "react";
 import { errorMessage } from "../../api/client";
 import { fetchPlutoHowItWorks, type PlutoHowItWorks } from "../../api/pluto";
 import { formatCurrency, formatCurrencyTrimmed, formatDelta, formatPercentageValueTrimmed } from "../../lib/formatters";
+import { executionStrategyLabels } from "../../lib/plutoParameters";
 import { Spinner } from "../Spinner";
 
 // Pluto's "How it works" tab (approved mockup https://claude.ai/artifact/TYdARe8Sa6RuF5Lb1E1s2b): a plain-language
@@ -12,8 +13,8 @@ import { Spinner } from "../Spinner";
 type ExecutionStrategy = PlutoHowItWorks["activeStrategy"];
 
 const strategies: { key: ExecutionStrategy; label: string }[] = [
-  { key: "cc_put_ladder", label: "CC + Put Ladder" },
-  { key: "edge_margin", label: "Edge Margin" },
+  { key: "cc_put_ladder", label: executionStrategyLabels.cc_put_ladder },
+  { key: "edge_margin", label: executionStrategyLabels.edge_margin },
 ];
 
 const pct = (percent: number) => formatPercentageValueTrimmed(percent, 2);

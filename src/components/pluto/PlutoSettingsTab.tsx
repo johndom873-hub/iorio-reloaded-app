@@ -2,9 +2,9 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { ApiError } from "../../api/client";
 import { updatePlutoSettings, type PlutoSettings, type PlutoSettingsAuditRow, type PlutoSettingsField, type PlutoSettingsInput, type PlutoState } from "../../api/pluto";
 import { formatBrowserClockTime, formatBrowserDayMonth } from "../../lib/formatters";
-import { applySettingsEdit, changedSettingsFields, describeSettingsChange, formStateWithEdits, plutoParameterHelp, plutoParameterGroups, plutoParameterLabelByField, plutoParameterSpecByField, settingsChangedElsewhere, settingsInputValue, type PlutoParameterGroup, type PlutoParameterSpec, type PlutoSettingsChange, type PlutoSettingsEdits, type PlutoSettingsFormState } from "../../lib/plutoParameters";
+import { applySettingsEdit, changedSettingsFields, describeSettingsChange, executionStrategyLabels, formatSettingDisplay, formStateWithEdits, plutoParameterHelp, plutoParameterGroups, plutoParameterLabelByField, plutoParameterSpecByField, settingsChangedElsewhere, settingsInputValue, type PlutoParameterGroup, type PlutoParameterSpec, type PlutoSettingsChange, type PlutoSettingsEdits, type PlutoSettingsFormState } from "../../lib/plutoParameters";
 import { ConfirmModal } from "../ConfirmModal";
-import { CollapseButton, InfoIcon, ToggleHeader } from "./plutoBits";
+import { CollapseButton, InfoIcon, ToggleHeader, WarningIcon } from "./plutoBits";
 
 interface PlutoSettingsTabProps {
   settings: PlutoSettings | null;
@@ -16,14 +16,14 @@ interface PlutoSettingsTabProps {
   onSaved: (settings: PlutoSettings) => void;
 }
 
-function FieldInput({ spec, value, onChange, id }: { spec: PlutoParameterSpec; value: string; onChange: (value: string) => void; id: string }) {
+function FieldInput({ spec, value, onChange, id, disabled = false }: { spec: PlutoParameterSpec; value: string; onChange: (value: string) => void; id: string; disabled?: boolean }) {
   if (spec.kind === "select") {
     return (
       <div className="pm-input">
-        <select id={id} value={value} onChange={(event) => onChange(event.target.value)}>
+        <select id={id} value={value} disabled={disabled} onChange={(event) => onChange(event.target.value)}>
           {spec.options?.map((option) => (
             <option key={option} value={option}>
-              {option}
+              {spec.optionLabels?.[option] ?? option}
             </option>
           ))}
         </select>
@@ -54,6 +54,7 @@ function readStoredOpenGroup(): string | null {
 function GroupCard({ group, settings, form, changed, state, onChange, isOpen, onToggle, anchorRef }: { group: PlutoParameterGroup; settings: PlutoSettings; form: PlutoSettingsFormState; changed: Set<string>; state: PlutoState | null; onChange: (field: PlutoSettingsField, value: string) => void; isOpen: boolean; onToggle: () => void; anchorRef: (element: HTMLElement | null) => void }) {
   const changedCount = group.parameters.filter((parameter) => changed.has(parameter.field)).length;
   const context = { netLiquidationValue: state?.book.netLiquidationValue ?? null, settings };
+  const plutoRunning = state !== null && state.mode === "on" && !state.paused;
   const rows: PlutoParameterSpec[][] = [];
   for (const parameter of group.parameters) {
     if (parameter.pairedWithPrevious && rows.length > 0) rows[rows.length - 1]!.push(parameter);
@@ -65,7 +66,7 @@ function GroupCard({ group, settings, form, changed, state, onChange, isOpen, on
         <h2 className="pm-card-t">
           {group.title}
           {changedCount > 0 && <span className="pm-b warn">{changedCount} unsaved</span>}
-          {!isOpen && <span className="pm-group-sum">· {group.parameters.length} settings · {group.summary(settings)}</span>}
+          {!isOpen && <span className="pm-group-sum">· {group.parameters.length} {group.parameters.length === 1 ? "setting" : "settings"} · {group.summary(settings)}</span>}
         </h2>
         <CollapseButton open={isOpen} onToggle={onToggle} label={group.title} />
       </ToggleHeader>
@@ -79,6 +80,7 @@ function GroupCard({ group, settings, form, changed, state, onChange, isOpen, on
               <div>
                 <label htmlFor={id}>{lead.label}</label>
                 <div className="pm-help">{plutoParameterHelp(lead, context)}</div>
+                {lead.lockedWhileRunning && plutoRunning && <div className="pm-help t-warn">{lead.lockedWhileRunning}</div>}
               </div>
               <div>
                 {row.length > 1 ? (
@@ -88,9 +90,9 @@ function GroupCard({ group, settings, form, changed, state, onChange, isOpen, on
                     ))}
                   </div>
                 ) : (
-                  <FieldInput spec={lead} id={id} value={form[lead.field]} onChange={(value) => onChange(lead.field, value)} />
+                  <FieldInput spec={lead} id={id} value={form[lead.field]} disabled={Boolean(lead.lockedWhileRunning) && plutoRunning} onChange={(value) => onChange(lead.field, value)} />
                 )}
-                {rowChanged && <div className="pm-was">was {row.filter((parameter) => changed.has(parameter.field)).map((parameter) => String(settings[parameter.field])).join(" / ")}</div>}
+                {rowChanged && <div className="pm-was">was {row.filter((parameter) => changed.has(parameter.field)).map((parameter) => formatSettingDisplay(parameter.field, String(settings[parameter.field]))).join(" / ")}</div>}
               </div>
             </div>
           );
@@ -174,6 +176,7 @@ export function PlutoSettingsTab({ settings, audit, loading, error, state, isPho
     }
   }
 
+  const strategyChange = changes.find((change) => change.field === "executionStrategy") ?? null;
   const auditRows = showAllAudit ? audit : audit.slice(0, 4);
   const auditCard = (
     <section className="pm-card">
@@ -194,7 +197,7 @@ export function PlutoSettingsTab({ settings, audit, loading, error, state, isPho
             const unit = spec?.unit && spec.unit !== "ET" && spec.unit !== "min" && spec.unit !== "max" ? ` ${spec.unit}` : "";
             return (
               <li key={row.id}>
-                {plutoParameterLabelByField[row.field] ?? row.field} <code>{row.oldValue ?? "—"} → {row.newValue ?? "—"}</code>{unit}
+                {plutoParameterLabelByField[row.field] ?? row.field} <code>{row.oldValue === null ? "—" : formatSettingDisplay(row.field, row.oldValue)} → {row.newValue === null ? "—" : formatSettingDisplay(row.field, row.newValue)}</code>{unit}
                 <div className="who">
                   {row.userDisplayName ?? "—"} · {formatBrowserDayMonth(row.changedAt)} {formatBrowserClockTime(row.changedAt)}
                 </div>
@@ -267,6 +270,14 @@ export function PlutoSettingsTab({ settings, audit, loading, error, state, isPho
                   <li key={change.field}>{describeChange(change)}</li>
                 ))}
               </ul>
+              {strategyChange && (
+                <div className="pm-alert warn">
+                  <WarningIcon />
+                  <div className="pm-alert-body">
+                    <div className="pm-alert-text">{strategyChange.to === "cc_put_ladder" ? `The ${executionStrategyLabels.cc_put_ladder}` : executionStrategyLabels.edge_margin} takes over every open position when Pluto resumes.</div>
+                  </div>
+                </div>
+              )}
             </>
           }
           onCancel={() => setConfirming(false)}
