@@ -458,7 +458,7 @@ export function SignalsPage() {
           columns={columns}
           rows={rankedRows}
           rowKey={(row) => row.tickerId}
-          rowClassName={(row) => (row.unscoredReason === "analysing" ? "signals-row-analysing" : row.unscoredReason || frozenTickers.has(row.symbol) ? "signals-row-unscored" : undefined)}
+          rowClassName={(row) => (row.unscoredReason === "analysing" ? "signals-row-analysing" : frozenTickers.has(row.symbol) ? "signals-row-frozen" : row.unscoredReason ? "signals-row-unscored" : undefined)}
           loading={loading && rows.length === 0}
           emptyMessage="No tickers on the shortlist."
           toolbar={toolbar}
