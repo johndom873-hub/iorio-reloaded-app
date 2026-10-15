@@ -2,170 +2,185 @@
 description: Review an iorio-reloaded-app screen/component for desktop and mobile UI/UX issues against this app's actual conventions. Usage: /ui-ux [ComponentName or file path]
 ---
 
-You are performing a UI/UX review of the **iorio-reloaded-app** frontend (options trading platform, business user, not a developer).
-Stack: React + Bootstrap 5 (CSS only, no JS bundle) + `@tabler/core` + ApexCharts (via a shared wrapper) + `lightweight-charts` for the price chart.
+You are performing a UI/UX review of the **iorio-reloaded-app** frontend (options trading platform; one user is a developer, the other is a non-developer business user).
+Stack: React + `@tabler/core` (CSS and JS) + ApexCharts (via a shared wrapper) + `lightweight-charts` (price/IV history) + Plotly (volatility surface only).
 
-Read the component or screen given in the argument (or the most recently discussed screen if no argument). Check every rule below and report all violations with file:line and the exact fix required. At the end, confirm each checklist item as PASS or FAIL.
+Review the component or screen given in the argument (or the most recently discussed screen if no argument). Report every violation with file:line and the exact fix. At the end, mark each checklist item PASS or FAIL.
 
-This file is scoped to this project (`.claude/commands/`) and reflects this app's actual shared components and past incidents — do not fall back to generic Bootstrap/Tabler assumptions that conflict with what's below.
+This file is scoped to this project and reflects its shared components and past incidents. Where it conflicts with generic Bootstrap/Tabler assumptions, this file wins. The general rules in `~/.claude/CLAUDE.md`'s UI/UX Standards section (rem font sizes, semantic colours, `table-light` thead, badges, `btn-sm`, background cascade) also apply and are not repeated here.
+
+---
+
+## Method — visual first
+
+A finding counts only if it was **seen on screen** in the relevant state. Code reading and DOM measurements are hypotheses to confirm visually, and source code is read afterwards to explain the cause. A measurement-only audit once missed overlapping column headers ("DESCRIPTVALUE") and over-reported "table too wide" findings that actually scrolled cleanly.
+
+1. Read the component(s) to learn what states exist (tabs, collapsibles, modals, empty/loading/error, live updates).
+2. Open the screen with the Playwright MCP against the local dev server (log in with the local dev credentials from memory). If a state can't be reached with local data, sync or mutate data to produce it (then restore it); don't skip the state.
+3. Screenshot at **1706px** (the user's main screen), **1440px** (the tight desktop case) and **390px** (phone), in **both themes** (localStorage key `iorio-theme`; confirm `data-bs-theme` on `<html>` changed). Wait ~350 ms after a theme toggle before measuring or capturing, or the transition gives false readings.
+4. In each viewport: scroll every overflowing container to at least three positions, open every collapsible/tab/modal/dropdown/tooltip, and screenshot each.
+5. Measure what a screenshot can't settle: text contrast via `getComputedStyle` (colours may come back as `color(srgb …)` fractions; parse those, don't eyeball), tap-target size and row heights via `getBoundingClientRect` at 390px.
+6. Close the Playwright browser when done.
 
 ---
 
 ## Stack Context — read before reviewing
 
-- **No Bootstrap JS is loaded** — only `@tabler/core`'s CSS (confirmed: `bootstrap` isn't even a dependency). Any `data-bs-toggle`/`data-bs-dismiss`/`data-bs-*` attribute-driven interactivity (dropdown, collapse, offcanvas, tooltip) **silently does nothing** — no error, the element just never opens. This exact bug shipped to prod once already: `ColumnVisibilityPopover.tsx`'s gear-icon dropdown used `data-bs-toggle="dropdown"` and was completely dead on every table platform-wide until rebuilt as manual open-state + click-outside-to-close. Treat any new `data-bs-*` usage as an automatic CRITICAL finding.
-- **Page wrapper is centralized**: `AppLayout.tsx` already wraps every routed page in `<div className="page-wrapper"><div className="page-body"><div className="container-fluid"><Outlet /></div></div></div>`. Individual page components must **not** re-wrap themselves in `page-body`/`container-fluid` — that double-nests the wrapper. A page-level error state is just `<div className="alert alert-danger">{error}</div>` inline, nothing more (see `DashboardPage.tsx`, `PositionsPage.tsx` for the pattern).
-- **Tables**: never hand-roll a `<table>`. Use the shared `<DataTable>` (`src/components/DataTable/DataTable.tsx`) — it already supplies `table-responsive`, `table table-sm table-hover table-vcenter card-table`, `table-light` on `<thead>`, and the required gear-icon column-visibility popover (per-table `tableId`, auto-saves to localStorage, all columns visible by default — this is a standing platform-wide requirement, not optional). Numeric columns: pass `align: "right"` on the column def, not a hand-added class — this alone gets `font-mono`/tabular-nums for free via a global CSS rule keyed on `.table td.text-end` (`theme.css`). **This app's mobile strategy for tables is user-controlled column visibility via the gear icon, not "never hide columns"** — don't flag hidden columns as a violation if the gear icon is present and working.
-- **Charts**: two libraries, two different responsibilities.
-  - **ApexCharts** (P&L/allocation/time-series charts): always go through the shared `<ApexChart>` wrapper (`src/components/charts/ApexChart.tsx`), never raw `<ReactApexChart>`. The wrapper handles dark/light theming (`foreColor`, grid/axis/legend/tooltip colors) that ApexCharts doesn't do on its own — a raw instance will render illegible grey-on-dark-navy in dark mode. Toolbar is off by default (`options.chart` overrides still need `toolbar: { show: false }` preserved if replaced wholesale).
-  - **lightweight-charts** (the price/IV history candlestick charts — `TickerPriceChart.tsx`, `IvHistoryChart.tsx`): has **no built-in responsiveness or theme awareness**. Any new instance must wire its own `ResizeObserver` on the container to re-`applyOptions({ width, height })` on resize, and must re-apply `textColorByTheme`/`gridColorByTheme` (the two-key `{ light, dark }` maps already defined in these files) whenever the app theme toggles. Skipping either is a CRITICAL finding — the chart will either not resize on mobile rotation/breakpoint changes, or stay hardcoded to one theme's colors.
-- **Formatting**: never hand-write currency/percentage/date/number formatting or badge-color logic. `src/lib/formatters.ts` has `formatCurrency`, `formatCurrencyTrimmed`, `formatPercentage`, `formatSignedPnl`, `formatDate`/`formatDateTime`/`formatRelativeDate`, `formatDaysToExpiry`, `pnlBadgeClass`/`pnlTextClass`, and more — check it before writing anything that formats a number, date, or P&L color. Per the global CLAUDE.md rule, a genuinely new formatting need goes into this shared file, not inline at the call site.
-- **Colours/fonts/modals/badges**: governed by `~/.claude/CLAUDE.md`'s UI/UX Standards section (rem font sizes, semantic Bootstrap color classes, `badge-change-pos/neg/flat` for price badges via `pnlBadgeClass()`, modal backdrop z-index/opacity rules) — those rules apply here and are not repeated in full, but see the app-specific additions below.
+- **Bootstrap's JS is loaded.** `main.tsx` imports `@tabler/core/dist/js/tabler.esm.min.js`, which bundles Bootstrap's full JS (collapse, dropdown, modal, tooltip, Popper). `data-bs-*` attributes therefore do work; the mobile nav burger in `AppLayout.tsx` uses `data-bs-toggle="collapse"`. Two rules follow:
+  - New interactive widgets use React state (open flag + click-outside), not the Bootstrap data-API: Bootstrap JS changes classes behind React's back, and a re-render resets them.
+  - When a Bootstrap JS class *is* needed (`Tooltip`, `Collapse`), import it only from the deep path `@tabler/core/dist/js/tabler.esm.min.js`. The bare `@tabler/core` specifier resolves to a second copy, which registers duplicate global click listeners (that broke closing the mobile nav).
+- **Page wrapper is centralized**: `AppLayout.tsx` wraps every routed page in `page-wrapper` > `page-body` > `container-fluid` around `<Outlet />`. Pages must not re-wrap themselves. A page-level error state is just `<div className="alert alert-danger">{error}</div>`.
+- **Grid**: Tabler ships `.row > * { width: 100% }`, so `col-md-6` alone is already full width on a phone; `col-12` is not required.
+- **Tables**: record lists use the shared `<DataTable>` (`src/components/DataTable/DataTable.tsx`). It supplies `table-responsive`, `table table-sm table-hover table-vcenter card-table`, `table-light` thead and the gear-icon column-visibility popover. Numeric columns get `align: "right"` on the column def, which also gets the monospaced numeric font via the `.table td.text-end` rule in `theme.css`. This app's mobile strategy is user-controlled column visibility via the gear icon, so don't flag hidden columns when the gear is present.
+- **Charts**:
+  - **ApexCharts**: always the `<ApexChart>` wrapper (`src/components/charts/ApexChart.tsx`), never raw `ReactApexChart`. The wrapper themes axes, grid, legend and tooltip; **annotation label colours are not covered** and must be set per chart from the theme.
+  - **lightweight-charts** (`TickerPriceChart.tsx`, `IvHistoryChart.tsx`): no built-in responsiveness or theming. A new instance needs a `ResizeObserver` that re-applies width/height, and must re-apply the `textColorByTheme`/`gridColorByTheme` colours on theme toggle.
+  - **Plotly** (`VolatilitySurfaceModal.tsx` only): same two needs, a `ResizeObserver` and theme-aware layout colours.
+- **Formatting**: never hand-write currency/percentage/date/number formatting, contract labels or P&L colour logic. `src/lib/formatters.ts` has `formatCurrency`, `formatPercentage`, `formatSignedPnl`, `formatDate`/`formatDateTime`/`formatRelativeDate`, `formatDaysToExpiry`, `formatOptionContractLabel`, `pnlBadgeClass`/`pnlTextClass` and more. A genuinely new need goes into that file, not inline.
+- **Stylesheet**: app-wide CSS lives in `src/theme.css` (there is no `index.css`). Tabler's `.bg-*`, `.bg-*-lt` and `.text-*` utilities are `!important`, so a plain override of them silently does nothing.
 
 ---
 
 ## Rules
 
-### CRITICAL — `data-bs-*` Attribute-Driven Interactivity
+### CRITICAL — Visual Defects
 
-Never use `data-bs-toggle`, `data-bs-dismiss`, `data-bs-target`, or any other Bootstrap-JS-driven `data-bs-*` attribute to make something interactive (dropdown, collapse, offcanvas, tab, tooltip, popover). This app never loads Bootstrap's JS bundle — only `@tabler/core`'s CSS — so these attributes render the correct static markup/classes but nothing ever responds to a click. This exact bug shipped once (`ColumnVisibilityPopover.tsx`'s gear dropdown, found 2026-08-28).
+Anything seen broken in a screenshot: overlapping or garbled text, content overflowing the viewport, controls rendered off-screen or clipped, a theme in which content is unreadable. Report it even if no rule below names it.
 
-**Wrong:**
-```jsx
-<button data-bs-toggle="dropdown">Options</button>
-<div className="dropdown-menu">...</div>
-```
+### CRITICAL — Record Lists Without the Gear Icon
 
-**Correct** — manual open-state + click-outside-to-close, matching `ColumnVisibilityPopover.tsx`:
-```jsx
-const [open, setOpen] = useState(false);
-// ...click-outside effect via a ref + document click listener...
-<button onClick={() => setOpen((o) => !o)}>Options</button>
-{open && <div className="dropdown-menu show">...</div>}
-```
+A table listing records (positions, orders, jobs, events, candidates — rows of the same kind, any count) must use `<DataTable>`, or, if it needs a custom layout, still carry `ColumnVisibilityPopover` with persisted per-table visibility (as `CycleCard`, the Pluto tables and `BacktestComparePage` do). Fixed-shape tables are exempt: key-value tables, month×year grids, small fixed strategy summaries, the option chain.
 
-### CRITICAL — Hand-Rolled Tables
+### CRITICAL — Raw or Unthemed Charts
 
-Never build a data table with a raw `<table>`. Use `<DataTable>` (`src/components/DataTable/DataTable.tsx`) — it's the only place `table-responsive`, `table-sm table-hover table-vcenter card-table`, `table-light` thead, and the mandatory gear-icon column-visibility popover are implemented correctly. A hand-rolled table silently violates the platform-wide "every data table gets a gear icon" requirement from CLAUDE.md.
+- No direct `ReactApexChart` import; always `<ApexChart>`. Annotation labels get explicit theme colours.
+- Every `lightweight-charts` or Plotly instance has a `ResizeObserver` resize and re-applies theme colours on toggle (reference: `TickerPriceChart.tsx`).
 
-### CRITICAL — Raw ApexCharts / Unthemed lightweight-charts
+### HIGH — Contrast in Both Themes
 
-- Never import `react-apexcharts`'s `ReactApexChart` directly — always `<ApexChart>` (`src/components/charts/ApexChart.tsx`). A raw instance loses dark-mode axis/legend/grid theming.
-- Any new `lightweight-charts` instance must include a `ResizeObserver`-driven width/height update and theme-aware `textColorByTheme`/`gridColorByTheme` re-application (see `TickerPriceChart.tsx` for the reference implementation) — it has no automatic responsiveness or theming of its own.
+Text must reach 4.5:1 and non-text UI (borders, icons, chart series, badge fills) 3:1, measured in **light and dark**. Known failures and their replacements:
 
-### CRITICAL — Grid Mobile Fallback
+| Fails | Where | Use instead |
+|---|---|---|
+| `text-muted` | dark card (2.53:1) | `text-secondary` |
+| `text-warning` | white (2.13:1) | `.iorio-note-amber` |
+| `btn-link` | dark card (2.95:1) | `btn btn-outline-secondary` for new controls |
+| Tabler outline-button default text | dark surface (≈2–2.6:1) | the standard outline block in `theme.css` (see Buttons) |
 
-Every `col-md-X` or `col-lg-X` must be paired with `col-12`. No responsive column without a mobile-first fallback.
+- Don't put a Bootstrap `.text-*`/`.bg-*` utility on an element whose colour app CSS must override; give it a dedicated class in `theme.css` that defines both themes. Any override of a Tabler `bg-*`/`bg-*-lt` class needs `!important`, verified with `getComputedStyle`.
+- `.form-control + .form-hint` (specificity 0,2,0) beats a single-class colour; for a coloured hint under an input, drop `form-hint`.
+- Text inside a themed container (`alert-*`, `bg-*-lt`) inherits its colour; never hard-code `text-dark`/`text-white` there.
 
-**Wrong:** `<div className="col-md-9">`
-**Correct:** `<div className="col-12 col-md-9">`
+### HIGH — Interactive Widgets and Overflow Containers
+
+- Dropdowns, popovers and menus use React state, not the Bootstrap data-API (see Stack Context).
+- Any menu, popover or tooltip whose trigger sits inside `.table-responsive` (or any `overflow: auto/hidden` ancestor) must be portalled to `document.body` with `position: fixed` from `getBoundingClientRect()`, and close on scroll/resize. Reuse `MultiSelectDropdown` or copy `ColumnVisibilityPopover`'s mechanics; reuse `DottedLabelTooltip`/`HelpTooltip`/`useTooltip` for tooltips.
+- Hover- or focus-opened UI must gate those handlers on `matchMedia("(hover: hover)")` and toggle on click only on hover-less devices; a tap fires hover, focus and click together, so it otherwise opens and closes at once. Verify in a touch context (`hasTouch`, `isMobile`, `page.tap`).
 
 ### HIGH — Duplicated Page Wrapper
 
-Never wrap a routed page's content in `page-body`/`container-fluid` — `AppLayout.tsx` already does this once around every route's `<Outlet />`. Doing it again double-pads the page. A page-level error state is just `<div className="alert alert-danger">{error}</div>`, not the full wrapper the global CLAUDE.md's generic example shows (that example is written for apps without a centralized layout).
+Never wrap a routed page in `page-body`/`container-fluid`; `AppLayout` already does. A page error is the bare `alert alert-danger`.
 
-### HIGH — Hand-Written Formatting / Badge Colors
+### HIGH — Hand-Written Formatting, Labels or P&L Colours
 
-Never inline currency/date/percentage formatting or pick a P&L badge/text color by hand (`pnl > 0 ? 'text-success' : ...`). Use the matching helper in `src/lib/formatters.ts` (`formatCurrency`, `formatSignedPnl`, `pnlBadgeClass`, `pnlTextClass`, etc.) — consistency and the platform-wide tabular-nums numeric font both depend on going through these, not reinventing them at the call site.
+Use `src/lib/formatters.ts`. Option contracts read like "SMCI $47 Call · 9 Oct (2DTE)" via `formatOptionContractLabel`, with DTE shown wherever an expiry is. Established terms stay as they are: "Covered Calls", "Max drawdown", "EXP" means exposure. Never use "buy-write".
 
-### HIGH — Button Colours and Hover Contrast
+### HIGH — Buttons
 
-Never combine a custom `bg-X` or `backgroundColor` style with default button text. Use the full Tabler/Bootstrap semantic button class (`btn-primary`, `btn-success`, `btn-danger`, `btn-outline-secondary`, etc.).
+- Every `.btn` has a real variant; a bare `.btn` with an icon inherits the ancestor's colour on hover and the icon can vanish.
+- Never give a button a custom `bg-X`/`backgroundColor` with default text, or override its hover background, without checking rest and hover contrast in both themes; use the semantic `btn-*` classes.
+- Outline buttons follow the "Standard outline buttons" block in `theme.css`: transparent at rest, label white in dark and black in light, solid fill on hover. Use `btn btn-outline-<variant>` with nothing inline. A new variant is added to that block and checked at rest and hover in both themes.
+- Don't put a solid `btn-primary` next to outline buttons in the same footer.
+- `btn-sm` only in compact table rows or tight inline groups.
 
-- Never override Bootstrap's hover background with a custom colour without verifying contrast at both rest and hover states.
-- Never leave a plain, undecorated `.btn` (no `btn-*` variant) with an icon inside it — Tabler's base `.btn` has no defined hover text color and inherits the *ancestor's* text color on hover, which can make the icon vanish against certain backgrounds. Always pair `.btn` with a real variant class.
-- `btn-sm` is only for compact table rows or tight inline groups (toast bodies, badge-adjacent actions) — never in page-level headers/footers/card actions.
+### HIGH — Icon + Text Alignment
 
-### HIGH — Icon + Text Vertical Alignment
+Use `d-inline-flex align-items-center gap-1`, never baseline alignment or `position: relative; top: Xpx` nudges.
 
-Never rely on natural baseline alignment when mixing an icon and text. Always use flex alignment:
+### HIGH — Modals
 
-```jsx
-<button className="btn btn-primary d-inline-flex align-items-center gap-1">
-  <IconComponent size={16} />
-  Label
-</button>
-```
+Every modal is hand-built (no Bootstrap `Modal` instance), so each one needs:
 
-Never use `position: relative; top: Xpx` to nudge icons.
+- `modal-dialog-centered` on `.modal-dialog` (full-height `modal-dialog-inset` modals excepted), plus `modal-dialog-scrollable` if content can exceed the viewport.
+- Body scroll lock: `document.body.style.overflow = "hidden"` on mount, restored on unmount.
+- Backdrop `zIndex: 1050` (`1100` for a modal or toast stacked above an open modal), `backgroundColor: "rgba(0,0,0,0.5)"` and **`opacity: 1`**. Tabler's `--tblr-backdrop-opacity` (0.24) otherwise multiplies the alpha down to 0.12.
+- Informational modals close on **ESC and backdrop click**. Confirmation, order and destructive-action modals close on neither.
 
-### HIGH — Modal Conventions
+### HIGH — Ticker Symbols Open the Ticker Modal
 
-This app builds every modal manually (no Bootstrap JS `Modal` instance), so several things have to be done by hand that a real Bootstrap modal would give for free:
+Every ticker symbol shown anywhere (cell, badge, list, alert, chart label) is clickable and opens the shared `SignalsTickerModal` via `useSignalsTickerModal().open(symbol)`. Flag any ticker rendered as plain text.
 
-- **Body scroll lock**: every modal must lock `document.body.style.overflow = "hidden"` on mount and restore it on unmount — CSS alone does not do this. See `TickerDetailModal.tsx`'s scroll-lock effect for the reference pattern.
-- **Backdrop dismiss behavior**: informational modals (data views, ticker detail, article/document viewers) must close on backdrop click — `onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}` on the backdrop element — and on ESC. Confirmation/destructive-action modals (OK/Cancel, order submission, position close) must **not** close on backdrop click.
-- **Backdrop z-index/opacity**: `zIndex: 1050`, `backgroundColor: "rgba(0,0,0,0.5)"`, and **explicit `opacity: 1`** on the backdrop element. Tabler's `--bs-backdrop-opacity` custom property defaults to `0.24` and multiplies against the inline `rgba` alpha if not pinned, silently washing the backdrop out. A second modal stacking on top of a first uses `zIndex: 1100`; anything else needing to render above an open modal (e.g. a toast) also uses `1100`.
-- **Scrollable content**: pair with `modal-dialog-scrollable` if content can exceed viewport height.
+### HIGH — Touch Targets (phone)
 
-### HIGH — Ticker Symbols Must Link to the Detail Modal
+At phone width, every standalone clickable control has at least a 44×44px tap area, measured with `getBoundingClientRect`. Grow the hit area with padding plus matching negative margins so the glyph doesn't move (examples in `theme.css`); `btn p-2` alone is not enough (about 34px for a 16px icon). Ticker-symbol links inside table and list rows (`btn-link p-0`) are inline text and exempt.
 
-Every ticker symbol shown anywhere in the app (table cell, badge, chart label, alert row) must be a clickable element that opens `TickerDetailModal` for that symbol — this is a standing platform-wide convention, not a per-screen choice. Flag any new ticker display that renders as plain text.
+### HIGH — Unbounded Table Cells
 
-### HIGH — Toast/Background-Job Notification Pattern
-
-Any new toast notification (scan progress, order status, background regen, etc.) should reuse the plain Bootstrap `toast`/`toast-header`/`toast-body` structure already used by `BackgroundJobsToastStack.tsx` (`position-fixed`, `toast-container`, no custom colors) rather than inventing new toast markup/styling. Persistent/global toasts belong in `BackgroundJobsContext`; a toast scoped to one modal's local state (dismissed/auto-clearing) can live in that component directly, same z-index conventions as modals above.
-
-### HIGH — Touch Targets
-
-Every clickable element must have a minimum 44×44px tap area on mobile.
-
-- Icon-only buttons: `className="btn p-2"`
-- Table row action icons: at least `px-2 py-1`
+A cell showing free text from live data (error messages, notes, joined lists, JSON) needs a cap: `text-truncate` plus a `title` for diagnostic text, a 2–3 line `-webkit-line-clamp` plus a `title` for primary text, or `<details>` for raw dumps. Check row heights at 390px; one huge row reads as "blank rows".
 
 ### MEDIUM — Loading States
 
-Every non-immediate async operation (fetch, scan, order submission) must show the shared `<Spinner>` (`src/components/Spinner.tsx`) — `size="sm"` inline in a button/cell, default `size="md"` for a standalone/page-level wait state, with a `label` when there's no adjacent text already describing what's loading. Never a hand-rolled `spinner-border` div.
+Every non-immediate operation, including a table's initial or refreshing fetch, shows the shared `<Spinner>` (`src/components/Spinner.tsx`): `size="sm"` inline in buttons/cells, default size for page-level waits, with a `label` when nothing nearby says what is loading. Never a hand-rolled `spinner-border` or a bare "Loading…" string.
 
-### MEDIUM — Tabs
+### MEDIUM — Live-Updating Values
 
-Use `nav-tabs`, never `nav-pills`, for any tabbed UI in this app — `nav-pills` renders as a row of pill-shaped buttons here, not recognizable tabs, and doesn't match the rest of the app.
+- Live price cells use `TickColoredPrice`/`useTickDirectionColor` (colour by the previous tick, not a fixed reference) and `FlashingNumber`/`useFlashOnChange`.
+- The flash wraps the number in a span, never the `<td>`, and nothing recolours or flashes when the value is unchanged at the displayed precision.
+- A ticking clock (`useTickingNow`) lives in the smallest component that shows it, never at page level, where it re-renders every table each second.
 
-### MEDIUM — Dark Mode Contrast
+### MEDIUM — Table Details
 
-Any new color (badge, border, chart series, custom background) must be checked in **both** light and dark theme, not just the theme the reviewer happens to be in. This app has shipped more than one dark-mode-only contrast bug (border color nearly invisible against the dark body background, Tabler `.bg-*-lt` badges needing an explicit `!important` override to actually change color) — a visual check in one theme only is not sufficient sign-off.
+- Totals rows use `.table-totals-row`, not `table-light` on `<tfoot>` (renders as a white bar).
+- A `card-table` nested inside a `.card-body` double-pads; use `table-flush` there.
+- `text-nowrap` only on numeric/price columns; on text columns it forces horizontal scroll.
 
-### MEDIUM — text-nowrap Overuse
+### MEDIUM — Badge Colours
 
-Only apply `text-nowrap` to numeric or price columns where line-breaking would misread the value. Applying it to text columns forces horizontal scroll even inside `table-responsive`.
+Badges in adjacent columns must not reuse a colour with a different meaning (e.g. strategy badges: CC azure/blue, CSP purple). New badge sets default to solid `bg-X text-X-fg` and are contrast-checked in both themes. Price-change badges use `pnlBadgeClass()` → `badge-change-pos/neg/flat`.
+
+### MEDIUM — Tabs and Toasts
+
+- Tabs use `nav nav-tabs`, never `nav-pills`.
+- New toasts reuse the plain `toast`/`toast-header`/`toast-body` structure of `BackgroundJobsToastStack.tsx`. Global toasts belong in `BackgroundJobsContext`; a toast local to one modal may live in that component.
 
 ### LOW — Fixed Pixel Widths on Layout Containers
 
-Never set a fixed pixel width on a container holding charts, cards, or tables. Use Bootstrap grid cols, `width: '100%'`, or `maxWidth` + `width: '100%'`.
+No fixed pixel width on a container holding charts, cards or tables; use grid columns, `width: 100%` or `maxWidth` + `width: 100%`. Filter inputs that need to fit their content use a CSS grid `auto-fit`, not hard-coded widths.
 
-### LOW — Row Gutter Consistency
+### LOW — Row Gutters
 
-Use `g-3` for row gutters between cards. Don't mix `g-2` and `g-3` within the same row group.
+Use `g-3` between cards; don't mix `g-2` and `g-3` in one row group.
 
 ---
 
 ## Review Checklist
 
-- [ ] No `data-bs-*` attribute-driven interactivity anywhere (dead in this app — no Bootstrap JS)
-- [ ] Every data table uses the shared `<DataTable>` component, not a hand-rolled `<table>`
-- [ ] Every ApexCharts usage goes through `<ApexChart>`; every `lightweight-charts` instance has a `ResizeObserver` + theme-color re-application
-- [ ] Every `col-md/lg-X` has a `col-12` mobile fallback
-- [ ] No page re-wraps itself in `page-body`/`container-fluid` (already provided once by `AppLayout`)
-- [ ] All formatting/badge-color logic goes through `src/lib/formatters.ts`, not hand-inlined
-- [ ] All buttons use semantic Tabler/Bootstrap classes; no bare `.btn` with an icon and no variant; `btn-sm` only in compact/inline contexts
-- [ ] All icon + text elements use `d-inline-flex align-items-center gap-1`
-- [ ] Modals: body scroll lock present, correct backdrop-dismiss behavior for the modal's type, backdrop `opacity: 1` + correct z-index, `modal-dialog-scrollable` where needed
-- [ ] Every ticker symbol displayed is a clickable link into `TickerDetailModal`
-- [ ] New toasts reuse the existing `toast`/`toast-header`/`toast-body` pattern
-- [ ] All clickable elements meet a 44px touch target
-- [ ] Loading states use the shared `<Spinner>`, not a hand-rolled spinner
-- [ ] Tabs use `nav-tabs`, not `nav-pills`
-- [ ] Any new color checked in both light and dark theme
-- [ ] `text-nowrap` used only on numeric/price columns
-- [ ] No fixed pixel widths on layout containers
-- [ ] Row gutters consistently `g-3` within a row group
+- [ ] Screenshots taken at 1706, 1440 and 390px in both themes, with every overflow container scrolled and every collapsible/tab/modal/dropdown opened; no visual defects seen
+- [ ] Every record-list table has the gear icon (via `DataTable` or `ColumnVisibilityPopover`)
+- [ ] Charts: `<ApexChart>` only (annotation colours themed); lightweight-charts/Plotly have `ResizeObserver` + theme re-application
+- [ ] All text ≥ 4.5:1 and non-text ≥ 3:1 in both themes (measured); no `text-muted`/`text-warning`/`btn-link` in new code where the table above says otherwise
+- [ ] Interactive widgets use React state; menus inside overflow containers are portalled; hover UI gated on `(hover: hover)`; Bootstrap JS imported only from the deep path
+- [ ] No page re-wraps itself in `page-body`/`container-fluid`
+- [ ] Formatting, contract labels and P&L colours via `formatters.ts`; established terminology kept
+- [ ] Buttons: real variants, outline standard from `theme.css`, `btn-sm` only in compact contexts
+- [ ] Icon + text uses `d-inline-flex align-items-center gap-1`
+- [ ] Modals: centered (unless inset), scrollable where needed, scroll lock, backdrop 1050/0.5/`opacity: 1`, ESC + backdrop dismiss only for informational modals
+- [ ] Every ticker symbol opens `SignalsTickerModal`
+- [ ] Standalone controls ≥ 44px tap area at 390px (measured)
+- [ ] Free-text cells capped; row heights sane at 390px
+- [ ] Loading states use `<Spinner>`, including table fetches
+- [ ] Live cells use tick-direction colour and number-scoped flash; no page-level ticking clock
+- [ ] Totals rows use `.table-totals-row`; no double-padded nested `card-table`; `text-nowrap` only on numeric columns
+- [ ] Adjacent badge colours don't clash in meaning; badge contrast checked in both themes
+- [ ] Tabs use `nav-tabs`; toasts reuse the existing structure
+- [ ] No fixed pixel widths on layout containers; gutters consistently `g-3`
 
 ---
 
 ## Output Format
 
 List each violation as:
-> **[CRITICAL|HIGH|MEDIUM|LOW]** description — `file:line` — fix
+> **[CRITICAL|HIGH|MEDIUM|LOW]** description — `file:line` — fix (and the screenshot/viewport/theme where it was seen)
 
 Then state each checklist item as **PASS** or **FAIL**.
 If no violations found, state "All checks passed" followed by the full checklist.
