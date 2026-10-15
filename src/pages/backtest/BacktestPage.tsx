@@ -2,6 +2,7 @@ import { PageHeader } from "../../components/layout/PageHeader";
 import { Spinner } from "../../components/Spinner";
 import { BacktestDataFilesTable } from "../../components/backtest/BacktestDataFilesTable";
 import { BacktestJobsCard } from "../../components/backtest/BacktestJobsCard";
+import { BacktestLabSettingsCard } from "../../components/backtest/BacktestLabSettingsCard";
 import { BacktestSessionsTable } from "../../components/backtest/BacktestSessionsTable";
 import { useBacktestOverview } from "../../components/backtest/useBacktestPolling";
 import { formatFileSize, pluralizeCount } from "../../lib/formatters";
@@ -9,7 +10,7 @@ import { formatFileSize, pluralizeCount } from "../../lib/formatters";
 const pageTitle = "Backtesting";
 const pageSubtitle = "Replay the valuation model and Pluto's rules on ThetaData option prices from 2020. Runs on this Mac only.";
 
-// Backtesting home (mockup approved 2026-10-12): background jobs, the downloaded data files, and the sessions.
+// Backtesting home (mockup approved 2026-10-12): background jobs, the downloaded data files, the lab settings, and the sessions.
 export function BacktestPage() {
   const { data: overview, loadError, refreshFailing, reload } = useBacktestOverview();
 
@@ -57,6 +58,7 @@ export function BacktestPage() {
       )}
       <BacktestJobsCard jobs={overview.jobs} onJobsChanged={reload} />
       <BacktestDataFilesTable files={overview.files} jobs={overview.jobs} onFilesChanged={reload} />
+      <BacktestLabSettingsCard />
       <BacktestSessionsTable />
     </>
   );

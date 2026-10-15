@@ -358,6 +358,25 @@ export interface BacktestLabChange {
   newValue: string | null;
 }
 
+/** A change a global save would make: the analysed tickers it re-runs and the tickers whose own value keeps it from them. */
+export interface BacktestLabChangePreview extends BacktestLabChange {
+  reruns: string[];
+  keptOverrides: string[];
+}
+
+export interface BacktestLabAuditRow {
+  id: number;
+  changedAt: string;
+  userDisplayName: string | null;
+  /** Null for a global value. */
+  symbol: string | null;
+  field: string;
+  oldValue: string | null;
+  newValue: string | null;
+  /** How many stored analyses the save re-ran; null for ticker saves and older rows. */
+  analysesRerun: number | null;
+}
+
 export interface AnalysisRerunOutcome {
   started: string[];
   skipped: { symbol: string; reason: string }[];
@@ -395,6 +414,20 @@ export function fetchBacktestLabSettings(): Promise<BacktestLabSettingsView> {
 
 export function saveBacktestLabSettings(body: { overrides?: unknown; defaultPotDollars?: number }): Promise<{ settings: BacktestLabSettingsView; changes: BacktestLabChange[]; analyses: AnalysisRerunOutcome }> {
   return apiRequest(`/backtest/lab-settings`, { method: "PUT", body: JSON.stringify(body) });
+}
+
+/** The save's confirmation: the same body as the save, nothing written. */
+export function previewBacktestLabSettings(body: { overrides?: unknown; defaultPotDollars?: number }): Promise<{ changes: BacktestLabChangePreview[]; reruns: string[] }> {
+  return apiRequest(`/backtest/lab-settings/preview`, { method: "POST", body: JSON.stringify(body) });
+}
+
+/** The global values' history (the lab's own changes), newest first. */
+export function fetchBacktestLabGlobalAudit(): Promise<BacktestLabAuditRow[]> {
+  return apiRequest<BacktestLabAuditRow[]>("/backtest/lab-settings/audit?symbol=");
+}
+
+export function fetchAllLabTickerOverrides(): Promise<BacktestLabTickerOverrides[]> {
+  return apiRequest<BacktestLabTickerOverrides[]>("/backtest/lab-ticker-overrides");
 }
 
 export function fetchLabTickerOverrides(symbol: string): Promise<{ symbol: string; overrides: BacktestLabTickerOverrides | null }> {

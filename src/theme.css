@@ -2465,3 +2465,26 @@
     overflow: visible;
   }
 }
+
+/* ---- Lab settings section (Backtesting; mockup approved 2026-10-15) ---- */
+.backtest-lab-icon { flex: none; }
+/* "Edit the global lab settings" scrolls here: the header stays clear of the top bar where it is fixed (desktop). */
+@media (min-width: 992px) {
+  #backtest-lab-settings { scroll-margin-top: calc(var(--iorio-topbar-height) + 0.75rem); }
+}
+.backtest-lab-group-toggle { display: inline-flex; align-items: center; gap: 0.45rem; padding: 0; border: 0; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.backtest-lab-saved-line { margin-top: 0.25rem; font-size: 0.75rem; color: var(--tblr-secondary-color); }
+.backtest-lab-footer { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem 0.75rem; }
+.backtest-lab-pending { display: inline-flex; align-items: center; padding: 0.15rem 0.5rem; border: 1px solid currentColor; border-radius: var(--tblr-border-radius); font-size: 0.72rem; font-weight: 600; }
+.backtest-lab-problem { color: var(--analysis-poor-ink); font-size: 0.78rem; }
+.backtest-lab-confirm-change { padding: 0.6rem 0.75rem; border: 1px solid var(--tblr-border-color); border-radius: var(--tblr-border-radius); }
+.backtest-lab-table td:first-child { width: 16rem; }
+.backtest-lab-change-cell { min-width: 15rem; }
+.backtest-lab-change { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; white-space: normal; }
+/* Phone: group bands are full-width 44px buttons; Discard and Save stay in view at the bottom of the section. */
+@media (max-width: 767.98px) {
+  .backtest-lab-group-toggle { width: 100%; min-height: 2.75rem; }
+  .backtest-lab-footer { position: sticky; bottom: 0; z-index: 2; background: var(--tblr-bg-surface); }
+  .backtest-lab-saved-line .analysis-link { padding: 0.85rem 0.5rem; margin: -0.85rem -0.5rem; }
+  .backtest-lab-phone-input .form-select { width: 100%; }
+}

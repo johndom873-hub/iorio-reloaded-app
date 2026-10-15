@@ -37,9 +37,10 @@ function UnavailableChoicesHint({ row }: { row: BacktestSettingRow }) {
   );
 }
 
-function SettingInput({ row, value, changed, invalid, onValueChange }: { row: BacktestSettingRow; value: string; changed: boolean; invalid: boolean; onValueChange: (value: string) => void }) {
+/** A setting's input: a select for a choice or grade, else a number with its unit. Shared with the Lab settings section. */
+export function SettingInput({ row, value, changed, invalid, onValueChange, ariaLabel }: { row: BacktestSettingRow; value: string; changed: boolean; invalid: boolean; onValueChange: (value: string) => void; ariaLabel?: string }) {
   const changedClass = changed ? " backtest-setting-changed-input" : "";
-  const label = `${row.label} for this session`;
+  const label = ariaLabel ?? `${row.label} for this session`;
   if (row.unit === "choice") {
     const choices = row.choices ?? [];
     return (
