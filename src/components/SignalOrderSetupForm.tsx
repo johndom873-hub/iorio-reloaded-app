@@ -82,7 +82,7 @@ export function SignalOrderSetupForm({ symbol, signals, candidate, spotPrice, ne
   const quantity = Math.max(1, Math.floor(Number(contractQty) || 0));
   const mid = (candidate.bid + candidate.ask) / 2;
   // Fewer free shares than the contracts need: the order buys the rest with the call, as one combo.
-  const isBuyWrite = isCall && signals.freeShares < quantity * 100;
+  const isCoveredCallEntry = isCall && signals.freeShares < quantity * 100;
   // The order goes out as a limit at the mid; the expected fill gives up the Risk & Limits share of the half-spread,
   // the same assumption the list's net Edge is scored with. The fill priority changes how fast it fills, not this.
   const netEdgeExpected = candidate.netEdge;
@@ -98,9 +98,9 @@ export function SignalOrderSetupForm({ symbol, signals, candidate, spotPrice, ne
   const limitPriceForLimitsRef = useRef(limitPriceForPreview);
   limitPriceForLimitsRef.current = limitPriceForPreview;
   const commissionPreviewLegs: CommissionPreviewLeg[] | null =
-    limitPriceForPreview > 0 && (!isBuyWrite || (spotPrice !== null && spotPrice > 0))
+    limitPriceForPreview > 0 && (!isCoveredCallEntry || (spotPrice !== null && spotPrice > 0))
       ? [
-          ...(isBuyWrite ? [{ role: "stock" as const, action: "BUY" as const, symbol, quantity: quantity * 100 - signals.freeShares, unitPrice: spotPrice! }] : []),
+          ...(isCoveredCallEntry ? [{ role: "stock" as const, action: "BUY" as const, symbol, quantity: quantity * 100 - signals.freeShares, unitPrice: spotPrice! }] : []),
           { role: "option" as const, action: "SELL" as const, symbol, quantity, unitPrice: limitPriceForPreview, strike: candidate.strike, expiry: toIbkrExpiry(candidate.expiry), right: isCall ? ("C" as const) : ("P" as const) },
         ]
       : null;
@@ -176,7 +176,7 @@ export function SignalOrderSetupForm({ symbol, signals, candidate, spotPrice, ne
             nextEarningsDateIso: signals.nextEarningsDateIso,
             gradeCounts: signals.gradeCounts,
           },
-          order: { quantity, adaptivePriority: isBuyWrite ? null : adaptivePriority, referencePremium: Number(mid.toFixed(2)), netEdgeExpected, edgeDollarsExpected, riskAdjustedRatioExpected },
+          order: { quantity, adaptivePriority: isCoveredCallEntry ? null : adaptivePriority, referencePremium: Number(mid.toFixed(2)), netEdgeExpected, edgeDollarsExpected, riskAdjustedRatioExpected },
           timing: { selectedAtIso, builtAtIso, netEdgeAtSelection, netEdgeAtBuild: candidate.netEdge },
         },
       });
@@ -282,7 +282,7 @@ export function SignalOrderSetupForm({ symbol, signals, candidate, spotPrice, ne
           </label>
           <input id="signal-order-qty" type="number" min={1} step={1} className="form-control form-control-sm font-mono" style={{ width: "6rem" }} value={contractQty} onChange={(event) => setContractQty(event.target.value)} />
         </div>
-        {!isBuyWrite && (
+        {!isCoveredCallEntry && (
           <div className="d-flex justify-content-between align-items-center gap-3 mb-2">
             <span className="text-secondary text-uppercase" style={{ fontSize: "0.7rem", fontWeight: 600, letterSpacing: "0.04em" }}>
               Fill priority (IBKR Adaptive)

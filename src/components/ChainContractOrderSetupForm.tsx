@@ -105,12 +105,12 @@ export function ChainContractOrderSetupForm({ symbol, contract, freeShares, spot
         ]);
 
   // Same one-what-if-per-form commission preview as SignalOrderSetupForm; a covered call short of shares buys the rest in the same combo.
-  const buyWriteShares = isCall && freeShares !== null ? Math.max(0, quantity * 100 - freeShares) : 0;
+  const coveredCallEntryShares = isCall && freeShares !== null ? Math.max(0, quantity * 100 - freeShares) : 0;
   const limitPriceForPreview = limitPriceValid ? Number(limitPrice.toFixed(2)) : 0;
   const commissionPreviewLegs: CommissionPreviewLeg[] | null =
-    limitPriceForPreview > 0 && (buyWriteShares === 0 || (spotPrice !== null && spotPrice > 0))
+    limitPriceForPreview > 0 && (coveredCallEntryShares === 0 || (spotPrice !== null && spotPrice > 0))
       ? [
-          ...(buyWriteShares > 0 ? [{ role: "stock" as const, action: "BUY" as const, symbol, quantity: buyWriteShares, unitPrice: spotPrice! }] : []),
+          ...(coveredCallEntryShares > 0 ? [{ role: "stock" as const, action: "BUY" as const, symbol, quantity: coveredCallEntryShares, unitPrice: spotPrice! }] : []),
           { role: "option" as const, action: "SELL" as const, symbol, quantity, unitPrice: limitPriceForPreview, strike: contract.strike, expiry: toIbkrExpiry(contract.expiry), right: isCall ? ("C" as const) : ("P" as const) },
         ]
       : null;

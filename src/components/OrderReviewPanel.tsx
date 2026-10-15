@@ -275,7 +275,7 @@ export function OrderReviewPanel({ order: initialOrder, initialAdaptivePriority,
   // that silently substituting the strike for spot would produce a visibly
   // wrong number, not just an approximation (unlike yield, where the same
   // fallback only loosely affects a capital-at-risk denominator). Only shown
-  // once a real spot price is available: the order's own stock leg (buy-write
+  // once a real spot price is available: the order's own stock leg (Covered Call entry
   // open) or the caller's already-live liveSpotPrice prop.
   const popSpotPrice = stockLeg?.unitPrice ?? liveSpotPrice ?? null;
   // Still the formula flagged "pending validation" in PROGRESS.md — Juan's
