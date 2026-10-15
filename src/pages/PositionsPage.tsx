@@ -50,6 +50,8 @@ import {
 } from "../lib/positionPnl";
 import { StrategyBadge } from "../components/StrategyBadge";
 import { TooltipSpan } from "../components/TooltipSpan";
+import { FrozenTickerBadge } from "../components/FrozenTickerBadge";
+import { describeFrozenTicker, useFrozenTickers } from "../hooks/useFrozenTickers";
 
 function structureSummary(position: Position): string {
   // An open position can carry closed legs from a past roll (they stay
@@ -87,6 +89,7 @@ export function PositionsPage() {
     [openTickerModal],
   );
   const [closePosition, setClosePosition] = useState<Position | null>(null);
+  const frozenTickers = useFrozenTickers();
   // Signals screen rows by symbol: the Roll Signals badge of an open option position (its ticker's best roll).
   const [signalsRowBySymbol, setSignalsRowBySymbol] = useState<Record<string, SignalsScreenRow>>({});
   const loadPositions = useCallback(async () => {
@@ -273,14 +276,17 @@ export function PositionsPage() {
       key: "symbol",
       header: "Symbol",
       render: (row) => (
-        <button
-          type="button"
-          className="btn btn-link px-2 py-1 text-decoration-none fw-bold"
-          onClick={() => openTickerModalAtPosition({ symbol: row.symbol, focusPositionId: row.id })}
-        >
-          {row.symbol}
-          {positionHasLegEnteredTodayEastern(row) && <NewPositionTag />}
-        </button>
+        <span className="d-inline-flex align-items-center text-nowrap">
+          <button
+            type="button"
+            className="btn btn-link px-2 py-1 text-decoration-none fw-bold"
+            onClick={() => openTickerModalAtPosition({ symbol: row.symbol, focusPositionId: row.id })}
+          >
+            {row.symbol}
+            {positionHasLegEnteredTodayEastern(row) && <NewPositionTag />}
+          </button>
+          <FrozenTickerBadge frozen={frozenTickers.get(row.symbol)} />
+        </span>
       ),
     },
     {
@@ -503,6 +509,21 @@ export function PositionsPage() {
         const openLegs = row.legs.filter((leg) => !leg.exitAt);
         const openOptionLeg = openLegs.find((leg) => leg.legType === "option");
         const openStockLeg = openLegs.find((leg) => leg.legType === "stock");
+
+        // A frozen ticker (a stock split until its records are rewritten) takes no orders: the actions show disabled, with why.
+        const frozen = frozenTickers.get(row.symbol);
+        if (frozen) {
+          if (openLegs.length === 0) return null;
+          return (
+            <div className="d-flex gap-1 justify-content-end">
+              <TooltipSpan text={describeFrozenTicker(frozen)} className="frozen-tap-target">
+                <button type="button" className="btn btn-sm btn-outline-secondary" disabled>
+                  Close
+                </button>
+              </TooltipSpan>
+            </div>
+          );
+        }
 
         // Unstructured positions can carry any leg mix (bare stock, a naked
         // call, mismatched stock+call ratios) — ClosePositionModal handles

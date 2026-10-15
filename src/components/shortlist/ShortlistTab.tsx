@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { FrozenTickerBadge } from "../FrozenTickerBadge";
+import { useFrozenTickers } from "../../hooks/useFrozenTickers";
 import { DataTable, type DataTableColumn } from "../DataTable/DataTable";
 import { Spinner } from "../Spinner";
 import { ConfirmModal } from "../ConfirmModal";
@@ -225,18 +227,22 @@ export function ShortlistTab({ onOpenTickerModal }: ShortlistTabProps) {
     }
   }
 
+  const frozenTickers = useFrozenTickers();
   const columns: DataTableColumn<ShortlistRow>[] = [
     {
       key: "symbol",
       header: "Ticker",
       render: (row) => (
-        <button
-          type="button"
-          className="btn btn-link p-0 text-decoration-none fw-bold"
-          onClick={() => onOpenTickerModal(row.symbol)}
-        >
-          {row.symbol}
-        </button>
+        <span className="d-inline-flex align-items-center text-nowrap">
+          <button
+            type="button"
+            className="btn btn-link p-0 text-decoration-none fw-bold"
+            onClick={() => onOpenTickerModal(row.symbol)}
+          >
+            {row.symbol}
+          </button>
+          <FrozenTickerBadge frozen={frozenTickers.get(row.symbol)} />
+        </span>
       ),
     },
     { key: "companyName", header: "Name", render: (row) => row.companyName ?? "—" },

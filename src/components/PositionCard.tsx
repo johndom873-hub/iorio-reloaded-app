@@ -1,4 +1,6 @@
 import { useMemo, useState, type ReactNode } from "react";
+import type { FrozenTicker } from "../api/environment";
+import { describeFrozenTicker } from "../hooks/useFrozenTickers";
 import { Spinner } from "./Spinner";
 import { ColumnVisibilityPopover } from "./DataTable/ColumnVisibilityPopover";
 import { useColumnVisibility } from "./DataTable/useColumnVisibility";
@@ -42,6 +44,8 @@ interface PositionCardProps {
   /** Total account value for EXP% (live, snapshot fallback) — see fetchCurrentAccountValue. */
   totalAccountValue: number | null;
   currentPrice: number | null;
+  /** Set while the ticker is frozen after a stock split: the order buttons show disabled, with why. */
+  frozen?: FrozenTicker;
   onChanged: () => void;
   /**
    * Scrolls to this ticker's option chain so the user can pick a strike to
@@ -93,6 +97,16 @@ const legColumns = [
   { key: "gamma", header: "Gamma" },
 ];
 
+/** A disabled order button carries the freeze's explanation on its wrapper (a disabled button gets no hover or tap). */
+function FrozenActionTooltip({ frozen, children }: { frozen: FrozenTicker | undefined; children: ReactNode }) {
+  if (!frozen) return <>{children}</>;
+  return (
+    <TooltipSpan text={describeFrozenTicker(frozen)} className="frozen-tap-target">
+      {children}
+    </TooltipSpan>
+  );
+}
+
 export function PositionCard({
   position,
   greeksByLegId,
@@ -101,6 +115,7 @@ export function PositionCard({
   unrealizedPnlFetchFailed,
   totalAccountValue,
   currentPrice,
+  frozen,
   onChanged,
   onSellCall,
   onRollLeg,
@@ -339,22 +354,28 @@ export function PositionCard({
             <div className="d-flex flex-wrap gap-2 mt-3">
               {isUnstructured && hasOpenStockLeg && (
                 <>
-                  <button type="button" className="btn btn-outline-warning" onClick={() => onSellCall()}>
-                    Sell Call
-                  </button>
+                  <FrozenActionTooltip frozen={frozen}>
+                    <button type="button" className="btn btn-outline-warning" disabled={frozen !== undefined} onClick={() => onSellCall()}>
+                      Sell Call
+                    </button>
+                  </FrozenActionTooltip>
                   <button type="button" className="btn btn-outline-secondary" onClick={() => setShowRecoveryPath(true)}>
                     Recovery Path
                   </button>
                 </>
               )}
               {rollableLeg && (
-                <button type="button" className="btn btn-outline-primary" onClick={() => onRollLeg(rollableLeg.id)}>
-                  Roll Option
-                </button>
+                <FrozenActionTooltip frozen={frozen}>
+                  <button type="button" className="btn btn-outline-primary" disabled={frozen !== undefined} onClick={() => onRollLeg(rollableLeg.id)}>
+                    Roll Option
+                  </button>
+                </FrozenActionTooltip>
               )}
-              <button type="button" className="btn btn-outline-danger" onClick={() => setShowClose(true)}>
-                Close Position
-              </button>
+              <FrozenActionTooltip frozen={frozen}>
+                <button type="button" className="btn btn-outline-danger" disabled={frozen !== undefined} onClick={() => setShowClose(true)}>
+                  Close Position
+                </button>
+              </FrozenActionTooltip>
             </div>
           )}
           </div>

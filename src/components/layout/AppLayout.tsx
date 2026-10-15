@@ -4,7 +4,8 @@ import { EnvironmentBadges } from "./EnvironmentBadges";
 import { MarketStatusBadge } from "./MarketStatusBadge";
 import { useMarketStatus } from "../../hooks/useMarketStatus";
 import { EnvironmentStatusContext, useEnvironmentStatus } from "../../hooks/useEnvironmentStatus";
-import type { MarketDataFeedRefusal } from "../../api/environment";
+import type { FrozenTicker, MarketDataFeedRefusal } from "../../api/environment";
+import { describeFrozenTicker } from "../../hooks/useFrozenTickers";
 import { formatEasternTime } from "../../lib/formatters";
 import { Collapse } from "@tabler/core/dist/js/tabler.esm.min.js";
 import {
@@ -17,6 +18,7 @@ import {
   IconFlask,
   IconActivity,
   IconAlertTriangle,
+  IconLock,
   IconHeartRateMonitor,
   IconLayoutDashboard,
   IconLogout,
@@ -126,6 +128,22 @@ function MarketDataFeedRefusalPill({ refusal, compact = false }: { refusal: Mark
   );
 }
 
+/** Red while any ticker is frozen after a stock split (no orders, no Pluto) — until it is unfrozen. */
+function FrozenTickersPill({ frozenTickers, compact = false }: { frozenTickers: FrozenTicker[] | undefined; compact?: boolean }) {
+  const ref = useTooltip<HTMLSpanElement>(frozenTickers && frozenTickers.length > 0 ? frozenTickers.map(describeFrozenTicker).join(" ") + " The Telegram alert has the steps." : undefined);
+  if (!frozenTickers || frozenTickers.length === 0) return null;
+  const symbols = frozenTickers.map((ticker) => ticker.symbol).join(", ");
+  return (
+    <span ref={ref} className={`iorio-topbar-status iorio-topbar-status-danger frozen-tap-target${compact ? " iorio-topbar-status-compact" : ""}`} tabIndex={0} role="alert">
+      <IconLock size={compact ? 14 : 16} aria-hidden="true" />
+      <span>
+        {symbols}
+        {!compact && <span className="iorio-topbar-frozen-word"> frozen</span>}
+      </span>
+    </span>
+  );
+}
+
 function BrandMark() {
   // The full icon+wordmark lockup, not reconstructed from a live web
   // font — the brand pack (public/brand/) only ships it as a flat
@@ -230,6 +248,7 @@ export function AppLayout() {
             <div className="w-100 d-flex align-items-center gap-2 flex-wrap">
               <MarketStatusBadge status={marketStatus} />
               <MarketDataFeedRefusalPill refusal={environmentStatus.details?.marketDataFeedRefusal} compact />
+              <FrozenTickersPill frozenTickers={environmentStatus.details?.frozenTickers} compact />
               <MarketDataRestrictionPill
                 restriction={environmentStatus.details?.marketDataRestriction}
                 linesEnabled={environmentStatus.details?.marketDataLinesEnabled ?? true}
@@ -292,6 +311,7 @@ export function AppLayout() {
           <div className="iorio-topbar-center">
             <MarketStatusBadge status={marketStatus} />
             <MarketDataFeedRefusalPill refusal={environmentStatus.details?.marketDataFeedRefusal} />
+            <FrozenTickersPill frozenTickers={environmentStatus.details?.frozenTickers} />
             <MarketDataRestrictionPill
               restriction={environmentStatus.details?.marketDataRestriction}
               linesEnabled={environmentStatus.details?.marketDataLinesEnabled ?? true}

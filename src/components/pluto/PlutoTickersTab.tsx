@@ -1,4 +1,7 @@
 import { useMemo, useState } from "react";
+import type { FrozenTicker } from "../../api/environment";
+import { FrozenTickerBadge } from "../FrozenTickerBadge";
+import { useFrozenTickers } from "../../hooks/useFrozenTickers";
 import { ApiError } from "../../api/client";
 import { updateShortlistBotEnabled, type DaySignalsWatch, type PlutoState } from "../../api/pluto";
 import type { ShortlistRow, TickerBackfillRun } from "../../api/shortlist";
@@ -77,6 +80,13 @@ function TickerSwitch({ row, onToggled, onError, withLabel }: { row: ShortlistRo
   );
 }
 
+/** What Pluto does with the ticker now; a frozen ticker (a stock split until its records are rewritten) is skipped. */
+function plutoNowOrFrozen(row: ShortlistRow, state: PlutoState | null, frozen: FrozenTicker | undefined, compact = false): { tone: "neutral" | "info" | "bad"; label: string } | null {
+  // The phone list's status column is narrow: the short form there, the split itself is in the Frozen badge's tooltip.
+  if (frozen) return { tone: "bad", label: compact ? "Skipped: frozen" : `Skipped: frozen after a ${frozen.reason.replace(/ effective .*$/, "")}` };
+  return plutoNow(row, state);
+}
+
 function plutoNow(row: ShortlistRow, state: PlutoState | null): { tone: "neutral" | "info"; label: string } | null {
   const working = state?.book.workingOrdersBySymbol[row.symbol] ?? 0;
   if (working > 0) return { tone: "info", label: pluralize(working, "working order") };
@@ -103,6 +113,7 @@ function changedBy(row: ShortlistRow): string | null {
 }
 
 export function PlutoTickersTab({ rows, loading, error, state, daySignalsWatch, maxEnabled, isPhone, onOpenTicker, onToggled, onPrepRunChange }: PlutoTickersTabProps) {
+  const frozenTickers = useFrozenTickers();
   const [filter, setFilter] = useState<Filter>("all");
   const [search, setSearch] = useState("");
   const [toggleError, setToggleError] = useState<string | null>(null);
@@ -149,13 +160,14 @@ export function PlutoTickersTab({ rows, loading, error, state, daySignalsWatch, 
     body = (
       <ul className="pm-mlist">
         {visibleRows.map((row) => {
-          const now = plutoNow(row, state);
+          const now = plutoNowOrFrozen(row, state, frozenTickers.get(row.symbol), true);
           return (
             <li key={row.id} className={`pm-m-tk${row.botEnabled ? " on" : ""}`}>
               <TickerSwitch row={row} withLabel={false} onToggled={(enabled) => onToggled(row.id, enabled)} onError={setToggleError} />
               <span className="pm-tk-name">
                 <span>
-                  <TickerButton symbol={row.symbol} onOpen={onOpenTicker} />{" "}
+                  <TickerButton symbol={row.symbol} onOpen={onOpenTicker} />
+                  <FrozenTickerBadge frozen={frozenTickers.get(row.symbol)} />{" "}
                   {row.latestTotalSliceCount !== null && (
                     <button type="button" className="pm-link num surface" onClick={() => setSurfaceSymbol(row.symbol)} title={`Open the ${row.symbol} volatility surface`}>
                       Surface {row.latestFittedSliceCount}/{row.latestTotalSliceCount}
@@ -193,7 +205,7 @@ export function PlutoTickersTab({ rows, loading, error, state, daySignalsWatch, 
           </thead>
           <tbody>
             {visibleRows.map((row) => {
-              const now = plutoNow(row, state);
+              const now = plutoNowOrFrozen(row, state, frozenTickers.get(row.symbol));
               const who = changedBy(row);
               const cells: Record<string, React.ReactNode> = {
                 switch: (
@@ -204,7 +216,10 @@ export function PlutoTickersTab({ rows, loading, error, state, daySignalsWatch, 
                 ),
                 ticker: (
                   <span className="pm-tk-name">
-                    <TickerButton symbol={row.symbol} onOpen={onOpenTicker} />
+                    <span>
+                      <TickerButton symbol={row.symbol} onOpen={onOpenTicker} />
+                      <FrozenTickerBadge frozen={frozenTickers.get(row.symbol)} />
+                    </span>
                     <span className="co">{row.companyName ?? "—"}</span>
                   </span>
                 ),

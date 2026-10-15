@@ -109,7 +109,8 @@ export interface NoSignalBadge {
  * pending, "Unscored" (red) when it could not be scored, and for a scored ticker with nothing to show, "Filtered" when the
  * Signals settings removed every contract and "No candidates" when nothing got as far as those settings.
  */
-export function describeNoSignalBadge(row: { unscoredReason: SignalsUnscoredReason | null; unscoredDetail: SignalsUnscoredDetail | null; noCandidatesReason: SignalsNoCandidatesReason | null }): NoSignalBadge {
+export function describeNoSignalBadge(row: { unscoredReason: SignalsUnscoredReason | null; unscoredDetail: SignalsUnscoredDetail | null; noCandidatesReason: SignalsNoCandidatesReason | null }, frozenReason: string | null = null): NoSignalBadge {
+  if (frozenReason) return { label: "Frozen", className: "bg-danger-lt", spinning: false, reason: `${frozenReason}: no orders until its records are rewritten and it is unfrozen.` };
   if (row.unscoredReason === "analysing") return { label: "Analysing", className: "bg-azure-lt", spinning: true, reason: describeUnscoredReason("analysing", row.unscoredDetail) };
   if (row.unscoredReason) return { label: "Unscored", className: "bg-danger-lt", spinning: false, reason: describeUnscoredReason(row.unscoredReason, row.unscoredDetail) };
   const noCandidates = row.noCandidatesReason;

@@ -39,6 +39,7 @@ const cancelledWithoutUserLabel: Record<OrderCancellationReason, string> = {
   cancelled_by_ibkr: "Cancelled by IBKR",
   not_confirmed_in_time: "Not confirmed in time",
   not_filled_in_time: "Not filled in time",
+  ticker_frozen: "Ticker frozen (stock split)",
 };
 
 /** An order that expired at the close or was never confirmed is not a failure: neutral, not red. */

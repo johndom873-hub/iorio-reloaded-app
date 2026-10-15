@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { PlutoManagedMark } from "../components/PlutoManagedMark";
+import { FrozenTickerBadge } from "../components/FrozenTickerBadge";
+import { useFrozenTickers } from "../hooks/useFrozenTickers";
 import { usePlutoEnabledSymbols } from "../hooks/usePlutoEnabledSymbols";
 import { IconAlertTriangle, IconChevronDown } from "@tabler/icons-react";
 import { ApiError } from "../api/client";
@@ -101,7 +103,8 @@ function ModelDollars({ value }: { value: number | null }) {
 
 /** No top signal: the badge (Analysing / Unscored / No candidates / Filtered) with the reason always shown under it (approved mockup 2026-10-03). */
 function UnscoredBadge({ row }: { row: SignalsScreenRow }) {
-  const badge = describeNoSignalBadge(row);
+  const frozen = useFrozenTickers().get(row.symbol);
+  const badge = describeNoSignalBadge(row, frozen?.reason ?? null);
   return (
     <div className="d-flex flex-column align-items-start gap-1">
       <NoSignalBadgeLabel badge={badge} />
@@ -191,6 +194,7 @@ function latestSnapshotCapturedAt(rows: SignalsScreenRow[]): string | null {
 export function SignalsPage() {
   const [rows, setRows] = useState<SignalsScreenRow[]>([]);
   const plutoEnabledSymbols = usePlutoEnabledSymbols();
+  const frozenTickers = useFrozenTickers();
   const [roadmap, setRoadmap] = useState<RoadmapItem[]>([]);
   const [restRows, setRestRows] = useState<SignalsScreenRow[] | null>(null);
   const [loading, setLoading] = useState(true);
@@ -256,10 +260,12 @@ export function SignalsPage() {
   // Rows in Pluto's order, kept stable between frames (see rankRowsByEdgeYield).
   const previousOrderRef = useRef(new Map<string, number>());
   const rankedRows = useMemo(() => {
-    const ranked = rankRowsByEdgeYield(rows, previousOrderRef.current);
+    // A frozen ticker (a stock split until its records are rewritten) takes no orders: its row stays, with no signal.
+    const tradableRows = rows.map((row) => (frozenTickers.has(row.symbol) ? { ...row, best: null, bestRoll: null } : row));
+    const ranked = rankRowsByEdgeYield(tradableRows, previousOrderRef.current);
     previousOrderRef.current = new Map(ranked.map((row, index) => [row.tickerId, index]));
     return ranked;
-  }, [rows]);
+  }, [rows, frozenTickers]);
 
   const anyLivePrice = rows.some((row) => row.priceSource === "live");
   const liveStatus =
@@ -279,10 +285,13 @@ export function SignalsPage() {
         key: "ticker",
         header: "Ticker",
         render: (row) => (
-          <button type="button" className="btn btn-link p-0 text-decoration-none fw-bold" onClick={() => openTickerModal(row.symbol)}>
-            {row.symbol}
-            <PlutoManagedMark symbol={row.symbol} managed={plutoEnabledSymbols.has(row.symbol)} />
-          </button>
+          <span className="d-inline-flex align-items-center text-nowrap">
+            <button type="button" className="btn btn-link p-0 text-decoration-none fw-bold" onClick={() => openTickerModal(row.symbol)}>
+              {row.symbol}
+              <PlutoManagedMark symbol={row.symbol} managed={plutoEnabledSymbols.has(row.symbol)} />
+            </button>
+            <FrozenTickerBadge frozen={frozenTickers.get(row.symbol)} />
+          </span>
         ),
       },
       {
@@ -385,7 +394,7 @@ export function SignalsPage() {
         ),
       },
     ],
-    [openTickerModal, plutoEnabledSymbols],
+    [openTickerModal, plutoEnabledSymbols, frozenTickers],
   );
 
   if (error) {
@@ -449,7 +458,7 @@ export function SignalsPage() {
           columns={columns}
           rows={rankedRows}
           rowKey={(row) => row.tickerId}
-          rowClassName={(row) => (row.unscoredReason === "analysing" ? "signals-row-analysing" : row.unscoredReason ? "signals-row-unscored" : undefined)}
+          rowClassName={(row) => (row.unscoredReason === "analysing" ? "signals-row-analysing" : row.unscoredReason || frozenTickers.has(row.symbol) ? "signals-row-unscored" : undefined)}
           loading={loading && rows.length === 0}
           emptyMessage="No tickers on the shortlist."
           toolbar={toolbar}
@@ -467,14 +476,20 @@ export function SignalsPage() {
           {rankedRows.map((row) => {
             const model = topModel(row);
             return (
-              <div key={row.tickerId} className="card position-relative">
+              <div key={row.tickerId} className={`card position-relative${frozenTickers.has(row.symbol) ? " signals-card-frozen" : ""}`}>
                 <div className="card-body py-2 d-flex flex-column gap-1">
                   <div className="d-flex justify-content-between align-items-baseline gap-2">
                     {/* stretched-link: the whole card opens the ticker (a 44px+ tap target, as the mockup's card link). */}
-                    <button type="button" className="btn btn-link p-0 text-decoration-none fw-bold stretched-link position-static" onClick={() => openTickerModal(row.symbol)}>
-                      {row.symbol}
-                      <PlutoManagedMark symbol={row.symbol} managed={plutoEnabledSymbols.has(row.symbol)} />
-                    </button>
+                    <span className="d-inline-flex align-items-center">
+                      <button type="button" className="btn btn-link p-0 text-decoration-none fw-bold stretched-link position-static" onClick={() => openTickerModal(row.symbol)}>
+                        {row.symbol}
+                        <PlutoManagedMark symbol={row.symbol} managed={plutoEnabledSymbols.has(row.symbol)} />
+                      </button>
+                      {/* Above the stretched link, so tapping the badge shows why rather than opening the ticker. */}
+                      <span className="position-relative" style={{ zIndex: 2 }}>
+                        <FrozenTickerBadge frozen={frozenTickers.get(row.symbol)} />
+                      </span>
+                    </span>
                     <span className="font-mono" style={{ fontSize: "0.85rem" }}>
                       <TickColoredPrice value={row.spotPrice} initialReference={row.previousClose?.close ?? null} precision={2} title={priceSourceLabel[row.priceSource]}>
                         <span>{formatCurrency(row.spotPrice)}</span>

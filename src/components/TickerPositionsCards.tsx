@@ -1,4 +1,5 @@
 import type { RefObject } from "react";
+import { useFrozenTickers } from "../hooks/useFrozenTickers";
 import type { TickerPositionsData } from "../hooks/useTickerPositions";
 import { CollapsibleCard } from "./CollapsibleCard";
 import { CycleCard } from "./CycleCard";
@@ -23,6 +24,7 @@ interface TickerPositionsCardsProps {
 
 export function TickerPositionsCards({ symbol, data, currentPrice, focusPositionId, focusedPositionRef, forceOpenSignal = 0, onSellCall, onRollLeg, onPositionChanged }: TickerPositionsCardsProps) {
   const { positions, positionsError } = data;
+  const frozen = useFrozenTickers().get(symbol);
   if (positionsError) return <div className="alert alert-danger">{positionsError}</div>;
   if (positions === null) {
     return (
@@ -49,6 +51,7 @@ export function TickerPositionsCards({ symbol, data, currentPrice, focusPosition
                 unrealizedPnlFetchFailed={data.unrealizedPnlFetchFailed}
                 totalAccountValue={data.totalAccountValue}
                 currentPrice={currentPrice}
+                frozen={frozen}
                 onChanged={() => {
                   void data.loadPositions();
                   onPositionChanged?.();

@@ -17,6 +17,15 @@ export interface MarketDataFeedRefusal {
   since: string;
 }
 
+/** A ticker nobody trades until its stock split's records are rewritten and it is unfrozen (npm run ticker:unfreeze). */
+export interface FrozenTicker {
+  symbol: string;
+  /** "2-for-1 stock split effective 2026-12-01". */
+  reason: string;
+  /** ISO time it was frozen. */
+  frozenAt: string;
+}
+
 export interface EnvironmentDetails extends PublicEnvironment {
   trading: { state: TradingState; reason: string | null };
   /** The operator kill switch (Risk & Limits → Trading halt). `trading.state` is "halted" while it is on. */
@@ -27,6 +36,8 @@ export interface EnvironmentDetails extends PublicEnvironment {
   marketDataLinesEnabled: boolean;
   /** Non-null while IBKR refuses live market data (code 10197: usually a stale Gateway session, sometimes a live login elsewhere) — the top bar's "Live prices stopped". */
   marketDataFeedRefusal: MarketDataFeedRefusal | null;
+  /** Frozen tickers (a stock split until their records are rewritten): the top bar's pill and every screen's Frozen badge. */
+  frozenTickers: FrozenTicker[];
   worker: {
     gitSha: string | null;
     accountId: string | null;

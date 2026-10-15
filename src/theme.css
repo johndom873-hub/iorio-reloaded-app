@@ -358,9 +358,10 @@
   border-color: rgba(255, 138, 138, 0.5);
   background: rgba(255, 138, 138, 0.1);
 }
-/* 992-1199px: the market badge and this pill compete for the centre slot, so the pill shrinks to its
-   icon (as the "Trading blocked" chip does); the full wording stays in its tooltip. */
-@media (min-width: 992px) and (max-width: 1199.98px) {
+/* 992-1279px: the market badge and this pill compete for the centre slot, so the pill shrinks to its
+   icon (as the "Trading blocked" chip does); the full wording stays in its tooltip. Up to 1279px since the side
+   groups keep their content width (below): at 1200-1249px the full pill pushed the logout button off-screen. */
+@media (min-width: 992px) and (max-width: 1279.98px) {
   .iorio-topbar-center .iorio-topbar-status:not(.iorio-topbar-status-danger) {
     gap: 0;
     padding-inline: 0.5rem;
@@ -373,6 +374,17 @@
     clip: rect(0 0 0 0);
     white-space: nowrap;
   }
+}
+/* Frozen tickers pill: below 1500px the top bar has no room for the word, so it reads "🔒 COIN" (the tooltip says frozen).
+   The side groups keep their content width, so a crowded bar pushes the centre group aside instead of overlapping it. */
+@media (max-width: 1499.98px) {
+  .iorio-topbar-frozen-word {
+    display: none;
+  }
+}
+.iorio-topbar-left,
+.iorio-topbar-right {
+  min-width: max-content;
 }
 .iorio-topbar-status-compact {
   padding: 0.15rem 0.55rem;
@@ -1509,6 +1521,10 @@
 :root[data-bs-theme="dark"] .table > tbody > tr.signals-row-unscored > td {
   box-shadow: inset 0 0 0 9999px rgba(242, 109, 109, 0.12);
 }
+/* On the red-tinted unscored row, the secondary grey falls to 4.2-4.3:1: the reason takes the body colour there. */
+.table > tbody > tr.signals-row-unscored .signals-no-signal-reason {
+  color: var(--tblr-body-color) !important;
+}
 .signals-no-signal-reason {
   font-size: 0.75rem;
   line-height: 1.35;
@@ -2415,5 +2431,29 @@
 @media (min-width: 992px) {
   .backtest-new-sessions-bar {
     top: var(--iorio-topbar-height);
+  }
+}
+
+/* Frozen ticker (a stock split until its records are rewritten): the phone Signals card is tinted like the unscored
+   table row, and the Frozen badge, the top-bar pill and a disabled order button's tooltip wrapper get a 44px tap area
+   on phones without changing their look. */
+.signals-card-frozen {
+  box-shadow: inset 0 0 0 9999px rgba(214, 57, 57, 0.07);
+}
+:root[data-bs-theme="dark"] .signals-card-frozen {
+  box-shadow: inset 0 0 0 9999px rgba(242, 109, 109, 0.12);
+}
+@media (max-width: 767.98px) {
+  .frozen-tap-target {
+    position: relative;
+  }
+  .frozen-tap-target::after {
+    content: "";
+    position: absolute;
+    inset: -0.8rem -0.15rem;
+  }
+  /* Tabler's .badge clips its overflow, which would cut the tap area off. */
+  .badge.frozen-tap-target {
+    overflow: visible;
   }
 }
