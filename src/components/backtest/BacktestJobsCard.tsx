@@ -2,12 +2,13 @@ import { useState } from "react";
 import { Link } from "react-router-dom";
 import { errorMessage } from "../../api/client";
 import { cancelBacktestJob, putBacktestDownloadFirst, resumeBacktestJob, type BacktestJobView } from "../../api/backtest";
-import { describeJobTitle } from "../../lib/backtestPresentation";
+import { describeJobRowCount, describeJobRowTiming, describeJobTitle, describeJobTitleParts, type BacktestJobRowTiming } from "../../lib/backtestPresentation";
 import { formatNumber } from "../../lib/formatters";
 import { useTickingNow } from "../../hooks/useTickingNow";
 import { ConfirmModal } from "../ConfirmModal";
 import { Spinner } from "../Spinner";
-import { BacktestCard, BacktestJobProgress, BacktestJobStatusBadge } from "./backtestBits";
+import { TooltipSpan } from "../TooltipSpan";
+import { BacktestCard, BacktestJobProgressBar, BacktestJobStatusBadge } from "./backtestBits";
 import { usePutDownloadFirst } from "./usePutDownloadFirst";
 
 interface BacktestJobsCardProps {
@@ -16,6 +17,8 @@ interface BacktestJobsCardProps {
 }
 
 type JobAction = "cancel" | "resume" | "first";
+
+const jobRowTimingClass: Record<BacktestJobRowTiming["tone"], string> = { secondary: "text-secondary", amber: "iorio-note-amber", danger: "text-danger" };
 
 /** Background jobs: downloads and backtest runs, each in its own process, with progress read from the database. Backtests
  *  and downloads sit in two lists, side by side on wide screens and stacked on narrower ones, each in the order the
@@ -99,8 +102,9 @@ interface BacktestJobListProps {
   onMoveToTop: (job: BacktestJobView) => void;
 }
 
-/** One kind's jobs under a small header with their count, in a list of fixed height (about six rows) so the card never
- *  changes height as jobs update; past that the list scrolls, its scrollbar always showing. */
+/** One kind's jobs under a small header with their count, one line per job (mockup approved 2026-10-16), in a list of fixed
+ *  height (about ten rows) so the card never changes height as jobs update; past that the list scrolls, its scrollbar always
+ *  showing. */
 function BacktestJobList({ title, emptyText, jobs, now, pendingAction, isPending, onResume, onCancel, onMoveToTop }: BacktestJobListProps) {
   const firstQueuedJobId = jobs.find((job) => job.displayStatus === "queued")?.id ?? null;
   const downloadRunning = jobs.some((job) => job.kind === "download" && job.displayStatus === "running" && !job.pauseRequested);
@@ -126,47 +130,71 @@ function BacktestJobList({ title, emptyText, jobs, now, pendingAction, isPending
             // start now, by pausing the running one.
             const isFirstQueued = job.id === firstQueuedJobId;
             const canMoveToTop = job.kind === "download" && status === "queued" && (!isFirstQueued || downloadRunning);
+            const canResume = (status === "stopped" || status === "failed") && job.kind !== "analysis";
+            const hasButtons = canMoveToTop || canResume || canCancel;
+            const running = status === "running";
+            const count = describeJobRowCount(job);
+            const timing = describeJobRowTiming(job, now);
+            // The first of the count, the time and the buttons starts the right-hand group.
+            const rightGroupStart = count ? "count" : timing ? "time" : "buttons";
+            const { symbol, name } = describeJobTitleParts(job);
+            const titleParts = (
+              <>
+                <span className="backtest-job-title-symbol">{symbol}</span>
+                {name && <span className="backtest-job-title-name">&nbsp;· {name}</span>}
+              </>
+            );
             return (
               <div key={job.id} className="backtest-job-row">
-                <div className="d-flex align-items-center gap-2" style={{ minWidth: 0 }}>
+                <div className="backtest-job-row-line">
                   <BacktestJobStatusBadge status={status} />
                   {job.kind === "backtest" && job.sessionId ? (
-                    <Link to={`/backtest/sessions/${job.sessionId}`} className="fw-semibold text-truncate" title={describeJobTitle(job)}>
-                      {describeJobTitle(job)}
+                    <Link to={`/backtest/sessions/${job.sessionId}`} className="backtest-job-title backtest-job-title-link fw-semibold" title={describeJobTitle(job)}>
+                      {titleParts}
                     </Link>
                   ) : (
-                    <strong className="text-truncate" title={describeJobTitle(job)}>
-                      {describeJobTitle(job)}
+                    <strong className="backtest-job-title" title={describeJobTitle(job)}>
+                      {titleParts}
                     </strong>
                   )}
                   {job.pauseRequested && (
-                    <span className="badge bg-secondary-lt flex-shrink-0" style={{ fontSize: "0.72rem" }} title="Goes back into the queue once it stops, right after the download put first">
+                    <span className="badge bg-secondary-lt" style={{ fontSize: "0.72rem" }} title="Goes back into the queue once it stops, right after the download put first">
                       Pausing
                     </span>
                   )}
-                </div>
-                <div className="d-flex gap-2 justify-content-end">
-                  {canMoveToTop && (
-                    <button type="button" className="btn btn-outline-secondary d-inline-flex align-items-center gap-1 text-nowrap" disabled={pendingAction !== null} onClick={() => onMoveToTop(job)}>
-                      {isPending(job, "first") && <Spinner size="sm" />}
-                      {isFirstQueued ? "Start now" : "Move to top"}
-                    </button>
+                  {/* On a phone the bar, count and time take a second line under the title and buttons. */}
+                  {(running || count || timing) && <span className="backtest-job-row-break" aria-hidden="true" />}
+                  {running && <BacktestJobProgressBar job={job} className="backtest-job-row-phone-bar" />}
+                  {count && <span className={`backtest-job-row-count font-mono ${rightGroupStart === "count" ? "backtest-job-row-push" : ""}`}>{count}</span>}
+                  {timing && (
+                    <TooltipSpan text={timing.text} className={`backtest-job-row-time ${jobRowTimingClass[timing.tone]} ${rightGroupStart === "time" ? "backtest-job-row-push" : ""}`}>
+                      {timing.text}
+                    </TooltipSpan>
                   )}
-                  {(status === "stopped" || status === "failed") && job.kind !== "analysis" && (
-                    <button type="button" className="btn btn-outline-primary d-inline-flex align-items-center gap-1" disabled={pendingAction !== null} onClick={() => onResume(job)}>
-                      {isPending(job, "resume") && <Spinner size="sm" />}
-                      Resume
-                    </button>
-                  )}
-                  {canCancel && (
-                    <button type="button" className="btn btn-outline-secondary d-inline-flex align-items-center gap-1" disabled={pendingAction !== null} onClick={() => onCancel(job)}>
-                      {status === "queued" ? "Remove" : "Cancel"}
-                    </button>
+                  {hasButtons && (
+                    <div className={`backtest-job-row-buttons ${rightGroupStart === "buttons" ? "backtest-job-row-push" : ""}`}>
+                      {canMoveToTop && (
+                        <button type="button" className="btn btn-outline-secondary d-inline-flex align-items-center gap-1 text-nowrap" disabled={pendingAction !== null} onClick={() => onMoveToTop(job)}>
+                          {isPending(job, "first") && <Spinner size="sm" />}
+                          {isFirstQueued ? "Start now" : "Move to top"}
+                        </button>
+                      )}
+                      {canResume && (
+                        <button type="button" className="btn btn-outline-primary d-inline-flex align-items-center gap-1" disabled={pendingAction !== null} onClick={() => onResume(job)}>
+                          {isPending(job, "resume") && <Spinner size="sm" />}
+                          Resume
+                        </button>
+                      )}
+                      {canCancel && (
+                        <button type="button" className="btn btn-outline-secondary d-inline-flex align-items-center gap-1" disabled={pendingAction !== null} onClick={() => onCancel(job)}>
+                          {status === "queued" ? "Remove" : "Cancel"}
+                        </button>
+                      )}
+                    </div>
                   )}
                 </div>
-                <div className="backtest-job-row-progress">
-                  <BacktestJobProgress job={job} now={now} />
-                </div>
+                {/* Only a running job has a bar. */}
+                {running && <BacktestJobProgressBar job={job} className="backtest-job-row-bar" />}
               </div>
             );
           })

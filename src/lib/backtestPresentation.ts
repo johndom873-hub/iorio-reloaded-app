@@ -45,7 +45,9 @@ import {
   formatPercentage,
   formatQuotePrice,
   formatRatio,
+  formatRelativeAge,
   formatSecondsInWords,
+  formatShortAgeWithSeconds,
   formatSignedPercentage,
   formatSignedPnl,
   formatYearMonth,
@@ -149,10 +151,62 @@ export function describeJobRunTime(status: BacktestJobDisplayStatus, runSeconds:
   return `ran ${duration}`;
 }
 
+/** The job's title in two parts: the symbol, which a job row always shows in full, and the session or analysis name after it
+ *  (null for a download), which a tight row cuts to fit. */
+export function describeJobTitleParts(job: Pick<BacktestJobView, "kind" | "symbol" | "sessionName">): { symbol: string; name: string | null } {
+  if (job.kind === "analysis") return { symbol: job.symbol, name: "Analysis" };
+  return { symbol: job.symbol, name: job.kind === "backtest" && job.sessionName ? job.sessionName : null };
+}
+
 /** The job's title: the symbol for a download, "SMCI · Edge Yield 20%" for a backtest. */
-export function describeJobTitle(job: BacktestJobView): string {
-  if (job.kind === "analysis") return `${job.symbol} · Analysis`;
-  return job.kind === "backtest" && job.sessionName ? `${job.symbol} · ${job.sessionName}` : job.symbol;
+export function describeJobTitle(job: Pick<BacktestJobView, "kind" | "symbol" | "sessionName">): string {
+  const { symbol, name } = describeJobTitleParts(job);
+  return name ? `${symbol} · ${name}` : symbol;
+}
+
+/** A job row's count: "34/322"; for an analysis its step and that step's count, "Scanning the chains 120/1,703" (the count
+ *  starts over at each step), and "done" once it succeeded. Null when there is nothing to count (a queued job that never ran). */
+export function describeJobRowCount(job: BacktestJobView): string | null {
+  const status = job.displayStatus;
+  if (job.kind === "analysis") {
+    if (status !== "running") return status === "succeeded" ? "done" : null;
+    const step = job.progressLabel && job.progressLabel in analysisStepLabels ? analysisStepLabels[job.progressLabel as AnalysisStep] : null;
+    if (step === null) return "starting";
+    return job.progressTotal > 0 ? `${step} ${formatNumber(job.progressDone)}/${formatNumber(job.progressTotal)}` : step;
+  }
+  if (job.progressTotal <= 0) return status === "running" ? "starting" : null;
+  return `${formatNumber(job.progressDone)}/${formatNumber(job.progressTotal)}`;
+}
+
+export interface BacktestJobRowTiming {
+  text: string;
+  tone: "secondary" | "amber" | "danger";
+}
+
+/** A job row's time: "~19 min left (2 min elapsed)" while it runs, "(26 min elapsed)" for a queued download that already ran
+ *  part of the way, "finished 3h ago (41 min elapsed)" once it ended; a stopped job's warning (amber) or a failed one's error
+ *  (red) in its place. Null when there is nothing to say (a queued job that never ran). */
+export function describeJobRowTiming(job: BacktestJobView, now: Date): BacktestJobRowTiming | null {
+  const elapsed = job.runSeconds !== null ? `(${formatSecondsInWords(job.runSeconds)} elapsed)` : null;
+  const secondary = (...parts: (string | null)[]): BacktestJobRowTiming | null => {
+    const text = parts.filter((part): part is string => part !== null).join(" ");
+    return text ? { text, tone: "secondary" } : null;
+  };
+  switch (job.displayStatus) {
+    case "running":
+      return secondary(job.etaSeconds !== null ? `~${formatSecondsInWords(job.etaSeconds)} left` : null, elapsed);
+    case "queued":
+      return secondary(elapsed);
+    case "stopped": {
+      const silence = formatShortAgeWithSeconds(job.heartbeatAt ?? job.startedAt ?? job.createdAt, now) ?? "a while";
+      const resume = job.kind === "download" ? "Resume continues from the last saved day" : "Resume runs the session again from the start";
+      return { text: `no update for ${silence}; ${resume}`, tone: "amber" };
+    }
+    case "failed":
+      return { text: job.error ?? "failed", tone: "danger" };
+    default:
+      return secondary(job.finishedAt ? `finished ${formatRelativeAge(job.finishedAt, now)}` : null, elapsed);
+  }
 }
 
 // ---- Splits (the engine infers them: IBKR bars are split-adjusted, ThetaData options are as traded) ----

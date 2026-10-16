@@ -115,15 +115,22 @@ export function BacktestJobStatusBadge({ status }: { status: BacktestJobDisplayS
   return <span className={`badge ${jobStatusBadgeClass[status]}`}>{jobStatusLabel[status]}</span>;
 }
 
+/** A job's progress bar, coloured by its status. */
+export function BacktestJobProgressBar({ job, className }: { job: BacktestJobView; className?: string }) {
+  const percent = Math.round(jobProgressFraction(job) * 100);
+  return (
+    <div className={`progress ${className ?? ""}`.trim()} role="progressbar" aria-label={`${job.symbol} progress`} aria-valuenow={percent} aria-valuemin={0} aria-valuemax={100}>
+      <div className={`progress-bar ${jobProgressBarClass[job.displayStatus]}`} style={{ width: `${percent}%` }} />
+    </div>
+  );
+}
+
 /** A job's progress bar and the line under it: how far, what it is on, time left, and when it last reported. */
 export function BacktestJobProgress({ job, now }: { job: BacktestJobView; now: Date }) {
-  const percent = Math.round(jobProgressFraction(job) * 100);
   const status = job.displayStatus;
   return (
     <div className="d-flex flex-column gap-1" style={{ minWidth: 0 }}>
-      <div className="progress" role="progressbar" aria-label={`${job.symbol} progress`} aria-valuenow={percent} aria-valuemin={0} aria-valuemax={100}>
-        <div className={`progress-bar ${jobProgressBarClass[status]}`} style={{ width: `${percent}%` }} />
-      </div>
+      <BacktestJobProgressBar job={job} />
       <div className="d-flex flex-wrap column-gap-3 row-gap-1" style={{ fontSize: "0.78rem" }}>
         <span className="font-mono">{describeJobProgress(job)}</span>
         {job.progressLabel && <span className="text-secondary">{job.progressLabel}</span>}
