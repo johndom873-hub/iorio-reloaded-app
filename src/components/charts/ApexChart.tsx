@@ -1,6 +1,6 @@
 import ReactApexChart from "react-apexcharts";
 import type { ApexOptions, ApexYAxis } from "apexcharts";
-import { useTheme } from "../../contexts/ThemeContext";
+import { useTheme } from "../../hooks/useTheme";
 
 interface ApexChartProps {
   type: "line" | "bar" | "area" | "candlestick" | "donut";

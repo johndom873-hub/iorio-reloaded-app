@@ -1,49 +1,10 @@
-import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { fetchOrder, type OrderRequest } from "../api/positions";
 import { openNotificationStream } from "../api/notifications";
 import { orderRequestStatusLabel } from "../lib/formatters";
 import { describeAssignmentRisk, describeRollSignalUpgrade, describeSignalUpgrade } from "../lib/signalsPresentation";
-import { useAuth } from "./AuthContext";
-
-export type BackgroundJobKind = "order" | "position-closed" | "signal-upgraded" | "assignment-risk";
-export type BackgroundJobStatus = "running" | "done" | "error";
-
-interface BackgroundJobBase {
-  id: string;
-  kind: BackgroundJobKind;
-  label: string;
-  status: BackgroundJobStatus;
-  message: string;
-  dismissed: boolean;
-  /** Optional in-app destination rendered as a link in the toast. */
-  link?: { to: string; label: string };
-}
-
-export interface OrderJob extends BackgroundJobBase {
-  kind: "order";
-  order: OrderRequest;
-}
-
-// Fed by the SSE notification stream's "position_closed" event (an option
-// expiring or being assigned — see ibkrGatewayWorker.ts's
-// notifyPositionExpired) rather than anything this browser itself did, so
-// unlike OrderJob there's no local order/poll state behind it — it's a
-// one-shot toast, done the instant it arrives.
-export interface PositionClosedJob extends BackgroundJobBase {
-  kind: "position-closed";
-}
-
-// Fed by the Day Signals loop's "signal_upgraded" event: a pooled contract's grade went up. One-shot, like PositionClosedJob.
-export interface SignalUpgradedJob extends BackgroundJobBase {
-  kind: "signal-upgraded";
-}
-
-// Fed by the Day Signals loop's "assignment_risk" event: an open short leg's |delta| crossed the threshold. One-shot.
-export interface AssignmentRiskJob extends BackgroundJobBase {
-  kind: "assignment-risk";
-}
-
-export type BackgroundJob = OrderJob | PositionClosedJob | SignalUpgradedJob | AssignmentRiskJob;
+import { useAuth } from "../hooks/useAuth";
+import { BackgroundJobsContext, type BackgroundJob, type BackgroundJobStatus } from "../hooks/useBackgroundJobs";
 
 const terminalOrderStatuses = new Set(["filled", "partially_filled", "cancelled", "cancelled_partially_filled", "rejected", "error"]);
 
@@ -82,14 +43,6 @@ function orderStatusMessage(order: OrderRequest): string {
       return order.errorMessage ?? "Order errored";
   }
 }
-
-interface BackgroundJobsContextValue {
-  jobs: BackgroundJob[];
-  dismissJob: (id: string) => void;
-  startOrderJob: (order: OrderRequest) => void;
-}
-
-const BackgroundJobsContext = createContext<BackgroundJobsContextValue | undefined>(undefined);
 
 export function BackgroundJobsProvider({ children }: { children: ReactNode }) {
   const { currentUser } = useAuth();
@@ -223,10 +176,4 @@ export function BackgroundJobsProvider({ children }: { children: ReactNode }) {
       {children}
     </BackgroundJobsContext.Provider>
   );
-}
-
-export function useBackgroundJobs(): BackgroundJobsContextValue {
-  const context = useContext(BackgroundJobsContext);
-  if (!context) throw new Error("useBackgroundJobs must be used within a BackgroundJobsProvider");
-  return context;
 }

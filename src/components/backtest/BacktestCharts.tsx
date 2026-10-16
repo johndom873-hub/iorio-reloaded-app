@@ -1,5 +1,5 @@
 import type { ApexOptions } from "apexcharts";
-import { useTheme } from "../../contexts/ThemeContext";
+import { useTheme } from "../../hooks/useTheme";
 import type { BacktestCompareCurve, BacktestSessionDay } from "../../api/backtest";
 import { useMediaQuery } from "../../hooks/useMediaQuery";
 import { formatCurrency, formatPercentage } from "../../lib/formatters";

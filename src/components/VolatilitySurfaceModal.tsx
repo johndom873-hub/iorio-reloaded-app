@@ -4,7 +4,7 @@ import { Spinner } from "./Spinner";
 import { TooltipSpan } from "./TooltipSpan";
 import { ColumnVisibilityPopover } from "./DataTable/ColumnVisibilityPopover";
 import { useColumnVisibility } from "./DataTable/useColumnVisibility";
-import { useTheme } from "../contexts/ThemeContext";
+import { useTheme } from "../hooks/useTheme";
 import { ApiError } from "../api/client";
 import { fetchTickerSignals, type SignalSurfaceSlice, type SviSliceStatus, type TickerSignalsDetail } from "../api/signals";
 import { formatCurrency, formatDate, formatPercentage } from "../lib/formatters";

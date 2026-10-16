@@ -8,7 +8,7 @@ import { CollapsibleCard } from "../components/CollapsibleCard";
 import { DottedLabelTooltip, HelpTooltip } from "../components/HelpTooltip";
 import { ClosePositionModal } from "../components/ClosePositionModal";
 import { TickColoredPrice } from "../components/TickColoredPrice";
-import { useTheme } from "../contexts/ThemeContext";
+import { useTheme } from "../hooks/useTheme";
 import { ApiError } from "../api/client";
 import {
   fetchAvailableCash,

@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Spinner } from "./Spinner";
 import { ApiError } from "../api/client";
-import { useBackgroundJobs, type OrderJob } from "../contexts/BackgroundJobsContext";
+import { useBackgroundJobs, type OrderJob } from "../hooks/useBackgroundJobs";
 import { cancelOrder, clearOrderConfirmationSent, confirmOrder, markOrderConfirmationSent, openOrderLegQuoteStream, type AdaptivePriority, type OrderLegQuote, type OrderRequest } from "../api/positions";
 
 // Just the fields the Live Quote card below actually renders -- a Signals

@@ -1,19 +1,11 @@
-import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from "react";
-
-export type Theme = "light" | "dark";
+import { useCallback, useEffect, useState, type ReactNode } from "react";
+import { ThemeContext, type Theme } from "../hooks/useTheme";
 
 const STORAGE_KEY = "iorio-theme";
 
 function applyThemeToDocument(theme: Theme): void {
   document.documentElement.setAttribute("data-bs-theme", theme);
 }
-
-interface ThemeContextValue {
-  theme: Theme;
-  toggleTheme: () => void;
-}
-
-const ThemeContext = createContext<ThemeContextValue | undefined>(undefined);
 
 export function ThemeProvider({ children }: { children: ReactNode }) {
   const [theme, setTheme] = useState<Theme>(
@@ -30,12 +22,4 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   }, []);
 
   return <ThemeContext.Provider value={{ theme, toggleTheme }}>{children}</ThemeContext.Provider>;
-}
-
-export function useTheme(): ThemeContextValue {
-  const context = useContext(ThemeContext);
-  if (!context) {
-    throw new Error("useTheme must be used within a ThemeProvider");
-  }
-  return context;
 }

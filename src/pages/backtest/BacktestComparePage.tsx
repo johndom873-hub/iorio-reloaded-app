@@ -19,7 +19,7 @@ import { BacktestBackLink, BacktestCard, BacktestSeriesSwatch, BacktestValueScal
 import { useBacktestValueScale } from "../../components/backtest/useBacktestValueScale";
 import { BacktestCompareChart } from "../../components/backtest/BacktestCharts";
 import { usePolledBacktestResource } from "../../components/backtest/useBacktestPolling";
-import { useTheme } from "../../contexts/ThemeContext";
+import { useTheme } from "../../hooks/useTheme";
 import { formatCurrency } from "../../lib/formatters";
 import { backtestMetricExplanation, backtestSeriesColorsByTheme, bestValueIndex, buyAndHoldColorByTheme, compareMetricRows, describeOverrideChanges, spyBuyAndHoldColorByTheme } from "../../lib/backtestPresentation";
 import { escapeTooltipHtml } from "../../lib/signalsPresentation";

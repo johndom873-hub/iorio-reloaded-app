@@ -4,7 +4,7 @@ import { IconAlertCircle, IconCircleCheck, IconCircleX } from "@tabler/icons-rea
 import { analysisDteRanges, type AnalysisChainView, type AnalysisFigures } from "../../../api/backtestAnalysis";
 import { analysisChartColors, liquidityLevel, type AnalysisLevel, type AnalysisPanelValues } from "../../../lib/analysisPresentation";
 import { formatCurrency, formatDayMonth, formatDayMonthYear, formatPercentage, formatYearMonth } from "../../../lib/formatters";
-import { useTheme } from "../../../contexts/ThemeContext";
+import { useTheme } from "../../../hooks/useTheme";
 import { ApexChart } from "../../charts/ApexChart";
 import { TooltipSpan } from "../../TooltipSpan";
 import { BacktestSegmentedSwitch } from "../backtestBits";

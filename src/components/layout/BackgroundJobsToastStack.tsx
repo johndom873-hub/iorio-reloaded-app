@@ -2,7 +2,7 @@ import { useEffect } from "react";
 import { Link } from "react-router-dom";
 import { IconAlertTriangle, IconCircleCheck, IconTrendingUp } from "@tabler/icons-react";
 import { Spinner } from "../Spinner";
-import { useBackgroundJobs, type BackgroundJob } from "../../contexts/BackgroundJobsContext";
+import { useBackgroundJobs, type BackgroundJob } from "../../hooks/useBackgroundJobs";
 
 const autoDismissAfterMs = 10_000;
 

@@ -16,7 +16,7 @@ import {
 } from "lightweight-charts";
 import { IconChevronDown } from "@tabler/icons-react";
 import { Spinner } from "../Spinner";
-import { useTheme } from "../../contexts/ThemeContext";
+import { useTheme } from "../../hooks/useTheme";
 import { useCollapsibleCard } from "../../hooks/useCollapsibleCard";
 import { ApiError } from "../../api/client";
 import { fetchTickerChart, type ChartRange, type PriceBar, type TickerTechnicals } from "../../api/tickerDetail";

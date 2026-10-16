@@ -29,8 +29,8 @@ import {
   IconSun,
   IconTrendingUp,
 } from "@tabler/icons-react";
-import { useAuth } from "../../contexts/AuthContext";
-import { useTheme } from "../../contexts/ThemeContext";
+import { useAuth } from "../../hooks/useAuth";
+import { useTheme } from "../../hooks/useTheme";
 import { BackgroundJobsToastStack } from "./BackgroundJobsToastStack";
 import { NewVersionToast } from "./NewVersionToast";
 import { StreamConnectionToast } from "./StreamConnectionToast";

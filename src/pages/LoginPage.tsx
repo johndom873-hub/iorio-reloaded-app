@@ -1,8 +1,8 @@
 import { PublicEnvironmentBadges } from "../components/layout/EnvironmentBadges";
 import { useEffect, useState, type FormEvent } from "react";
 import { Navigate } from "react-router-dom";
-import { useAuth } from "../contexts/AuthContext";
-import { useTheme } from "../contexts/ThemeContext";
+import { useAuth } from "../hooks/useAuth";
+import { useTheme } from "../hooks/useTheme";
 import { ApiError } from "../api/client";
 import { type AuthConfig, fetchAuthConfig } from "../api/auth";
 import { describePasskeyError, passkeysSupported, registerPasskey } from "../api/passkeys";

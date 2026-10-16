@@ -1,17 +1,7 @@
-import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { type AuthenticatedUser, fetchCurrentSession, login as loginRequest, logout as logoutRequest } from "../api/auth";
 import { signInWithPasskey } from "../api/passkeys";
-
-interface AuthContextValue {
-  currentUser: AuthenticatedUser | null;
-  isCheckingSession: boolean;
-  /** "passkey_enrollment_required" when passkeys are required: the password signed nobody in and only opens enrolment. */
-  login: (username: string, password: string) => Promise<"signed_in" | "passkey_enrollment_required">;
-  loginWithPasskey: () => Promise<void>;
-  logout: () => Promise<void>;
-}
-
-const AuthContext = createContext<AuthContextValue | undefined>(undefined);
+import { AuthContext } from "../hooks/useAuth";
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [currentUser, setCurrentUser] = useState<AuthenticatedUser | null>(null);
@@ -49,12 +39,4 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   return (
     <AuthContext.Provider value={{ currentUser, isCheckingSession, login, loginWithPasskey, logout }}>{children}</AuthContext.Provider>
   );
-}
-
-export function useAuth(): AuthContextValue {
-  const context = useContext(AuthContext);
-  if (!context) {
-    throw new Error("useAuth must be used within an AuthProvider");
-  }
-  return context;
 }

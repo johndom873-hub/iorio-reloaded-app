@@ -7,7 +7,7 @@ import { useColumnVisibility } from "./DataTable/useColumnVisibility";
 import { ApexChart } from "./charts/ApexChart";
 import { ClosePositionModal } from "./ClosePositionModal";
 import { RecoveryPathModal } from "./RecoveryPathModal";
-import { useTheme } from "../contexts/ThemeContext";
+import { useTheme } from "../hooks/useTheme";
 import type { Greeks, Position, UnrealizedPnlResult } from "../api/positions";
 import { computePayoff } from "../lib/payoff";
 import {

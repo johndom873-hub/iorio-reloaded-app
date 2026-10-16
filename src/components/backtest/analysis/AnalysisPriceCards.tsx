@@ -3,7 +3,7 @@ import type { ApexOptions } from "apexcharts";
 import type { AnalysisFigures, AnalysisPriceRange } from "../../../api/backtestAnalysis";
 import { analysisChartColors, dateRuns, lotPriceCeiling, potOnDayFrom, rungPriceCeiling, shockFor, tooSmallDates, type AnalysisPanelValues } from "../../../lib/analysisPresentation";
 import { formatCurrency, formatDayMonthYear, formatNumber, formatPercentage, formatVolatilityPoints } from "../../../lib/formatters";
-import { useTheme } from "../../../contexts/ThemeContext";
+import { useTheme } from "../../../hooks/useTheme";
 import { ApexChart } from "../../charts/ApexChart";
 import { AnalysisCard, AnalysisNote, AnalysisSeriesKey } from "./analysisBits";
 

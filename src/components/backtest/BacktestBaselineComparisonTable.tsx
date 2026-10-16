@@ -1,5 +1,5 @@
 import type { BacktestMetrics } from "../../api/backtest";
-import { useTheme } from "../../contexts/ThemeContext";
+import { useTheme } from "../../hooks/useTheme";
 import { formatCurrency, formatRatio } from "../../lib/formatters";
 import { backtestMetricExplanation, backtestSeriesColorsByTheme, buyAndHoldColorByTheme, spyBuyAndHoldColorByTheme } from "../../lib/backtestPresentation";
 import { DataTable, type DataTableColumn } from "../DataTable/DataTable";

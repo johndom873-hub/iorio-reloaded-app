@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { createChart, LineSeries, CrosshairMode, LineStyle, type IChartApi, type ISeriesApi, type UTCTimestamp } from "lightweight-charts";
 import { IconChevronDown } from "@tabler/icons-react";
 import { Spinner } from "../Spinner";
-import { useTheme } from "../../contexts/ThemeContext";
+import { useTheme } from "../../hooks/useTheme";
 import { useCollapsibleCard } from "../../hooks/useCollapsibleCard";
 import { ApiError } from "../../api/client";
 import { fetchTickerIvChart, type IvChartRange } from "../../api/tickerDetail";
