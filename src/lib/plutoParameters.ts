@@ -48,10 +48,10 @@ function dollarsOfAccount(context: PlutoParameterContext, pct: number): string {
   return context.netLiquidationValue === null ? "" : ` (${formatCurrency((context.netLiquidationValue * pct) / 100, 0)} now)`;
 }
 
-function orderSizeDollars(context: PlutoParameterContext): string {
+function dollarsOfBudget(context: PlutoParameterContext, pct: number): string {
   if (context.netLiquidationValue === null) return "";
   const budget = (context.netLiquidationValue * context.settings.capitalBudgetPct) / 100;
-  return ` (${formatCurrency((budget * context.settings.orderSizePctOfBudget) / 100, 0)} now)`;
+  return ` (${formatCurrency((budget * pct) / 100, 0)} now)`;
 }
 
 /** " COIN and SMCI override it." for the tickers with their own value of a ladder setting; "" when none does. */
@@ -128,12 +128,12 @@ export const plutoParameterGroups: PlutoParameterGroup[] = [
     title: "Capital",
     summary: (settings) => `budget ${settings.capitalBudgetPct}% of the account · order size ${settings.orderSizePctOfBudget}% of budget · up to ${settings.maxOpenPositions} positions · ${settings.stressRiskBudgetPct > 0 ? `stress cap ${settings.stressRiskBudgetPct}% at ${settings.stressSigmas}σ` : "stress cap off"}`,
     parameters: [
-      { field: "capitalBudgetPct", label: "Capital budget", unit: "% of account", kind: "number", step: "1", help: (context) => `Everything Pluto may have committed at once${dollarsOfAccount(context, context.settings.capitalBudgetPct)}. Human trades are not counted.` },
-      { field: "maxTickerExposurePct", strategy: "edge_margin", label: "Max per ticker", unit: "% of account", kind: "number", step: "1", help: (context) => `Ceiling per underlying, counting human positions too${dollarsOfAccount(context, context.settings.maxTickerExposurePct)}.` },
-      { field: "maxSectorExposurePct", strategy: "edge_margin", label: "Max per sector", unit: "% of account", kind: "number", step: "1", help: "Ceiling per sector. 100 turns the check off." },
+      { field: "capitalBudgetPct", label: "Capital budget", unit: "% of account", kind: "number", step: "1", help: (context) => `Everything that may be committed at once on the tickers Pluto is enabled on, human positions there included${dollarsOfAccount(context, context.settings.capitalBudgetPct)}. Hedges are not counted.` },
+      { field: "maxTickerPctOfBudget", strategy: "edge_margin", label: "Max per ticker", unit: "% of budget", kind: "number", step: "1", help: (context) => `Ceiling per underlying, counting human positions too${dollarsOfBudget(context, context.settings.maxTickerPctOfBudget)}.` },
+      { field: "maxSectorPctOfBudget", strategy: "edge_margin", label: "Max per sector", unit: "% of budget", kind: "number", step: "1", help: (context) => (context.settings.maxSectorPctOfBudget >= 100 ? "Ceiling per sector, counting human positions too. 100 turns the check off." : `Ceiling per sector, counting human positions too${dollarsOfBudget(context, context.settings.maxSectorPctOfBudget)}. 100 turns the check off.`) },
       { field: "maxOpenPositions", strategy: "edge_margin", label: "Max open positions", unit: "positions", kind: "integer", step: "1", help: "Pluto opens nothing new once it holds this many." },
       { field: "maxActionsPerSession", strategy: "edge_margin", label: "Max orders per day", unit: "orders", kind: "integer", step: "1", help: "Orders Pluto may send in one trading day." },
-      { field: "orderSizePctOfBudget", strategy: "edge_margin", label: "Order size", unit: "% of budget", kind: "number", step: "1", help: (context) => `What Pluto commits per order${orderSizeDollars(context)}. Less only when a tighter limit applies: budget left, per-ticker cap, cash reserve or the contract's volume today.` },
+      { field: "orderSizePctOfBudget", strategy: "edge_margin", label: "Order size", unit: "% of budget", kind: "number", step: "1", help: (context) => `What Pluto commits per order${dollarsOfBudget(context, context.settings.orderSizePctOfBudget)}. Less only when a tighter limit applies: budget left, per-ticker cap, cash reserve or the contract's volume today.` },
       { field: "minCashReservePct", strategy: "edge_margin", label: "Min cash reserve", unit: "% of account", kind: "number", step: "1", help: "Cash that must stay uncommitted after an order." },
       { field: "stressRiskBudgetPct", strategy: "edge_margin", label: "Stress cap per order", unit: "% of account", kind: "number", step: "0.1", help: (context) => `Most one order may lose if the stock moves against it by the stress move before expiry${dollarsOfAccount(context, context.settings.stressRiskBudgetPct)}. Longer expiries carry a bigger move, so they get fewer contracts. Applies to puts and to calls that buy shares, not to calls on shares already held. 0 turns the cap off.` },
       { field: "stressSigmas", strategy: "edge_margin", label: "Stress move", unit: "σ", kind: "number", step: "0.1", help: "Size of that adverse move, in standard deviations of the stock's forecast volatility up to expiry. Code adds 0.5σ for a stock in an unusually volatile stretch and 0.5σ when it is already down more than a normal day today. At 2σ, SMCI's 2-day move was 13.6%." },
@@ -258,6 +258,8 @@ const parameterAuditLabel: Partial<Record<PlutoSettingsField, string>> = {
 export const plutoParameterLabelByField: Record<string, string> = {
   // Renamed fields, still named in older settings audit rows and events.
   maxAbsDayChangePct: "Max day move (old, % of price)",
+  maxTickerExposurePct: "Max per ticker (old, % of account)",
+  maxSectorExposurePct: "Max per sector (old, % of account)",
   ...Object.fromEntries(plutoParameterGroups.flatMap((group) => group.parameters.map((parameter) => [parameter.field, parameterAuditLabel[parameter.field] ?? parameter.label]))),
 };
 

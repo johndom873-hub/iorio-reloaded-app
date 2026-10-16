@@ -225,6 +225,7 @@ function EdgeMarginExplanation({ values }: { values: PlutoHowItWorks }) {
   const liquidityParts = [edgeMargin.minOpenInterest > 0 ? `OI ≥ ${edgeMargin.minOpenInterest}` : null, edgeMargin.minSessionVolume > 0 ? `volume ≥ ${edgeMargin.minSessionVolume}` : null].filter((part): part is string => part !== null);
   const liquidityMeaning = [edgeMargin.minOpenInterest > 0 ? `${edgeMargin.minOpenInterest} open contracts` : null, edgeMargin.minSessionVolume > 0 ? `${edgeMargin.minSessionVolume} traded today` : null].filter((part): part is string => part !== null);
   const standardOrderPct = (shared.capitalBudgetPct * edgeMargin.orderSizePctOfBudget) / 100;
+  const tickerCapPctOfAccount = (shared.capitalBudgetPct * edgeMargin.maxTickerPctOfBudget) / 100;
   const kellyShare = edgeMargin.kellyFraction === 0.5 ? "half" : `${edgeMargin.kellyFraction} times`;
   const contractRules = [
     { name: "Grade", value: `${edgeMargin.minGrade} or better`, meaning: gradeCut > 0 ? `Edge margin of at least ${pct(gradeCut)}: the market pays at least ${pct(gradeCut)} more than the fair price.` : "Edge margin of at least 0%: the market pays at least the fair price." },
@@ -240,9 +241,9 @@ function EdgeMarginExplanation({ values }: { values: PlutoHowItWorks }) {
     { name: "Big move", value: `≤ ${edgeMargin.maxDayMoveMultiple}× a normal day`, meaning: `A ticker moving more than ${edgeMargin.maxDayMoveMultiple} normal days today is skipped.` },
   ];
   const sizeLimits = [
-    { name: "Capital budget", value: pct(shared.capitalBudgetPct), meaning: `Pluto never commits more than ${pct(shared.capitalBudgetPct)} of the account.` },
+    { name: "Capital budget", value: pct(shared.capitalBudgetPct), meaning: `Everything on the tickers Pluto trades, human positions there included (hedges aside), stays under ${pct(shared.capitalBudgetPct)} of the account.` },
     { name: "Standard order", value: pct(standardOrderPct), meaning: `One order uses at most ${pct(edgeMargin.orderSizePctOfBudget)} of the budget.` },
-    { name: "Per ticker", value: pct(edgeMargin.maxTickerExposurePct), meaning: `At most ${pct(edgeMargin.maxTickerExposurePct)} of the account on one ticker.` },
+    { name: "Per ticker", value: `${pct(edgeMargin.maxTickerPctOfBudget)} of budget`, meaning: `At most ${pct(edgeMargin.maxTickerPctOfBudget)} of the budget (${pct(tickerCapPctOfAccount)} of the account) on one ticker, counting human positions too.` },
     { name: "Cash reserve", value: pct(edgeMargin.minCashReservePct), meaning: "This much cash always stays free." },
     { name: "Volume", value: `≤ ${pct(edgeMargin.maxContractsVolumeSharePct)} of today`, meaning: `At most ${pct(edgeMargin.maxContractsVolumeSharePct)} of the contracts traded today.` },
     edgeMargin.stressRiskBudgetPct > 0
@@ -300,7 +301,7 @@ function EdgeMarginExplanation({ values }: { values: PlutoHowItWorks }) {
       </Card>
 
       <Card title="How big each order is">
-        <p className="pm-how-text muted">The number of contracts is the smallest that every one of these limits allows. Percentages are of the account value.</p>
+        <p className="pm-how-text muted">The number of contracts is the smallest that every one of these limits allows. Percentages are of the account value unless they say budget.</p>
         <RuleTable heading="Limit" rows={sizeLimits} />
       </Card>
 

@@ -125,8 +125,8 @@ export type PlutoExecutionStrategy = "edge_margin" | "cc_put_ladder";
 export interface PlutoSettings {
   executionStrategy: PlutoExecutionStrategy;
   capitalBudgetPct: number;
-  maxTickerExposurePct: number;
-  maxSectorExposurePct: number;
+  maxTickerPctOfBudget: number;
+  maxSectorPctOfBudget: number;
   maxOpenPositions: number;
   maxActionsPerSession: number;
   orderSizePctOfBudget: number;
@@ -486,7 +486,7 @@ export interface PlutoModelInput {
   trigger?: { kind: string; detail?: Record<string, unknown> };
   market?: { spy_day_change_pct?: number };
   account?: { nlv?: number; free_cash?: number; pluto_budget_pct?: number; pluto_budget_used_pct?: number; open_pluto_positions?: number; managed_positions?: number; max_open_positions?: number; actions_today?: number; max_actions_per_session?: number };
-  parameters?: { min_grade?: string; max_abs_delta?: number; dte_range?: [number, number]; max_ticker_exposure_pct?: number; order_size_pct_of_budget?: number; confidence_floor?: number; spread_cost_share_pct?: number };
+  parameters?: { min_grade?: string; max_abs_delta?: number; dte_range?: [number, number]; max_ticker_pct_of_budget?: number; /** Passes before 2026-10-16: the per-ticker cap as % of the account. */ max_ticker_exposure_pct?: number; order_size_pct_of_budget?: number; confidence_floor?: number; spread_cost_share_pct?: number };
   tickers?: PlutoModelInputTicker[];
   recent_decisions?: { at: string; verdict: string; candidate_id?: string; outcome?: string; outcome_detail?: string; reason?: string }[];
 }
@@ -721,7 +721,7 @@ export interface PlutoHowItWorks {
     confidenceFloor: number;
     maxEdgeMarginDriftPts: number;
     orderSizePctOfBudget: number;
-    maxTickerExposurePct: number;
+    maxTickerPctOfBudget: number;
     minCashReservePct: number;
     maxContractsVolumeSharePct: number;
     stressRiskBudgetPct: number;

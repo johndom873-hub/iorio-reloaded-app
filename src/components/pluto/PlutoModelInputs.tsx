@@ -419,6 +419,7 @@ function ParametersSection({ parameters }: { parameters: NonNullable<PlutoModelI
     parameters.max_abs_delta !== undefined ? `max |Δ| ${parameters.max_abs_delta.toFixed(2)}` : null,
     parameters.confidence_floor !== undefined ? `confidence floor ${parameters.confidence_floor.toFixed(2)}` : null,
     parameters.spread_cost_share_pct !== undefined ? `spread cost ${parameters.spread_cost_share_pct}% of the half-spread` : null,
+    parameters.max_ticker_pct_of_budget !== undefined ? `max ${parameters.max_ticker_pct_of_budget}% of budget per ticker` : null,
     parameters.max_ticker_exposure_pct !== undefined ? `max ${parameters.max_ticker_exposure_pct}% of NLV per ticker` : null,
     parameters.order_size_pct_of_budget !== undefined ? `order size ${parameters.order_size_pct_of_budget}% of budget` : null,
   ].filter((piece): piece is string => Boolean(piece));
