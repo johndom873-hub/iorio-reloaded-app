@@ -5,6 +5,7 @@ import {
   type BacktestAction,
   type BacktestActionKind,
   type BacktestCycle,
+  type BacktestDataFileSummary,
   type BacktestDecisionMaker,
   type BacktestDetectedSplit,
   type BacktestFill,
@@ -100,6 +101,26 @@ export function isBacktestJobActive(job: BacktestJobView, now: Date): boolean {
   if (job.displayStatus !== "stopped") return false;
   const lastSign = job.heartbeatAt ?? job.startedAt ?? job.createdAt;
   return now.getTime() - new Date(lastSign).getTime() < stoppedJobFastPollWindowMs;
+}
+
+/** A symbol the backtest downloader takes (the API's normalizeBacktestSymbol): not a class-share symbol like "PBR A". */
+export function isBacktestSymbol(symbol: string): boolean {
+  return /^[A-Z][A-Z0-9.]{0,9}$/.test(symbol);
+}
+
+/**
+ * Why each symbol cannot be queued for download from elsewhere (the Screener): an unfinished download of it ("Queued",
+ * "Downloading", "Stopped"), else its data file ("Downloaded"). Symbols absent from the map can be queued.
+ */
+export function describeBacktestSymbolDownloadStates(files: BacktestDataFileSummary[], jobs: BacktestJobView[]): Map<string, string> {
+  const states = new Map<string, string>(files.map((file) => [file.symbol, "Downloaded"]));
+  for (const job of jobs) {
+    if (job.kind !== "download") continue;
+    if (job.displayStatus === "queued") states.set(job.symbol, "Queued");
+    else if (job.displayStatus === "running") states.set(job.symbol, "Downloading");
+    else if (job.displayStatus === "stopped") states.set(job.symbol, "Stopped");
+  }
+  return states;
 }
 
 /** A job's progress, or a session's latest run's, as a fraction: 1 once it succeeded. */

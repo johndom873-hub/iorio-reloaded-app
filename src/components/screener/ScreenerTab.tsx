@@ -11,7 +11,12 @@ import {
   type ScreenerFilters,
   type ScreenerScanRow,
 } from "../../api/screener";
+import { fetchBacktestOverview, startBacktestDownload } from "../../api/backtest";
 import { formatCompactNumber, formatCurrency, formatPercentage, formatRelativeDate } from "../../lib/formatters";
+import { describeBacktestSymbolDownloadStates, isBacktestSymbol } from "../../lib/backtestPresentation";
+
+// Backtesting runs only on the Mac with the ThetaData files (App.tsx): + Backtest exists in dev builds only.
+const backtestDownloadsAvailable = import.meta.env.DEV;
 
 interface FilterFormState {
   search: string;
@@ -96,14 +101,42 @@ export function ScreenerTab({ onOpenTickerModal }: ScreenerTabProps) {
   const [hasSearched, setHasSearched] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [addingSymbol, setAddingSymbol] = useState<string | null>(null);
+  // Why a symbol's + Backtest is disabled, by symbol; null until the overview loads (or when the API has no backtest routes).
+  const [backtestDownloadStates, setBacktestDownloadStates] = useState<Map<string, string> | null>(null);
+  const [queueingBacktestSymbol, setQueueingBacktestSymbol] = useState<string | null>(null);
 
   useEffect(() => {
     fetchScreenerSectors()
       .then(setSectorOptions)
       .catch(() => setSectorOptions([]));
     runSearch();
+    void loadBacktestDownloadStates();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  async function loadBacktestDownloadStates() {
+    if (!backtestDownloadsAvailable) return;
+    try {
+      const overview = await fetchBacktestOverview();
+      setBacktestDownloadStates(describeBacktestSymbolDownloadStates(overview.files, overview.jobs));
+    } catch {
+      // No backtest routes on this API (BACKTEST_DATA_DIR unset) or it is restarting: the button stays hidden.
+    }
+  }
+
+  async function handleQueueBacktestDownload(symbol: string) {
+    setQueueingBacktestSymbol(symbol);
+    try {
+      setError(null);
+      await startBacktestDownload({ symbol });
+    } catch (err) {
+      // Already queued or running (409, e.g. from the Backtest screen): the reload below disables the button.
+      if (!(err instanceof ApiError && err.status === 409)) setError(err instanceof ApiError ? err.message : `Could not start the ${symbol} download.`);
+    } finally {
+      await loadBacktestDownloadStates();
+      setQueueingBacktestSymbol(null);
+    }
+  }
 
   async function runSearch(filtersOverride?: FilterFormState) {
     const activeForm = filtersOverride ?? form;
@@ -228,20 +261,40 @@ export function ScreenerTab({ onOpenTickerModal }: ScreenerTabProps) {
       key: "actions",
       header: "",
       align: "right",
-      render: (row) =>
-        row.isShortlisted ? (
-          <span className="badge bg-green-lt">Shortlisted</span>
-        ) : (
-          <button
-            type="button"
-            className="btn btn-sm btn-outline-primary d-inline-flex align-items-center gap-1"
-            disabled={addingSymbol === row.symbol}
-            onClick={() => handleAddToShortlist(row.symbol)}
-          >
-            {addingSymbol === row.symbol && <Spinner size="sm" />}
-            + Shortlist
-          </button>
-        ),
+      render: (row) => {
+        const backtestDownloadState = backtestDownloadStates?.get(row.symbol);
+        return (
+          <div className="d-flex justify-content-end align-items-center gap-2">
+            {row.isShortlisted ? (
+              <span className="badge bg-green-lt">Shortlisted</span>
+            ) : (
+              <button
+                type="button"
+                className="btn btn-sm btn-outline-primary d-inline-flex align-items-center gap-1 text-nowrap"
+                disabled={addingSymbol === row.symbol}
+                onClick={() => handleAddToShortlist(row.symbol)}
+              >
+                {addingSymbol === row.symbol && <Spinner size="sm" />}
+                + Shortlist
+              </button>
+            )}
+            {backtestDownloadStates && isBacktestSymbol(row.symbol) && (
+              <button
+                type="button"
+                className="btn btn-sm btn-outline-primary d-inline-flex align-items-center justify-content-center gap-1 text-nowrap"
+                // As wide as its widest label ("Downloading"), so + Shortlist lines up on every row.
+                style={{ minWidth: "6.25rem" }}
+                title={backtestDownloadState ? undefined : "Download the backtest data from 2020, at the end of the queue"}
+                disabled={backtestDownloadState !== undefined || queueingBacktestSymbol !== null}
+                onClick={() => void handleQueueBacktestDownload(row.symbol)}
+              >
+                {queueingBacktestSymbol === row.symbol && <Spinner size="sm" />}
+                {backtestDownloadState ?? "+ Backtest"}
+              </button>
+            )}
+          </div>
+        );
+      },
     },
   ];
 
