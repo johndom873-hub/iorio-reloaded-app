@@ -35,6 +35,7 @@ import {
   formatExpiryWithDte,
   formatPercentage,
   formatPercentageValue,
+  formatTransactionPrice,
   formatRelativeDate,
   formatSignedPercentageValue,
   formatSignedPnl,
@@ -42,7 +43,7 @@ import {
   pnlTextClass,
 } from "../lib/formatters";
 import { portfolioFromExposure } from "../lib/portfolioFromExposure";
-import { positionCloseReasonLabel } from "../lib/positionPnl";
+import { describeShareHandOverPositions, positionCloseReasonLabel } from "../lib/positionPnl";
 import { useRefreshAfterSignalsTickerModal, useSignalsTickerModal } from "../hooks/useSignalsTickerModal";
 import { TooltipSpan } from "../components/TooltipSpan";
 import { PerformanceCard } from "../components/PerformanceCard";
@@ -338,13 +339,16 @@ const eventStatusBadge: Record<string, string> = {
 // "opened" event must always describe the entry, never the eventual exit
 // (found 2026-08-28: closed positions' "opened" row was showing exit
 // prices instead of what was actually paid/collected at open).
+// Shares handed to another position on close were never sold: they read "moved to <that position>", with no exit price.
 function formatLegDescription(
   leg: PositionEvent["legs"][number],
   showExitPrice: boolean,
   closeReason: string | null,
   dteAsOf: string,
+  sharesMovedTo: string,
 ): string {
   const sideLabel = leg.side === "long" ? "Long" : "Short";
+  if (showExitPrice && leg.sharesHandedOn) return `${sideLabel} ${leg.quantity} sh moved to ${sharesMovedTo}`;
   // An expired option's exit price is always $0.00 (definitionally worthless,
   // no closing trade) -- showing it adds nothing the "Expired" badge doesn't
   // already say. Assignment isn't the same: exit price there is usually but
@@ -354,7 +358,7 @@ function formatLegDescription(
       ? null
       : showExitPrice && leg.exitPrice !== null
         ? `exit $${leg.exitPrice.toFixed(2)}`
-        : `@ $${leg.entryPrice.toFixed(2)}`;
+        : `@ $${formatTransactionPrice(leg.openingFill?.averagePrice ?? leg.entryPrice)}`;
   const priceSuffix = priceLabel ? ` ${priceLabel}` : "";
   if (leg.legType === "stock") return `${sideLabel} ${leg.quantity} sh${priceSuffix}`;
   const strikeLabel = leg.strikePrice !== null ? `$${leg.strikePrice}` : "—";
@@ -364,8 +368,9 @@ function formatLegDescription(
 }
 
 function EventRow({ event, onSymbolClick }: { event: PositionEvent; onSymbolClick: (ticker: { symbol: string; focusPositionId?: string }) => void }) {
+  const sharesMovedTo = describeShareHandOverPositions(event.sharesMovedToPositions);
   const description = event.legs
-    .map((leg) => formatLegDescription(leg, event.eventType === "closed", event.closeReason, event.openedAt))
+    .map((leg) => formatLegDescription(leg, event.eventType === "closed", event.closeReason, event.openedAt, sharesMovedTo))
     .join(" / ");
 
   let statusLabel: string;

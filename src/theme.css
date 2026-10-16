@@ -1908,6 +1908,11 @@
   min-width: 13rem;
   white-space: normal;
 }
+/* Wheel cycle: an event's wording keeps a readable width on a phone (a line or two, not one word a line) while the
+   figure columns scroll sideways. */
+.cycle-event-cell {
+  min-width: 13rem;
+}
 /* Green text, light theme: Tabler's .text-success (#2fb344) is 2.74:1 on a white card and 2.63:1 on the #f9fafb page,
    under WCAG AA. The same hue darkened to the first shade that also passes on a hovered table row (#eeeff0): #217d30,
    5.20:1 on white, 4.97:1 on #f9fafb, 4.51:1 on a hovered row. Only the text utility changes (not --tblr-success,

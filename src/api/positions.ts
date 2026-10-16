@@ -18,10 +18,23 @@ export interface PositionLeg {
   expiryDate: string | null;
   multiplier: number;
   ibkrContractId: string | null;
+  /** What P&L counts per share: the fill with its commission (a short option: the credit less it). */
   entryPrice: string;
   entryAt: string;
   exitPrice: string | null;
   exitAt: string | null;
+  /** IBKR's execution price of the opening fills (average); for shares bought by an earlier position, what they were bought at. */
+  openingFillPrice?: number | null;
+  openingFillQuantity?: number | null;
+  /** Commission IBKR charged on the opening fills, for this leg's quantity. */
+  openingCommission?: number | null;
+  /** An app order's opening fill whose commission IBKR has not reported yet. */
+  openingCommissionMissing?: boolean;
+  /** The shares were bought by an earlier position (an assigned put, a hand-over): the fill price is that purchase's. */
+  openingFillCarried?: boolean;
+  /** Average price of the closing fills, and their commission. */
+  closingFillPrice?: number | null;
+  closingCommission?: number | null;
 }
 
 // A synced-from-IBKR position that doesn't cleanly pair into a known
@@ -56,9 +69,13 @@ export interface Position {
   capitalAtRisk: string | null;
   /** Base for P&L %: capitalAtRisk plus the shares already sold in closed slices of a position that still holds shares. */
   capitalDeployed: string | null;
-  // Cycle break-even per share (open positions only), see cycleBreakEven.ts in the API repo; null with a reason when it can't be trusted.
+  // This position's own break-even per share (open positions only): its shares' cost less the premium earned on them, see
+  // breakEvenByPositionFromHistory in the API repo; null with a reason when it can't be trusted.
   breakEven?: number | null;
   breakEvenUnavailableReason?: string | null;
+  /** The symbol's consolidated wheel-cycle break-even (the Wheel cycle card's), and how many open positions share that cycle. */
+  cycleBreakEven?: number | null;
+  cycleOpenPositionCount?: number | null;
 }
 
 export interface PositionFilters {
@@ -154,6 +171,12 @@ export interface OrderLeg {
   right?: "C" | "P";
 }
 
+/** What has filled of one order leg: the quantity, and its quantity-weighted average fill price (null with nothing filled). */
+export interface OrderLegFill {
+  filledQuantity: number;
+  averageFillPrice: number | null;
+}
+
 export type AdaptivePriority = "Urgent" | "Normal" | "Patient";
 
 export interface OrderRequest {
@@ -173,6 +196,8 @@ export interface OrderRequest {
   calendarWarningEvents?: { title: string; eventDate: string }[] | null;
   /** The API's stored FRED risk-free rate (decimal) at build time, for Order Review's probability of profit. Persisted at order-creation time (2026-09-24), same as calendarWarning. */
   riskFreeRate?: number | null;
+  /** GET /positions/orders/:id only: each payload leg's fills, in the payload's order. */
+  legFills?: OrderLegFill[];
   createdAt: string;
   updatedAt: string;
 }
@@ -586,8 +611,12 @@ export interface CycleTimelineRow {
   strike: number | null;
   /** Option expiry ("YYYY-MM-DD"); null for stock rows, and for a mark row whose open legs expire on different dates. */
   expiryDate: string | null;
-  /** Real fill for stock trades, else that date's daily close. */
+  /** The stock price that traded behind the row: a fill, what a Covered Call's shares were bought at, an assignment's strike; a mark row's market close. */
   stockPrice: number | null;
+  /** "live": a Today row priced while prices stream (app side only). */
+  stockPriceSource?: "execution" | "close" | "live" | null;
+  /** Commission IBKR charged on the row's executions; null when none applies or none is recorded. */
+  commission?: number | null;
   /** Mark rows only: the trading date ("YYYY-MM-DD") the mark is priced at (the close for shares, the nightly snapshot for options). */
   markDate?: string;
 }

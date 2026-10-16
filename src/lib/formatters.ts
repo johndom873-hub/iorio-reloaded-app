@@ -615,6 +615,26 @@ export function formatSignedPnl(amountInDollars: number | null | undefined, deci
   return formatted;
 }
 
+/**
+ * A per-share or per-contract transaction price (a fill, an average fill, a limit): two decimals, up to four when the
+ * price has them ("1.20", "92.4325"); "$92.4325" with withDollarSign. A string is read as a number (Postgres numerics).
+ */
+export function formatTransactionPrice(priceOrNull: number | string | null | undefined, options: { withDollarSign?: boolean } = {}): string {
+  if (priceOrNull === null || priceOrNull === undefined || priceOrNull === "") return "—";
+  const price = typeof priceOrNull === "string" ? Number(priceOrNull) : priceOrNull;
+  if (Number.isNaN(price)) return "—";
+  return new Intl.NumberFormat("en-US", {
+    ...(options.withDollarSign ? { style: "currency", currency: "USD" } : {}),
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 4,
+  }).format(price);
+}
+
+/** An order leg's price in a one-line summary: "@ 1.205" (its average fill) once a fill is recorded, else "limit 1.20". */
+export function formatOrderLegPriceText(limitPrice: number, averageFillPrice: number | null | undefined): string {
+  return averageFillPrice === null || averageFillPrice === undefined ? `limit ${formatTransactionPrice(limitPrice)}` : `@ ${formatTransactionPrice(averageFillPrice)}`;
+}
+
 // An option quote (bid/ask/mid) as it appears in a chain: always two decimals, no currency symbol.
 export function formatQuotePrice(priceOrNull: number | null | undefined): string {
   if (priceOrNull === null || priceOrNull === undefined || Number.isNaN(priceOrNull)) return "—";

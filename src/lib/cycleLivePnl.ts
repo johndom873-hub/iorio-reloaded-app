@@ -37,7 +37,7 @@ export function liveCycleTimelineRows(cycle: Cycle, unrealizedPnlByPositionId: R
   if (liveStockPrice !== null) {
     for (const markRow of cycle.timeline) {
       if (markRow.at !== null || markRow.instrument !== "stock" || markRow.stockPrice === null) continue;
-      rows.push({ ...markRow, label: "Shares marked live", premium: 0, stock: markRow.quantity * (liveStockPrice - markRow.stockPrice), stockPrice: liveStockPrice, markDate: undefined });
+      rows.push({ ...markRow, label: "Shares marked live", premium: 0, stock: markRow.quantity * (liveStockPrice - markRow.stockPrice), stockPrice: liveStockPrice, stockPriceSource: "live", commission: null, markDate: undefined });
     }
   }
   for (const position of cycle.openOptionPositions) {
@@ -54,6 +54,8 @@ export function liveCycleTimelineRows(cycle: Cycle, unrealizedPnlByPositionId: R
       strike: position.strike,
       expiryDate: position.expiryDate,
       stockPrice: result.underlyingPrice ?? liveStockPrice,
+      stockPriceSource: "live",
+      commission: null,
     });
   }
   return rows;

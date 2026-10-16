@@ -53,14 +53,15 @@ function buildChartPoints(breakeven: number, currentPrice: number | null, payoff
   });
 }
 
-// A covered call's net cost per share is the symbol's cycle break-even when known (premium from earlier calls and any assigned
-// put is already netted out; approved 2026-10-02), else the stock entry less this call's premium.
-export function computeCoveredCallPayoff(legs: PayoffLegInput[], currentPrice: number | null = null, cycleBreakEven: number | null = null): PayoffResult | null {
+// A covered call's net cost per share is the position's own break-even when known (its shares' cost less the premium earned on
+// them, earlier calls and the put that delivered them included; approved 2026-10-16), else the stock entry less this call's premium.
+// Max gain is negative when the shares cost more than the strike plus that premium: assignment then sells them at a loss.
+export function computeCoveredCallPayoff(legs: PayoffLegInput[], currentPrice: number | null = null, positionBreakEven: number | null = null): PayoffResult | null {
   const stockLeg = legs.find((leg) => leg.legType === "stock");
   const callLeg = legs.find((leg) => leg.legType === "option" && leg.optionType === "call");
   if (!stockLeg || !callLeg || callLeg.strikePrice === null) return null;
 
-  const netCostPerShare = cycleBreakEven ?? Number(stockLeg.entryPrice) - Number(callLeg.entryPrice);
+  const netCostPerShare = positionBreakEven ?? Number(stockLeg.entryPrice) - Number(callLeg.entryPrice);
   const strike = Number(callLeg.strikePrice);
   // Share count comes from the stock leg's quantity, not its `multiplier`
   // (that field means "shares per option contract" and is meaningless for a
@@ -103,8 +104,8 @@ export function computeCashSecuredPutPayoff(legs: PayoffLegInput[], currentPrice
   };
 }
 
-export function computePayoff(strategyKey: StrategyKey, legs: PayoffLegInput[], currentPrice: number | null = null, cycleBreakEven: number | null = null): PayoffResult | null {
-  if (strategyKey === "covered_call") return computeCoveredCallPayoff(legs, currentPrice, cycleBreakEven);
+export function computePayoff(strategyKey: StrategyKey, legs: PayoffLegInput[], currentPrice: number | null = null, positionBreakEven: number | null = null): PayoffResult | null {
+  if (strategyKey === "covered_call") return computeCoveredCallPayoff(legs, currentPrice, positionBreakEven);
   return computeCashSecuredPutPayoff(legs, currentPrice);
 }
 

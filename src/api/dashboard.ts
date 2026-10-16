@@ -89,6 +89,16 @@ export interface PositionEventLeg {
   expiryDate: string | null;
   entryPrice: number;
   exitPrice: number | null;
+  /** Long stock closed at its entry price with no closing trade: the shares moved to another position, never sold. */
+  sharesHandedOn?: boolean;
+  /** IBKR's opening fills of the leg: quantity, average price, and commission (null until reported for every fill). */
+  openingFill?: { quantity: number; averagePrice: number; commission: number | null } | null;
+}
+
+/** A position on the other end of a share hand-over. */
+export interface ShareHandOverPosition {
+  positionId: string;
+  strategyKey: string;
 }
 
 export interface PositionEvent {
@@ -104,6 +114,8 @@ export interface PositionEvent {
   netCashEffect: number | null;
   fullMarketValue: number | null;
   attributedTo: string | null;
+  /** The positions this one's shares moved to when it closed (see sharesHandedOn). */
+  sharesMovedToPositions?: ShareHandOverPosition[];
   legs: PositionEventLeg[];
 }
 

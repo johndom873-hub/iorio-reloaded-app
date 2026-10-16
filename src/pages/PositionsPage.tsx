@@ -321,7 +321,7 @@ export function PositionsPage() {
     {
       key: "breakEven",
       header: "Break-Even",
-      headerTitle: "Stock price at which this symbol's whole wheel cycle (all puts, calls and stock since it began) nets to zero on the shares still held. Green = price above it, red = below. Free = premium collected already exceeds the cost.",
+      headerTitle: "Stock price at which this position nets to zero: its shares' cost less the premium earned on them (its calls, earlier calls on the same shares and the put that delivered them). The symbol's consolidated break-even is in the Wheel cycle card. Green = price above it, red = below. Free = premium collected already exceeds the cost.",
       align: "right",
       render: (row) => {
         if (row.breakEven === null || row.breakEven === undefined) {
@@ -349,10 +349,20 @@ export function PositionsPage() {
             </TooltipSpan>
           );
         }
+        // Every open row of the symbol, a hedge included, shows the same cycle figure: say so when there are several.
+        const symbolRowCount = positions.filter((position) => position.symbol === row.symbol).length;
+        const sharedCycleCaption = symbolRowCount > 1 ? `${row.symbol} cycle · ${symbolRowCount} positions` : null;
         return (
-          <FlashingNumber value={result.value} className={pnlTextClass(result.value)} title={result.storedAsOf ? `As of ${formatDate(result.storedAsOf)} close` : undefined}>
-            {formatSignedPnl(result.value)}
-          </FlashingNumber>
+          <>
+            <FlashingNumber value={result.value} className={pnlTextClass(result.value)} title={result.storedAsOf ? `As of ${formatDate(result.storedAsOf)} close` : undefined}>
+              {formatSignedPnl(result.value)}
+            </FlashingNumber>
+            {sharedCycleCaption && (
+              <div className="text-secondary text-nowrap" style={{ fontSize: "0.72rem", fontFamily: "var(--tblr-font-sans-serif)" }}>
+                {sharedCycleCaption}
+              </div>
+            )}
+          </>
         );
       },
     },

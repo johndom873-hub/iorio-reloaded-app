@@ -16,6 +16,7 @@ import {
   formatDateTime,
   formatNumber,
   formatRelativeDate,
+  formatTransactionPrice,
   orderRequestStatusBadgeClass,
   orderRequestStatusLabel,
   orderRequestTypeBadgeClass,
@@ -165,10 +166,7 @@ export function TradeBlotterPage() {
       key: "price",
       header: "Price",
       align: "right",
-      render: (row) => {
-        const rawPrice = row.kind === "trade" ? row.price : row.unitPrice;
-        return formatCurrency(rawPrice == null || rawPrice === "" ? null : Number(rawPrice));
-      },
+      render: (row) => formatTransactionPrice(row.kind === "trade" ? row.price : row.unitPrice, { withDollarSign: true }),
     },
     {
       key: "value",
@@ -261,7 +259,7 @@ export function TradeBlotterPage() {
 
   return (
     <>
-      <PageHeader title="Trade Blotter" subtitle="Execution history and realized P&L" />
+      <PageHeader title="Trade Blotter" subtitle="Every fill, and every order not fully filled" />
 
       {error && <div className="alert alert-danger">{error}</div>}
 

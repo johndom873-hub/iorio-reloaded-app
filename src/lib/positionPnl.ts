@@ -29,6 +29,19 @@ export function positionCloseReasonLabel(closeReason: string | null | undefined)
   return positionCloseReasonLabels[closeReason] ?? humanizeKey(closeReason);
 }
 
+const shareHandOverPositionLabels: Record<string, string> = {
+  covered_call: "a Covered Call",
+  cash_secured_put: "a Cash-Secured Put",
+  hedge: "a Hedge",
+  unstructured: "a position with no strategy",
+};
+
+/** Where shares moved to: "a Covered Call", "a Covered Call and a position with no strategy"; "the next position" when unknown. */
+export function describeShareHandOverPositions(positions: { strategyKey: string }[] | undefined): string {
+  if (!positions || positions.length === 0) return "the next position";
+  return positions.map((position) => shareHandOverPositionLabels[position.strategyKey] ?? `a ${humanizeKey(position.strategyKey)} position`).join(" and ");
+}
+
 // The one short code for each strategy, shown in every badge on the platform.
 // N/S = "no strategy": a position that doesn't cleanly pair into CC or CSP.
 export function strategyAbbrev(strategyKey: PositionStrategyKey): string {

@@ -22,7 +22,6 @@ import {
   type PositionLeg,
   type UnrealizedPnlResult,
   type Greeks,
-  type OrderLeg,
   type OrderCancellationReason,
   type OrderRequestStatus,
 } from "../api/positions";
@@ -40,7 +39,7 @@ import {
   type GatewayHealth,
   type MarketSessionState,
 } from "../api/systemHealth";
-import { daysToExpiry, todayInEasternIso, formatSignedPnl, formatSignedPercentageValue, formatCompactDollars, formatDateTime, formatFeedTime, formatNumber, formatPercentageValue, formatRelativeDate, formatOptionContractShort, formatUtcClockTimeInBrowserTime, ibkrExpiryToIsoDate, orderRequestStatusLabel } from "../lib/formatters";
+import { daysToExpiry, todayInEasternIso, formatSignedPnl, formatSignedPercentageValue, formatCompactDollars, formatDateTime, formatFeedTime, formatNumber, formatPercentageValue, formatRelativeDate, formatOptionContractShort, formatTransactionPrice, formatUtcClockTimeInBrowserTime, orderRequestStatusLabel } from "../lib/formatters";
 import { formatSuccessProbability, successProbabilityFromDelta, SUCCESS_PROBABILITY_HEADER } from "../lib/successProbability";
 import { positionExpiryDate, strategyAbbrev as positionStrategyAbbrev, strategyTooltip } from "../lib/positionPnl";
 import { FlashingNumber } from "../components/FlashingNumber";
@@ -48,6 +47,7 @@ import { TooltipSpan } from "../components/TooltipSpan";
 import { AVAILABLE_CASH_PERCENT_BANDS, higherIsWorseStatus, lowerIsWorseStatus, type StatusClass } from "../lib/statusThresholds";
 import { TopologyMap, type PulseEvent } from "../components/pulse/TopologyMap";
 import { nodeIdsForActiveEdges } from "../components/pulse/pulseEdges";
+import { formatOrderLegsSummary, orderAwaitsFillPrices, type LatestEventsOrder } from "../components/pulse/latestEventsOrders";
 import { PulsePhoneLayout, type PhoneSystemLed } from "../components/pulse/PulsePhoneLayout";
 import { useMediaQuery } from "../hooks/useMediaQuery";
 import { ResizableRail } from "../components/pulse/ResizableRail";
@@ -135,24 +135,14 @@ function orderEventStatusLabel(status: OrderRequestStatus, cancellationReason: O
   }
 }
 
-// Latest Events only has room for a short per-leg summary (stock: price;
-// option: strike/DTE/premium) — the full per-fill detail already lives in
-// the Trades panel. DTE is relative to asOf (the event's own time), not
-// "today" — a backfilled historical event for an expiry that's since
-// passed should show the DTE it actually had then, not a confusing
-// negative countdown (mirrors daysToExpiry's asOf convention).
-function formatOrderLegsSummary(legs: OrderLeg[], asOf: string): string {
-  return legs
-    .map((leg) => {
-      if (leg.role === "stock") {
-        return `${leg.action} ${leg.quantity} @ ${leg.unitPrice.toFixed(2)}`;
-      }
-      const expiryIsoDate = leg.expiry ? (leg.expiry.length === 8 ? ibkrExpiryToIsoDate(leg.expiry) : leg.expiry) : null;
-      const contract = leg.strike !== undefined && leg.right ? formatOptionContractShort(leg.strike, leg.right, expiryIsoDate ? daysToExpiry(expiryIsoDate, asOf) : null) : "";
-      return `${leg.action} ${leg.quantity} ${contract} @ ${leg.unitPrice.toFixed(2)}`;
-    })
-    .join(" + ");
+function describeOrderEvent(order: LatestEventsOrder, asOf: string): string {
+  const legsSummary = formatOrderLegsSummary(order.payload.legs, asOf, order.legFills);
+  return `${orderEventStatusLabel(order.status, order.cancellationReason)} — ${order.payload.symbol}${legsSummary ? `: ${legsSummary}` : ""}`;
 }
+
+// A filled order's trades can land after its "filled" event (see orderAwaitsFillPrices); such rows are re-read on position
+// events and after these delays.
+const ORDER_FILL_PRICE_RETRY_DELAYS_MS = [10_000, 60_000];
 
 function colorForIndex(index: number, total: number): string {
   const hue = Math.round((index * 360) / Math.max(total, 1));
@@ -185,7 +175,7 @@ function tradeSideAndQuantity(trade: Trade): string {
 
 function tradeDetailText(trade: Trade): string {
   const contract = trade.strikePrice ? ` ${formatOptionContractShort(trade.strikePrice, trade.optionType === "call" ? "C" : "P", trade.expiryDate ? daysToExpiry(trade.expiryDate, trade.executedAt) : null)}` : "";
-  return `${trade.symbol}${contract} @ ${formatNumber(trade.price, 2)}`;
+  return `${trade.symbol}${contract} @ ${formatTransactionPrice(trade.price)}`;
 }
 
 // Phone layout's Systems header carries one LED per node (rules approved
@@ -606,6 +596,20 @@ export function PulsePage() {
     setEvents((prev) => [item, ...(orderId ? prev.filter((event) => event.orderId !== orderId) : prev)].slice(0, EVENTS_LIMIT));
   }, []);
 
+  // Filled orders whose row still shows a limit (see orderAwaitsFillPrices): re-read, and the row's text replaced in place.
+  const ordersAwaitingFillPricesRef = useRef(new Set<string>());
+  const refreshOrderEventsAwaitingFillPrices = useCallback(() => {
+    for (const orderId of [...ordersAwaitingFillPricesRef.current]) {
+      fetchOrder(orderId)
+        .then((order) => {
+          if (!orderAwaitsFillPrices(order)) ordersAwaitingFillPricesRef.current.delete(orderId);
+          const text = describeOrderEvent(order, todayInEasternIso());
+          setEvents((prev) => prev.map((event) => (event.orderId === orderId ? { ...event, text } : event)));
+        })
+        .catch(() => {});
+    }
+  }, []);
+
   // Fetches the most recent events from the backend and describes them with
   // the same text/color formatting as the live switch below (order_status
   // needs the same fetchOrder lookup), skipping the pulse/side-effect work,
@@ -631,10 +635,9 @@ export function PulsePage() {
           case "order_status": {
             // Resolved server-side in the same response — no per-order request.
             if (!order) return null;
-            const legsSummary = formatOrderLegsSummary(order.payload.legs, occurredAt);
             return {
               occurredAt,
-              text: `${orderEventStatusLabel(order.status, order.cancellationReason)} — ${order.payload.symbol}${legsSummary ? `: ${legsSummary}` : ""}`,
+              text: describeOrderEvent(order, occurredAt),
               color: "var(--success)",
               orderId: notification.orderId,
             };
@@ -726,8 +729,13 @@ export function PulsePage() {
           fetchOrder(notification.orderId)
             .then((order) => {
               firePulse("heroku-gateway", "var(--success)", { reverse: true });
-              const legsSummary = formatOrderLegsSummary(order.payload.legs, todayInEasternIso());
-              appendEvent(`${orderEventStatusLabel(order.status, order.cancellationReason)} — ${order.payload.symbol}${legsSummary ? `: ${legsSummary}` : ""}`, "var(--success)", notification.orderId);
+              appendEvent(describeOrderEvent(order, todayInEasternIso()), "var(--success)", notification.orderId);
+              if (orderAwaitsFillPrices(order)) {
+                ordersAwaitingFillPricesRef.current.add(order.id);
+                for (const delayMs of ORDER_FILL_PRICE_RETRY_DELAYS_MS) window.setTimeout(refreshOrderEventsAwaitingFillPrices, delayMs);
+              } else {
+                ordersAwaitingFillPricesRef.current.delete(order.id);
+              }
               if (order.status === "filled" || order.status === "partially_filled") {
                 loadTrades();
               }
@@ -742,6 +750,7 @@ export function PulsePage() {
           // The worker buffers an opening fill until reconciliation creates the leg, so the
           // trade rows land after the order's "filled" event; this event follows the insert.
           loadTrades();
+          refreshOrderEventsAwaitingFillPrices();
           break;
         }
         case "position_closed": {
@@ -749,6 +758,7 @@ export function PulsePage() {
           appendEvent(`Position closed — ${notification.symbol}`, "var(--success)");
           loadPositions();
           loadTrades();
+          refreshOrderEventsAwaitingFillPrices();
           break;
         }
         case "genosuke_reply": {
@@ -767,7 +777,7 @@ export function PulsePage() {
         }
       }
     }, { wantsPulses: true });
-  }, [appendEvent, firePulse, loadPositions, loadTrades]);
+  }, [appendEvent, firePulse, loadPositions, loadTrades, refreshOrderEventsAwaitingFillPrices]);
 
   const activeEdgeIds = useMemo(() => new Set(pulses.map((pulse) => pulse.edgeId)), [pulses]);
 

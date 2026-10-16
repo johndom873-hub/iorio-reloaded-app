@@ -13,6 +13,7 @@ import { computePayoff } from "../lib/payoff";
 import {
   daysAgo,
   formatCurrency,
+  formatTransactionPrice,
   formatCurrencyTrimmed,
   formatDate,
   formatDateTime,
@@ -91,7 +92,10 @@ const legColumns = [
   { key: "quantity", header: "Qty" },
   { key: "strike", header: "Strike" },
   { key: "expiry", header: "Expiry" },
-  { key: "entry", header: "Entry" },
+  { key: "fill", header: "Fill" },
+  { key: "commission", header: "Comm." },
+  { key: "cost", header: "Cost/sh" },
+  { key: "exit", header: "Exit" },
   { key: "pnl", header: "P&L" },
   { key: "delta", header: "Delta" },
   { key: "gamma", header: "Gamma" },
@@ -173,6 +177,68 @@ export function PositionCard({
   );
 
   const payoffYAxis = useMemo(() => buildPayoffYAxis(payoff), [payoff]);
+
+  // What really traded for each leg (approved mockup 2026-10-16): IBKR's fills and commission, beside the cost P&L counts.
+  const renderLegFill = (leg: (typeof displayedLegs)[number]) => {
+    if (leg.openingFillPrice === null || leg.openingFillPrice === undefined) {
+      return (
+        <TooltipSpan className="text-secondary" text="No fill recorded for this leg: the cost is shown">
+          {formatTransactionPrice(Number(leg.entryPrice), { withDollarSign: true })}
+        </TooltipSpan>
+      );
+    }
+    const price = formatTransactionPrice(leg.openingFillPrice, { withDollarSign: true });
+    if (!leg.openingFillCarried) return <span className="font-mono">{price}</span>;
+    return (
+      <TooltipSpan text="Bought by an earlier position (an assigned put or a hand-over): IBKR's execution price of that purchase">
+        <span className="font-mono">{price}</span>
+        <div className="text-secondary" style={{ fontSize: "0.72rem" }}>
+          carried over
+        </div>
+      </TooltipSpan>
+    );
+  };
+  const renderLegCommission = (leg: (typeof displayedLegs)[number]) => {
+    if (leg.openingCommissionMissing) {
+      return (
+        <TooltipSpan className="text-secondary" text="IBKR has not reported the commission of every opening fill yet">
+          —
+        </TooltipSpan>
+      );
+    }
+    const opening = leg.openingCommission ?? null;
+    const closing = leg.closingCommission ?? null;
+    if (opening === null && closing === null) return <span className="text-secondary">—</span>;
+    const total = (opening ?? 0) + (closing ?? 0);
+    return (
+      <TooltipSpan className="font-mono" text={`Opening ${formatCurrency(opening ?? 0)} · closing ${formatCurrency(closing ?? 0)}`}>
+        {formatCurrency(total)}
+      </TooltipSpan>
+    );
+  };
+  const renderLegExit = (leg: (typeof displayedLegs)[number]) => {
+    if (!leg.exitAt) return <span className="text-secondary">—</span>;
+    if (leg.closingFillPrice !== null && leg.closingFillPrice !== undefined) return <span className="font-mono">{formatTransactionPrice(leg.closingFillPrice, { withDollarSign: true })}</span>;
+    if (leg.exitPrice === null) {
+      return (
+        <TooltipSpan className="text-secondary" text="Closed without a recorded exit">
+          —
+        </TooltipSpan>
+      );
+    }
+    const howItEnded =
+      leg.legType === "stock" && Number(leg.exitPrice) === Number(leg.entryPrice) ? "moved" : leg.legType === "option" && position.closeReason === "assigned" ? "assigned" : leg.legType === "option" ? "expired" : null;
+    return (
+      <>
+        <span className="font-mono">{formatTransactionPrice(Number(leg.exitPrice), { withDollarSign: true })}</span>
+        {howItEnded && (
+          <div className="text-secondary" style={{ fontSize: "0.72rem" }}>
+            {howItEnded}
+          </div>
+        )}
+      </>
+    );
+  };
 
   // P&L is tracked per leg type (option premium / stock), not per leg: each leg's cell shows its type's figure, and "—" when a
   // second leg of the same type makes the split ambiguous.
@@ -256,8 +322,8 @@ export function PositionCard({
       {payoff && (
         <div className="d-flex flex-wrap align-items-center justify-content-lg-center gap-2">
           <span className="small fw-semibold">Payout at Expiration</span>
-        <TooltipSpan className="small position-stat" text="Best case at expiration: the premium kept (plus any stock gain up to the strike)">
-          <span className="position-stat-label">Max Gain:</span> <span className="text-success">{formatSignedPnl(payoff.maxGain, 0)}</span>
+        <TooltipSpan className="small position-stat" text="Best case at expiration: the premium kept plus the stock's move up to the strike. Below zero when the shares cost more than the strike plus the premium earned on them: assignment then sells them at a loss">
+          <span className="position-stat-label">Max Gain:</span> <span className={pnlTextClass(payoff.maxGain)}>{formatSignedPnl(payoff.maxGain, 0)}</span>
         </TooltipSpan>
         <TooltipSpan className="small position-stat" text="Worst case at expiration: the stock (or the assigned shares) going to zero">
           <span className="position-stat-label">Max Loss:</span> <span className="text-danger">{formatSignedPnl(-payoff.maxLoss, 0)}</span>
@@ -266,12 +332,17 @@ export function PositionCard({
           className="small position-stat"
           text={
             position.strategyKey === "covered_call" && position.breakEven != null
-              ? "Stock price at expiration where the position neither gains nor loses: the cycle break-even, with premium from earlier calls or an assigned put already netted out"
+              ? "Stock price at expiration where the position neither gains nor loses: this position's own break-even, its shares' cost less the premium earned on them (earlier calls and the put that delivered them included)"
               : "Stock price at expiration where the position neither gains nor loses"
           }
         >
           <span className="position-stat-label">Breakeven:</span> {formatCurrency(payoff.breakeven)}
         </TooltipSpan>
+        {position.strategyKey === "covered_call" && (position.cycleOpenPositionCount ?? 0) > 1 && position.cycleBreakEven != null && (
+          <div className="small text-secondary w-100 text-lg-center">
+            {position.symbol} has {position.cycleOpenPositionCount} positions: the whole-cycle break-even, {formatCurrency(position.cycleBreakEven, 2)}, is in the Wheel cycle card.
+          </div>
+        )}
         </div>
       )}
       </div>
@@ -287,7 +358,26 @@ export function PositionCard({
                 {isColumnVisible("quantity") && <th className="text-end">{headerLabel("quantity", "Qty", true)}</th>}
                 {isColumnVisible("strike") && <th className="text-end">{headerLabel("strike", "Strike", true)}</th>}
                 {isColumnVisible("expiry") && <th>{headerLabel("expiry", "Expiry")}</th>}
-                {isColumnVisible("entry") && <th className="text-end">{headerLabel("entry", "Entry", true)}</th>}
+                {isColumnVisible("fill") && (
+                  <TooltipSpan as="th" className="text-end" text="IBKR's execution price (the average of the fills); for shares bought by an earlier position, what they were bought at">
+                    {headerLabel("fill", "Fill", true)}
+                  </TooltipSpan>
+                )}
+                {isColumnVisible("commission") && (
+                  <TooltipSpan as="th" className="text-end" text="Commission IBKR charged on this leg's opening and closing fills">
+                    {headerLabel("commission", "Comm.", true)}
+                  </TooltipSpan>
+                )}
+                {isColumnVisible("cost") && (
+                  <TooltipSpan as="th" className="text-end" text="What P&L counts per share: the fill with its commission (a short option: the credit less it)">
+                    {headerLabel("cost", "Cost/sh", true)}
+                  </TooltipSpan>
+                )}
+                {isColumnVisible("exit") && (
+                  <TooltipSpan as="th" className="text-end" text="The closing fills' average price, or how the leg ended">
+                    {headerLabel("exit", "Exit", true)}
+                  </TooltipSpan>
+                )}
                 {isColumnVisible("pnl") && <th className="text-end">{headerLabel("pnl", "P&L", true)}</th>}
                 {isColumnVisible("delta") && <th className="text-end">{headerLabel("delta", "Delta", true)}</th>}
                 {isColumnVisible("gamma") && (
@@ -307,7 +397,10 @@ export function PositionCard({
                     {isColumnVisible("quantity") && <td className="text-end">{leg.quantity}</td>}
                     {isColumnVisible("strike") && <td className="text-end">{leg.strikePrice ? formatCurrencyTrimmed(Number(leg.strikePrice)) : "—"}</td>}
                     {isColumnVisible("expiry") && <td>{formatExpiryWithDte(leg.expiryDate, position.status === "closed" ? position.openedAt : todayInEasternIso())}</td>}
-                    {isColumnVisible("entry") && <td className="text-end">{formatCurrency(Number(leg.entryPrice))}</td>}
+                    {isColumnVisible("fill") && <td className="text-end">{renderLegFill(leg)}</td>}
+                    {isColumnVisible("commission") && <td className="text-end">{renderLegCommission(leg)}</td>}
+                    {isColumnVisible("cost") && <td className="text-end font-mono">{formatCurrency(Number(leg.entryPrice), 4)}</td>}
+                    {isColumnVisible("exit") && <td className="text-end">{renderLegExit(leg)}</td>}
                     {isColumnVisible("pnl") && <td className="text-end">{renderLegPnl(leg)}</td>}
                     {isColumnVisible("delta") && (
                       <td className="text-end">
