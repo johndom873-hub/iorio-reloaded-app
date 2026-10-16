@@ -313,7 +313,7 @@ export function AnalysisSettingsCard(props: AnalysisSettingsCardProps) {
               <fieldset className="analysis-settings-group">
                 <legend>Contracts the strategy may sell</legend>
                 <div className="analysis-fields">
-                  {pair("minAbsDelta", "maxAbsDelta", "|Delta|", { min: 0, max: 1, step: 0.05 })}
+                  {pair("minAbsDelta", "maxAbsDelta", "Calls' |delta|", { min: 0, max: 1, step: 0.05 })}
                   {pair("minDte", "maxDte", "Days to expiry", { min: 0, max: 365, step: 1 })}
                   {single("maxSpreadPctOfMid", "Spread limit", { text: "% of the mid" }, { min: 1, max: 200, step: 5 })}
                   <p className="analysis-field-hint mb-0" style={{ gridColumn: "1 / -1" }}>

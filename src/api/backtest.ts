@@ -29,6 +29,7 @@ export interface BacktestBaselineSettings {
   entryWhenSharesUncovered: "wait" | "buy";
   maxSharesPctOfAccount: number;
   minCallYieldPct: number;
+  minCallYieldAppliesTo: "every_call" | "new_covered_calls";
   putsWhenNoCall: "off" | "dte_budget" | "reserve_ladder";
   putBudgetPctPerDte: number;
   /** The CC + Put Ladder (putsWhenNoCall "reserve_ladder"): the shares' share of the pot, the rungs and the shock. */
@@ -44,6 +45,7 @@ export interface BacktestBaselineSettings {
   ladderPace: "any_look" | "one_open" | "no_puts";
   ladderPutVersusCall: "call_first" | "higher_yield";
   ladderPutYieldMarginPct: number;
+  ladderPutDeltaRange: "delta_range" | "none";
   dayValueOptions: "marked" | "excluded";
   callDeltaRange: "entry_range" | "own_range";
   callMinAbsDelta: number;

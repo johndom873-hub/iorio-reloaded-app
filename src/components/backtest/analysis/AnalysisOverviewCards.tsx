@@ -12,8 +12,8 @@ const recommendationLabels: Record<AnalysisRecommendationKey, string> = {
   ladderSharesPct: "Shares",
   ladderRungs: "Rungs",
   ladderShockPct: "Shock",
-  minAbsDelta: "|Delta| from",
-  maxAbsDelta: "|Delta| to",
+  minAbsDelta: "Calls' |delta| from",
+  maxAbsDelta: "Calls' |delta| to",
   minDte: "Days to expiry, from",
   maxDte: "Days to expiry, to",
   maxSpreadPctOfMid: "Spread limit",
@@ -34,6 +34,21 @@ function formatRecommendationValue(key: AnalysisRecommendationKey, value: number
     default:
       return String(value);
   }
+}
+
+/** Where the analysis took a value from: the trial's values, the ticker's own saved value, or the lab's global value. */
+function recommendationValueSource(analysis: StoredAnalysis, key: AnalysisRecommendationKey): "trial" | "ticker" | "global" {
+  const { trial, tickerOverrides } = analysis.labValues;
+  if (trial && key in trial) return "trial";
+  if (tickerOverrides && key in tickerOverrides && tickerOverrides[key as keyof typeof tickerOverrides] !== null) return "ticker";
+  return "global";
+}
+
+/** "same as the global value", or "SPY's own: $200,000" when the recommendation differs. */
+function describeComparedValue(source: "trial" | "ticker" | "global", symbol: string, same: boolean, formatted: string): string {
+  const name = source === "trial" ? "this run's" : source === "ticker" ? `${symbol}'s own` : "global";
+  if (same) return source === "global" ? "same as the global value" : source === "ticker" ? `same as ${symbol}'s own value` : "same as this run's";
+  return `${name}: ${formatted}`;
 }
 
 /** The recommendation's values over the values shown (a key Claude left out keeps the shown value). */
@@ -131,7 +146,7 @@ export function AnalysisClaudeCards({ symbol, analysis, shown, ruleShock, stale,
                   <dt>{recommendationLabels[entry.key]}</dt>
                   <span className="analysis-rec-value">
                     {formatRecommendationValue(entry.key, entry.value, ruleShock)}
-                    <span className="analysis-was">{same ? `same as ${symbol}'s` : `${symbol}'s: ${formatRecommendationValue(entry.key, was, ruleShock)}`}</span>
+                    <span className="analysis-was">{describeComparedValue(recommendationValueSource(analysis, entry.key), symbol, same, formatRecommendationValue(entry.key, was, ruleShock))}</span>
                   </span>
                   <dd>{entry.reason}</dd>
                 </div>

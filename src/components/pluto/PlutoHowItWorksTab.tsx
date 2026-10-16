@@ -100,7 +100,8 @@ function LadderExplanation({ values }: { values: PlutoHowItWorks }) {
   const firstRung = example.rungs[0];
   const putOverCall = ladder.putOverCallYieldMarginPct > 0 ? `whenever the Put's yield is more than ${pct(ladder.putOverCallYieldMarginPct)} above the Call's` : "whenever the Put pays a higher yield";
   const contractRules = [
-    { name: "Delta", value: deltaRange, meaning: `Roughly a ${pct(ladder.minAbsDelta * 100)} to ${pct(ladder.maxAbsDelta * 100)} chance of ending in the money. Further out is safer but pays less.` },
+    { name: "Delta of Calls", value: deltaRange, meaning: `Roughly a ${pct(ladder.minAbsDelta * 100)} to ${pct(ladder.maxAbsDelta * 100)} chance of ending in the money. Further out is safer but pays less.` },
+    { name: "Delta of Puts", value: "any", meaning: "No delta limit: a Put's strike must be at or below its rung's cap, which already keeps it well below the price." },
     { name: "Days to expiry", value: `${ladder.minDte}–${ladder.maxDte}`, meaning: `Contracts expiring ${ladder.minDte} to ${ladder.maxDte} days from today.` },
     { name: "Spread", value: `≤ ${pct(ladder.maxSpreadPctOfMid)} of the mid`, meaning: `The gap between bid and ask must be at most ${pct(ladder.maxSpreadPctOfMid)} of the middle price, so the price is fair.` },
     { name: "Bid", value: `≥ ${formatCurrencyTrimmed(ladder.minimumBid)}`, meaning: `Contracts bid below ${formatCurrencyTrimmed(ladder.minimumBid)} are skipped.` },
@@ -187,7 +188,7 @@ function LadderExplanation({ values }: { values: PlutoHowItWorks }) {
       <div className="pm-how-pair">
         <Card title="Before every order">
           <ul className="pm-how-list">
-            <li>Pluto asks IBKR for a fresh price of the contract and checks again that its delta is inside <Value>{deltaRange}</Value>. Outside it, nothing is sent.</li>
+            <li>Pluto asks IBKR for a fresh price of the contract. For a Call it checks again that its delta is inside <Value>{deltaRange}</Value>; outside it, nothing is sent.</li>
             <li>The order's price is the middle of the bid and the ask.</li>
             <li>An order not filled within <Value>{shared.unfilledOrderCancelMinutes}</Value> minutes is cancelled; Pluto plans afresh at its next look.</li>
             <li>Per ticker: at most <Value>{ladder.maxWorkingOrdersPerTicker}</Value> orders working at once, <Value>{ladder.maxOrdersPerTickerPerDay}</Value> orders a day and <Value>{ladder.maxOpenPositionsPerTicker}</Value> open positions.</li>

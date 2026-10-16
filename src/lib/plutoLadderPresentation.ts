@@ -81,6 +81,6 @@ export const tickerFieldLabel: Record<string, string> = {
   ladderSharesPct: "Share level",
   ladderShockOverridePct: "Shock",
   ladderRungs: "Rungs",
-  ladderMinAbsDelta: "|Delta| lower limit",
-  ladderMaxAbsDelta: "|Delta| upper limit",
+  ladderMinAbsDelta: "Calls' |delta| lower limit",
+  ladderMaxAbsDelta: "Calls' |delta| upper limit",
 };

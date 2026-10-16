@@ -150,7 +150,7 @@ export function PlutoLadderTickerWindow({ ticker, companyName, enabledInPluto, a
   const effective = (field: PlutoTickerSettingsField) => (field === "allocationPct" ? (enabledInPluto ? (allocationsNow.get(symbol) ?? 0) : null) : (value(field) ?? strategy[field]));
   const lo = effective("ladderMinAbsDelta")!;
   const hi = effective("ladderMaxAbsDelta")!;
-  if (lo > hi) problems.push(`The |delta| lower limit (${lo.toFixed(2)}) is above the upper limit (${hi.toFixed(2)}).`);
+  if (lo > hi) problems.push(`The Calls' |delta| lower limit (${lo.toFixed(2)}) is above the upper limit (${hi.toFixed(2)}).`);
 
   const budget = ticker.capitalBudgetDollars;
   const allocationNow = effective("allocationPct");
