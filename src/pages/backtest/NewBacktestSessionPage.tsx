@@ -128,11 +128,13 @@ function overridesWithout(overrides: BacktestSettingsOverrides, keep: (path: str
 
 // New session (mockups approved 2026-10-12 and, for per-ticker pots, 2026-10-15): the period, the decision maker, the capital,
 // each ticker's pot and values with the Baseline deciding, the history tables, and the lab's settings with the session's own
-// changes. "Run again with changes" opens it with ?from=<sessionId>, prefilled from that session.
+// changes. "Run again with changes" opens it with ?from=<sessionId>, prefilled from that session; the Data files card's
+// Backtest opens it with ?symbols=<SYMBOL,SYMBOL>, those symbols picked.
 export function NewBacktestSessionPage() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const sourceSessionId = searchParams.get("from");
+  const requestedSymbolsParam = searchParams.get("symbols");
   const { data: overview, loadError: overviewError } = useBacktestOverview();
 
   const [template, setTemplate] = useState<BacktestSettingsTemplate | null>(null);
@@ -193,7 +195,10 @@ export function NewBacktestSessionPage() {
     const candidates = usableFiles(overview.files);
     const source = sourceSession?.session ?? null;
     const sourceSymbols = (source ? (source.symbols.length > 0 ? source.symbols : [source.symbol]) : []).filter((picked) => candidates.some((candidate) => candidate.symbol === picked));
-    const initialSymbols = sourceSymbols.length > 0 ? sourceSymbols : candidates[0] ? [candidates[0].symbol] : [];
+    const requestedSymbols = [...new Set((requestedSymbolsParam ?? "").split(",").map((picked) => picked.trim().toUpperCase()))].filter((picked) =>
+      candidates.some((candidate) => candidate.symbol === picked),
+    );
+    const initialSymbols = sourceSymbols.length > 0 ? sourceSymbols : requestedSymbols.length > 0 ? requestedSymbols : candidates[0] ? [candidates[0].symbol] : [];
     const initialCoverage = sharedCoverage(initialSymbols.map((picked) => candidates.find((candidate) => candidate.symbol === picked)!));
     setSymbols(initialSymbols);
     const copiedDates = source && sourceSymbols.length > 0 ? { startDate: source.startDate, endDate: source.endDate } : null;
@@ -223,7 +228,7 @@ export function NewBacktestSessionPage() {
     }
     setValueByPath(initialValueByPath(template, sourceSession));
     setInitialized(true);
-  }, [initialized, overview, template, sourceLoaded, sourceSession]);
+  }, [initialized, overview, template, sourceLoaded, sourceSession, requestedSymbolsParam]);
 
   /** Picking or dropping a symbol: custom dates become all that the picked files share; years narrowed by hand stay while they
    *  are still inside that period, and otherwise (or when they were all of the old period) become all of it. With no shared

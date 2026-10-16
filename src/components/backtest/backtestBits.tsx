@@ -17,11 +17,11 @@ import { TooltipSpan } from "../TooltipSpan";
 
 // Small pieces shared by the Backtesting screens.
 
-/** A card's eyebrow title with its one-line description, for a DataTable toolbar or a BacktestCard header. */
+/** A card's title with its one-line description, for a DataTable toolbar or a BacktestCard header. */
 export function BacktestCardTitle({ title, description }: { title: string; description?: ReactNode }) {
   return (
     <div className="d-flex flex-wrap align-items-baseline column-gap-3 row-gap-1" style={{ minWidth: 0 }}>
-      <h3 className="subheader mb-0">{title}</h3>
+      <h3 className="card-title mb-0">{title}</h3>
       {description && (
         <span className="text-secondary" style={{ fontSize: "0.78rem" }}>
           {description}

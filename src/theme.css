@@ -523,6 +523,19 @@
    Allocation card's Top Positions list-group, same pattern). Scoped to
    tables and list-groups, where these buttons are inline text standing
    in for a link, not a real touch-target-sized control. */
+/* A symbol link readable on a card in both themes: .btn-link alone takes --tblr-primary (2.95:1 on a dark card, 4.13:1 on
+   white), and the dark --tblr-link-color reaches only 4.41:1 on a dark card. */
+.btn-link.iorio-symbol-link {
+  --iorio-symbol-link-color: var(--tblr-link-color);
+  --tblr-btn-color: var(--iorio-symbol-link-color);
+  --tblr-btn-hover-color: var(--iorio-symbol-link-color);
+  --tblr-btn-active-color: var(--iorio-symbol-link-color);
+  color: var(--iorio-symbol-link-color);
+}
+:root[data-bs-theme="dark"] .btn-link.iorio-symbol-link {
+  --iorio-symbol-link-color: #38bdf8;
+}
+
 .table-responsive .btn-link.p-0,
 .list-group .btn-link.p-0 {
   min-height: auto;
@@ -1823,6 +1836,13 @@
   min-height: 2.75rem;
   margin: -0.75rem -0.5rem;
   cursor: pointer;
+}
+/* An unticked box's outline at 3:1 or more on a card: Tabler's default is a 10% tint in light and the page border colour in dark. */
+.backtest-checkbox-hit .form-check-input:not(:checked) {
+  border-color: #6b7280;
+}
+:root[data-bs-theme="dark"] .backtest-checkbox-hit .form-check-input:not(:checked) {
+  border-color: #9ca3af;
 }
 /* Session daily decisions: the morning's note wraps in its cell instead of widening the table. */
 .backtest-decision-cell {
