@@ -2170,8 +2170,6 @@
 /* DataTable's opt-in sortable headers (a column with sortValue): the header text is the button. */
 .data-table-sort-button { display: inline-flex; align-items: center; gap: 0.25rem; padding: 0; margin: 0; border: 0; background: none; font: inherit; color: inherit; text-transform: inherit; letter-spacing: inherit; cursor: pointer; white-space: nowrap; }
 .text-end .data-table-sort-button { justify-content: flex-end; }
-.data-table-sort-button svg { opacity: 0.55; }
-.data-table-sort-button svg.is-active { opacity: 1; }
 .data-table-sort-button:hover, th[aria-sort="ascending"], th[aria-sort="descending"] { color: var(--tblr-body-color); }
 /* Text inside the window's monospaced value columns (analysis-kv) that is words, not a figure. */
 .analysis-sans { font-family: var(--tblr-font-sans-serif); }
@@ -2190,7 +2188,7 @@
 /* Phone tap targets: hit areas grown with padding and matching negative margins, so nothing moves. */
 @media (max-width: 575.98px) {
   .analysis-modal .analysis-link { padding: 0.85rem 0; margin: -0.85rem 0; }
-  .data-table-sort-button { padding: 0.9rem 0; margin: -0.9rem 0; }
+  .data-table-sort-button { padding: 0.9rem 0.25rem; margin: -0.9rem -0.25rem; }
   .analysis-modal .form-switch { min-height: 2.75rem; }
   .analysis-chip .btn-icon { width: 2.75rem !important; height: 2.75rem !important; margin: -0.5rem -0.4rem -0.5rem -0.4rem; }
 }

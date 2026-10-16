@@ -22,6 +22,22 @@ export interface DataTableColumn<TRow> {
 }
 
 export type DataTableSortDirection = "asc" | "desc";
+type DataTableSort = { key: string; direction: DataTableSortDirection };
+
+function sortStorageKeyFor(tableId: string): string {
+  return `iorio-table-sort-${tableId}`;
+}
+
+function readStoredSort(tableId: string): DataTableSort | null {
+  try {
+    const stored = localStorage.getItem(sortStorageKeyFor(tableId));
+    const parsed = stored ? (JSON.parse(stored) as Partial<DataTableSort>) : null;
+    if (typeof parsed?.key !== "string" || (parsed.direction !== "asc" && parsed.direction !== "desc")) return null;
+    return { key: parsed.key, direction: parsed.direction };
+  } catch {
+    return null;
+  }
+}
 
 /** Adjacent visible columns with the same group label, as header cells; ungrouped runs get one blank cell. */
 function groupHeaderCells<TRow>(columns: DataTableColumn<TRow>[]): { key: string; label: string; className?: string; title?: string; span: number }[] {
@@ -60,8 +76,8 @@ interface DataTableProps<TRow> {
   dense?: boolean;
   /** Caps the table body to roughly this many rows and makes it scroll (sticky header) instead of growing the page. */
   maxVisibleRows?: number;
-  /** With sortable columns (sortValue): the order the rows start in. */
-  defaultSort?: { key: string; direction: DataTableSortDirection };
+  /** With sortable columns (sortValue): the order the rows start in until the user picks one (saved per tableId in localStorage). */
+  defaultSort?: DataTableSort;
 }
 
 export function DataTable<TRow>({
@@ -87,7 +103,17 @@ export function DataTable<TRow>({
     columns.map((column) => column.key),
   );
   const visibleColumns = columns.filter((column) => isColumnVisible(column.key));
-  const [sort, setSort] = useState(defaultSort ?? null);
+  const [chosenSort, setChosenSort] = useState(() => readStoredSort(tableId));
+  // A saved sort on a column that is no longer sortable (renamed, removed) falls back to the default.
+  const sort = chosenSort && columns.some((column) => column.key === chosenSort.key && column.sortValue) ? chosenSort : (defaultSort ?? null);
+  const chooseSort = (next: DataTableSort) => {
+    setChosenSort(next);
+    try {
+      localStorage.setItem(sortStorageKeyFor(tableId), JSON.stringify(next));
+    } catch {
+      // Storage unavailable (private window, blocked site data): the choice still applies for this page view.
+    }
+  };
   const sortedRows = useMemo(() => {
     const column = sort ? columns.find((candidate) => candidate.key === sort.key && candidate.sortValue) : undefined;
     if (!sort || !column?.sortValue) return rows;
@@ -104,11 +130,11 @@ export function DataTable<TRow>({
   /** A first click orders text A to Z and numbers largest first; another click reverses it. */
   const toggleSort = (column: DataTableColumn<TRow>) => {
     if (sort?.key === column.key) {
-      setSort({ key: column.key, direction: sort.direction === "asc" ? "desc" : "asc" });
+      chooseSort({ key: column.key, direction: sort.direction === "asc" ? "desc" : "asc" });
       return;
     }
     const sample = rows.map((row) => column.sortValue!(row)).find((value) => value !== null);
-    setSort({ key: column.key, direction: typeof sample === "string" ? "asc" : "desc" });
+    chooseSort({ key: column.key, direction: typeof sample === "string" ? "asc" : "desc" });
   };
   const headerLabel = (column: DataTableColumn<TRow>) => {
     if (!column.sortValue) return <span>{column.header}</span>;

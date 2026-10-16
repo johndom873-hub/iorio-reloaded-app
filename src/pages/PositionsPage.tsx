@@ -39,6 +39,7 @@ import { useRefreshAfterSignalsTickerModal, useSignalsTickerModal } from "../hoo
 import {
   positionExpiryDate,
   positionHasStockLeg,
+  strategyAbbrev,
   positionPnlAsOfDate,
   positionHasLegEnteredTodayEastern,
   positionIsStockOnly,
@@ -214,6 +215,13 @@ export function PositionsPage() {
     return { state: "ready", value: liveCyclePnl(marks, price, liveUnrealizedPremiumByPositionId), storedAsOf: price === null ? marks.markDate : null };
   }
 
+  // P(Δ) of the row's open short option from the live greeks; null while they load or when there is no short option.
+  function successProbabilityByDelta(row: Position): number | null {
+    const optionLeg = row.legs.find((leg) => leg.legType === "option" && !leg.exitAt);
+    if (!optionLeg) return null;
+    return successProbabilityFromDelta(optionLeg, greeksByLegId[optionLeg.id]?.delta);
+  }
+
   function renderSuccessProbabilityByDelta(row: Position) {
     const optionLeg = row.legs.find((leg) => leg.legType === "option" && !leg.exitAt);
     if (!optionLeg) return <span className="text-secondary">—</span>;
@@ -275,6 +283,7 @@ export function PositionsPage() {
     {
       key: "symbol",
       header: "Symbol",
+      sortValue: (row) => row.symbol,
       render: (row) => (
         <span className="d-inline-flex align-items-center text-nowrap">
           <button
@@ -292,6 +301,7 @@ export function PositionsPage() {
     {
       key: "strategy",
       header: "Strategy",
+      sortValue: (row) => strategyAbbrev(row.strategyKey),
       render: (row) => <StrategyBadge strategyKey={row.strategyKey} />,
     },
     { key: "structure", header: "Structure", render: (row) => structureSummary(row) },
@@ -483,6 +493,7 @@ export function PositionsPage() {
       header: "EXP $",
       headerTitle: "Capital committed to this position — the shares' cost for covered calls, the strike collateral for cash-secured puts, less the premium received",
       align: "right",
+      sortValue: (row) => (row.capitalAtRisk === null ? null : Number(row.capitalAtRisk)),
       render: (row) => (row.capitalAtRisk === null ? "—" : formatCurrency(Number(row.capitalAtRisk), 0)),
     },
     {
@@ -490,6 +501,7 @@ export function PositionsPage() {
       header: "EXP %",
       headerTitle: "This position's capital as a share of total account value (positions + cash)",
       align: "right",
+      sortValue: (row) => (row.capitalAtRisk === null || totalAccountValue === null ? null : Number(row.capitalAtRisk) / totalAccountValue),
       render: (row) => {
         if (row.capitalAtRisk === null || totalAccountValue === null) return "—";
         return formatPercentageValue((Number(row.capitalAtRisk) / totalAccountValue) * 100, 1);
@@ -498,6 +510,8 @@ export function PositionsPage() {
     {
       key: "expiry",
       header: "Expiry",
+      // The ISO date as text, so the first click (text sorts A to Z) puts the soonest expiry first.
+      sortValue: (row) => positionExpiryDate(row),
       render: (row) => {
         const expiryDate = positionExpiryDate(row);
         if (!expiryDate) return "—";
@@ -509,6 +523,7 @@ export function PositionsPage() {
       header: SUCCESS_PROBABILITY_HEADER,
       headerTitle: SUCCESS_PROBABILITY_HEADER_TITLE,
       align: "right",
+      sortValue: (row) => successProbabilityByDelta(row),
       render: (row) => renderSuccessProbabilityByDelta(row),
     },
     {
@@ -590,6 +605,7 @@ export function PositionsPage() {
         columns={columns}
         rows={positions}
         rowKey={(row) => row.id}
+        defaultSort={{ key: "symbol", direction: "asc" }}
         loading={loading}
         footerCells={footerCells}
         emptyMessage="No open positions yet."
