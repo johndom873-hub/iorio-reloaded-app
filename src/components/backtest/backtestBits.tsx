@@ -2,7 +2,7 @@ import type { ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { IconArrowLeft, IconChevronDown } from "@tabler/icons-react";
 import type { BacktestJobDisplayStatus, BacktestJobView } from "../../api/backtest";
-import { formatRelativeAge, formatSecondsInWords, formatShortAgeWithSeconds } from "../../lib/formatters";
+import { formatRelativeAge, formatSecondsInWords, formatShortAgeWithSeconds, formatSignedPnl, pnlTextClass } from "../../lib/formatters";
 import {
   describeJobProgress,
   describeJobRunTime,
@@ -13,6 +13,7 @@ import {
   signedPercentDisplay,
   type BacktestValueScale,
 } from "../../lib/backtestPresentation";
+import { useSignalsTickerModal } from "../../hooks/useSignalsTickerModal";
 import { TooltipSpan } from "../TooltipSpan";
 
 // Small pieces shared by the Backtesting screens.
@@ -48,6 +49,21 @@ export function BacktestCard({ title, description, actions, children, className 
 export function SignedPercent({ fraction, decimalPlaces = 1 }: { fraction: number | null | undefined; decimalPlaces?: number }) {
   const display = signedPercentDisplay(fraction, decimalPlaces);
   return <span className={display.className}>{display.text}</span>;
+}
+
+/** Signed whole dollars in green or red ("+$1,234", "-$560"). */
+export function SignedDollars({ value }: { value: number | null | undefined }) {
+  return <span className={pnlTextClass(value)}>{formatSignedPnl(value ?? null, 0)}</span>;
+}
+
+/** A ticker symbol that opens the shared ticker modal, readable on a card in both themes. */
+export function BacktestSymbolLink({ symbol }: { symbol: string }) {
+  const { open } = useSignalsTickerModal();
+  return (
+    <button type="button" className="btn btn-link p-0 text-decoration-none fw-bold iorio-symbol-link" onClick={() => open(symbol)}>
+      {symbol}
+    </button>
+  );
 }
 
 /** A chart line's legend swatch for a table row or column: solid for a session, dashed for buy and hold of the symbols,

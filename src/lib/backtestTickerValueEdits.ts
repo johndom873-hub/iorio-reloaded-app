@@ -1,12 +1,23 @@
 import {
   backtestTickerBaselineKeys,
+  type BacktestSettingRow,
   type BacktestSymbolResolution,
   type BacktestSymbolSettingSource,
   type BacktestSymbolSettings,
   type BacktestTickerValueKey,
   type BacktestTickerValues,
 } from "../api/backtest";
-import { parseDollarAmountText, tickerValueInputText, tickerValueTextProblem } from "./backtestPresentation";
+import {
+  backtestValueSourceTitle,
+  describeTickerProblem,
+  describeTickerResetTarget,
+  mostSpecificValueSource,
+  parseDollarAmountText,
+  tickerValueGroupKeys,
+  tickerValueInputText,
+  tickerValueTextProblem,
+  type BacktestTickerValueGroup,
+} from "./backtestPresentation";
 
 // New session, per-ticker pots (mockup approved 2026-10-15): the Tickers card's typed values, what the estimate resolved,
 // and the request's symbolSettings built from both. A typed value is an edit ("This session") only while it differs from
@@ -132,4 +143,72 @@ export function tickerEditsFromSession(symbolSettings: Record<string, BacktestSy
     if (Object.keys(symbolEdits).length > 0) edits[symbol] = symbolEdits;
   }
   return edits;
+}
+
+// ---- The Tickers card's rows (the one-run Tickers card and the several-runs Runs card share them) ----
+
+/** The table's columns: the ticker, its pot and weight, then each group of values. */
+export const tickerValueColumns: { key: "ticker" | "weight" | BacktestTickerValueGroup; header: string; title?: string }[] = [
+  { key: "ticker", header: "Ticker" },
+  { key: "pot", header: "Pot $", title: "The ticker's money. Its weight is its pot ÷ the sum of the pots." },
+  { key: "weight", header: "Weight", title: "Pot ÷ the sum of the pots: the ticker's share of the account for its ladder's base, fixed for the session." },
+  { key: "share", header: "Share level", title: "The ladder's shares at most, at cost, as a % of the ticker's base; the rest is its puts' reserve." },
+  { key: "rungs", header: "Rungs", title: "The reserve is spent in this many puts." },
+  { key: "shock", header: "Shock", title: "The fall at which the reserve is fully committed: the stock's Max drawdown in the years before the cycle, within the range, or a fixed %." },
+  { key: "delta", header: "|delta| range", title: "The |delta| range of the Calls and Puts sold." },
+];
+/** The gear lists every column but the ticker's. */
+export const hideableTickerValueColumns = tickerValueColumns.filter((column) => column.key !== "ticker");
+
+/** One ticker's values as its cells show them, with its problems. */
+export interface TickerRowModel {
+  symbol: string;
+  resolution: BacktestSymbolResolution | undefined;
+  display: Record<BacktestTickerValueKey, TickerValueDisplay>;
+  weight: number | null;
+  problems: { key: string | null; text: string }[];
+}
+
+export function tickerRowGroupKeys(row: TickerRowModel, group: BacktestTickerValueGroup): BacktestTickerValueKey[] {
+  return tickerValueGroupKeys(group, String(row.display.ladderShock.value ?? "history"));
+}
+
+/** Where a column's values come from: the most specific source among its keys. */
+export function tickerRowGroupSource(row: TickerRowModel, group: BacktestTickerValueGroup): BacktestSymbolSettingSource | null {
+  return mostSpecificValueSource(tickerRowGroupKeys(row, group).map((key) => row.display[key].source));
+}
+
+/** The values a column's Reset returns to: for each of its keys, the value under this session's edit. */
+export function tickerRowResetTarget(row: TickerRowModel, group: BacktestTickerValueGroup): { text: string; title: string } {
+  const below: Partial<Record<BacktestTickerValueKey, number | string | null>> = {};
+  const sources: (BacktestSymbolSettingSource | null)[] = [];
+  // The shock's numbers follow the mode it returns to.
+  const shockBelow = tickerValueBelowEdit(row.resolution, "ladderShock")?.value ?? row.display.ladderShock.value;
+  const keys = group === "shock" ? tickerValueGroupKeys("shock", String(shockBelow ?? "history")) : tickerRowGroupKeys(row, group);
+  for (const key of keys) {
+    const under = row.display[key].source === "request" ? tickerValueBelowEdit(row.resolution, key) : { value: row.display[key].value, source: row.display[key].source };
+    below[key] = under?.value ?? null;
+    sources.push(under?.source ?? null);
+  }
+  const text = describeTickerResetTarget(group, below);
+  const source = mostSpecificValueSource(sources);
+  return { text, title: text === "Clear" || !source ? "Remove this session's pot: the ticker has no other" : `Back to ${backtestValueSourceTitle[source]}` };
+}
+
+const displayedKeys: BacktestTickerValueKey[] = ["potDollars", "minAbsDelta", "maxAbsDelta", "ladderSharesPct", "ladderRungs", "ladderShock", "ladderShockPct", "ladderShockMinPct", "ladderShockMaxPct"];
+
+/** Each ticker's row, in turn order (alphabetical): what its cells show and its problems (typed values, then the estimate's). */
+export function buildTickerRowModels(input: { symbols: string[]; edits: BacktestTickerEdits; resolution: BacktestTickerResolution | null; capitalMode: BacktestCapitalMode; splitStartingValue: number; settingRows: BacktestSettingRow[] }): TickerRowModel[] {
+  const orderedSymbols = [...input.symbols].sort();
+  const splitPot = input.capitalMode === "split" && input.splitStartingValue > 0 && orderedSymbols.length > 0 ? input.splitStartingValue / orderedSymbols.length : null;
+  const localProblems = tickerEditProblems(orderedSymbols, input.edits, input.capitalMode);
+  return orderedSymbols.map((symbol) => {
+    const symbolResolution = input.resolution?.bySymbol[symbol];
+    const display = Object.fromEntries(displayedKeys.map((key) => [key, tickerValueDisplay(symbolResolution, key, input.edits[symbol]?.[key], { mode: input.capitalMode, splitPot })])) as Record<BacktestTickerValueKey, TickerValueDisplay>;
+    const problems = [
+      ...localProblems.filter((problem) => problem.symbol === symbol).map((problem) => ({ key: problem.key as string | null, text: problem.message })),
+      ...(symbolResolution?.problems ?? []).map((problem) => ({ key: problem.key, text: describeTickerProblem(symbol, problem, input.settingRows) })),
+    ];
+    return { symbol, resolution: symbolResolution, display, weight: symbolResolution?.weight ?? null, problems };
+  });
 }

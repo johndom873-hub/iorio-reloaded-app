@@ -2,7 +2,7 @@ import type { ApexOptions } from "apexcharts";
 import { useTheme } from "../../hooks/useTheme";
 import type { BacktestCompareCurve, BacktestSessionDay } from "../../api/backtest";
 import { useMediaQuery } from "../../hooks/useMediaQuery";
-import { formatCurrency, formatPercentage } from "../../lib/formatters";
+import { formatCurrency, formatPercentage, formatSignedPercentage } from "../../lib/formatters";
 import {
   backtestSeriesColorsByTheme,
   buyAndHoldColorByTheme,
@@ -63,7 +63,7 @@ function baseLineChartOptions(isPhone: boolean, pointCount: number): ApexOptions
       labels: { datetimeUTC: true, datetimeFormatter: { year: "yyyy", month: "MMM yyyy", day: "dd MMM", hour: "dd MMM" } },
       tooltip: { enabled: false },
     },
-    legend: { show: true, showForSingleSeries: true, position: "top", horizontalAlign: "left", onItemClick: { toggleDataSeries: true }, fontSize: isPhone ? "0.6875rem" : "0.75rem", markers: { shape: "line", size: 7 } },
+    legend: { show: true, showForSingleSeries: true, position: "top", horizontalAlign: "left", onItemClick: { toggleDataSeries: true }, fontSize: isPhone ? "0.6875rem" : "0.75rem", markers: { shape: "line", size: 7, strokeWidth: 2 } },
     tooltip: { shared: true, intersect: false, x: { format: "dd MMM yyyy" } },
     grid: { strokeDashArray: 0 },
     responsive: [{ breakpoint: 768, options: { legend: { position: "bottom", horizontalAlign: "left" } } }],
@@ -143,6 +143,60 @@ export function BacktestSessionCharts({ days, scale, baselineLabel, spyBaselineL
         <ApexChart type="area" height={isPhone ? height - 70 : Math.round(height * 0.6)} series={series.map((entry) => ({ name: entry.name, data: pointsOf(entry.drawdowns) }))} options={drawdownOptions} />
       </div>
     </div>
+  );
+}
+
+/** One line of a batch chart: a run or the combined portfolio (solid), buy and hold of its tickers (dashed), SPY (dotted). */
+export interface BacktestValueLine {
+  name: string;
+  color: string;
+  line: "solid" | "dashed" | "dotted";
+  points: { tradingDate: string; value: number }[];
+}
+
+/** A growth index's labels: 100 is the start, so 160 is +60% since the start. */
+const growthIndexLabel = (index: number, decimalPlaces: number) => formatSignedPercentage(index / 100 - 1, decimalPlaces);
+
+/**
+ * A batch's lines (mockup approved 2026-10-17): in "percent", each as % since its own start (an index of 100 there), so runs of
+ * different capital share one axis (D11); in "dollars", as account values (the combined portfolio, one account). Linear or Log
+ * as on the session page; the dashed and dotted lines are for comparison only.
+ */
+export function BacktestValueLinesChart({ scale, lines, mode }: { scale: BacktestValueScale; lines: BacktestValueLine[]; mode: "percent" | "dollars" }) {
+  const isPhone = useMediaQuery("(max-width: 767px)");
+  const height = useChartHeight(lines.length);
+  const base = baseLineChartOptions(isPhone, Math.max(0, ...lines.map((entry) => entry.points.length)));
+  const shown = lines.map((entry) => {
+    const start = entry.points[0]?.value ?? 0;
+    return { ...entry, values: entry.points.map((point) => (mode === "percent" ? (start > 0 ? (point.value / start) * 100 : 0) : point.value)) };
+  });
+  const allValues = shown.flatMap((entry) => entry.values);
+  let dashedIndex = 0;
+  let dottedIndex = 0;
+  const dashArray = shown.map((entry) => (entry.line === "dashed" ? buyAndHoldDashArray + 3 * dashedIndex++ : entry.line === "dotted" ? spyBuyAndHoldDashArray + 2 * dottedIndex++ : 0));
+  let yaxis: NonNullable<ApexOptions["yaxis"]>;
+  if (mode === "dollars") yaxis = valueAxisOptions(scale, allValues, isPhone, shown.map((entry) => entry.name));
+  else if (allValues.length > 0 && scale === "log") {
+    const logAxis = doublingLogValueAxis(Math.min(...allValues), Math.max(...allValues));
+    yaxis = shown.map((_, index) => (index === 0 ? { ...logAxis, seriesName: shown[0]!.name, labels: { formatter: (value: number) => growthIndexLabel(Number(value.toPrecision(3)), 0), minWidth: 56, maxWidth: 56 } } : { ...logAxis, seriesName: shown[0]!.name, show: false, labels: { show: false } }));
+  } else {
+    const range = allValues.length > 0 ? roundValueAxis(Math.min(...allValues), Math.max(...allValues), isPhone ? 4 : 6) : { tickAmount: 4 };
+    yaxis = { ...range, labels: { formatter: (value: number) => growthIndexLabel(value, 0), minWidth: 56, maxWidth: 56 } };
+  }
+  const options: ApexOptions = {
+    ...base,
+    colors: shown.map((entry) => entry.color),
+    stroke: { width: shown.map((entry) => (entry.line === "dashed" ? 1.5 : 2)), dashArray, curve: "straight" },
+    yaxis,
+    tooltip: { ...base.tooltip, y: { formatter: (value: number) => (value === null || value === undefined ? "—" : mode === "percent" ? growthIndexLabel(value, 1) : formatCurrency(value, 0)) } },
+  };
+  return (
+    <ApexChart
+      type="line"
+      height={height}
+      series={shown.map((entry) => ({ name: entry.name, data: entry.points.map((point, index) => [tradingDateToChartTime(point.tradingDate), entry.values[index]!]) }))}
+      options={options}
+    />
   );
 }
 

@@ -41,7 +41,7 @@ interface BacktestBaselineComparisonTableProps {
   spyBaselineLabel: string;
 }
 
-/** The session's account figures beside buy and hold of its symbols (equal dollars) and of SPY, measured with the same
+/** The session's account figures beside buy and hold of its symbols (each one's pot, else equal dollars) and of SPY, measured with the same
  *  formulas. Comparison only: nothing in the session depends on them. SPY's row is left out on a session run before it was kept. */
 export function BacktestBaselineComparisonTable({ metrics, baselineMetrics, baselineLabel, spyBaselineMetrics, spyBaselineLabel }: BacktestBaselineComparisonTableProps) {
   const { theme } = useTheme();

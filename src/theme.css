@@ -1661,8 +1661,10 @@
   overflow: hidden;
   text-overflow: ellipsis;
 }
-/* A session link on the dark card: the dark --tblr-link-color reaches only 4.41:1 there; the symbol links' shade (.iorio-symbol-link). */
-:root[data-bs-theme="dark"] .backtest-job-title-link {
+/* A session or batch link on the dark card (the jobs, the Sessions list, a batch's runs): the dark --tblr-link-color reaches
+   only 4.41:1 there; the symbol links' shade (.iorio-symbol-link). */
+:root[data-bs-theme="dark"] .backtest-job-title-link,
+:root[data-bs-theme="dark"] .backtest-session-link {
   color: #38bdf8;
 }
 .backtest-job-row-count {
@@ -2070,8 +2072,19 @@
 .text-success {
   color: #217d30 !important;
 }
+/* Red and green text, dark theme, and red text, light theme (Marcelo 2026-10-17): Tabler's dark .text-danger (#d63939) is
+   2.62:1 on a dark card and its .text-success (#2fb344) 4.45:1; its light red is 4.05:1 on a hovered row and on the
+   green best-figure tint. The Analyse window's inks replace them. Light red #c62828: 5.62:1 on white, 4.88:1 on a hovered
+   row and on #e3f3e7, 4.52:1 on the loss tint. Dark red #f78f8f and green #4cc866: 5.40:1 and 5.68:1 on the dark card,
+   4.58:1 and 4.81:1 on a hovered row, 5.27:1 and 5.54:1 on #1f3d2b. Only the text utilities change. */
+.text-danger {
+  color: #c62828 !important;
+}
 :root[data-bs-theme="dark"] .text-success {
-  color: color-mix(in srgb, var(--tblr-success) calc(var(--tblr-text-opacity) * 100%), transparent) !important;
+  color: #4cc866 !important;
+}
+:root[data-bs-theme="dark"] .text-danger {
+  color: #f78f8f !important;
 }
 /* Roll Signals badge (RollBadge): the button around the badge is the tap target. On a phone it reaches 44px tall while the
    badge keeps its size; the negative margin keeps the row's height as it was. */
@@ -2645,4 +2658,60 @@
   .backtest-lab-footer { position: sticky; bottom: 0; z-index: 2; background: var(--tblr-bg-surface); }
   .backtest-lab-saved-line .analysis-link { padding: 0.85rem 0.5rem; margin: -0.85rem -0.5rem; }
   .backtest-lab-phone-input .form-select { width: 100%; }
+}
+
+/* ---- Backtest batches (mockup approved 2026-10-17) ---- */
+/* New session, several runs: a run's band in the Runs card, and the batch table's buy-and-hold band (the settings group row's surface). */
+.backtest-run-band > td,
+.backtest-reference-band > td {
+  --tblr-table-bg: var(--tblr-bg-surface-secondary);
+  padding-top: 0.5rem;
+  padding-bottom: 0.5rem;
+}
+.backtest-run-band-inner { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0.5rem 1rem; }
+.backtest-run-title { display: flex; flex-wrap: wrap; align-items: center; column-gap: 0.5rem; row-gap: 0.125rem; min-width: 0; }
+.backtest-run-name { font-weight: 600; }
+.backtest-run-differs { font-size: 0.78rem; }
+.backtest-run-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; }
+.backtest-run-capital { font-size: 0.8rem; }
+.backtest-run-add-ticker { width: auto; }
+/* Add ticker as tall as the band's Duplicate and Remove, so a band with it is no taller than the others. */
+.backtest-run-band .form-select.backtest-run-add-ticker { padding-top: 1px; padding-bottom: 1px; font-size: 0.8rem; line-height: 1rem; }
+.backtest-ticker-symbol-line { display: flex; align-items: center; gap: 0.35rem; }
+.btn.backtest-icon-button { width: 1.75rem; height: 1.75rem; min-height: 0; padding: 0; display: inline-flex; align-items: center; justify-content: center; }
+/* Make runs from a list of values. */
+.backtest-vary-bar { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 0.5rem 0.75rem; }
+.backtest-vary-field { display: flex; flex-direction: column; gap: 0.25rem; min-width: 0; }
+.backtest-vary-field .form-label { margin-bottom: 0; font-size: 0.8rem; }
+.backtest-vary-value-select { width: 10rem; }
+.backtest-vary-ticker-select { width: 9rem; }
+.backtest-vary-values { width: 11rem; }
+.backtest-vary-preview { font-size: 0.78rem; }
+/* A run block on a phone. */
+.backtest-run-phone-band { background-color: var(--tblr-bg-surface-secondary); padding: 0.6rem 0.75rem; display: flex; flex-direction: column; gap: 0.5rem; border-top: 1px solid var(--tblr-border-color); }
+/* The batch page: the Run column (tick, swatch, name, what differs) stays visible while the figures scroll sideways. */
+.backtest-batch-table th:first-child,
+.backtest-batch-table td:first-child { position: sticky; left: 0; z-index: 1; }
+.backtest-batch-table tbody td:first-child { --tblr-table-bg: var(--tblr-bg-surface); background-color: var(--tblr-bg-surface); }
+.backtest-batch-table tbody tr.backtest-reference-band td:first-child { position: static; --tblr-table-bg: var(--tblr-bg-surface-secondary); background-color: var(--tblr-bg-surface-secondary); }
+/* The band's label spans every column: it stays at the left edge while the figures scroll sideways. */
+.backtest-reference-band-label { display: inline-block; position: sticky; left: var(--tblr-card-spacer-x, 1.25rem); }
+.backtest-batch-run-cell { min-width: 16rem; white-space: normal; }
+/* Words in a figures column ("not in this run"): the body font, not the figures' monospace. */
+.table td.backtest-cell-words { font-family: var(--tblr-font-sans-serif); }
+.backtest-batch-run-line { display: flex; align-items: center; gap: 0.5rem; }
+.backtest-batch-run-detail { font-size: 0.72rem; padding-left: 3.75rem; line-height: 1.35; }
+.backtest-batch-reference-detail { font-size: 0.72rem; padding-left: 1.5rem; line-height: 1.35; }
+.backtest-run-progress { width: 6.5rem; height: 0.375rem; }
+.backtest-combined-parts { display: flex; flex-wrap: wrap; align-items: center; gap: 0.35rem 0.6rem; font-size: 0.85rem; }
+.backtest-combined-part { display: inline-flex; align-items: center; gap: 0.35rem; }
+/* The Sessions list: a batch's runs under its row. */
+.backtest-batch-child { padding-left: 2.25rem; }
+@media (max-width: 767.98px) {
+  .btn.backtest-icon-button { width: 2.75rem; height: 2.75rem; }
+  .backtest-vary-bar { flex-direction: column; align-items: stretch; }
+  .backtest-vary-value-select,
+  .backtest-vary-ticker-select,
+  .backtest-vary-values { width: 100%; }
+  .backtest-run-phone-band .backtest-run-actions > * { flex: 1 1 0; }
 }

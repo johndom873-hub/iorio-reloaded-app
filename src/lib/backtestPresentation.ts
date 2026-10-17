@@ -269,7 +269,7 @@ export const backtestMetricExplanation = {
   returnOnCapitalInUse: "Return on capital in use = Σ trade P&L ÷ Σ (EXP $ × calendar days held) × 365, the same basis as Edge Yield.",
   interest: "Interest on idle cash: each day the cash balance earns the 3-month Treasury bill rate (FRED DTB3) × calendar days since the previous trading day ÷ 365.",
   buyAndHold: "Buy and hold: on the first day at 10:00, buy as many whole shares as the starting value allows at the 10:00 stock price; the rest stays in cash and earns the same interest. No dividends in version 1.",
-  symbolsBuyAndHold: "Buy and hold of the session's symbols, for comparison only: the starting value in equal parts, one per symbol, each buying whole shares at its symbol's first 10:00 price and never rebalanced; the rest stays in cash at the same interest. Marked at 10:00 every session day and measured with the session's formulas. No dividends.",
+  symbolsBuyAndHold: "Buy and hold of the session's symbols, for comparison only: each symbol's pot (with per-ticker pots), else the starting value in equal parts, one per symbol, each buying whole shares at its symbol's first 10:00 price and never rebalanced; the rest stays in cash at the same interest. Marked at 10:00 every session day and measured with the session's formulas. No dividends.",
   spyBuyAndHold: "Buy and hold of SPY, for comparison only: the starting value buys whole SPY shares at SPY's 10:00 price on the session's first day; the rest stays in cash at the same interest. Marked at 10:00 every session day and measured with the session's formulas. No dividends.",
 } as const;
 
@@ -1098,7 +1098,7 @@ export const tickerValueLabel: Record<BacktestTickerValueKey, string> = {
 };
 
 /** A |delta| with at least two decimals (0.3 → "0.30", 0.055 → "0.055"). */
-function formatAbsDelta(value: number): string {
+export function formatAbsDelta(value: number): string {
   return Number.isInteger(Math.round(value * 1e6) / 1e4) ? value.toFixed(2) : formatInputNumber(value, 6);
 }
 

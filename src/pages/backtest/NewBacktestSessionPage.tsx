@@ -1,12 +1,15 @@
-import { useEffect, useMemo, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { errorMessage } from "../../api/client";
 import {
+  backtestMaxRunsPerBatch,
   backtestMaxSymbolsPerSession,
-  createBacktestSession,
+  createBacktestBatch,
   estimateBacktestSession,
+  fetchBacktestBatch,
   fetchBacktestSession,
   fetchBacktestSettingsTemplate,
+  type BacktestBatchDetail,
   type BacktestDataFileSummary,
   type BacktestDecisionMaker,
   type BacktestSessionDetail,
@@ -16,14 +19,17 @@ import {
   type BacktestSettingsTemplate,
   type BacktestTablesMode,
   type BacktestTickerValueKey,
+  type CreateBacktestBatchRequest,
+  type CreateBacktestBatchResponse,
   type CreateBacktestSessionRequest,
-  type CreateBacktestSessionResponse,
 } from "../../api/backtest";
 import { ConfirmModal } from "../../components/ConfirmModal";
 import { PageHeader } from "../../components/layout/PageHeader";
 import { Spinner } from "../../components/Spinner";
 import { BacktestBackLink, BacktestCard, BacktestSegmentedSwitch } from "../../components/backtest/backtestBits";
 import { BacktestSettingsTable } from "../../components/backtest/BacktestSettingsTable";
+import { BacktestRunsCard, type BacktestRunView } from "../../components/backtest/BacktestRunsCard";
+import { BacktestStartBatchConfirmBody } from "../../components/backtest/BacktestStartBatchConfirmBody";
 import { BacktestStartSessionConfirmBody } from "../../components/backtest/BacktestStartSessionConfirmBody";
 import { BacktestSymbolPicker } from "../../components/backtest/BacktestSymbolPicker";
 import { BacktestTickerValuesCard } from "../../components/backtest/BacktestTickerValuesCard";
@@ -56,8 +62,11 @@ import {
   type BacktestPeriodMode,
   type BacktestTickerValueGroup,
 } from "../../lib/backtestPresentation";
+import { batchVaryTargets, describeRunDifferences, describeVaryPreview, parseVaryValues, type BatchRunValues, type BatchVary } from "../../lib/backtestBatchPresentation";
 import {
+  buildTickerRowModels,
   buildTickerSymbolSettings,
+  hasTickerEdits,
   isTickerEditActive,
   tickerEditProblems,
   tickerEditsFromSession,
@@ -114,6 +123,21 @@ function initialValueByPath(template: BacktestSettingsTemplate, source: Backtest
   return values;
 }
 
+/** A run of a batch on the form (mockup approved 2026-10-17): its tickers and the values typed for them; `key` stays with the
+ *  run while runs are added, duplicated or removed. */
+interface BacktestRunDraft {
+  key: string;
+  symbols: string[];
+  edits: BacktestTickerEdits;
+}
+
+type BacktestRunsMode = "one" | "several";
+
+const runsModeOptions: { value: BacktestRunsMode; label: string }[] = [
+  { value: "one", label: "One run" },
+  { value: "several", label: "Several runs" },
+];
+
 /** The overrides without some paths (the decision maker, or the per-ticker baseline values). */
 function overridesWithout(overrides: BacktestSettingsOverrides, keep: (path: string) => boolean): BacktestSettingsOverrides {
   const result: Record<string, unknown> = {};
@@ -126,21 +150,25 @@ function overridesWithout(overrides: BacktestSettingsOverrides, keep: (path: str
   return result as BacktestSettingsOverrides;
 }
 
-// New session (mockups approved 2026-10-12 and, for per-ticker pots, 2026-10-15): the period, the decision maker, the capital,
-// each ticker's pot and values with the Baseline deciding, the history tables, and the lab's settings with the session's own
-// changes. "Run again with changes" opens it with ?from=<sessionId>, prefilled from that session; the Data files card's
-// Backtest opens it with ?symbols=<SYMBOL,SYMBOL>, those symbols picked.
+// New session (mockups approved 2026-10-12, for per-ticker pots 2026-10-15, for several runs 2026-10-17): the period, the
+// decision maker, the capital, each ticker's pot and values with the Baseline deciding, the history tables, and the lab's
+// settings with the session's own changes. With the Baseline deciding, Several runs starts up to 9 runs on the same period and
+// settings, each with its own tickers and values (a batch). Every start is a batch: one run is a batch of one. "Run again with
+// changes" opens it with ?from=<sessionId> or ?fromBatch=<batchId>, prefilled from it; the Data files card's Backtest opens it
+// with ?symbols=<SYMBOL,SYMBOL>, those symbols picked.
 export function NewBacktestSessionPage() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const sourceSessionId = searchParams.get("from");
+  const sourceBatchId = searchParams.get("fromBatch");
   const requestedSymbolsParam = searchParams.get("symbols");
   const { data: overview, loadError: overviewError } = useBacktestOverview();
 
   const [template, setTemplate] = useState<BacktestSettingsTemplate | null>(null);
   const [templateError, setTemplateError] = useState<string | null>(null);
   const [sourceSession, setSourceSession] = useState<BacktestSessionDetail | null>(null);
-  const [sourceLoaded, setSourceLoaded] = useState(sourceSessionId === null);
+  const [sourceBatch, setSourceBatch] = useState<BacktestBatchDetail | null>(null);
+  const [sourceLoaded, setSourceLoaded] = useState(sourceSessionId === null && sourceBatchId === null);
   const [initialized, setInitialized] = useState(false);
 
   const [name, setName] = useState("");
@@ -162,7 +190,13 @@ export function NewBacktestSessionPage() {
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
-  const [created, setCreated] = useState<CreateBacktestSessionResponse | null>(null);
+  const [created, setCreated] = useState<CreateBacktestBatchResponse | null>(null);
+  // Several runs (the Baseline deciding): each run's tickers and typed values; the other fields are every run's.
+  const [runsMode, setRunsMode] = useState<BacktestRunsMode>("one");
+  const [runs, setRuns] = useState<BacktestRunDraft[]>([]);
+  const [vary, setVary] = useState<BatchVary>({ key: "ladderSharesPct", ticker: "*", text: "" });
+  const nextRunKey = useRef(1);
+  const newRunKey = () => `run-${nextRunKey.current++}`;
 
   useEffect(() => {
     let cancelled = false;
@@ -173,6 +207,27 @@ export function NewBacktestSessionPage() {
       cancelled = true;
     };
   }, []);
+
+  // A batch to run again: its first run's session gives the shared fields, its runs the runs.
+  useEffect(() => {
+    if (sourceBatchId === null) return;
+    let cancelled = false;
+    fetchBacktestBatch(sourceBatchId)
+      .then(async (batch) => {
+        if (cancelled) return;
+        setSourceBatch(batch);
+        const firstRun = batch.runs[0];
+        if (firstRun) {
+          const session = await fetchBacktestSession(firstRun.session.id);
+          if (!cancelled) setSourceSession(session);
+        }
+      })
+      .catch(() => undefined)
+      .finally(() => !cancelled && setSourceLoaded(true));
+    return () => {
+      cancelled = true;
+    };
+  }, [sourceBatchId]);
 
   useEffect(() => {
     if (sourceSessionId === null) return;
@@ -194,7 +249,10 @@ export function NewBacktestSessionPage() {
     if (initialized || !overview || !template || !sourceLoaded) return;
     const candidates = usableFiles(overview.files);
     const source = sourceSession?.session ?? null;
-    const sourceSymbols = (source ? (source.symbols.length > 0 ? source.symbols : [source.symbol]) : []).filter((picked) => candidates.some((candidate) => candidate.symbol === picked));
+    const sourceRuns = sourceBatch && sourceBatch.runs.length > 1 ? sourceBatch.runs : null;
+    const sourceSymbols = (sourceRuns ? [...new Set(sourceRuns.flatMap((run) => run.session.symbols))] : source ? (source.symbols.length > 0 ? source.symbols : [source.symbol]) : []).filter((picked) =>
+      candidates.some((candidate) => candidate.symbol === picked),
+    );
     const requestedSymbols = [...new Set((requestedSymbolsParam ?? "").split(",").map((picked) => picked.trim().toUpperCase()))].filter((picked) =>
       candidates.some((candidate) => candidate.symbol === picked),
     );
@@ -226,15 +284,38 @@ export function NewBacktestSessionPage() {
         setCapitalMode("split");
       }
     }
+    if (sourceBatch) setName(sourceBatch.batch.name);
+    if (sourceRuns) {
+      setRunsMode("several");
+      setRuns(
+        sourceRuns.map((run) => ({
+          key: `run-${nextRunKey.current++}`,
+          symbols: run.session.symbols.filter((picked) => sourceSymbols.includes(picked)),
+          edits: tickerEditsFromSession(run.symbolSettings, true),
+        })),
+      );
+    }
     setValueByPath(initialValueByPath(template, sourceSession));
     setInitialized(true);
-  }, [initialized, overview, template, sourceLoaded, sourceSession, requestedSymbolsParam]);
+  }, [initialized, overview, template, sourceLoaded, sourceSession, sourceBatch, requestedSymbolsParam]);
 
   /** Picking or dropping a symbol: custom dates become all that the picked files share; years narrowed by hand stay while they
    *  are still inside that period, and otherwise (or when they were all of the old period) become all of it. With no shared
    *  period the dates are cleared and the years cannot be picked. */
   const changeSymbols = (nextSymbols: string[]) => {
     setSymbols(nextSymbols);
+    // With several runs, a symbol picked goes into every run and one dropped leaves every run (D6).
+    if (several) {
+      const added = nextSymbols.filter((picked) => !symbols.includes(picked));
+      const removed = symbols.filter((picked) => !nextSymbols.includes(picked));
+      setRuns((previous) =>
+        previous.map((run) => ({
+          ...run,
+          symbols: [...run.symbols.filter((picked) => !removed.includes(picked)), ...added.filter((picked) => !run.symbols.includes(picked))],
+          edits: Object.fromEntries(Object.entries(run.edits).filter(([symbol]) => !removed.includes(symbol))),
+        })),
+      );
+    }
     const nextCoverage = sharedCoverage(nextSymbols.map((picked) => files.find((file) => file.symbol === picked)).filter((file): file is BacktestDataFileSummary => file !== undefined));
     setStartDate(nextCoverage?.firstDate ?? "");
     setEndDate(nextCoverage?.lastDate ?? "");
@@ -284,8 +365,11 @@ export function NewBacktestSessionPage() {
   const decidedByModel = decisionMaker === "llm";
   // The Baseline runs per-ticker pots: each ticker its pot and ladder values. The rules and the AI model run one starting value.
   const perTickerPots = decisionMaker === "baseline";
-  const showTickersCard = perTickerPots && selectedFiles.length > 0;
-  const usesStartingValue = !perTickerPots || capitalMode === "split";
+  // Several runs only with the Baseline deciding (D1): only it has ticker values. Each run's capital is the sum of its pots (D4).
+  const several = perTickerPots && runsMode === "several";
+  const showTickersCard = perTickerPots && !several && selectedFiles.length > 0;
+  const showRunsCard = several && selectedFiles.length > 0;
+  const usesStartingValue = !perTickerPots || (!several && capitalMode === "split");
 
   // The estimate: what the session will do differently because of its files, each ticker's values with the Baseline deciding,
   // and the model's calls with the AI model. The latest answer stays on screen while the next is worked out.
@@ -335,6 +419,66 @@ export function NewBacktestSessionPage() {
   const changedCount = settingRows.filter((row) => row.editable && isSettingChanged(row, valueByPath[row.path] ?? String(row.now))).length;
   const orderedSymbols = [...symbols].sort();
 
+  // ---- Several runs: each run estimated on its own, as a session request of its tickers and values ----
+  const [runEstimates, setRunEstimates] = useState<Record<string, { requestText: string; result: BacktestSessionEstimateResponse | null; error: string | null }>>({});
+  const [runLatestResults, setRunLatestResults] = useState<Record<string, BacktestSessionEstimateResponse>>({});
+  const runResolutions = useMemo<Record<string, BacktestTickerResolution | null>>(
+    () => Object.fromEntries(Object.entries(runLatestResults).map(([key, result]) => [key, result.resolvedBySymbol ? { capital: result.capital, bySymbol: result.resolvedBySymbol } : null])),
+    [runLatestResults],
+  );
+  const runRequestTexts = useMemo<Record<string, string | null>>(() => {
+    if (!several || !template || !sessionStartDate || !sessionEndDate) return {};
+    return Object.fromEntries(
+      runs.map((run) => {
+        if (run.symbols.length === 0) return [run.key, null];
+        const runSymbolSettings = buildTickerSymbolSettings(run.symbols, run.edits, runResolutions[run.key] ?? null, "pots");
+        const request: CreateBacktestSessionRequest = { name: "", symbols: run.symbols, startDate: sessionStartDate, endDate: sessionEndDate, tablesMode, overrides, settingsSource };
+        if (Object.keys(runSymbolSettings).length > 0) request.symbolSettings = runSymbolSettings;
+        return [run.key, JSON.stringify(request)];
+      }),
+    );
+  }, [several, template, sessionStartDate, sessionEndDate, runs, runResolutions, tablesMode, overrides, settingsSource]);
+  const debouncedRunRequests = useDebouncedValue(JSON.stringify(runRequestTexts), estimateDebounceMs);
+  const askedRunTexts = useRef<Record<string, string>>({});
+  useEffect(() => {
+    const texts = JSON.parse(debouncedRunRequests) as Record<string, string | null>;
+    for (const [key, text] of Object.entries(texts)) {
+      if (text === null || askedRunTexts.current[key] === text) continue;
+      askedRunTexts.current[key] = text;
+      estimateBacktestSession(JSON.parse(text) as CreateBacktestSessionRequest)
+        .then((result) => {
+          setRunEstimates((previous) => ({ ...previous, [key]: { requestText: text, result, error: null } }));
+          // An older answer arriving after a newer request does not replace the newer one.
+          if (askedRunTexts.current[key] === text) setRunLatestResults((previous) => ({ ...previous, [key]: result }));
+        })
+        .catch((err) => setRunEstimates((previous) => ({ ...previous, [key]: { requestText: text, result: null, error: errorMessage(err, "Could not estimate the run.") } })));
+    }
+  }, [debouncedRunRequests]);
+  const runEstimateIsCurrent = (key: string) => runRequestTexts[key] !== null && runRequestTexts[key] !== undefined && runEstimates[key]?.requestText === runRequestTexts[key];
+  const runsEstimatePending = several && runs.some((run) => runRequestTexts[run.key] !== null && !runEstimateIsCurrent(run.key));
+
+  // Each run's rows and values as shown, what makes it different (D7), and its problems.
+  const runRows = runs.map((run) => buildTickerRowModels({ symbols: run.symbols, edits: run.edits, resolution: runResolutions[run.key] ?? null, capitalMode: "pots", splitStartingValue: Number.NaN, settingRows: allRows }));
+  const runValues: BatchRunValues[] = runs.map((run, index) => ({
+    symbols: run.symbols,
+    values: Object.fromEntries(runRows[index]!.map((row) => [row.symbol, Object.fromEntries(Object.entries(row.display).map(([key, shown]) => [key, shown.value]))])),
+  }));
+  const runDescriptions = describeRunDifferences(runValues);
+  // The Start confirmation lists each run's tickers in their own column.
+  const runDescriptionsBesideTickers = describeRunDifferences(runValues, { includeTickers: false });
+  const runProblems = (runIndex: number): string[] => {
+    const run = runs[runIndex]!;
+    const label = `Run ${runIndex + 1}`;
+    const estimate = runEstimates[run.key];
+    return [
+      ...(run.symbols.length === 0 ? [`${label} has no tickers: add one or remove the run.`] : []),
+      ...tickerEditProblems(run.symbols, run.edits, "pots").map((problem) => `${label} · ${problem.symbol}: ${problem.message}`),
+      ...[...run.symbols].sort().flatMap((symbol) => (runResolutions[run.key]?.bySymbol[symbol]?.problems ?? []).map((problem) => `${label} · ${describeTickerProblem(symbol, problem, allRows)}`)),
+      ...(estimate?.error && runEstimateIsCurrent(run.key) ? [`${label}: ${estimate.error}`] : []),
+    ];
+  };
+  const varyPreview = describeVaryPreview(runValues, vary, backtestMaxRunsPerBatch);
+
   /** A ticker's problems as the page lists them: values typed that cannot be sent, then what the estimate found. */
   const tickerProblemsOf = (resolution: BacktestTickerResolution | null): string[] => [
     ...tickerEditProblems(symbols, tickerEdits, capitalMode).map((problem) => `${problem.symbol}: ${problem.message}`),
@@ -354,6 +498,7 @@ export function NewBacktestSessionPage() {
   }
   if (usesStartingValue && !(startingValue > 0)) problems.push("The starting account value must be a positive dollar amount.");
   if (showTickersCard) problems.push(...tickerProblemsOf(latestResolution));
+  if (showRunsCard) runs.forEach((_, runIndex) => problems.push(...runProblems(runIndex)));
   for (const row of allRows) {
     const problem = row.editable ? settingValueProblem(row, valueByPath[row.path] ?? String(row.now)) : null;
     if (problem) problems.push(problem);
@@ -397,32 +542,137 @@ export function NewBacktestSessionPage() {
     setCapitalMode(nextMode);
   };
 
+  // ---- Several runs: the Runs switch, each run's edits (as the Tickers card's), its band's actions, Make runs ----
+  /** One run → several: the form's tickers and values become Run 1 (runs from before come back, Run 1 taking the values). */
+  const changeRunsMode = (nextMode: BacktestRunsMode) => {
+    if (nextMode === runsMode) return;
+    if (nextMode === "several") setRuns((previous) => (previous.length > 0 ? previous.map((run, index) => (index === 0 ? { ...run, edits: tickerEdits } : run)) : [{ key: newRunKey(), symbols: [...symbols], edits: tickerEdits }]));
+    else if (runs[0]) setTickerEdits(runs[0].edits);
+    setRunsMode(nextMode);
+  };
+  const updateRun = (runKey: string, update: (run: BacktestRunDraft) => BacktestRunDraft) => setRuns((previous) => previous.map((run) => (run.key === runKey ? update(run) : run)));
+  const withSymbolEdits = (run: BacktestRunDraft, symbol: string, symbolEdits: BacktestTickerEdits[string]): BacktestRunDraft => ({ ...run, edits: { ...run.edits, [symbol]: symbolEdits } });
+  const changeRunValue = (runKey: string, symbol: string, key: BacktestTickerValueKey, text: string) =>
+    updateRun(runKey, (run) => {
+      const symbolEdits = { ...run.edits[symbol] };
+      if (key === "ladderShock" && !isTickerEditActive(runResolutions[runKey]?.bySymbol[symbol], key, text)) delete symbolEdits[key];
+      else symbolEdits[key] = text;
+      return withSymbolEdits(run, symbol, symbolEdits);
+    });
+  const settleRunValue = (runKey: string, symbol: string, key: BacktestTickerValueKey) =>
+    updateRun(runKey, (run) => {
+      const text = run.edits[symbol]?.[key];
+      if (text === undefined) return run;
+      const resolution = runResolutions[runKey]?.bySymbol[symbol];
+      const symbolEdits = { ...run.edits[symbol] };
+      if (tickerValueBelowEdit(resolution, key) !== undefined && tickerValueTextProblem(key, text) === null && !isTickerEditActive(resolution, key, text)) delete symbolEdits[key];
+      else if (key === "potDollars" && parseDollarAmountText(text) > 0) symbolEdits[key] = tickerValueInputText(key, parseDollarAmountText(text));
+      else return run;
+      return withSymbolEdits(run, symbol, symbolEdits);
+    });
+  const resetRunGroup = (runKey: string, symbol: string, group: BacktestTickerValueGroup) =>
+    updateRun(runKey, (run) => {
+      const symbolEdits = { ...run.edits[symbol] };
+      for (const key of tickerValueGroupAllKeys(group)) delete symbolEdits[key];
+      return withSymbolEdits(run, symbol, symbolEdits);
+    });
+  const duplicateRun = (runKey: string) => {
+    const key = newRunKey();
+    setRuns((previous) => {
+      const index = previous.findIndex((run) => run.key === runKey);
+      if (index === -1 || previous.length >= backtestMaxRunsPerBatch) return previous;
+      const source = previous[index]!;
+      const copy: BacktestRunDraft = { key, symbols: [...source.symbols], edits: Object.fromEntries(Object.entries(source.edits).map(([symbol, symbolEdits]) => [symbol, { ...symbolEdits }])) };
+      return [...previous.slice(0, index + 1), copy, ...previous.slice(index + 1)];
+    });
+  };
+  const removeRun = (runKey: string) => setRuns((previous) => (previous.length > 1 ? previous.filter((run) => run.key !== runKey) : previous));
+  const removeRunTicker = (runKey: string, symbol: string) =>
+    updateRun(runKey, (run) => ({ ...run, symbols: run.symbols.filter((held) => held !== symbol), edits: Object.fromEntries(Object.entries(run.edits).filter(([held]) => held !== symbol)) }));
+  const addRunTicker = (runKey: string, symbol: string) => updateRun(runKey, (run) => (run.symbols.includes(symbol) ? run : { ...run, symbols: [...run.symbols, symbol] }));
+  /** Make runs (D5): each run holding the chosen ticker becomes one run per value, the value typed for that ticker (or every ticker). */
+  const applyVary = () => {
+    const parsed = parseVaryValues(vary.key, vary.text);
+    if ("error" in parsed || !varyPreview.ok) return;
+    const next: BacktestRunDraft[] = [];
+    runs.forEach((run, runIndex) => {
+      const targets = batchVaryTargets(runValues[runIndex]!, vary);
+      if (targets.length === 0) {
+        next.push(run);
+        return;
+      }
+      parsed.values.forEach((value, valueIndex) => {
+        const edits: BacktestTickerEdits = Object.fromEntries(Object.entries(run.edits).map(([symbol, symbolEdits]) => [symbol, { ...symbolEdits }]));
+        for (const symbol of targets) edits[symbol] = { ...edits[symbol], [vary.key]: tickerValueInputText(vary.key, value) };
+        next.push({ key: valueIndex === 0 ? run.key : newRunKey(), symbols: [...run.symbols], edits });
+      });
+    });
+    if (next.length > backtestMaxRunsPerBatch) return;
+    setRuns(next);
+    // The list is used: cleared, so its preview does not read as a new one.
+    setVary((previous) => ({ ...previous, text: "" }));
+  };
+
+  /** What Start sends: one run (the form as it was) or every run; every start is a batch. Null while a run cannot be asked for yet. */
+  const batchRequest = ((): CreateBacktestBatchRequest | null => {
+    if (!several) {
+      if (requestText === null) return null;
+      const { symbols: runSymbols, symbolSettings: runSymbolSettings, startingValue: runStartingValue, settingsSource: runSettingsSource, name: runName, startDate: runStart, endDate: runEnd, tablesMode: runTables, overrides: runOverrides } = JSON.parse(requestText) as CreateBacktestSessionRequest;
+      return {
+        name: runName,
+        startDate: runStart,
+        endDate: runEnd,
+        tablesMode: runTables,
+        overrides: runOverrides,
+        ...(runSettingsSource ? { settingsSource: runSettingsSource } : {}),
+        ...(runStartingValue !== undefined ? { startingValue: runStartingValue } : {}),
+        runs: [{ symbols: runSymbols, ...(runSymbolSettings ? { symbolSettings: runSymbolSettings } : {}) }],
+      };
+    }
+    if (runs.length === 0 || runs.some((run) => !runRequestTexts[run.key])) return null;
+    return {
+      name: name.trim(),
+      startDate: sessionStartDate,
+      endDate: sessionEndDate,
+      tablesMode,
+      overrides,
+      settingsSource,
+      runs: runs.map((run, runIndex) => {
+        const { symbolSettings: runSymbolSettings } = JSON.parse(runRequestTexts[run.key]!) as CreateBacktestSessionRequest;
+        return { label: runDescriptions[runIndex], symbols: run.symbols, ...(runSymbolSettings ? { symbolSettings: runSymbolSettings } : {}) };
+      }),
+    };
+  })();
+
   const handleSubmit = (event: FormEvent) => {
     event.preventDefault();
     setSubmitAttempted(true);
     setSubmitError(null);
-    if (problems.length > 0 || !template || requestText === null) return;
+    if (problems.length > 0 || !template || batchRequest === null) return;
     setConfirmOpen(true);
   };
 
   const startSession = async () => {
-    if (requestText === null) return;
+    if (batchRequest === null) return;
     setSubmitting(true);
     setSubmitError(null);
     try {
-      const response = await createBacktestSession(JSON.parse(requestText) as CreateBacktestSessionRequest);
-      // What the session will do differently because of its files (it still runs) stays on screen; otherwise straight back.
+      const response = await createBacktestBatch(batchRequest);
+      // What a run will do differently because of its files (it still runs) stays on screen; otherwise straight to it: one
+      // run's session page, or the batch's page (D8).
       if (response.warnings.length > 0) {
         setConfirmOpen(false);
         setCreated(response);
         setSubmitting(false);
         window.scrollTo({ top: 0 });
+      } else if (response.runs.length === 1) {
+        navigate(`/backtest/sessions/${response.runs[0]!.session.id}`);
       } else {
-        navigate("/backtest");
+        navigate(`/backtest/batches/${response.batch.id}`);
       }
     } catch (err) {
       setConfirmOpen(false);
-      setSubmitError(errorMessage(err, "Could not start the session."));
+      setSubmitError(errorMessage(err, several ? "Could not start the runs." : "Could not start the session."));
       setSubmitting(false);
     }
   };
@@ -459,13 +709,23 @@ export function NewBacktestSessionPage() {
         {/* Tabler's .alert is a flex row: each alert's content sits in one block so it reads top to bottom. */}
         <div className="alert alert-success" role="status">
           <div>
-            <strong>{created.session.name}</strong> ({created.session.symbol}) is queued; its progress shows under Background jobs.
+            {created.runs.length === 1 ? (
+              <>
+                <strong>{created.runs[0]!.session.name}</strong> ({created.runs[0]!.session.symbol}) is queued; its progress shows under Background jobs.
+              </>
+            ) : (
+              <>
+                <strong>{created.batch.name}</strong>: {created.runs.length} runs are queued; their progress shows on the batch's page and under Background jobs.
+              </>
+            )}
             {created.llmEstimate && <div className="mt-1">The AI model decides. {describeLlmEstimate(created.llmEstimate)}.</div>}
           </div>
         </div>
         <div className="alert alert-warning" role="status">
           <div>
-            <div className="fw-semibold mb-1">It runs, with {created.warnings.length === 1 ? "this difference" : "these differences"} from what its files hold:</div>
+            <div className="fw-semibold mb-1">
+              {created.runs.length === 1 ? "It runs" : "They run"}, with {created.warnings.length === 1 ? "this difference" : "these differences"} from what {created.runs.length === 1 ? "its" : "their"} files hold:
+            </div>
             <ul className="mb-0 ps-3">
               {created.warnings.map((warning) => (
                 <li key={warning}>{warning}</li>
@@ -477,9 +737,15 @@ export function NewBacktestSessionPage() {
           <Link to="/backtest" className="btn btn-outline-secondary">
             Back to Backtesting
           </Link>
-          <Link to={`/backtest/sessions/${created.session.id}`} className="btn btn-primary">
-            Open the session
-          </Link>
+          {created.runs.length === 1 ? (
+            <Link to={`/backtest/sessions/${created.runs[0]!.session.id}`} className="btn btn-primary">
+              Open the session
+            </Link>
+          ) : (
+            <Link to={`/backtest/batches/${created.batch.id}`} className="btn btn-primary">
+              Open the batch
+            </Link>
+          )}
         </div>
       </div>
     );
@@ -514,6 +780,17 @@ export function NewBacktestSessionPage() {
   ];
   const currentResolution: BacktestTickerResolution | null = currentResult?.resolvedBySymbol ? { capital: currentResult.capital, bySymbol: currentResult.resolvedBySymbol } : null;
   const confirmProblems = perTickerPots && currentResolution ? tickerProblemsOf(currentResolution) : [];
+  const positionsField = (
+    <div className="col-12 col-lg-6">
+      <label htmlFor="backtest-session-positions" className="form-label">
+        Positions
+      </label>
+      <input id="backtest-session-positions" type="text" className="form-control" value="The full wheel" disabled readOnly aria-describedby="backtest-session-positions-hint" />
+      <div id="backtest-session-positions-hint" className="text-secondary mt-1" style={{ fontSize: "0.75rem" }}>
+        assignment, Calls on the shares, rolls and buybacks
+      </div>
+    </div>
+  );
   const periodNote = periodMode === "years" && fromYear !== null && toYear !== null ? (fromYear === toYear ? `whole year ${fromYear}` : `whole years ${fromYear} to ${toYear}`) : "custom dates";
 
   return (
@@ -537,6 +814,11 @@ export function NewBacktestSessionPage() {
                   value={name}
                   onChange={(event) => setName(event.target.value)}
                 />
+                {several && (
+                  <div className="text-secondary mt-1" style={{ fontSize: "0.75rem" }}>
+                    the batch's name; each run's session is named "{name.trim() || "…"} · Run 1 · …"
+                  </div>
+                )}
               </div>
               <div className="col-12 col-lg-6">
                 <label htmlFor="backtest-session-decision-maker" className="form-label">
@@ -562,8 +844,33 @@ export function NewBacktestSessionPage() {
                   ))}
                 </div>
               </div>
+              {perTickerPots && (
+                <div className="col-12 col-lg-6">
+                  <div className="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-2">
+                    <span className="form-label mb-0" id="backtest-session-runs-label">
+                      Runs
+                    </span>
+                    <BacktestSegmentedSwitch options={runsModeOptions} value={runsMode} onChange={changeRunsMode} ariaLabel="Runs" className="backtest-switch-wrap" />
+                  </div>
+                  <div className="text-secondary" style={{ fontSize: "0.75rem" }}>
+                    {several
+                      ? `up to ${backtestMaxRunsPerBatch} runs, each its own account: every run shares the period and the Settings, each has its own tickers and ticker values`
+                      : "one account with every picked ticker"}
+                  </div>
+                </div>
+              )}
               <div className="col-12 col-lg-6">
-                {perTickerPots ? (
+                {several ? (
+                  <>
+                    <span className="form-label" id="backtest-session-capital-label">
+                      Capital
+                    </span>
+                    <input id="backtest-session-capital" type="text" className="form-control" aria-labelledby="backtest-session-capital-label" value="Each run: the sum of its pots" disabled readOnly />
+                    <div className="text-secondary mt-1" style={{ fontSize: "0.75rem" }}>
+                      each run's capital shows on its band (Runs, below)
+                    </div>
+                  </>
+                ) : perTickerPots ? (
                   <>
                     <div className="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-2">
                       <span className="form-label mb-0" id="backtest-session-capital-label">
@@ -627,21 +934,19 @@ export function NewBacktestSessionPage() {
                   </>
                 )}
               </div>
-              <div className="col-12 col-lg-6">
-                <label htmlFor="backtest-session-positions" className="form-label">
-                  Positions
-                </label>
-                <input id="backtest-session-positions" type="text" className="form-control" value="The full wheel" disabled readOnly aria-describedby="backtest-session-positions-hint" />
-                <div id="backtest-session-positions-hint" className="text-secondary mt-1" style={{ fontSize: "0.75rem" }}>
-                  assignment, Calls on the shares, rolls and buybacks
-                </div>
-              </div>
+              {!perTickerPots && positionsField}
               <div className="col-12 col-lg-6">
                 <BacktestSymbolPicker files={files} selected={symbols} onChange={changeSymbols} invalid={submitAttempted && (selectedFiles.length === 0 || !coverage)} />
-                {selectedFiles.length > 1 && (
+                {several ? (
                   <div className="text-secondary mt-1" style={{ fontSize: "0.75rem" }}>
-                    {symbols.join(", ")} share one book: one cash balance, one account.
+                    the tickers the runs can use: a symbol picked here goes into every run, and can be removed from a run on its band
                   </div>
+                ) : (
+                  selectedFiles.length > 1 && (
+                    <div className="text-secondary mt-1" style={{ fontSize: "0.75rem" }}>
+                      {symbols.join(", ")} share one book: one cash balance, one account.
+                    </div>
+                  )
                 )}
               </div>
               <div className="col-12 col-lg-6">
@@ -756,6 +1061,8 @@ export function NewBacktestSessionPage() {
                   )}
                 </div>
               </div>
+              {/* With the Baseline deciding, Runs takes Positions' place beside Capital (mockup 2026-10-17); Positions moves here. */}
+              {perTickerPots && positionsField}
             </div>
             <fieldset className="row g-3 mt-1">
               <legend className="visually-hidden">History tables</legend>
@@ -804,9 +1111,47 @@ export function NewBacktestSessionPage() {
           />
         )}
 
+        {showRunsCard && (
+          <BacktestRunsCard
+            runs={runs.map(
+              (run, runIndex): BacktestRunView => ({
+                key: run.key,
+                runNumber: runIndex + 1,
+                rows: runRows[runIndex]!,
+                description: runDescriptions[runIndex]!,
+                capital: runResolutions[run.key]?.capital ?? null,
+                missingSymbols: orderedSymbols.filter((symbol) => !run.symbols.includes(symbol)),
+                resolving: runRequestTexts[run.key] !== null && runRequestTexts[run.key] !== undefined && !runEstimateIsCurrent(run.key),
+                error: runEstimateIsCurrent(run.key) ? (runEstimates[run.key]?.error ?? null) : null,
+                runProblems: run.symbols.length === 0 ? [`Run ${runIndex + 1} has no tickers: add one or remove the run.`] : [],
+              }),
+            )}
+            maxRuns={backtestMaxRunsPerBatch}
+            settingsSource={settingsSource}
+            onSettingsSourceChange={setSettingsSource}
+            vary={vary}
+            varyTickers={orderedSymbols}
+            varyPreview={varyPreview}
+            onVaryChange={setVary}
+            onApplyVary={applyVary}
+            onEditChange={changeRunValue}
+            onEditBlur={settleRunValue}
+            onResetGroup={resetRunGroup}
+            onDuplicate={duplicateRun}
+            onRemove={removeRun}
+            onRemoveTicker={removeRunTicker}
+            onAddTicker={addRunTicker}
+            anyEdit={runs.some((run) => hasTickerEdits(run.edits))}
+            onResetAll={() => setRuns((previous) => previous.map((run) => ({ ...run, edits: {} })))}
+            settingRows={allRows}
+          />
+        )}
+
         <BacktestCard
           title="Settings"
-          description={changedCount === 0 ? "the lab's settings as they are now" : `${pluralizeCount(changedCount, "setting")} changed for this session`}
+          description={
+            changedCount === 0 ? `the lab's settings as they are now${several ? " · for every run" : ""}` : `${pluralizeCount(changedCount, "setting")} changed for ${several ? "every run" : "this session"}`
+          }
           actions={
             changedCount > 0 && (
               <button type="button" className="btn btn-outline-secondary" onClick={resetAllSettings}>
@@ -819,7 +1164,7 @@ export function NewBacktestSessionPage() {
           <BacktestSettingsTable
             rows={settingRows}
             valueByPath={valueByPath}
-            showPerTicker={showTickersCard}
+            showPerTicker={showTickersCard || showRunsCard}
             onValueChange={(path, value) => setValueByPath((previous) => ({ ...previous, [path]: value }))}
             onReset={(path) => {
               const row = template.rows.find((candidate) => candidate.path === path);
@@ -881,14 +1226,43 @@ export function NewBacktestSessionPage() {
             Cancel
           </Link>
           <button type="submit" className="btn btn-primary">
-            Start session
+            {several && runs.length > 1 ? `Start ${runs.length} runs` : "Start session"}
           </button>
         </div>
         <div className="text-secondary text-end mt-2" style={{ fontSize: "0.78rem" }}>
-          Runs in the background; its progress shows under Background jobs.
+          {several && runs.length > 1 ? "The runs queue and run in the background; their progress shows on the batch's page." : "Runs in the background; its progress shows under Background jobs."}
         </div>
       </form>
-      {confirmOpen && (
+      {confirmOpen && several && (
+        <ConfirmModal
+          title={runs.length > 1 ? `Start ${runs.length} runs?` : "Start this session?"}
+          size="lg"
+          danger={false}
+          confirmLabel={runs.length > 1 ? `Start ${runs.length} runs` : "Start session"}
+          confirming={submitting}
+          confirmDisabled={runsEstimatePending || runs.some((_, runIndex) => runProblems(runIndex).length > 0)}
+          onConfirm={() => void startSession()}
+          onCancel={() => setConfirmOpen(false)}
+          message={
+            <BacktestStartBatchConfirmBody
+              name={name.trim()}
+              startDate={sessionStartDate}
+              endDate={sessionEndDate}
+              periodNote={periodNote}
+              decisionMakerLabel={decisionMakerRow?.choices?.find((choice) => choice.value === decisionMaker)?.label ?? decisionMaker}
+              settingsSource={settingsSource}
+              tablesMode={tablesMode}
+              runs={runs.map((run, runIndex) => ({ runNumber: runIndex + 1, symbols: run.symbols, description: runDescriptionsBesideTickers[runIndex]!, capital: runResolutions[run.key]?.capital ?? null }))}
+              maxParallel={overview?.maxParallelSessions ?? null}
+              estimatePending={runsEstimatePending}
+              changes={changes}
+              warnings={runs.flatMap((run, runIndex) => (runEstimateIsCurrent(run.key) ? (runEstimates[run.key]?.result?.warnings ?? []).map((warning) => `Run ${runIndex + 1}: ${warning}`) : []))}
+              problems={runs.flatMap((_, runIndex) => runProblems(runIndex))}
+            />
+          }
+        />
+      )}
+      {confirmOpen && !several && (
         <ConfirmModal
           title="Start this session?"
           size="lg"

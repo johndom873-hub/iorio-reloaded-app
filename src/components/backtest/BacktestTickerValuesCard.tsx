@@ -1,43 +1,27 @@
 import type { ReactNode } from "react";
-import type { BacktestSettingRow, BacktestSettingsSource, BacktestSymbolResolution, BacktestSymbolSettingSource, BacktestTickerValueKey } from "../../api/backtest";
+import type { BacktestSettingRow, BacktestSettingsSource, BacktestTickerValueKey } from "../../api/backtest";
 import { useMediaQuery } from "../../hooks/useMediaQuery";
 import { formatCurrency, formatPercentage } from "../../lib/formatters";
+import type { BacktestTickerValueGroup } from "../../lib/backtestPresentation";
 import {
-  backtestValueSourceBadgeClass,
-  backtestValueSourceLabel,
-  backtestValueSourceLegend,
-  backtestValueSourceOrder,
-  backtestValueSourceTitle,
-  describeTickerProblem,
-  describeTickerResetTarget,
-  mostSpecificValueSource,
-  tickerValueGroupKeys,
-  type BacktestTickerValueGroup,
-} from "../../lib/backtestPresentation";
-import { tickerEditProblems, tickerValueBelowEdit, tickerValueDisplay, type BacktestCapitalMode, type BacktestTickerEdits, type BacktestTickerResolution, type TickerValueDisplay } from "../../lib/backtestTickerValueEdits";
+  buildTickerRowModels,
+  hideableTickerValueColumns,
+  tickerRowGroupSource,
+  tickerValueColumns,
+  type BacktestCapitalMode,
+  type BacktestTickerEdits,
+  type BacktestTickerResolution,
+  type TickerRowModel,
+} from "../../lib/backtestTickerValueEdits";
 import { ColumnVisibilityPopover } from "../DataTable/ColumnVisibilityPopover";
 import { useColumnVisibility } from "../DataTable/useColumnVisibility";
 import { Spinner } from "../Spinner";
-import { BacktestCardTitle, BacktestSegmentedSwitch } from "./backtestBits";
+import { BacktestCardTitle, BacktestSymbolLink } from "./backtestBits";
+import { ProblemLines, ResetGroupButton, SettingsSourceSwitch, SourceBadge, SourceLegend, TickerValueInput } from "./BacktestTickerValueParts";
 
 const tableId = "backtest-new-session-tickers";
-
-const columns: { key: "ticker" | "weight" | BacktestTickerValueGroup; header: string; title?: string }[] = [
-  { key: "ticker", header: "Ticker" },
-  { key: "pot", header: "Pot $", title: "The ticker's money. Its weight is its pot ÷ the sum of the pots." },
-  { key: "weight", header: "Weight", title: "Pot ÷ the sum of the pots: the ticker's share of the account for its ladder's base, fixed for the session." },
-  { key: "share", header: "Share level", title: "The ladder's shares at most, at cost, as a % of the ticker's base; the rest is its puts' reserve." },
-  { key: "rungs", header: "Rungs", title: "The reserve is spent in this many puts." },
-  { key: "shock", header: "Shock", title: "The fall at which the reserve is fully committed: the stock's Max drawdown in the years before the cycle, within the range, or a fixed %." },
-  { key: "delta", header: "|delta| range", title: "The |delta| range of the Calls and Puts sold." },
-];
-/** The gear lists every column but the ticker's. */
-const hideableColumns = columns.filter((column) => column.key !== "ticker");
-
-const settingsSourceOptions: { value: BacktestSettingsSource; label: string }[] = [
-  { value: "per_ticker", label: "Per ticker" },
-  { value: "global", label: "Global" },
-];
+const columns = tickerValueColumns;
+const hideableColumns = hideableTickerValueColumns;
 
 const settingsSourceExplanation: Record<BacktestSettingsSource, string> = {
   per_ticker: "Per ticker: each ticker's saved lab values where it has them, the lab's global values for the rest.",
@@ -45,6 +29,7 @@ const settingsSourceExplanation: Record<BacktestSettingsSource, string> = {
 };
 
 const tickersDescription = "each ticker's pot and ladder values · they share one account and its cash";
+const turnOrderLine = "Turn order at every look: alphabetical. When the cash runs short, the tickers later in the alphabet are the ones cut.";
 
 export interface BacktestTickerValuesCardProps {
   /** The picked symbols, any order: the rows run in turn order (alphabetical). */
@@ -67,175 +52,7 @@ export interface BacktestTickerValuesCardProps {
   settingRows: BacktestSettingRow[];
 }
 
-/** One ticker's values as its cells show them, with the reset target of each column. */
-interface TickerRowModel {
-  symbol: string;
-  resolution: BacktestSymbolResolution | undefined;
-  display: Record<BacktestTickerValueKey, TickerValueDisplay>;
-  weight: number | null;
-  problems: { key: string | null; text: string }[];
-}
-
-function SourceBadge({ source }: { source: BacktestSymbolSettingSource | null }) {
-  if (!source) return null;
-  return (
-    <span className={`badge ${backtestValueSourceBadgeClass[source]}`} title={backtestValueSourceTitle[source]}>
-      {backtestValueSourceLabel[source]}
-    </span>
-  );
-}
-
-function groupKeys(row: TickerRowModel, group: BacktestTickerValueGroup): BacktestTickerValueKey[] {
-  return tickerValueGroupKeys(group, String(row.display.ladderShock.value ?? "history"));
-}
-
-function groupSource(row: TickerRowModel, group: BacktestTickerValueGroup): BacktestSymbolSettingSource | null {
-  return mostSpecificValueSource(groupKeys(row, group).map((key) => row.display[key].source));
-}
-
-/** The values a column's Reset returns to: for each of its keys, the value under this session's edit. */
-function resetTarget(row: TickerRowModel, group: BacktestTickerValueGroup): { text: string; title: string } {
-  const below: Partial<Record<BacktestTickerValueKey, number | string | null>> = {};
-  const sources: (BacktestSymbolSettingSource | null)[] = [];
-  // The shock's numbers follow the mode it returns to.
-  const shockBelow = tickerValueBelowEdit(row.resolution, "ladderShock")?.value ?? row.display.ladderShock.value;
-  const keys = group === "shock" ? tickerValueGroupKeys("shock", String(shockBelow ?? "history")) : groupKeys(row, group);
-  for (const key of keys) {
-    const under = row.display[key].source === "request" ? tickerValueBelowEdit(row.resolution, key) : { value: row.display[key].value, source: row.display[key].source };
-    below[key] = under?.value ?? null;
-    sources.push(under?.source ?? null);
-  }
-  const text = describeTickerResetTarget(group, below);
-  const source = mostSpecificValueSource(sources);
-  return { text, title: text === "Clear" || !source ? "Remove this session's pot: the ticker has no other" : `Back to ${backtestValueSourceTitle[source]}` };
-}
-
-interface CellProps {
-  row: TickerRowModel;
-  group: BacktestTickerValueGroup;
-  capitalMode: BacktestCapitalMode;
-  idPrefix: string;
-  onEditChange: BacktestTickerValuesCardProps["onEditChange"];
-  onEditBlur: BacktestTickerValuesCardProps["onEditBlur"];
-}
-
-/** A column's input(s) for one ticker; amber text once changed for this session, marked when a problem names it. */
-function TickerValueInput({ row, group, capitalMode, idPrefix, onEditChange, onEditBlur }: CellProps) {
-  const { symbol } = row;
-  const invalidKeys = new Set(row.problems.map((problem) => problem.key));
-  const input = (key: BacktestTickerValueKey, label: string, className = "") => {
-    const shown = row.display[key];
-    const invalid = invalidKeys.has(key);
-    return (
-      <input
-        type="text"
-        inputMode={key === "potDollars" || key === "ladderRungs" ? "numeric" : "decimal"}
-        id={`${idPrefix}-${symbol}-${key}`}
-        className={`form-control font-mono${shown.source === "request" ? " backtest-setting-changed-input" : ""}${invalid ? " is-invalid" : ""} ${className}`.trim()}
-        aria-label={`${symbol} ${label} for this session`}
-        aria-invalid={invalid || undefined}
-        aria-describedby={invalid ? `${idPrefix}-${symbol}-problems` : undefined}
-        value={shown.text}
-        disabled={key === "potDollars" && capitalMode === "split"}
-        onChange={(event) => onEditChange(symbol, key, event.target.value)}
-        onBlur={() => onEditBlur(symbol, key)}
-      />
-    );
-  };
-  if (group === "pot") {
-    return (
-      <div className="input-group flex-nowrap backtest-ticker-input-pot">
-        <span className="input-group-text">$</span>
-        {input("potDollars", "pot")}
-      </div>
-    );
-  }
-  if (group === "share") {
-    return (
-      <div className="input-group flex-nowrap backtest-ticker-input-share">
-        {input("ladderSharesPct", "share level")}
-        <span className="input-group-text">%</span>
-      </div>
-    );
-  }
-  if (group === "rungs") return input("ladderRungs", "rungs", "backtest-ticker-input-rungs");
-  if (group === "shock") {
-    const shock = row.display.ladderShock;
-    return (
-      <div className="input-group flex-nowrap backtest-ticker-input-shock">
-        <select
-          className={`form-select${shock.source === "request" ? " backtest-setting-changed-input" : ""}`}
-          id={`${idPrefix}-${symbol}-ladderShock`}
-          aria-label={`${symbol} shock for this session`}
-          value={String(shock.value ?? "history")}
-          onChange={(event) => onEditChange(symbol, "ladderShock", event.target.value)}
-          onBlur={() => onEditBlur(symbol, "ladderShock")}
-        >
-          <option value="history">History</option>
-          <option value="fixed">Fixed</option>
-        </select>
-        {shock.value === "fixed" ? (
-          <>
-            {input("ladderShockPct", "fixed shock")}
-            <span className="input-group-text">%</span>
-          </>
-        ) : (
-          <>
-            {input("ladderShockMinPct", "shock at least")}
-            <span className="input-group-text">–</span>
-            {input("ladderShockMaxPct", "shock at most")}
-            <span className="input-group-text">%</span>
-          </>
-        )}
-      </div>
-    );
-  }
-  return (
-    <div className="input-group flex-nowrap backtest-ticker-input-delta">
-      {input("minAbsDelta", "|delta| from")}
-      <span className="input-group-text">–</span>
-      {input("maxAbsDelta", "|delta| to")}
-    </div>
-  );
-}
-
-function ResetGroupButton({ row, group, capitalMode, onResetGroup }: { row: TickerRowModel; group: BacktestTickerValueGroup; capitalMode: BacktestCapitalMode; onResetGroup: BacktestTickerValuesCardProps["onResetGroup"] }) {
-  if (groupSource(row, group) !== "request" || (group === "pot" && capitalMode === "split")) return null;
-  const target = resetTarget(row, group);
-  return (
-    <button type="button" className="btn btn-sm btn-outline-secondary text-nowrap" title={target.title} onClick={() => onResetGroup(row.symbol, group)}>
-      {target.text}
-    </button>
-  );
-}
-
-function ProblemLines({ row, id, className = "" }: { row: TickerRowModel; id: string; className?: string }) {
-  if (row.problems.length === 0) return null;
-  return (
-    <div id={id} className={`backtest-ticker-problem ${className}`.trim()} style={{ fontSize: "0.8rem" }}>
-      {row.problems.map((problem) => (
-        <div key={`${problem.key}-${problem.text}`}>{problem.text}</div>
-      ))}
-    </div>
-  );
-}
-
-function SourceLegend() {
-  return (
-    <div className="card-footer backtest-ticker-legend">
-      <div className="text-secondary mb-1">Where a value comes from, the last one winning:</div>
-      <ol className="backtest-ticker-legend-list">
-        {backtestValueSourceOrder.map((source) => (
-          <li key={source}>
-            <SourceBadge source={source} />
-            <span className="text-secondary">{backtestValueSourceLegend[source]}</span>
-          </li>
-        ))}
-      </ol>
-      <div className="text-secondary mt-2">Turn order at every look: alphabetical. When the cash runs short, the tickers later in the alphabet are the ones cut.</div>
-    </div>
-  );
-}
+const groupSource = tickerRowGroupSource;
 
 /**
  * The New session's Tickers card (the Baseline deciding, at least one symbol): each ticker's pot and ladder values, with
@@ -249,23 +66,7 @@ export function BacktestTickerValuesCard(props: BacktestTickerValuesCardProps) {
     tableId,
     columns.map((column) => column.key),
   );
-  const orderedSymbols = [...symbols].sort();
-  const splitPot = capitalMode === "split" && splitStartingValue > 0 && orderedSymbols.length > 0 ? splitStartingValue / orderedSymbols.length : null;
-  const localProblems = tickerEditProblems(orderedSymbols, edits, capitalMode);
-  const rowsModel: TickerRowModel[] = orderedSymbols.map((symbol) => {
-    const symbolResolution = resolution?.bySymbol[symbol];
-    const display = Object.fromEntries(
-      (["potDollars", "minAbsDelta", "maxAbsDelta", "ladderSharesPct", "ladderRungs", "ladderShock", "ladderShockPct", "ladderShockMinPct", "ladderShockMaxPct"] as BacktestTickerValueKey[]).map((key) => [
-        key,
-        tickerValueDisplay(symbolResolution, key, edits[symbol]?.[key], { mode: capitalMode, splitPot }),
-      ]),
-    ) as Record<BacktestTickerValueKey, TickerValueDisplay>;
-    const problems = [
-      ...localProblems.filter((problem) => problem.symbol === symbol).map((problem) => ({ key: problem.key as string | null, text: problem.message })),
-      ...(symbolResolution?.problems ?? []).map((problem) => ({ key: problem.key, text: describeTickerProblem(symbol, problem, settingRows) })),
-    ];
-    return { symbol, resolution: symbolResolution, display, weight: symbolResolution?.weight ?? null, problems };
-  });
+  const rowsModel: TickerRowModel[] = buildTickerRowModels({ symbols, edits, resolution, capitalMode, splitStartingValue, settingRows });
   const capital = capitalMode === "split" ? (splitStartingValue > 0 ? splitStartingValue : null) : (resolution?.capital ?? null);
   const totalsNote =
     capital !== null
@@ -371,7 +172,7 @@ export function BacktestTickerValuesCard(props: BacktestTickerValuesCardProps) {
         {rowsModel.map((row) => (
           <div key={row.symbol} className="px-3 py-2 border-bottom">
             <div className="d-flex align-items-baseline justify-content-between gap-2">
-              <span className="fw-semibold">{row.symbol}</span>
+              <BacktestSymbolLink symbol={row.symbol} />
               {isColumnVisible("weight") && (
                 <span className="text-secondary" style={{ fontSize: "0.78rem" }}>
                   weight <span className="font-mono">{formatPercentage(row.weight, 1)}</span>
@@ -397,7 +198,7 @@ export function BacktestTickerValuesCard(props: BacktestTickerValuesCardProps) {
             {totalsNote}
           </div>
         </div>
-        <SourceLegend />
+        <SourceLegend closingLine={turnOrderLine} />
         {anyEdit && (
           <div className="card-body pt-0">
             <button type="button" className="btn btn-outline-secondary w-100" onClick={onResetAll}>
@@ -447,7 +248,7 @@ export function BacktestTickerValuesCard(props: BacktestTickerValuesCardProps) {
                   if (column.key === "ticker")
                     return (
                       <td key="ticker" className="backtest-ticker-symbol-cell">
-                        {row.symbol}
+                        <BacktestSymbolLink symbol={row.symbol} />
                       </td>
                     );
                   if (column.key === "weight")
@@ -497,11 +298,7 @@ export function BacktestTickerValuesCard(props: BacktestTickerValuesCardProps) {
           </tfoot>
         </table>
       </div>
-      <SourceLegend />
+      <SourceLegend closingLine={turnOrderLine} />
     </div>
   );
-}
-
-function SettingsSourceSwitch({ value, onChange, full = false }: { value: BacktestSettingsSource; onChange: (source: BacktestSettingsSource) => void; full?: boolean }) {
-  return <BacktestSegmentedSwitch options={settingsSourceOptions} value={value} onChange={onChange} ariaLabel="Ticker values" className={full ? "backtest-switch-full" : undefined} />;
 }

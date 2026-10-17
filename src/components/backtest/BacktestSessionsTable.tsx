@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState, type RefObject } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { fetchBacktestSessionsPage, type BacktestSessionListItem, type BacktestSessionsPage, type BacktestSessionsPageQuery, type BacktestSessionStatusFilter } from "../../api/backtest";
+import { IconChevronDown } from "@tabler/icons-react";
+import { fetchBacktestSessionsPage, type BacktestSessionBatchRef, type BacktestSessionListItem, type BacktestSessionsPage, type BacktestSessionsPageQuery, type BacktestSessionStatusFilter } from "../../api/backtest";
 import { useDebouncedValue } from "../../hooks/useDebouncedValue";
 import { usePollWhileVisible } from "../../hooks/usePollWhileVisible";
 import { formatBrowserClockTime, formatBrowserDayMonth, formatNumber, formatPercentage, formatRatio, formatSignedPnl, pnlTextClass } from "../../lib/formatters";
@@ -16,6 +17,7 @@ import {
   jobProgressFraction,
   jobStatusLabel,
 } from "../../lib/backtestPresentation";
+import { describeBatchRunStates, groupSessionEntries, runNameInBatch, sessionsEntryCreatedAt } from "../../lib/backtestBatchPresentation";
 import { DataTable, type DataTableColumn } from "../DataTable/DataTable";
 import { Pagination } from "../Pagination";
 import { BacktestCard, BacktestCardTitle, BacktestJobStatusBadge, SignedPercent } from "./backtestBits";
@@ -26,6 +28,10 @@ const sessionsPerPage = 50;
 /** The search box asks the API once typing has paused this long. */
 const searchPauseMs = 300;
 const statusFilters: BacktestSessionStatusFilter[] = ["succeeded", "running", "failed", "cancelled"];
+
+/** A row of the list (D14, mockup approved 2026-10-17): a session, a batch of two or more runs (closed by default), or one of
+ *  an open batch's runs under it. */
+type SessionsRow = { kind: "session"; session: BacktestSessionListItem; inBatch: boolean } | { kind: "batch"; batch: BacktestSessionBatchRef; runs: BacktestSessionListItem[]; expanded: boolean };
 
 /** A fetched page, with the sessions created after the reader started reading (left out of it). */
 interface SessionsPageRead {
@@ -97,9 +103,9 @@ export function BacktestSessionsTable() {
       const page = await fetchBacktestSessionsPage({ ...filters, limit: sessionsPerPage, offset });
       return { page, newSessionCount: 0, newSessionsAtLeast: false, live: offset === 0 };
     }
-    // Newest first: the sessions above the watermark lead the first page.
+    // Newest first: the entries above the watermark lead the first page (a batch is one entry, as the API pages them).
     const head = await fetchBacktestSessionsPage({ ...filters, limit: sessionsPerPage, offset: 0 });
-    const newSessionCount = head.sessions.filter((session) => session.createdAt > watermark).length;
+    const newSessionCount = groupSessionEntries(head.sessions).filter((entry) => sessionsEntryCreatedAt(entry) > watermark).length;
     const page = offset === 0 && newSessionCount === 0 ? head : await fetchBacktestSessionsPage({ ...filters, limit: sessionsPerPage, offset: offset + newSessionCount });
     return { page: { ...page, offset, total: Math.max(0, page.total - newSessionCount) }, newSessionCount, newSessionsAtLeast: newSessionCount === sessionsPerPage, live: false };
   }, [searchAsked, symbolFilter, statusFilter, offset, watermark]);
@@ -108,7 +114,7 @@ export function BacktestSessionsTable() {
 
   useEffect(() => {
     if (!read?.live) return;
-    const newest = read.page.sessions[0]?.createdAt;
+    const newest = read.page.sessions.map((session) => session.createdAt).sort().at(-1);
     if (newest) setNewestSeenCreatedAt((previous) => (previous === null || newest > previous ? newest : previous));
   }, [read]);
 
@@ -142,7 +148,21 @@ export function BacktestSessionsTable() {
     });
   };
 
-  const columns: DataTableColumn<BacktestSessionListItem>[] = [
+  const [expandedBatchIds, setExpandedBatchIds] = useState<Set<string>>(new Set());
+  const toggleBatch = (batchId: string) =>
+    setExpandedBatchIds((previous) => {
+      const next = new Set(previous);
+      if (next.has(batchId)) next.delete(batchId);
+      else next.add(batchId);
+      return next;
+    });
+  const rows: SessionsRow[] = groupSessionEntries(sessions).flatMap((entry): SessionsRow[] => {
+    if (entry.kind === "session") return [{ kind: "session", session: entry.session, inBatch: false }];
+    const expanded = expandedBatchIds.has(entry.batch.id);
+    return [{ kind: "batch", batch: entry.batch, runs: entry.runs, expanded }, ...(expanded ? entry.runs.map((run): SessionsRow => ({ kind: "session", session: run, inBatch: true })) : [])];
+  });
+
+  const sessionColumns: DataTableColumn<BacktestSessionListItem>[] = [
     {
       key: "select",
       header: "",
@@ -165,7 +185,7 @@ export function BacktestSessionsTable() {
       cellClassName: "backtest-session-name-cell",
       render: (session) => (
         <span>
-          <Link to={`/backtest/sessions/${session.id}`} className="fw-semibold text-decoration-none">
+          <Link to={`/backtest/sessions/${session.id}`} className="fw-semibold text-decoration-none backtest-session-link">
             {session.name}
           </Link>{" "}
           <span className="text-secondary">{session.symbol}</span>
@@ -252,6 +272,58 @@ export function BacktestSessionsTable() {
     },
   ];
 
+  /** A batch row: its name to open its page, its run count, its period and how far its runs are; no figures of its own. */
+  const renderBatchCell = (key: string, row: Extract<SessionsRow, { kind: "batch" }>) => {
+    if (key === "session")
+      return (
+        <div className="d-flex align-items-center gap-2">
+          <button
+            type="button"
+            className="btn btn-icon btn-outline-secondary backtest-icon-button"
+            aria-expanded={row.expanded}
+            aria-label={`${row.expanded ? "Hide" : "Show"} the runs of ${row.batch.name}`}
+            onClick={() => toggleBatch(row.batch.id)}
+          >
+            <IconChevronDown size={16} aria-hidden="true" style={{ transform: row.expanded ? "rotate(180deg)" : "none", transition: "transform 0.15s ease" }} />
+          </button>
+          <div>
+            <Link to={`/backtest/batches/${row.batch.id}`} className="fw-semibold text-decoration-none backtest-session-link">
+              {row.batch.name}
+            </Link>
+            <div className="text-secondary" style={{ fontSize: "0.72rem" }}>
+              Batch · {row.batch.runCount} runs{row.runs.length < row.batch.runCount ? ` (${row.runs.length} match the filters)` : ""}
+            </div>
+          </div>
+        </div>
+      );
+    if (key === "period") return `${row.runs[0]!.startDate} → ${row.runs[0]!.endDate}`;
+    if (key === "run")
+      return (
+        <span className="text-secondary text-nowrap" style={{ fontSize: "0.78rem" }}>
+          {describeBatchRunStates(row.runs)}
+        </span>
+      );
+    return null;
+  };
+  // The list is not sortable: its order is the API's (newest entry first), which keeps a batch's runs together.
+  const columns: DataTableColumn<SessionsRow>[] = sessionColumns.map((column) => ({
+    ...column,
+    sortValue: undefined,
+    render: (row: SessionsRow) => {
+      if (row.kind === "batch") return renderBatchCell(column.key, row);
+      if (column.key === "session" && row.inBatch)
+        return (
+          <div className="backtest-batch-child">
+            <Link to={`/backtest/sessions/${row.session.id}`} className="fw-semibold text-decoration-none backtest-session-link">
+              {runNameInBatch(row.session)}
+            </Link>{" "}
+            <span className="text-secondary">{row.session.symbol}</span>
+          </div>
+        );
+      return column.render(row.session);
+    },
+  }));
+
   const canCompare = selectedFinishedIds.length >= minimumSessionsToCompare;
   const title = "Sessions";
   const description = "Each keeps its settings, its period and every day's result. Tick two or more finished sessions, on any page, to compare.";
@@ -305,8 +377,8 @@ export function BacktestSessionsTable() {
     <DataTable
       tableId="backtest-sessions"
       columns={columns}
-      rows={sessions}
-      rowKey={(session) => session.id}
+      rows={rows}
+      rowKey={(row) => (row.kind === "session" ? row.session.id : `batch:${row.batch.id}`)}
       loading={page === null && error === null}
       emptyMessage={error ?? "No session matches the filters."}
       dense
