@@ -1,6 +1,8 @@
 import { useState } from "react";
 import { ApiError } from "../../api/client";
 import { updateShortlistBotEnabled } from "../../api/pluto";
+import { useIsAdmin } from "../../hooks/useAuth";
+import { adminOnlyPlutoSwitchReason } from "../../lib/accessLevelPresentation";
 import { ToggleSwitch } from "../ToggleSwitch";
 import { PlutoStopsManagingConfirm, plutoStopsManagingPositions } from "./PlutoStopsManagingConfirm";
 
@@ -16,13 +18,15 @@ interface PlutoBotToggleProps {
   onError?: (message: string) => void;
 }
 
-/** The per-ticker "Pluto may trade this" switch on the Shortlist tab. Saves on click; the cap error comes back from the API. */
+/** The per-ticker "Pluto may trade this" switch on the Shortlist tab. Saves on click; the cap error comes back from the API.
+ *  Locked for a trader, with a lock beside it: only an admin may switch Pluto on or off for a ticker (the API refuses a trader too). */
 export function PlutoBotToggle({ entryId, symbol, enabled, openPositionCount, disabledReason, onChanged, onError }: PlutoBotToggleProps) {
   const [saving, setSaving] = useState(false);
   const [confirming, setConfirming] = useState(false);
+  const isAdmin = useIsAdmin();
 
   function requestToggle() {
-    if (saving) return;
+    if (saving || !isAdmin) return;
     if (plutoStopsManagingPositions(enabled, openPositionCount)) setConfirming(true);
     else void toggle();
   }
@@ -39,6 +43,10 @@ export function PlutoBotToggle({ entryId, symbol, enabled, openPositionCount, di
     } finally {
       setSaving(false);
     }
+  }
+
+  if (!isAdmin) {
+    return <ToggleSwitch checked={enabled} saving={false} locked disabledReason={adminOnlyPlutoSwitchReason} ariaLabel={`Pluto ${enabled ? "enabled" : "disabled"} for ${symbol}`} onToggle={requestToggle} />;
   }
 
   return (

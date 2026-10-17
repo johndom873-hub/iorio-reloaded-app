@@ -2715,3 +2715,30 @@
   .backtest-vary-values { width: 100%; }
   .backtest-run-phone-band .backtest-run-actions > * { flex: 1 1 0; }
 }
+
+/* Access levels: what a trader sees in place of settings only an admin can change (ViewOnlyNote, ReadOnlySetting). */
+.view-only-note {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.625rem 0.75rem;
+  border: 1px solid var(--tblr-border-color);
+  border-radius: var(--tblr-border-radius);
+  background: var(--tblr-body-bg);
+  font-size: 0.8rem;
+}
+.read-only-setting {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+.read-only-setting-label {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+  font-size: 0.8rem;
+}
+.read-only-setting-value {
+  font-size: 1rem;
+  font-weight: 600;
+}

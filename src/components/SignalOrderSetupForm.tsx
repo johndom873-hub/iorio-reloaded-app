@@ -35,6 +35,8 @@ interface SignalOrderSetupFormProps {
   /** The list's net Edge when the row was selected -- the decay meter's reference. */
   netEdgeAtSelection: number;
   selectedAtIso: string;
+  /** Why this viewer may not open or roll on the ticker (a trader, where Pluto trades it), or null: a blocking reason, checked before anything is built. */
+  accessLevelRefusal: string | null;
   onCancel: () => void;
   onSubmitted: (order: OrderRequest, adaptivePriority: AdaptivePriority) => void;
   /** Shown under the title, e.g. why a contract picked from the full chain is not a Signals candidate. */
@@ -71,7 +73,7 @@ function ReviewOrderButton({ disabled, blockedTooltip, building, onClick }: { di
   );
 }
 
-export function SignalOrderSetupForm({ symbol, signals, candidate, spotPrice, netEdgeAtSelection, selectedAtIso, onCancel, onSubmitted, notice }: SignalOrderSetupFormProps) {
+export function SignalOrderSetupForm({ symbol, signals, candidate, spotPrice, netEdgeAtSelection, selectedAtIso, accessLevelRefusal, onCancel, onSubmitted, notice }: SignalOrderSetupFormProps) {
   const isCall = candidate.strategyKey === "covered_call";
   const defaultQuantity = isCall && signals.freeShares >= 100 ? Math.floor(signals.freeShares / 100) : 1;
   const [contractQty, setContractQty] = useState(String(defaultQuantity));
@@ -147,6 +149,7 @@ export function SignalOrderSetupForm({ symbol, signals, candidate, spotPrice, ne
   }, [symbol, candidate.strategyKey, candidate.strike, quantity, spotPrice, isCall]);
 
   const blockingReasons = [
+    ...(accessLevelRefusal ? [accessLevelRefusal] : []),
     ...[describeNonLiveQuoteBlock("This contract", candidate.quoteSource)].filter((reason): reason is string => reason !== null),
     ...(insufficientCashFlagged ? ["Not enough free cash to secure this put."] : []),
     ...(orderLimitsResult?.blocked ? orderLimitsResult.reasons : []),

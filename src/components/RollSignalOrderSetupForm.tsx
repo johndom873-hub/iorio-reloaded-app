@@ -43,6 +43,8 @@ interface RollSignalOrderSetupFormProps {
   selectedAtIso: string;
   /** Why the picked chain contract is not a Signals candidate / has no score, shown above the roll signal. */
   notice?: ReactNode;
+  /** Why this viewer may not open or roll on the ticker (a trader, where Pluto trades it), or null: a blocking reason, checked before anything is built. */
+  accessLevelRefusal: string | null;
   onCancel: () => void;
   onSubmitted: (order: OrderRequest, adaptivePriority: AdaptivePriority) => void;
 }
@@ -70,7 +72,7 @@ function ReviewOrderButton({ disabled, blockedTooltip, building, onClick }: { di
 
 const signedVolatilityAndDollars = (volatility: number, dollars: number) => `${formatVolatilityPoints(volatility)} · ${formatSignedPnl(dollars, 0)}`;
 
-export function RollSignalOrderSetupForm({ symbol, signals, roll, unscoredReplacement = null, held, spotPrice, netRollEdgeAtSelection, selectedAtIso, notice = null, onCancel, onSubmitted }: RollSignalOrderSetupFormProps) {
+export function RollSignalOrderSetupForm({ symbol, signals, roll, unscoredReplacement = null, held, spotPrice, netRollEdgeAtSelection, selectedAtIso, notice = null, accessLevelRefusal, onCancel, onSubmitted }: RollSignalOrderSetupFormProps) {
   const replacement = roll?.replacement ?? null;
   const target = replacement ?? unscoredReplacement!;
   const quantity = held.quantity;
@@ -141,6 +143,7 @@ export function RollSignalOrderSetupForm({ symbol, signals, roll, unscoredReplac
 
   const quotesAreLive = held.quoteSource === "live" && target.quoteSource === "live";
   const blockingReasons = [
+    ...(accessLevelRefusal ? [accessLevelRefusal] : []),
     ...(held.mid === null ? ["The held leg has no live two-sided quote right now."] : []),
     ...(replacementTwoSided ? [] : ["The new contract has no two-sided quote right now."]),
     ...[describeNonLiveQuoteBlock("The leg you hold", held.quoteSource), describeNonLiveQuoteBlock("The new contract", target.quoteSource)].filter((reason): reason is string => reason !== null),

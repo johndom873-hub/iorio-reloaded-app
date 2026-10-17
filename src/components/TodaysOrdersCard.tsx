@@ -159,6 +159,7 @@ export function TodaysOrdersCard() {
       ),
     },
     { key: "requestedBy", header: "Requested by", render: (row) => row.requestedByDisplayName ?? "—" },
+    { key: "confirmedBy", header: "Confirmed by", render: (row) => row.confirmedByDisplayName ?? "—" },
     { key: "cancelledBy", header: "Cancelled by", render: (row) => row.cancelledByDisplayName ?? "—" },
     {
       key: "ibkrId",

@@ -141,3 +141,34 @@ export function fetchTradingHalt(): Promise<TradingHalt> {
 export function updateTradingHalt(input: { enabled: boolean; reason: string | null }): Promise<TradingHalt> {
   return apiRequest<TradingHalt>("/risk-limits/trading-halt", { method: "PUT", body: JSON.stringify(input) });
 }
+
+// The account's two halves (2026-10-17): Pluto's capital budget with what its book uses, and the rest of the account with
+// what people use of it. A trader's new positions must fit in the rest. Dollar figures are null when IBKR's account value
+// could not be read (accountDataError says why).
+export interface CapitalSplit {
+  netLiquidationValue: number | null;
+  accountDataError: string | null;
+  plutoCapitalBudgetPct: number;
+  pluto: { budgetDollars: number | null; inUseDollars: number; openPositionCount: number };
+  outsidePluto: { availableDollars: number | null; inUseDollars: number };
+}
+
+export function fetchCapitalSplit(): Promise<CapitalSplit> {
+  return apiRequest<CapitalSplit>("/risk-limits/capital-split");
+}
+
+/** One change to a trading setting or to the trading halt (field "tradingHalt", values "on"/"off", with its reason). Admins only. */
+export interface RiskLimitsAuditRow {
+  id: number;
+  changedAt: string;
+  userDisplayName: string | null;
+  /** A TradingSettings field name, or "tradingHalt". */
+  field: string;
+  oldValue: string | null;
+  newValue: string | null;
+  reason: string | null;
+}
+
+export function fetchRiskLimitsAudit(limit = 100): Promise<RiskLimitsAuditRow[]> {
+  return apiRequest<RiskLimitsAuditRow[]>(`/risk-limits/audit?limit=${limit}`);
+}

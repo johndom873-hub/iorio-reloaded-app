@@ -1,9 +1,13 @@
 import { apiRequest } from "./client";
 
+/** admin: everything. trader: cannot change risk limits or Pluto, lift a trading halt or start Pluto, and trades only the capital outside Pluto's budget (the API enforces it; screens mirror it). */
+export type AccessLevel = "admin" | "trader";
+
 export interface AuthenticatedUser {
   id: string;
   username: string;
   displayName: string;
+  accessLevel: AccessLevel;
 }
 
 export interface AuthConfig {

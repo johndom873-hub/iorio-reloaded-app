@@ -375,6 +375,16 @@ export function formatOrderLegDescription(leg: {
 
 // Pairs with daysToExpiry for the "(in X days)" label shown next to an
 // expiry date across the app (Positions table, Order Review).
+/** "1 day", "14 days": a count of days, e.g. a settings window. */
+export function formatDayCount(days: number): string {
+  return `${days} ${days === 1 ? "day" : "days"}`;
+}
+
+/** "15 min"; 0 reads "never", as an unfilled-order cancel limit of 0 means. */
+export function formatMinutesOrNever(minutes: number): string {
+  return minutes === 0 ? "never" : `${minutes} min`;
+}
+
 export function formatDaysToExpiry(days: number): string {
   if (days < 0) return "expired";
   if (days === 0) return "today";

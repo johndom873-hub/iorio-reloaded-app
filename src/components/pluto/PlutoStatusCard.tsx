@@ -1,6 +1,8 @@
+import { IconLock } from "@tabler/icons-react";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { ApiError } from "../../api/client";
 import { cancelOrder } from "../../api/positions";
+import { useIsAdmin } from "../../hooks/useAuth";
 import { pausePluto, resetPlutoBreaker, resumePluto, updatePlutoMode, updatePlutoStressOverride, type PlutoSettings, type PlutoState, type PlutoStateCore } from "../../api/pluto";
 import { formatCompactDollarsTrimmed, formatCurrency, formatEasternTime, formatHoursMinutesUntil, pluralize, todayInEasternIso } from "../../lib/formatters";
 import { executionStrategyLabels } from "../../lib/plutoParameters";
@@ -27,6 +29,17 @@ function workingOrdersLabel(count: number): string {
   return count === 1 ? "Cancel the working order" : `Cancel the ${count} working orders`;
 }
 
+/** A trader's view of a button only an admin may use: the (disabled) button with "Admin only" under it. */
+function AdminOnlyGate({ locked, children }: { locked: boolean; children: ReactNode }) {
+  if (!locked) return <>{children}</>;
+  return (
+    <div className="pm-admin-gate">
+      {children}
+      <span className="pm-admin-only">Admin only</span>
+    </div>
+  );
+}
+
 export function PlutoStatusCard({ state, status, settings, now, isPhone, showKpis, onStateChanged, onOrdersChanged }: PlutoStatusCardProps) {
   const [pending, setPending] = useState<PendingAction | null>(null);
   const [busy, setBusy] = useState<"pause" | "off" | "modal" | null>(null);
@@ -35,6 +48,9 @@ export function PlutoStatusCard({ state, status, settings, now, isPhone, showKpi
   const [alsoResume, setAlsoResume] = useState(true);
   const [showAllChecks, setShowAllChecks] = useState(false);
   const menuRef = useRef<HTMLDivElement | null>(null);
+  // A trader may switch Pluto off, pause it and remove a stress override; switching on, resuming, resetting a breaker
+  // and allowing new positions under stress are an admin's (the API refuses them too), so those controls are locked.
+  const isAdmin = useIsAdmin();
 
   useEffect(() => {
     if (!menuOpen) return;
@@ -79,6 +95,8 @@ export function PlutoStatusCard({ state, status, settings, now, isPhone, showKpi
   const stressOverrideOn = state.stressOverrideDate === todayInEasternIso();
   const session = state.session;
   const tickers = state.enabledTickers.count;
+  // The On side is an action only while Pluto is off; while on it just shows the state.
+  const switchOnLocked = !isAdmin && !isOn;
 
   // ---- Controls per state ----
   const masterSwitch = (
@@ -89,7 +107,7 @@ export function PlutoStatusCard({ state, status, settings, now, isPhone, showKpi
           {busy === "off" && <Spinner size="sm" />}
           Off
         </button>
-        <button type="button" className={isOn ? "on good" : ""} disabled={busy !== null} aria-pressed={isOn} onClick={() => (isOn ? undefined : (setAlsoResume(true), setPending({ kind: "turn_on" })))}>
+        <button type="button" className={isOn ? "on good" : switchOnLocked ? "locked" : ""} disabled={busy !== null || switchOnLocked} title={switchOnLocked ? "Only an admin can switch Pluto on." : undefined} aria-pressed={isOn} onClick={() => (isOn ? undefined : (setAlsoResume(true), setPending({ kind: "turn_on" })))}>
           {isOn && <span className="dot" aria-hidden="true" />}
           On
         </button>
@@ -136,7 +154,7 @@ export function PlutoStatusCard({ state, status, settings, now, isPhone, showKpi
   );
 
   const resumeButton = (
-    <button type="button" className={`pm-btn primary${isPhone ? " full" : ""}${status.kind === "stopped" ? " disabled" : ""}`} disabled={busy !== null || status.kind === "stopped"} title={status.kind === "stopped" ? "Reset the breaker first" : undefined} onClick={() => setPending({ kind: "resume" })}>
+    <button type="button" className={`pm-btn primary${isPhone ? " full" : ""}${status.kind === "stopped" || !isAdmin ? " disabled" : ""}`} disabled={busy !== null || status.kind === "stopped" || !isAdmin} title={!isAdmin ? "Only an admin can resume Pluto." : status.kind === "stopped" ? "Reset the breaker first" : undefined} onClick={() => setPending({ kind: "resume" })}>
       <PlayIcon />
       Resume
     </button>
@@ -147,6 +165,22 @@ export function PlutoStatusCard({ state, status, settings, now, isPhone, showKpi
   else if (status.kind === "paused") controls = (<>{cancelWorkingButton}{resumeButton}</>);
   else if (status.kind === "stopped") controls = resumeButton;
   else controls = pauseSplit;
+
+  // Under the controls whenever one of them is locked for a trader: the On side (Pluto off) or Resume (paused, stopped).
+  const resumeShown = status.kind === "paused" || status.kind === "stopped";
+  const adminOnlyNote = (switchOnLocked || (!isAdmin && resumeShown)) && (
+    <div className="pm-admin-note text-secondary d-inline-flex align-items-center gap-1">
+      <IconLock size={12} aria-hidden="true" className="flex-shrink-0" />
+      You can switch Pluto off; only an admin can switch it on or resume it
+    </div>
+  );
+  const desktopActions = (
+    <div className="pm-cmd-actions">
+      {controls}
+      {controls && <span className="pm-vdiv" aria-hidden="true" />}
+      {masterSwitch}
+    </div>
+  );
 
   // ---- Modals ----
   let modal: ReactNode = null;
@@ -278,13 +312,15 @@ export function PlutoStatusCard({ state, status, settings, now, isPhone, showKpi
             <div className="pm-m-ctl">
               {controls}
               {masterSwitch}
+              {adminOnlyNote}
+            </div>
+          ) : adminOnlyNote ? (
+            <div className="pm-cmd-controls">
+              {desktopActions}
+              {adminOnlyNote}
             </div>
           ) : (
-            <div className="pm-cmd-actions">
-              {controls}
-              {controls && <span className="pm-vdiv" aria-hidden="true" />}
-              {masterSwitch}
-            </div>
+            desktopActions
           )}
         </div>
         {error && <div className="pm-cmd-error" role="alert">{error}</div>}
@@ -298,10 +334,12 @@ export function PlutoStatusCard({ state, status, settings, now, isPhone, showKpi
                   <div className="pm-alert-title">{humanizeKey(name)} breaker · tripped {formatEasternTime(state.breakers[name]!.trippedAt)}</div>
                   <div className="pm-alert-text">{state.breakers[name]!.detail}</div>
                 </div>
-                <button type="button" className="pm-btn danger" disabled={busy !== null} onClick={() => setPending({ kind: "reset", name })}>
-                  <ResetIcon />
-                  Reset breaker
-                </button>
+                <AdminOnlyGate locked={!isAdmin}>
+                  <button type="button" className="pm-btn danger" disabled={busy !== null || !isAdmin} title={isAdmin ? undefined : "Only an admin can reset a breaker."} onClick={() => setPending({ kind: "reset", name })}>
+                    <ResetIcon />
+                    Reset breaker
+                  </button>
+                </AdminOnlyGate>
               </div>
             </div>
           ))}
@@ -356,9 +394,11 @@ export function PlutoStatusCard({ state, status, settings, now, isPhone, showKpi
                 Block again
               </button>
             ) : (
-              <button type="button" className="pm-btn sm" disabled={busy !== null} onClick={() => setPending({ kind: "allow_stress" })}>
-                Allow new positions today
-              </button>
+              <AdminOnlyGate locked={!isAdmin}>
+                <button type="button" className="pm-btn sm" disabled={busy !== null || !isAdmin} title={isAdmin ? undefined : "Only an admin can allow new positions under SPY stress."} onClick={() => setPending({ kind: "allow_stress" })}>
+                  Allow new positions today
+                </button>
+              </AdminOnlyGate>
             )}
           </div>
         )}

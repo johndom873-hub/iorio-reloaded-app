@@ -353,3 +353,26 @@ export function describeSettingsChange(change: { field?: string; label: string; 
   const shown = (value: string) => (change.field ? formatSettingDisplay(change.field, value) : value);
   return `${change.label} ${shown(change.from)} → ${shown(change.to)}${unit}`;
 }
+
+// The Settings tab's values as a trader reads them, printed in place of the inputs (access levels, 2026-10-17).
+
+/** Units written straight after the number ("50% of account", "2.0σ", "3.0× normal"); every other unit follows a space. */
+const unitsWithoutSpace = /^[%σ×]/;
+
+/** One setting with its unit: "50% of account", "15 orders", "$1.00 / day", "09:45 ET"; a select shows its option label. */
+export function formatSettingWithUnit(spec: PlutoParameterSpec, value: string | number): string {
+  const shown = formatSettingDisplay(spec.field, formatSettingValue(spec, value));
+  const unit = spec.unit;
+  if (!unit) return shown;
+  if (unit.startsWith("$")) return `${formatCurrency(Number(value), spec.step?.includes(".") ? 2 : 0)}${unit.slice(1)}`;
+  return unitsWithoutSpace.test(unit) ? `${shown}${unit}` : `${shown} ${unit}`;
+}
+
+/** A settings row as printed: one setting with its unit, or a min/max pair as a range ("0.20–0.30", "2–7", "20–60%"). */
+export function formatSettingRowWithUnit(row: PlutoParameterSpec[], settings: PlutoSettings): string {
+  const lead = row[0]!;
+  if (row.length === 1) return formatSettingWithUnit(lead, settings[lead.field]);
+  // A pair's units name its ends ("min", "max %"): what is left after the end is the range's own unit.
+  const unit = (row[row.length - 1]!.unit ?? "").replace(/^(min|max)\s*/, "");
+  return `${row.map((parameter) => formatSettingValue(parameter, settings[parameter.field])).join("–")}${unit}`;
+}

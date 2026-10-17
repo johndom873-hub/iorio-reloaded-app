@@ -7,18 +7,28 @@ import { HelpTooltip } from "../components/HelpTooltip";
 import { TooltipSpan } from "../components/TooltipSpan";
 import { ApiError } from "../api/client";
 import {
+  fetchCapitalSplit,
+  fetchRiskLimitsAudit,
   fetchTradingHalt,
   fetchTradingSettings,
   updateTradingHalt,
   updateTradingSettings,
+  type CapitalSplit,
   type ConcentrationRow,
+  type RiskLimitsAuditRow,
   type TradingHalt,
   type TradingSettings,
   type TradingSettingsInput,
 } from "../api/riskLimits";
+import { IconLock } from "@tabler/icons-react";
+import { DataTable, type DataTableColumn } from "../components/DataTable/DataTable";
+import { ReadOnlySetting } from "../components/ReadOnlySetting";
+import { ViewOnlyNote } from "../components/ViewOnlyNote";
+import { useIsAdmin } from "../hooks/useAuth";
+import { usePollWhileVisible } from "../hooks/usePollWhileVisible";
 import { ConfirmModal } from "../components/ConfirmModal";
 import { openNotificationStream } from "../api/notifications";
-import { formatCurrency, formatDateTime, formatInputNumber, formatPercentage, formatRelativeTime } from "../lib/formatters";
+import { formatCurrency, formatDateTime, formatDayCount, formatDelta, formatInputNumber, formatMinutesOrNever, formatPercentage, formatPercentageValueTrimmed, formatRelativeTime } from "../lib/formatters";
 import { useExposureStream } from "../hooks/useExposureStream";
 import { useSignalsTickerModal } from "../hooks/useSignalsTickerModal";
 
@@ -59,7 +69,7 @@ function toFormState(settings: TradingSettings): SettingsFormState {
 }
 
 const fieldLabels: Record<keyof SettingsFormState, string> = {
-  maxPositionPctOfPortfolio: "Max position size %",
+  maxPositionPctOfPortfolio: "Max order size %",
   maxConcentrationPerTickerPct: "Max exposure per ticker %",
   minCashReservePct: "Min cash reserve %",
   deltaTargetMin: "Delta min",
@@ -102,7 +112,9 @@ function toUpdateInput(form: SettingsFormState): TradingSettingsInput {
 // is allowed, green "Resume trading" while halted. Both go through a confirm modal (an action modal:
 // no backdrop/ESC dismiss); halting requires a reason, which the server also enforces. The card
 // refreshes itself when another user flips the switch, via the trading_halt_changed notification.
+// Anyone may halt; only an admin may resume (2026-10-17): a trader sees Resume disabled.
 function TradingHaltCard() {
+  const isAdmin = useIsAdmin();
   const [halt, setHalt] = useState<TradingHalt | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [pending, setPending] = useState<"halt" | "resume" | null>(null);
@@ -175,7 +187,7 @@ function TradingHaltCard() {
               <div className="text-danger" style={{ fontSize: "0.8rem" }}>
                 Halted by <strong>{halt.setByDisplayName ?? "an operator"}</strong>
                 {halt.setAt ? ` ${formatRelativeTime(halt.setAt) ?? formatDateTime(halt.setAt)}` : ""}
-                {halt.reason ? ` — ${halt.reason}` : ""}. No order from any origin (screens, Genosuke, bots) reaches IBKR until it is lifted; cancels still work.
+                {halt.reason ? ` — ${halt.reason}` : ""}. No order from any origin (screens, Pluto) reaches IBKR until it is lifted; cancels still work.
               </div>
             ) : (
               <div className="text-secondary" style={{ fontSize: "0.8rem" }}>
@@ -185,9 +197,17 @@ function TradingHaltCard() {
             )}
           </div>
           {halt && (
-            <button type="button" className={`btn ${halted ? "btn-success" : "btn-danger"} flex-shrink-0`} onClick={() => openModal(halted ? "resume" : "halt")}>
-              {halted ? "Resume trading" : "Halt all trading"}
-            </button>
+            <div className="d-flex flex-column align-items-md-end gap-1 flex-shrink-0">
+              <button type="button" className={`btn ${halted ? "btn-success" : "btn-danger"}`} disabled={halted && !isAdmin} onClick={() => openModal(halted ? "resume" : "halt")}>
+                {halted ? "Resume trading" : "Halt all trading"}
+              </button>
+              {halted && !isAdmin && (
+                <span className="text-secondary d-inline-flex align-items-center gap-1" style={{ fontSize: "0.75rem" }}>
+                  <IconLock size={12} aria-hidden="true" />
+                  Only an admin can lift the halt
+                </span>
+              )}
+            </div>
           )}
         </div>
       </div>
@@ -203,7 +223,7 @@ function TradingHaltCard() {
             <div>
               <p className="mb-2">
                 {pending === "halt"
-                  ? "Every order from every origin will be refused at confirm and stopped inside the trading worker until someone resumes trading. Orders already working at IBKR are not cancelled."
+                  ? `Every order from every origin will be refused at confirm and stopped inside the trading worker until ${isAdmin ? "you or another admin resume" : "an admin resumes"} trading. Orders already working at IBKR are not cancelled.`
                   : "Orders will reach IBKR again from every origin."}
               </p>
               <label className="form-label" htmlFor="trading-halt-reason">
@@ -283,15 +303,45 @@ function ConcentrationList({ title, rows, labelKey, totalAccountValue, limitPct,
   );
 }
 
+type SettingUnit = "percent" | "dollars" | "minutes" | "days" | "delta";
+
+/** A setting's value as a trader reads it: its unit printed, never an input. */
+function printSettingValue(value: string, unit: SettingUnit): string {
+  const number = Number(value);
+  switch (unit) {
+    case "percent":
+      return formatPercentageValueTrimmed(number, 2);
+    case "dollars":
+      return formatCurrency(number, 2);
+    case "minutes":
+      return formatMinutesOrNever(number);
+    case "days":
+      return formatDayCount(number);
+    case "delta":
+      return formatDelta(number);
+  }
+}
+
 interface NumberFieldProps {
   label: string;
   value: string;
   step?: string;
   help: string;
+  unit: SettingUnit;
+  /** A trader's view: the value printed with its unit instead of an input. */
+  readOnly: boolean;
   onChange: (value: string) => void;
 }
 
-function NumberField({ label, value, step = "1", help, onChange }: NumberFieldProps) {
+function NumberField({ label, value, step = "1", help, unit, readOnly, onChange }: NumberFieldProps) {
+  if (readOnly) {
+    // The unit moves from the label ("Max order size %") to the printed value ("10%").
+    return (
+      <div className="col">
+        <ReadOnlySetting label={label.replace(/ (%|\$|\(min\))$/, "")} help={<HelpTooltip text={help} />} value={printSettingValue(value, unit)} />
+      </div>
+    );
+  }
   return (
     <div className="col">
       <label className="form-label d-inline-flex align-items-center" style={{ fontSize: "0.8rem" }}>
@@ -323,7 +373,166 @@ function SettingsSection({ title, description, children }: SettingsSectionProps)
   );
 }
 
+const capitalSplitRefreshMs = 60_000;
+
+interface CapitalBlockProps {
+  title: string;
+  description: string;
+  figures: { label: string; dollars: number | null }[];
+  /** Budget/available less in use; negative is the amount over, shown in red. */
+  leftDollars: number | null;
+  footnote: string;
+}
+
+function CapitalBlock({ title, description, figures, leftDollars, footnote }: CapitalBlockProps) {
+  const isOver = leftDollars !== null && leftDollars < 0;
+  return (
+    <div className="col-12 col-lg-6">
+      <div className="border rounded p-3 h-100">
+        <div className="fw-bold">{title}</div>
+        <div className="text-secondary" style={{ fontSize: "0.8rem" }}>
+          {description}
+        </div>
+        <div className="row g-2 mt-1">
+          {figures.map((figure) => (
+            <div key={figure.label} className="col-4">
+              <div className="text-secondary" style={{ fontSize: "0.75rem" }}>
+                {figure.label}
+              </div>
+              <div className="fw-bold font-monospace">{formatCurrency(figure.dollars, 0)}</div>
+            </div>
+          ))}
+          <div className="col-4">
+            <div className="text-secondary" style={{ fontSize: "0.75rem" }}>
+              {isOver ? "Over by" : "Left"}
+            </div>
+            <div className={`fw-bold font-monospace${isOver ? " text-danger" : ""}`}>{formatCurrency(leftDollars === null ? null : Math.abs(leftDollars), 0)}</div>
+          </div>
+        </div>
+        <div className="text-secondary mt-2" style={{ fontSize: "0.75rem" }}>
+          {footnote}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// The account's two halves (2026-10-17): Pluto's capital budget, reserved for it even while it is off, and everything else,
+// in which a trader's new positions must fit. Read when the page opens and every minute while it is visible.
+function CapitalSplitBlocks() {
+  const [split, setSplit] = useState<CapitalSplit | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const load = useCallback(() => {
+    fetchCapitalSplit()
+      .then((loaded) => {
+        setSplit(loaded);
+        setError(null);
+      })
+      .catch((err: unknown) => setError(err instanceof ApiError ? err.message : "Failed to load Pluto's and everyone else's capital."));
+  }, []);
+
+  useEffect(load, [load]);
+  usePollWhileVisible(load, capitalSplitRefreshMs);
+
+  if (error) return <div className="text-danger mb-3" style={{ fontSize: "0.8rem" }}>{error}</div>;
+  if (!split) return <Spinner size="sm" label="Loading Pluto's and everyone else's capital" />;
+  const plutoLeft = split.pluto.budgetDollars === null ? null : split.pluto.budgetDollars - split.pluto.inUseDollars;
+  const outsideLeft = split.outsidePluto.availableDollars === null ? null : split.outsidePluto.availableDollars - split.outsidePluto.inUseDollars;
+  return (
+    <div className="row g-3 mb-3">
+      <CapitalBlock
+        title="Pluto"
+        description={`${formatPercentageValueTrimmed(split.plutoCapitalBudgetPct, 2)} of net liquidation value, reserved for Pluto even while it is off`}
+        figures={[
+          { label: "Budget", dollars: split.pluto.budgetDollars },
+          { label: "In use", dollars: split.pluto.inUseDollars },
+        ]}
+        leftDollars={plutoLeft}
+        footnote={`${split.pluto.openPositionCount} ${split.pluto.openPositionCount === 1 ? "position" : "positions"} on the tickers Pluto trades.`}
+      />
+      <CapitalBlock
+        title="Everything else"
+        description="The rest of the account: a trader's new positions must fit in what is left"
+        figures={[
+          { label: "Available", dollars: split.outsidePluto.availableDollars },
+          { label: "In use", dollars: split.outsidePluto.inUseDollars },
+        ]}
+        leftDollars={outsideLeft}
+        footnote="EXP $ of every other position, plus orders still working."
+      />
+    </div>
+  );
+}
+
+const historyFieldLabels: Record<string, string> = { ...fieldLabels, tradingHalt: "Trading halt" };
+
+/** A stored history value as the page words it: the halt's "on"/"off" capitalised, numbers as stored. */
+function printHistoryValue(field: string, value: string | null): string {
+  if (value === null) return "—";
+  if (field === "tradingHalt") return value === "on" ? "On" : "Off";
+  return value;
+}
+
+const historyColumns: DataTableColumn<RiskLimitsAuditRow>[] = [
+  { key: "when", header: "When", render: (row) => formatDateTime(row.changedAt), sortValue: (row) => row.changedAt },
+  { key: "who", header: "Who", render: (row) => row.userDisplayName ?? "—" },
+  { key: "setting", header: "Setting", render: (row) => historyFieldLabels[row.field] ?? row.field },
+  { key: "from", header: "From", render: (row) => printHistoryValue(row.field, row.oldValue) },
+  { key: "to", header: "To", render: (row) => printHistoryValue(row.field, row.newValue) },
+  { key: "reason", header: "Reason", render: (row) => row.reason ?? <span className="text-secondary">—</span> },
+];
+
+// Who changed which limit, and the trading halt, newest first (2026-10-17). Admins only: a trader's page has no history.
+// Reloaded after a save and whenever the halt changes.
+function RiskLimitsHistoryCard({ reloadKey }: { reloadKey: unknown }) {
+  const [rows, setRows] = useState<RiskLimitsAuditRow[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const load = useCallback(() => {
+    fetchRiskLimitsAudit()
+      .then((loaded) => {
+        setRows(loaded);
+        setError(null);
+      })
+      .catch((err: unknown) => setError(err instanceof ApiError ? err.message : "Failed to load the change history."));
+  }, []);
+
+  useEffect(load, [load, reloadKey]);
+  useEffect(
+    () =>
+      openNotificationStream((notification) => {
+        if (notification.type === "trading_halt_changed") load();
+      }),
+    [load],
+  );
+
+  return (
+    <CollapsibleCard title="Change history" storageKey="risk-limits-change-history" className="mt-3">
+      {error ? (
+        <div className="alert alert-danger">{error}</div>
+      ) : (
+        <>
+          <DataTable
+            tableId="risk-limits-change-history"
+            columns={historyColumns}
+            rows={rows ?? []}
+            rowKey={(row) => String(row.id)}
+            loading={rows === null}
+            emptyMessage="No changes recorded yet."
+            defaultSort={{ key: "when", direction: "desc" }}
+          />
+          <div className="text-secondary mt-2" style={{ fontSize: "0.75rem" }}>
+            Every change to the limits above and to the trading halt, newest first. Recorded from 17 Oct 2026.
+          </div>
+        </>
+      )}
+    </CollapsibleCard>
+  );
+}
+
 export function RiskLimitsPage() {
+  const isAdmin = useIsAdmin();
   const { exposure, loading: exposureLoading, error: exposureError } = useExposureStream("Failed to load account exposure.");
 
   const [settings, setSettings] = useState<TradingSettings | null>(null);
@@ -420,6 +629,8 @@ export function RiskLimitsPage() {
               </div>
             </div>
 
+            <CapitalSplitBlocks />
+
             <div className="row g-3">
               <ConcentrationList
                 title="Concentration by Ticker"
@@ -462,9 +673,13 @@ export function RiskLimitsPage() {
             <>
               {saveError && <div className="alert alert-danger">{saveError}</div>}
 
-              <p className="text-secondary mb-1" style={{ fontSize: "0.85rem" }}>
-                One set of limits for every strategy. Hover the help icon next to a field for details.
-              </p>
+              {isAdmin ? (
+                <p className="text-secondary mb-1" style={{ fontSize: "0.85rem" }}>
+                  One set of limits for every strategy. Hover the help icon next to a field for details.
+                </p>
+              ) : (
+                <ViewOnlyNote className="mb-2">Only an admin can change these limits.</ViewOnlyNote>
+              )}
               {settings?.updatedByDisplayName && (
                 <p className="text-secondary mb-3" style={{ fontSize: "0.72rem" }}>
                   Last updated by {settings.updatedByDisplayName}, {formatRelativeTime(settings.updatedAt) ?? formatDateTime(settings.updatedAt)}
@@ -474,13 +689,17 @@ export function RiskLimitsPage() {
               <SettingsSection title="Order limits — these block an order" description="An order that would break one of these cannot be confirmed.">
                 <NumberField
                   label={fieldLabels.maxPositionPctOfPortfolio}
+                  unit="percent"
+                  readOnly={!isAdmin}
                   value={formState.maxPositionPctOfPortfolio}
                   step="0.5"
-                  help="The most a single new position may be worth, as a % of total portfolio value. A larger order is blocked."
+                  help="The most a single new order may be worth, as a % of total portfolio value. A larger order is blocked. It limits each order on its own: several orders can still build one ticker up to the Max exposure per ticker %."
                   onChange={(value) => updateField("maxPositionPctOfPortfolio", value)}
                 />
                 <NumberField
                   label={fieldLabels.maxConcentrationPerTickerPct}
+                  unit="percent"
+                  readOnly={!isAdmin}
                   value={formState.maxConcentrationPerTickerPct}
                   step="0.5"
                   help="The most of the portfolio that may sit in one ticker, as a % of total portfolio value, counting the order. Also drives the 'over limit' badge in Concentration by Ticker above."
@@ -488,6 +707,8 @@ export function RiskLimitsPage() {
                 />
                 <NumberField
                   label={fieldLabels.minCashReservePct}
+                  unit="percent"
+                  readOnly={!isAdmin}
                   value={formState.minCashReservePct}
                   step="0.5"
                   help="How much of the portfolio must stay as free cash after the order. An order that would eat into this reserve is blocked."
@@ -501,6 +722,8 @@ export function RiskLimitsPage() {
               >
                 <NumberField
                   label={fieldLabels.orderUnfilledCancelMinutes}
+                  unit="minutes"
+                  readOnly={!isAdmin}
                   value={formState.orderUnfilledCancelMinutes}
                   step="1"
                   help="Whole minutes, counted from when the order was sent to IBKR. 0 means never cancel (an unfilled order then lasts until the market close). The check runs every 30 seconds, so the cancel can come up to half a minute late. Covers every order sent to IBKR, including rolls and covered Calls that also buy the shares; a part-filled order has its unfilled rest cancelled."
@@ -514,6 +737,8 @@ export function RiskLimitsPage() {
               >
                 <NumberField
                   label={fieldLabels.priceCheckMaxDeviationPct}
+                  unit="percent"
+                  readOnly={!isAdmin}
                   value={formState.priceCheckMaxDeviationPct}
                   step="0.5"
                   help="How far a limit price may be on the wrong side of the live mid, as a % of the mid. A sell below the mid or a buy above it by more than this is blocked. Prices on the right side of the mid are never blocked. 0 means no tolerance beyond the minimum allowance."
@@ -521,6 +746,8 @@ export function RiskLimitsPage() {
                 />
                 <NumberField
                   label={fieldLabels.priceCheckMinToleranceDollars}
+                  unit="dollars"
+                  readOnly={!isAdmin}
                   value={formState.priceCheckMinToleranceDollars}
                   step="0.01"
                   help="A floor on the allowance, in dollars per share, so a cheap option is not blocked over a few cents. The allowance is whichever is larger: the % above or this amount."
@@ -534,6 +761,8 @@ export function RiskLimitsPage() {
               >
                 <NumberField
                   label={fieldLabels.deltaTargetMin}
+                  unit="delta"
+                  readOnly={!isAdmin}
                   value={formState.deltaTargetMin}
                   step="0.01"
                   help="Lowest option delta (absolute value, 0 to 1) allowed. Lower delta means further from the current price: less likely to be assigned, smaller premium."
@@ -541,6 +770,8 @@ export function RiskLimitsPage() {
                 />
                 <NumberField
                   label={fieldLabels.deltaTargetMax}
+                  unit="delta"
+                  readOnly={!isAdmin}
                   value={formState.deltaTargetMax}
                   step="0.01"
                   help="Highest option delta (absolute value, 0 to 1) allowed. Higher delta means closer to the current price: more premium, more assignment risk."
@@ -551,12 +782,16 @@ export function RiskLimitsPage() {
               <SettingsSection title="Recovery Path" description="How far out Recovery Path looks for a covered call to sell against shares held at a loss.">
                 <NumberField
                   label={fieldLabels.recoveryDteMin}
+                  unit="days"
+                  readOnly={!isAdmin}
                   value={formState.recoveryDteMin}
                   help="Fewest days until expiry that Recovery Path will consider."
                   onChange={(value) => updateField("recoveryDteMin", value)}
                 />
                 <NumberField
                   label={fieldLabels.recoveryDteMax}
+                  unit="days"
+                  readOnly={!isAdmin}
                   value={formState.recoveryDteMax}
                   help="Most days until expiry that Recovery Path will consider."
                   onChange={(value) => updateField("recoveryDteMax", value)}
@@ -566,6 +801,8 @@ export function RiskLimitsPage() {
               <SettingsSection title="Signals" description="Signals only suggests trades that pay at least this much per year, and counts part of each contract's bid/ask spread as a trading cost.">
                 <NumberField
                   label={fieldLabels.minAnnualizedYieldPct}
+                  unit="percent"
+                  readOnly={!isAdmin}
                   value={formState.minAnnualizedYieldPct}
                   step="0.5"
                   help="Floor on annualised yield (premium as a % of the exposure net of the premium, scaled to a year by days to expiry). Candidates below it are filtered out."
@@ -573,6 +810,8 @@ export function RiskLimitsPage() {
                 />
                 <NumberField
                   label={fieldLabels.spreadCostChargedPct}
+                  unit="percent"
+                  readOnly={!isAdmin}
                   value={formState.spreadCostChargedPct}
                   step="5"
                   help="How much of the half-spread (the distance from the mid to the bid) Signals counts as a trading cost. Orders go out as limits at the mid, but a fill can come up to half a spread below the fair price at that moment. 0 assumes every fill is worth the full mid, 100 assumes every fill is at the bid. Changes Net Edge, Edge $, grades and roll scores."
@@ -583,6 +822,8 @@ export function RiskLimitsPage() {
               <SettingsSection title="Commission warning" description="Order setup warns when the commission is a large share of the premium. A warning only, it never blocks an order.">
                 <NumberField
                   label={fieldLabels.commissionWarnSharePctOfPremium}
+                  unit="percent"
+                  readOnly={!isAdmin}
                   value={formState.commissionWarnSharePctOfPremium}
                   step="0.5"
                   help="The warning appears when the order's commission is above this % of its premium."
@@ -590,14 +831,18 @@ export function RiskLimitsPage() {
                 />
               </SettingsSection>
 
-              <button type="button" className="btn btn-primary d-inline-flex align-items-center gap-1" disabled={saving} onClick={handleSave}>
-                {saving && <Spinner size="sm" />}
-                Save
-              </button>
+              {isAdmin && (
+                <button type="button" className="btn btn-primary d-inline-flex align-items-center gap-1" disabled={saving} onClick={handleSave}>
+                  {saving && <Spinner size="sm" />}
+                  Save
+                </button>
+              )}
             </>
           )}
         </div>
       </div>
+
+      {isAdmin && <RiskLimitsHistoryCard reloadKey={settings?.updatedAt} />}
     </>
   );
 }

@@ -42,6 +42,8 @@ interface ChainContractOrderSetupFormProps {
   spreadShareCharged: number | null;
   /** Why this contract has no Signals score, shown above the quote. */
   notice: ReactNode;
+  /** Why this viewer may not open or roll on the ticker (a trader, where Pluto trades it), or null: a blocking reason, checked before anything is built. */
+  accessLevelRefusal: string | null;
   onCancel: () => void;
   onSubmitted: (order: OrderRequest, adaptivePriority: AdaptivePriority) => void;
 }
@@ -74,7 +76,7 @@ function describeQuoteSource(contract: ChainContractQuote): string {
   return contract.quotedAt && contract.quoteSource !== "snapshot" ? `${label} · ${formatDateTime(contract.quotedAt)}` : label;
 }
 
-export function ChainContractOrderSetupForm({ symbol, contract, freeShares, spotPrice, spreadShareCharged, notice, onCancel, onSubmitted }: ChainContractOrderSetupFormProps) {
+export function ChainContractOrderSetupForm({ symbol, contract, freeShares, spotPrice, spreadShareCharged, notice, accessLevelRefusal, onCancel, onSubmitted }: ChainContractOrderSetupFormProps) {
   const isCall = contract.strategyKey === "covered_call";
   const hasTwoSidedQuote = contract.bid !== null && contract.ask !== null;
   const mid = hasTwoSidedQuote ? (contract.bid! + contract.ask!) / 2 : null;
@@ -138,7 +140,7 @@ export function ChainContractOrderSetupForm({ symbol, contract, freeShares, spot
   }, [symbol, contract.strategyKey, contract.strike, quantity, premiumForLimits, spotPrice, isCall]);
 
   const nonLiveQuoteBlock = describeNonLiveQuoteBlock("This contract", contract.quoteSource);
-  const blockingReasons = [...(nonLiveQuoteBlock ? [nonLiveQuoteBlock] : []), ...(orderLimitsResult?.blocked ? orderLimitsResult.reasons : [])];
+  const blockingReasons = [...(accessLevelRefusal ? [accessLevelRefusal] : []), ...(nonLiveQuoteBlock ? [nonLiveQuoteBlock] : []), ...(orderLimitsResult?.blocked ? orderLimitsResult.reasons : [])];
   const reviewBlockedMessage = !hasTwoSidedQuote
     ? "No bid and ask for this contract right now (market closed, or not in today's capture). An order needs a live quote — try again while the market is open."
     : !limitPriceValid

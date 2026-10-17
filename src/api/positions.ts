@@ -196,6 +196,9 @@ export interface OrderRequest {
   calendarWarningEvents?: { title: string; eventDate: string }[] | null;
   /** The API's stored FRED risk-free rate (decimal) at build time, for Order Review's probability of profit. Persisted at order-creation time (2026-09-24), same as calendarWarning. */
   riskFreeRate?: number | null;
+  /** Who pressed Confirm; null before confirm (and for orders confirmed before this was recorded). */
+  confirmedByUserId: string | null;
+  confirmedByDisplayName: string | null;
   /** GET /positions/orders/:id only: each payload leg's fills, in the payload's order. */
   legFills?: OrderLegFill[];
   createdAt: string;
@@ -277,6 +280,8 @@ export interface TodaysOrder {
   createdAt: string;
   updatedAt: string;
   requestedByDisplayName: string | null;
+  /** Who pressed Confirm; null before confirm (and for orders confirmed before this was recorded). */
+  confirmedByDisplayName: string | null;
   cancelledByDisplayName: string | null;
   cancellationReason: OrderCancellationReason | null;
   errorMessage: string | null;

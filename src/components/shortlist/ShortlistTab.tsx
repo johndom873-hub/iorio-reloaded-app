@@ -10,6 +10,8 @@ import { VolatilitySurfaceModal } from "../VolatilitySurfaceModal";
 import { ActionsMenu, type ActionsMenuItem } from "./ActionsMenu";
 import { PlutoBotToggle } from "../pluto/PlutoBotToggle";
 import { SignalsToggle } from "./SignalsToggle";
+import { useIsAdmin } from "../../hooks/useAuth";
+import { adminOnlyShortlistRemoveReason, plutoTickerSignalsOffAdminOnlyReason } from "../../lib/accessLevelPresentation";
 import { ApiError } from "../../api/client";
 import {
   addToShortlist,
@@ -228,6 +230,8 @@ export function ShortlistTab({ onOpenTickerModal }: ShortlistTabProps) {
   }
 
   const frozenTickers = useFrozenTickers();
+  // A trader may not switch Pluto, turn Signals off where Pluto trades (that switches Pluto off) or remove a ticker: the API refuses all three.
+  const isAdmin = useIsAdmin();
   const columns: DataTableColumn<ShortlistRow>[] = [
     {
       key: "symbol",
@@ -313,7 +317,18 @@ export function ShortlistTab({ onOpenTickerModal }: ShortlistTabProps) {
       header: "Signals",
       headerTitle: "Off (default for new tickers): price-only, shown on Price Performance. On: scored on Signals with a nightly option-chain capture; turning it on sets up the option chain.",
       align: "center",
-      render: (row) => <SignalsToggle entryId={row.id} symbol={row.symbol} enabled={row.signalsEnabled} botEnabled={row.botEnabled} openPositionCount={row.openPositionCount} onChanged={(result) => handleSignalsChanged(row, result)} onError={setError} />,
+      render: (row) => (
+        <SignalsToggle
+          entryId={row.id}
+          symbol={row.symbol}
+          enabled={row.signalsEnabled}
+          botEnabled={row.botEnabled}
+          openPositionCount={row.openPositionCount}
+          lockedReason={!isAdmin && row.signalsEnabled && row.botEnabled ? plutoTickerSignalsOffAdminOnlyReason(row.symbol) : null}
+          onChanged={(result) => handleSignalsChanged(row, result)}
+          onError={setError}
+        />
+      ),
     },
     {
       key: "pluto",
@@ -381,15 +396,17 @@ export function ShortlistTab({ onOpenTickerModal }: ShortlistTabProps) {
                 ? "Another ticker is being prepared. One at a time."
                 : "Nothing failed — the setup pipeline (history, calendar, chain strikes, first snapshot) completed cleanly",
           },
-          {
-            key: "remove",
-            label: "Remove",
-            onClick: () => setRemoveConfirmRow(row),
-            loading: removingId === row.id,
-            danger: true,
-            disabled: row.openPositionCount > 0,
-            disabledReason: `${pluralize(row.openPositionCount, "open position")} on this ticker. Close ${row.openPositionCount === 1 ? "it" : "them"} before removing.`,
-          },
+          isAdmin
+            ? {
+                key: "remove",
+                label: "Remove",
+                onClick: () => setRemoveConfirmRow(row),
+                loading: removingId === row.id,
+                danger: true,
+                disabled: row.openPositionCount > 0,
+                disabledReason: `${pluralize(row.openPositionCount, "open position")} on this ticker. Close ${row.openPositionCount === 1 ? "it" : "them"} before removing.`,
+              }
+            : { key: "remove", label: "Remove (admin only)", onClick: () => {}, danger: true, disabled: true, disabledReason: adminOnlyShortlistRemoveReason },
         ];
         return (
           <div className="d-flex justify-content-end">

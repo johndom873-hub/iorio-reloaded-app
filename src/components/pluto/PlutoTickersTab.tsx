@@ -1,7 +1,9 @@
+import { IconLock } from "@tabler/icons-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { FrozenTicker } from "../../api/environment";
 import { FrozenTickerBadge } from "../FrozenTickerBadge";
 import { useFrozenTickers } from "../../hooks/useFrozenTickers";
+import { useIsAdmin } from "../../hooks/useAuth";
 import { ApiError } from "../../api/client";
 import { fetchPlutoLadderSettings, updateShortlistBotEnabled, type DaySignalsWatch, type PlutoLadderTickerSettings, type PlutoSettings, type PlutoState } from "../../api/pluto";
 import type { ShortlistRow, TickerBackfillRun } from "../../api/shortlist";
@@ -92,12 +94,13 @@ function ChecksBadge({ check }: { check: { fits: boolean; reason: string | null 
   );
 }
 
-/** The per-ticker switch in the mockup's own style; saves on click, the cap error comes back from the API. */
-function TickerSwitch({ row, onToggled, onError, withLabel }: { row: ShortlistRow; onToggled: (enabled: boolean) => void; onError: (message: string) => void; withLabel: boolean }) {
+/** The per-ticker switch in the mockup's own style; saves on click, the cap error comes back from the API. Locked for a
+ *  trader: only an admin may switch Pluto on or off for a ticker (the API refuses a trader too). */
+function TickerSwitch({ row, onToggled, onError, withLabel, locked }: { row: ShortlistRow; onToggled: (enabled: boolean) => void; onError: (message: string) => void; withLabel: boolean; locked: boolean }) {
   const [saving, setSaving] = useState(false);
   const [confirming, setConfirming] = useState(false);
   function requestToggle() {
-    if (saving) return;
+    if (saving || locked) return;
     if (plutoStopsManagingPositions(row.botEnabled, row.openPositionCount)) setConfirming(true);
     else void toggle();
   }
@@ -116,8 +119,9 @@ function TickerSwitch({ row, onToggled, onError, withLabel }: { row: ShortlistRo
   }
   return (
     <>
-      <label className="pm-switch">
-        <input type="checkbox" role="switch" checked={row.botEnabled} disabled={saving} onChange={requestToggle} aria-label={`Pluto may trade ${row.symbol}`} />
+      <label className={`pm-switch${locked ? " locked" : ""}`} title={locked ? "Only an admin can switch Pluto on or off for a ticker." : undefined}>
+        <input type="checkbox" role="switch" checked={row.botEnabled} disabled={saving || locked} onChange={requestToggle} aria-label={`Pluto may trade ${row.symbol}`} />
+        {locked && <IconLock size={12} aria-hidden="true" className="text-secondary flex-shrink-0" />}
         {withLabel && <span className={`pm-switch-state ${row.botEnabled ? "on" : "off"}`}>{saving ? <Spinner size="sm" /> : row.botEnabled ? "Allowed" : "Off"}</span>}
       </label>
       {confirming && <PlutoStopsManagingConfirm symbol={row.symbol} openPositionCount={row.openPositionCount} viaSignals={false} onConfirm={() => void toggle()} onCancel={() => setConfirming(false)} />}
@@ -159,6 +163,7 @@ function changedBy(row: ShortlistRow): string | null {
 
 export function PlutoTickersTab({ rows, loading, error, state, daySignalsWatch, maxEnabled, isPhone, onOpenTicker, onToggled, onPrepRunChange, settings, onOpenSettingsTab }: PlutoTickersTabProps) {
   const frozenTickers = useFrozenTickers();
+  const isAdmin = useIsAdmin();
   const [filter, setFilter] = useState<Filter>("all");
   const [search, setSearch] = useState("");
   const [toggleError, setToggleError] = useState<string | null>(null);
@@ -289,8 +294,8 @@ export function PlutoTickersTab({ rows, loading, error, state, daySignalsWatch, 
         {visibleRows.map((row) => {
           const now = plutoNowOrFrozen(row, state, frozenTickers.get(row.symbol), true);
           return (
-            <li key={row.id} className={`pm-m-tk${row.botEnabled ? " on" : ""}`}>
-              <TickerSwitch row={row} withLabel={false} onToggled={(enabled) => onToggled(row.id, enabled)} onError={setToggleError} />
+            <li key={row.id} className={`pm-m-tk${row.botEnabled ? " on" : ""}${isAdmin ? "" : " locked"}`}>
+              <TickerSwitch row={row} withLabel={false} locked={!isAdmin} onToggled={(enabled) => onToggled(row.id, enabled)} onError={setToggleError} />
               <span className="pm-tk-name">
                 <span>
                   <TickerButton symbol={row.symbol} onOpen={onOpenTicker} />
@@ -352,7 +357,7 @@ export function PlutoTickersTab({ rows, loading, error, state, daySignalsWatch, 
               const cells: Record<string, React.ReactNode> = {
                 switch: (
                   <>
-                    <TickerSwitch row={row} withLabel onToggled={(enabled) => onToggled(row.id, enabled)} onError={setToggleError} />
+                    <TickerSwitch row={row} withLabel locked={!isAdmin} onToggled={(enabled) => onToggled(row.id, enabled)} onError={setToggleError} />
                     {who && <span className="pm-cell-sub pm-tk-who">{who}</span>}
                   </>
                 ),
@@ -399,7 +404,7 @@ export function PlutoTickersTab({ rows, loading, error, state, daySignalsWatch, 
         <div className="pm-card-h">
           <div className="pm-min0">
             <h2 className="pm-card-t">Tickers Pluto may trade</h2>
-            {!isPhone && <div className="pm-card-meta pm-meta-top">Every Shortlist ticker with Signals on. Switch one on to let Pluto trade it; the same switch is in the Shortlist's Pluto column.</div>}
+            {!isPhone && <div className="pm-card-meta pm-meta-top">{isAdmin ? "Every Shortlist ticker with Signals on. Switch one on to let Pluto trade it; the same switch is in the Shortlist's Pluto column." : "Every Shortlist ticker with Signals on. Only an admin can switch Pluto on or off for a ticker."}</div>}
           </div>
           {isPhone ? (
             <span className="pm-card-meta">

@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useRef, useState, useCallback, type ReactNode } from "react";
 import { usePlutoEnabledSymbols } from "../hooks/usePlutoEnabledSymbols";
+import { useIsAdmin } from "../hooks/useAuth";
+import { plutoTickerOpenOrRollRefusal } from "../lib/accessLevelPresentation";
 import { describeFrozenTicker, useFrozenTickers } from "../hooks/useFrozenTickers";
 import { fetchNextTickerCalendarEvents, type NextTickerCalendarEvents } from "../api/calendarEvents";
 import { ApiError } from "../api/client";
@@ -382,6 +384,9 @@ const chainPickNotice = (pick: ChainContractPick, reason: string) => (
 export function SignalsTickerModal({ symbol, initialRollLegId = null, focusPositionId = null, onPositionsChanged, onClose }: SignalsTickerModalProps) {
   const [signals, setSignals] = useState<TickerSignals | null>(null);
   const plutoEnabledSymbols = usePlutoEnabledSymbols();
+  // A trader may not open or roll on a ticker Pluto trades (the API refuses it): every order form shows it as a blocking reason.
+  const isAdmin = useIsAdmin();
+  const accessLevelRefusal = plutoTickerOpenOrRollRefusal(symbol, { isAdmin, plutoTradesSymbol: plutoEnabledSymbols.has(symbol) });
   // A frozen ticker (a stock split until its records are rewritten) takes no orders: the order panel says why instead.
   const frozenTicker = useFrozenTickers().get(symbol);
   const noSignalBadge = useMemo(() => (signals ? describeNoSignalBadge(signals) : null), [signals]);
@@ -1241,6 +1246,7 @@ export function SignalsTickerModal({ symbol, initialRollLegId = null, focusPosit
                             spotPrice={spotPriceForOrders}
                             netRollEdgeAtSelection={rollSelectionReference.netRollEdge}
                             selectedAtIso={rollSelectionReference.atIso}
+                            accessLevelRefusal={accessLevelRefusal}
                             onCancel={clearSelection}
                             onSubmitted={(order, adaptivePriority) => setPendingOrder({ order, adaptivePriority })}
                           />
@@ -1252,6 +1258,7 @@ export function SignalsTickerModal({ symbol, initialRollLegId = null, focusPosit
                             spotPrice={spotPriceForOrders}
                             netEdgeAtSelection={selectionReference.netEdge}
                             selectedAtIso={selectionReference.atIso}
+                            accessLevelRefusal={accessLevelRefusal}
                             onCancel={clearSelection}
                             onSubmitted={(order, adaptivePriority) => setPendingOrder({ order, adaptivePriority })}
                           />
@@ -1280,6 +1287,7 @@ export function SignalsTickerModal({ symbol, initialRollLegId = null, focusPosit
                                     netRollEdgeAtSelection={(chainPick.result.scored ? chainPick.result.rolls.find((roll) => roll.legId === liveRollModeHeldLeg.legId)?.netRollEdge : undefined) ?? pickedRoll.netRollEdge}
                                     selectedAtIso={chainPick.selectedAtIso}
                                     notice={chainPick.result.notCandidateReason ? chainPickNotice(chainPick, chainPick.result.notCandidateReason) : null}
+                                    accessLevelRefusal={accessLevelRefusal}
                                     onCancel={clearSelection}
                                     onSubmitted={(order, adaptivePriority) => setPendingOrder({ order, adaptivePriority })}
                                   />
@@ -1295,6 +1303,7 @@ export function SignalsTickerModal({ symbol, initialRollLegId = null, focusPosit
                                     netRollEdgeAtSelection={null}
                                     selectedAtIso={chainPick.selectedAtIso}
                                     notice={chainPick.result.notCandidateReason ? chainPickNotice(chainPick, chainPick.result.notCandidateReason) : null}
+                                    accessLevelRefusal={accessLevelRefusal}
                                     onCancel={clearSelection}
                                     onSubmitted={(order, adaptivePriority) => setPendingOrder({ order, adaptivePriority })}
                                   />
@@ -1312,6 +1321,7 @@ export function SignalsTickerModal({ symbol, initialRollLegId = null, focusPosit
                                 netRollEdgeAtSelection={null}
                                 selectedAtIso={chainPick.selectedAtIso}
                                 notice={chainPick.result.notCandidateReason ? chainPickNotice(chainPick, chainPick.result.notCandidateReason) : null}
+                                accessLevelRefusal={accessLevelRefusal}
                                 onCancel={clearSelection}
                                 onSubmitted={(order, adaptivePriority) => setPendingOrder({ order, adaptivePriority })}
                               />
@@ -1326,6 +1336,7 @@ export function SignalsTickerModal({ symbol, initialRollLegId = null, focusPosit
                               netEdgeAtSelection={chainPick.result.scored ? chainPick.result.netEdge : livePickedScore.netEdge}
                               selectedAtIso={chainPick.selectedAtIso}
                               notice={chainPick.result.notCandidateReason ? chainPickNotice(chainPick, chainPick.result.notCandidateReason) : null}
+                              accessLevelRefusal={accessLevelRefusal}
                               onCancel={clearSelection}
                               onSubmitted={(order, adaptivePriority) => setPendingOrder({ order, adaptivePriority })}
                             />
@@ -1338,6 +1349,7 @@ export function SignalsTickerModal({ symbol, initialRollLegId = null, focusPosit
                               spotPrice={spotPriceForOrders}
                               spreadShareCharged={chain?.spreadShareCharged ?? null}
                               notice={chainPick.result.notCandidateReason ? chainPickNotice(chainPick, chainPick.result.notCandidateReason) : null}
+                              accessLevelRefusal={accessLevelRefusal}
                               onCancel={clearSelection}
                               onSubmitted={(order, adaptivePriority) => setPendingOrder({ order, adaptivePriority })}
                             />

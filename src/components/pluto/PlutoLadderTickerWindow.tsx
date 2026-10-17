@@ -1,16 +1,21 @@
 import { useEffect, useMemo, useState } from "react";
 import { ApiError } from "../../api/client";
+import { useIsAdmin } from "../../hooks/useAuth";
 import { fetchPlutoTickerSettingsAudit, savePlutoTickerSettings, type PlutoLadderTickerSettings, type PlutoSettings, type PlutoTickerSettingsAuditRow, type PlutoTickerSettingsField } from "../../api/pluto";
 import { formatBrowserClockTime, formatBrowserDayMonth, formatCurrency, formatDayMonth, formatInputNumber, formatNumber } from "../../lib/formatters";
 import { effectiveAllocationPct, ladderFit, ladderPriceCeilings, tickerFieldLabel, type LadderFit } from "../../lib/plutoLadderPresentation";
 import { executionStrategyLabels } from "../../lib/plutoParameters";
+import { HelpTooltip } from "../HelpTooltip";
+import { ReadOnlySetting } from "../ReadOnlySetting";
 import { Spinner } from "../Spinner";
+import { ViewOnlyNote } from "../ViewOnlyNote";
 import { CheckIcon, CrossIcon, InfoIcon, ResetIcon, WarningIcon } from "./plutoBits";
 
 // A ticker's CC + Put Ladder settings window (Pluto Ladder Settings mockup, approved 2026-10-15): one row per value the
 // ticker may override, with the strategy value, its own value (empty = the strategy's), the effective value and Reset;
 // the configuration checks recomputed at every keystroke from the last close; Save asks first and allows "Save anyway"
 // when a check fails (Marcelo 2026-10-15). It holds unsaved input, so neither Esc nor a click outside closes it.
+// A trader sees the values printed, without inputs or Save (only an admin may change them): that view closes on both.
 
 interface FieldSpec {
   field: PlutoTickerSettingsField;
@@ -103,7 +108,16 @@ export function PlutoLadderTickerWindow({ ticker, companyName, enabledInPluto, a
   const [confirming, setConfirming] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
+  const isAdmin = useIsAdmin();
 
+  useEffect(() => {
+    if (isAdmin) return;
+    function closeOnEscape(event: KeyboardEvent) {
+      if (event.key === "Escape") onClose();
+    }
+    document.addEventListener("keydown", closeOnEscape);
+    return () => document.removeEventListener("keydown", closeOnEscape);
+  }, [isAdmin, onClose]);
   useEffect(() => {
     const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
@@ -348,6 +362,41 @@ export function PlutoLadderTickerWindow({ ticker, companyName, enabledInPluto, a
     </section>
   );
 
+  // A trader's values: the one in use, whose it is, and for a ticker's own value the strategy's it replaces.
+  const readOnlyCard = (
+    <section className="pm-card ts-form">
+      <div className="pm-ro-grid">
+        {fieldSpecs.map((spec) => {
+          const effectiveShown = effectiveText(spec.field);
+          const strategyShown = strategyText(spec.field);
+          const details = [effectiveShown.own && strategyShown.value !== "—" ? `${strategyShown.note} ${strategyShown.value}` : strategyShown.note];
+          if (spec.field === "allocationPct" && effectiveShown.note) details.push(effectiveShown.note);
+          return (
+            <ReadOnlySetting
+              key={spec.field}
+              label={tickerFieldLabel[spec.field]}
+              help={help[spec.field] ? <HelpTooltip text={help[spec.field]} /> : undefined}
+              value={
+                <>
+                  <span className="d-inline-flex align-items-center gap-2">
+                    {effectiveShown.value}
+                    {effectiveShown.own && <span className="pm-b info">This ticker</span>}
+                  </span>
+                  <span className="pm-ro-sub">{details.join(" · ")}</span>
+                </>
+              }
+            />
+          );
+        })}
+      </div>
+      <div className="pm-card-foot">
+        <button type="button" className="pm-link ts-edit-strategy" onClick={onEditStrategyValues}>
+          Open the strategy values on the Settings tab
+        </button>
+      </div>
+    </section>
+  );
+
   const historyCard = (
     <section className="pm-card ts-history">
       <div className="pm-card-h">
@@ -383,7 +432,20 @@ export function PlutoLadderTickerWindow({ ticker, companyName, enabledInPluto, a
   return (
     <>
       <div className="modal-backdrop show" style={{ zIndex: 1050, backgroundColor: "rgba(0,0,0,0.5)", opacity: 1 }} />
-      <div className="modal show d-block ts-modal" style={{ zIndex: 1050 }} role="dialog" aria-modal="true" aria-labelledby={titleId}>
+      <div
+        className="modal show d-block ts-modal"
+        style={{ zIndex: 1050 }}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
+        onClick={
+          isAdmin
+            ? undefined
+            : (event) => {
+                if (event.target === event.currentTarget) onClose();
+              }
+        }
+      >
         <div className="modal-dialog modal-dialog-centered modal-dialog-scrollable modal-fullscreen-sm-down ts-dialog">
           <div className="modal-content">
             <div className="modal-header">
@@ -407,6 +469,7 @@ export function PlutoLadderTickerWindow({ ticker, companyName, enabledInPluto, a
               <button type="button" className="btn-close" aria-label="Close" onClick={onClose} disabled={saving} />
             </div>
             <div className="modal-body">
+              {!isAdmin && <ViewOnlyNote className="mb-3">Only an admin can change {symbol}'s settings.</ViewOnlyNote>}
               {settings.executionStrategy !== "cc_put_ladder" && (
                 <div className="pm-alert info mb-3">
                   <InfoIcon />
@@ -416,107 +479,119 @@ export function PlutoLadderTickerWindow({ ticker, companyName, enabledInPluto, a
                 </div>
               )}
               <div className="ts-grid">
-                <section className="pm-card ts-form">
-                  <div className="ts-head-row">
-                    <span>Setting</span>
-                    <span className="r">Strategy</span>
-                    <span className="r">This ticker</span>
-                    <span className="r">Effective</span>
-                    <span />
-                  </div>
-                  {fieldSpecs.map((spec) => {
-                    const changed = changes.includes(spec);
-                    const problem = fieldProblem(spec, drafts[spec.field]);
-                    const strategyShown = strategyText(spec.field);
-                    const effectiveShown = effectiveText(spec.field);
-                    const id = `pluto-ladder-${symbol}-${spec.field}`;
-                    const messages = fieldMessages(spec.field);
-                    return (
-                      <div key={spec.field} className={`ts-row${changed ? " changed" : ""}`}>
-                        <div className="ts-label">
-                          <label className="lbl" htmlFor={id}>
-                            {tickerFieldLabel[spec.field]}
-                          </label>
-                          {help[spec.field] && <div className="pm-help">{help[spec.field]}</div>}
-                        </div>
-                        <div className="ts-strategy">
-                          <span className="ts-cell-k">Strategy</span>
-                          <span className="v">{strategyShown.value}</span>
-                          <span className="s">{strategyShown.note}</span>
-                        </div>
-                        <div className="ts-input">
-                          <span className="ts-cell-k">This ticker</span>
-                          <div className={`pm-input${problem ? " invalid" : ""}`}>
-                            <input id={id} type="text" inputMode="decimal" placeholder={spec.placeholder} value={drafts[spec.field]} aria-invalid={problem ? true : undefined} onChange={(event) => setDrafts((current) => ({ ...current, [spec.field]: event.target.value }))} />
-                            {spec.unit && <span className="unit">{spec.unit}</span>}
-                          </div>
-                          {changed && !problem && <div className="ts-was">was {describeValue(spec.field, savedOverride(ticker, spec.field))}</div>}
-                        </div>
-                        <div className="ts-eff">
-                          <span className="ts-cell-k">Effective</span>
-                          <span className="v">{effectiveShown.value}</span>
-                          {effectiveShown.own ? <span className="pm-b info">This ticker</span> : effectiveShown.note && <span className="s">{effectiveShown.note}</span>}
-                        </div>
-                        <div className="ts-reset">
-                          {drafts[spec.field].trim() !== "" && (
-                            <button type="button" className="pm-link" onClick={() => setDrafts((current) => ({ ...current, [spec.field]: "" }))}>
-                              <ResetIcon /> Reset
-                            </button>
-                          )}
-                        </div>
-                        <div className="ts-msgs">
-                          {problem && (
-                            <div className="ts-msg err">
-                              <WarningIcon className="ic" />
-                              <span>{problem}</span>
-                            </div>
-                          )}
-                          {!problem &&
-                            messages.map((message) => (
-                              <div key={message.text} className={`ts-msg ${message.tone}`}>
-                                {message.tone === "warn" ? <WarningIcon className="ic" /> : <InfoIcon className="ic" />}
-                                <span>{message.text}</span>
-                              </div>
-                            ))}
-                        </div>
-                      </div>
-                    );
-                  })}
-                  {problems.filter((problem) => !fieldSpecs.some((spec) => fieldProblem(spec, drafts[spec.field]) === problem)).map((problem) => (
-                    <div key={problem} className="ts-msg err ts-form-msg">
-                      <WarningIcon className="ic" />
-                      <span>{problem}</span>
+                {isAdmin ? (
+                  <section className="pm-card ts-form">
+                    <div className="ts-head-row">
+                      <span>Setting</span>
+                      <span className="r">Strategy</span>
+                      <span className="r">This ticker</span>
+                      <span className="r">Effective</span>
+                      <span />
                     </div>
-                  ))}
-                  <div className="pm-card-foot">
-                    <span>Empty = the strategy value.</span>
-                    <button type="button" className="pm-link ts-edit-strategy" onClick={onEditStrategyValues}>
-                      Edit the strategy values on the Settings tab
-                    </button>
-                  </div>
-                </section>
+                    {fieldSpecs.map((spec) => {
+                      const changed = changes.includes(spec);
+                      const problem = fieldProblem(spec, drafts[spec.field]);
+                      const strategyShown = strategyText(spec.field);
+                      const effectiveShown = effectiveText(spec.field);
+                      const id = `pluto-ladder-${symbol}-${spec.field}`;
+                      const messages = fieldMessages(spec.field);
+                      return (
+                        <div key={spec.field} className={`ts-row${changed ? " changed" : ""}`}>
+                          <div className="ts-label">
+                            <label className="lbl" htmlFor={id}>
+                              {tickerFieldLabel[spec.field]}
+                            </label>
+                            {help[spec.field] && <div className="pm-help">{help[spec.field]}</div>}
+                          </div>
+                          <div className="ts-strategy">
+                            <span className="ts-cell-k">Strategy</span>
+                            <span className="v">{strategyShown.value}</span>
+                            <span className="s">{strategyShown.note}</span>
+                          </div>
+                          <div className="ts-input">
+                            <span className="ts-cell-k">This ticker</span>
+                            <div className={`pm-input${problem ? " invalid" : ""}`}>
+                              <input id={id} type="text" inputMode="decimal" placeholder={spec.placeholder} value={drafts[spec.field]} aria-invalid={problem ? true : undefined} onChange={(event) => setDrafts((current) => ({ ...current, [spec.field]: event.target.value }))} />
+                              {spec.unit && <span className="unit">{spec.unit}</span>}
+                            </div>
+                            {changed && !problem && <div className="ts-was">was {describeValue(spec.field, savedOverride(ticker, spec.field))}</div>}
+                          </div>
+                          <div className="ts-eff">
+                            <span className="ts-cell-k">Effective</span>
+                            <span className="v">{effectiveShown.value}</span>
+                            {effectiveShown.own ? <span className="pm-b info">This ticker</span> : effectiveShown.note && <span className="s">{effectiveShown.note}</span>}
+                          </div>
+                          <div className="ts-reset">
+                            {drafts[spec.field].trim() !== "" && (
+                              <button type="button" className="pm-link" onClick={() => setDrafts((current) => ({ ...current, [spec.field]: "" }))}>
+                                <ResetIcon /> Reset
+                              </button>
+                            )}
+                          </div>
+                          <div className="ts-msgs">
+                            {problem && (
+                              <div className="ts-msg err">
+                                <WarningIcon className="ic" />
+                                <span>{problem}</span>
+                              </div>
+                            )}
+                            {!problem &&
+                              messages.map((message) => (
+                                <div key={message.text} className={`ts-msg ${message.tone}`}>
+                                  {message.tone === "warn" ? <WarningIcon className="ic" /> : <InfoIcon className="ic" />}
+                                  <span>{message.text}</span>
+                                </div>
+                              ))}
+                          </div>
+                        </div>
+                      );
+                    })}
+                    {problems.filter((problem) => !fieldSpecs.some((spec) => fieldProblem(spec, drafts[spec.field]) === problem)).map((problem) => (
+                      <div key={problem} className="ts-msg err ts-form-msg">
+                        <WarningIcon className="ic" />
+                        <span>{problem}</span>
+                      </div>
+                    ))}
+                    <div className="pm-card-foot">
+                      <span>Empty = the strategy value.</span>
+                      <button type="button" className="pm-link ts-edit-strategy" onClick={onEditStrategyValues}>
+                        Edit the strategy values on the Settings tab
+                      </button>
+                    </div>
+                  </section>
+                ) : (
+                  readOnlyCard
+                )}
                 {checksCard}
                 {historyCard}
               </div>
             </div>
-            <div className="modal-footer ts-foot">
-              <button type="button" className="pm-btn" onClick={() => setDrafts(Object.fromEntries(fieldSpecs.map((spec) => [spec.field, ""])) as Record<PlutoTickerSettingsField, string>)} disabled={saving || fieldSpecs.every((spec) => drafts[spec.field].trim() === "")}>
-                <ResetIcon /> Reset all to strategy values
-              </button>
-              <span className="ts-foot-status">{changes.length === 0 ? "No changes" : `${changes.length} ${changes.length === 1 ? "change" : "changes"}`}</span>
-              {saveError && <span className="t-bad ts-foot-status">{saveError}</span>}
-              <span className="pm-spacer" />
-              <button type="button" className="pm-btn" onClick={onClose} disabled={saving}>
-                Cancel
-              </button>
-              <button type="button" className="pm-btn primary" onClick={() => setConfirming(true)} disabled={saving || changes.length === 0 || problems.length > 0}>
-                Save
-              </button>
-            </div>
+            {isAdmin ? (
+              <div className="modal-footer ts-foot">
+                <button type="button" className="pm-btn" onClick={() => setDrafts(Object.fromEntries(fieldSpecs.map((spec) => [spec.field, ""])) as Record<PlutoTickerSettingsField, string>)} disabled={saving || fieldSpecs.every((spec) => drafts[spec.field].trim() === "")}>
+                  <ResetIcon /> Reset all to strategy values
+                </button>
+                <span className="ts-foot-status">{changes.length === 0 ? "No changes" : `${changes.length} ${changes.length === 1 ? "change" : "changes"}`}</span>
+                {saveError && <span className="t-bad ts-foot-status">{saveError}</span>}
+                <span className="pm-spacer" />
+                <button type="button" className="pm-btn" onClick={onClose} disabled={saving}>
+                  Cancel
+                </button>
+                <button type="button" className="pm-btn primary" onClick={() => setConfirming(true)} disabled={saving || changes.length === 0 || problems.length > 0}>
+                  Save
+                </button>
+              </div>
+            ) : (
+              <div className="modal-footer ts-foot">
+                <button type="button" className="pm-btn" onClick={onClose}>
+                  Close
+                </button>
+              </div>
+            )}
           </div>
         </div>
       </div>
-      {confirming && (
+      {isAdmin && confirming && (
         <>
           <div className="modal-backdrop show" style={{ zIndex: 1100, backgroundColor: "rgba(0,0,0,0.5)", opacity: 1 }} />
           <div className="modal show d-block ts-confirm" style={{ zIndex: 1100 }} role="dialog" aria-modal="true" aria-labelledby={`${titleId}-confirm`}>

@@ -3,8 +3,12 @@ import { ApiError } from "../../api/client";
 import { fetchPlutoLadderSettings, fetchPlutoSettingsVersion, updatePlutoSettings, type PlutoLadderTickerSettings, type PlutoSettings, type PlutoSettingsAuditRow, type PlutoSettingsField, type PlutoSettingsInput, type PlutoSettingsVersion, type PlutoState } from "../../api/pluto";
 import { formatBrowserClockTime, formatBrowserDayMonth, formatCurrency } from "../../lib/formatters";
 import { ladderFit, recommendedShockAt } from "../../lib/plutoLadderPresentation";
-import { applySettingsEdit, changedSettingsFields, describeSettingsChange, executionStrategyLabels, formatSettingDisplay, inactiveStrategyNote, formStateWithEdits, plutoParameterHelp, plutoParameterGroups, plutoParameterLabelByField, plutoParameterSpecByField, settingsChangedElsewhere, settingsInputValue, type PlutoParameterGroup, type PlutoParameterSpec, type PlutoSettingsChange, type PlutoSettingsEdits, type PlutoSettingsFormState } from "../../lib/plutoParameters";
+import { applySettingsEdit, changedSettingsFields, describeSettingsChange, executionStrategyLabels, formatSettingDisplay, formatSettingRowWithUnit, inactiveStrategyNote, formStateWithEdits, plutoParameterHelp, plutoParameterGroups, plutoParameterLabelByField, plutoParameterSpecByField, settingsChangedElsewhere, settingsInputValue, type PlutoParameterContext, type PlutoParameterGroup, type PlutoParameterSpec, type PlutoSettingsChange, type PlutoSettingsEdits, type PlutoSettingsFormState } from "../../lib/plutoParameters";
+import { useIsAdmin } from "../../hooks/useAuth";
 import { ConfirmModal } from "../ConfirmModal";
+import { HelpTooltip } from "../HelpTooltip";
+import { ReadOnlySetting } from "../ReadOnlySetting";
+import { ViewOnlyNote } from "../ViewOnlyNote";
 import { CollapseButton, InfoIcon, ToggleHeader, WarningIcon } from "./plutoBits";
 
 interface PlutoSettingsTabProps {
@@ -87,9 +91,30 @@ function readStoredOpenGroup(): string | null {
   }
 }
 
-function GroupCard({ group, settings, form, changed, state, ladderTickers, brokenRanges, onChange, isOpen, onToggle, anchorRef }: { group: PlutoParameterGroup; settings: PlutoSettings; form: PlutoSettingsFormState; changed: Set<string>; state: PlutoState | null; ladderTickers: PlutoLadderTickerSettings[] | null; brokenRanges: BrokenDeltaRange[]; onChange: (field: PlutoSettingsField, value: string) => void; isOpen: boolean; onToggle: () => void; anchorRef: (element: HTMLElement | null) => void }) {
+/** A trader's group: every setting printed with its unit and the form's help, no inputs. */
+function ReadOnlyGroupSettings({ group, rows, settings, context }: { group: PlutoParameterGroup; rows: PlutoParameterSpec[][]; settings: PlutoSettings; context: PlutoParameterContext }) {
+  return (
+    <div className="pm-ro-grid">
+      {rows.map((row) => {
+        const lead = row[0]!;
+        return (
+          <div key={lead.field}>
+            <ReadOnlySetting label={lead.label} help={<HelpTooltip text={plutoParameterHelp(lead, context)} />} value={formatSettingRowWithUnit(row, settings)} />
+            {!group.strategy && lead.strategy && lead.strategy !== settings.executionStrategy && (
+              <div className="pm-help t-warn">
+                {executionStrategyLabels[lead.strategy]} only. {inactiveStrategyNote}
+              </div>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function GroupCard({ group, settings, form, changed, state, ladderTickers, brokenRanges, onChange, isOpen, onToggle, anchorRef, readOnly }: { group: PlutoParameterGroup; settings: PlutoSettings; form: PlutoSettingsFormState; changed: Set<string>; state: PlutoState | null; ladderTickers: PlutoLadderTickerSettings[] | null; brokenRanges: BrokenDeltaRange[]; onChange: (field: PlutoSettingsField, value: string) => void; isOpen: boolean; onToggle: () => void; anchorRef: (element: HTMLElement | null) => void; readOnly: boolean }) {
   const changedCount = group.parameters.filter((parameter) => changed.has(parameter.field)).length;
-  const context = { netLiquidationValue: state?.book.netLiquidationValue ?? null, settings, ladderTickers };
+  const context: PlutoParameterContext = { netLiquidationValue: state?.book.netLiquidationValue ?? null, settings, ladderTickers };
   const plutoRunning = state !== null && state.mode === "on" && !state.paused;
   const rows: PlutoParameterSpec[][] = [];
   for (const parameter of group.parameters) {
@@ -111,7 +136,9 @@ function GroupCard({ group, settings, form, changed, state, ladderTickers, broke
           {executionStrategyLabels[group.strategy]} only. {inactiveStrategyNote}
         </div>
       )}
+      {isOpen && readOnly && <ReadOnlyGroupSettings group={group} rows={rows} settings={settings} context={context} />}
       {isOpen &&
+        !readOnly &&
         rows.map((row, index) => {
           const lead = row[0]!;
           const rowChanged = row.some((parameter) => changed.has(parameter.field));
@@ -165,6 +192,8 @@ export function PlutoSettingsTab({ settings, audit, loading, error, state, isPho
   const groupRefs = useRef<Record<string, HTMLElement | null>>({});
   const [ladderTickers, setLadderTickers] = useState<PlutoLadderTickerSettings[] | null>(null);
   const [version, setVersion] = useState<PlutoSettingsVersion | null>(null);
+  // A trader reads the settings, printed, and never edits them (the API refuses a trader's save).
+  const isAdmin = useIsAdmin();
 
   // The ladder's ticker values (overrides, pots, last closes) and the settings version, again whenever the settings change.
   const settingsUpdatedAt = settings?.updatedAt ?? null;
@@ -287,7 +316,7 @@ export function PlutoSettingsTab({ settings, audit, loading, error, state, isPho
         </ul>
       )}
       <div className="pm-card-foot">
-        Each enabled ticker with its own overrides and pot at its last close, recomputed as you type.{" "}
+        {isAdmin ? "Each enabled ticker with its own overrides and pot at its last close, recomputed as you type." : "Each enabled ticker with its own overrides and pot at its last close."}{" "}
         <button type="button" className="pm-link small" onClick={onOpenTickersTab}>
           Open the Tickers tab
         </button>
@@ -345,6 +374,7 @@ export function PlutoSettingsTab({ settings, audit, loading, error, state, isPho
 
   return (
     <>
+      {!isAdmin && <ViewOnlyNote className="mb-3">Only an admin can change Pluto's settings.</ViewOnlyNote>}
       <div className="pm-settings">
         <nav className="pm-card pm-snav" aria-label="Setting groups">
           {plutoParameterGroups.map((group) => {
@@ -358,9 +388,9 @@ export function PlutoSettingsTab({ settings, audit, loading, error, state, isPho
           })}
         </nav>
         <div className="pm-stack tight">
-          {savebar}
+          {isAdmin && savebar}
           {plutoParameterGroups.map((group) => (
-            <GroupCard key={group.key} group={group} settings={settings} form={form} changed={changedFields} state={state} ladderTickers={ladderTickers} brokenRanges={brokenRanges} onChange={updateField} isOpen={openGroup === group.key} onToggle={() => setOpenGroup((current) => (current === group.key ? null : group.key))} anchorRef={(element) => { groupRefs.current[group.key] = element; }} />
+            <GroupCard key={group.key} group={group} settings={settings} form={form} changed={changedFields} state={state} ladderTickers={ladderTickers} brokenRanges={brokenRanges} onChange={updateField} isOpen={openGroup === group.key} onToggle={() => setOpenGroup((current) => (current === group.key ? null : group.key))} anchorRef={(element) => { groupRefs.current[group.key] = element; }} readOnly={!isAdmin} />
           ))}
         </div>
         <div className="pm-stack tight">
@@ -378,7 +408,7 @@ export function PlutoSettingsTab({ settings, audit, loading, error, state, isPho
         </div>
       </div>
       {!isPhone && null}
-      {confirming && (
+      {isAdmin && confirming && (
         <ConfirmModal
           title={`Save ${changes.length} ${changes.length === 1 ? "change" : "changes"}?`}
           danger={false}

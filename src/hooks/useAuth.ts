@@ -21,3 +21,8 @@ export function useAuth(): AuthContextValue {
   }
   return context;
 }
+
+/** Whether the signed-in user is an admin. A trader sees risk limits and Pluto settings as printed values, never as inputs. */
+export function useIsAdmin(): boolean {
+  return useAuth().currentUser?.accessLevel === "admin";
+}
