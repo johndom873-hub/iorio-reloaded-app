@@ -287,7 +287,7 @@ export function TickerAnalysisModal({ symbol, onClose, onEditGlobalSettings }: T
       {savedRun ? (
         <button type="button" className="btn btn-outline-secondary d-inline-flex align-items-center gap-1" disabled={busy !== null} onClick={() => void cancelRun(savedRun)}>
           <Spinner size="sm" />
-          Updating · Cancel
+          Updating · Stop
         </button>
       ) : (
         stored && (

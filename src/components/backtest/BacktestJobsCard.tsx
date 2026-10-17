@@ -41,7 +41,7 @@ export function BacktestJobsCard({ jobs, onJobsChanged }: BacktestJobsCardProps)
       else await resumeBacktestJob(job.id);
       await onJobsChanged();
     } catch (err) {
-      const what = action === "cancel" ? "cancel" : action === "first" ? "move to the top" : "resume";
+      const what = action === "cancel" ? (job.displayStatus === "queued" ? "remove" : "stop") : action === "first" ? "move to the top" : "resume";
       setActionError(errorMessage(err, `Could not ${what} the ${job.symbol} job.`));
     } finally {
       setPendingAction(null);
@@ -72,13 +72,7 @@ export function BacktestJobsCard({ jobs, onJobsChanged }: BacktestJobsCardProps)
       </div>
       {jobToCancel && (
         <ConfirmModal
-          title={jobToCancel.displayStatus === "queued" ? "Remove from the queue?" : `Cancel this ${jobToCancel.kind}?`}
-          message={
-            jobToCancel.kind === "download"
-              ? `${jobToCancel.symbol}: the days already saved stay in the file; Update downloads the rest later.`
-              : `${describeJobTitle(jobToCancel)}: the session stops and is marked cancelled. Running it again starts from the first day.`
-          }
-          confirmLabel={jobToCancel.displayStatus === "queued" ? "Remove" : "Cancel job"}
+          {...describeStopDialog(jobToCancel)}
           confirming={isPending(jobToCancel, "cancel")}
           onConfirm={() => void runAction(jobToCancel, "cancel")}
           onCancel={() => setJobToCancel(null)}
@@ -87,6 +81,35 @@ export function BacktestJobsCard({ jobs, onJobsChanged }: BacktestJobsCardProps)
       {putFirstModal}
     </BacktestCard>
   );
+}
+
+/** The stop / remove confirmation's wording: the action says what it does, the close button what it keeps. */
+function describeStopDialog(job: BacktestJobView): { title: string; message: string; confirmLabel: string; cancelLabel: string } {
+  if (job.displayStatus === "queued") {
+    return {
+      title: `Remove ${job.kind === "download" ? job.symbol : describeJobTitle(job)} from the queue?`,
+      message: job.kind === "download" ? "Any days already saved stay in the file. You can queue it again later." : "It has not started. You can run it again later.",
+      confirmLabel: "Remove",
+      cancelLabel: "Keep in queue",
+    };
+  }
+  if (job.kind === "download") {
+    return {
+      title: `Stop the ${job.symbol} download?`,
+      message: `The days already saved stay in the file. To download the rest later, press Update on ${job.symbol}'s row in Data files.`,
+      confirmLabel: "Stop download",
+      cancelLabel: "Keep downloading",
+    };
+  }
+  if (job.kind === "analysis") {
+    return { title: "Stop this analysis?", message: `${describeJobTitle(job)}: the analysis stops. Update Analysis runs it again.`, confirmLabel: "Stop analysis", cancelLabel: "Keep running" };
+  }
+  return {
+    title: "Stop this backtest?",
+    message: `${describeJobTitle(job)}: the session stops and is marked cancelled. Running it again starts from the first day.`,
+    confirmLabel: "Stop backtest",
+    cancelLabel: "Keep running",
+  };
 }
 
 interface BacktestJobListProps {
@@ -187,7 +210,7 @@ function BacktestJobList({ title, emptyText, jobs, now, pendingAction, isPending
                       )}
                       {canCancel && (
                         <button type="button" className="btn btn-outline-secondary d-inline-flex align-items-center gap-1" disabled={pendingAction !== null} onClick={() => onCancel(job)}>
-                          {status === "queued" ? "Remove" : "Cancel"}
+                          {status === "queued" ? "Remove" : "Stop"}
                         </button>
                       )}
                     </div>

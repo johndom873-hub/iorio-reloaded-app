@@ -8,7 +8,8 @@ import { Tooltip } from "@tabler/core/dist/js/tabler.esm.min.js";
  * shown after a 1000ms hover/focus delay. Attach the returned ref to the DOM
  * element that should carry the tooltip. `text` is rendered as plain text
  * (never HTML) since this hook is also used for data-driven strings. */
-export function useTooltip<T extends HTMLElement = HTMLElement>(text: string | undefined | null) {
+export function useTooltip<T extends HTMLElement = HTMLElement>(text: string | undefined | null, options: { multiline?: boolean } = {}) {
+  const multiline = options.multiline ?? false;
   const ref = useRef<T | null>(null);
 
   useEffect(() => {
@@ -20,9 +21,11 @@ export function useTooltip<T extends HTMLElement = HTMLElement>(text: string | u
       delay: { show: 1000, hide: 0 },
       trigger: "hover focus",
       html: false,
+      // A list (line breaks kept, left-aligned, wider): the .multiline-tooltip class in theme.css.
+      ...(multiline ? { customClass: "multiline-tooltip" } : {}),
     });
     return () => tooltip.dispose();
-  }, [text]);
+  }, [text, multiline]);
 
   return ref;
 }

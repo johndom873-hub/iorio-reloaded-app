@@ -5,6 +5,7 @@ import {
   type BacktestAction,
   type BacktestActionKind,
   type BacktestCycle,
+  type BacktestDataFilePart,
   type BacktestDataFileSummary,
   type BacktestDecisionMaker,
   type BacktestDetectedSplit,
@@ -51,6 +52,7 @@ import {
   formatSignedPercentage,
   formatSignedPnl,
   formatYearMonth,
+  joinWithAnd,
   pluralizeCount,
   pnlTextClass,
 } from "./formatters";
@@ -224,17 +226,14 @@ export function describeSplitRatio(ratio: number): string {
   return ratio < 1 ? `1-for-${formatInputNumber(flipped, 3)}` : `${formatInputNumber(ratio, 3)}-for-1`;
 }
 
-/** The Data files Splits cell: "none", "10-for-1 · 2024-10-01" (several joined), or "—" before the file has been analysed. */
+/** The Data files Splits cell: "none", "10-for-1 · 2024-10-01" (several joined), or "not checked" until the split check has run on the file's current data. */
 export function describeDetectedSplits(splits: BacktestDetectedSplit[] | null | undefined): string {
-  if (!splits) return "—";
+  if (!splits) return "not checked";
   if (splits.length === 0) return "none";
   return splits.map((split) => `${describeSplitRatio(split.ratio)} · ${split.firstDayAfter}`).join(", ");
 }
 
-export const splitsNotAnalysedExplanation = "found after the next download or session run";
-
-/** A file downloaded before intraday quotes existed has none until it is updated. */
-export const intradayDaysMissingExplanation = "added by the next Update";
+export const splitsNotAnalysedExplanation = "Not checked for this file's current data yet: checked after its next download, analysis or backtest session";
 
 export const sessionSplitsNotePrefix = "Prices put on each day's traded scale:";
 
@@ -1155,4 +1154,56 @@ export function describeTickerProblem(symbol: string, problem: BacktestTickerPro
 /** The Sessions list's link to the sessions created while it was being read: "1 new session", "3 new sessions". */
 export function describeNewSessionsLink(count: number, atLeast: boolean): string {
   return `${formatNumber(count)}${atLeast ? "+" : ""} new ${count === 1 && !atLeast ? "session" : "sessions"}`;
+}
+
+const dataFilePartLabels: Record<BacktestDataFilePart, string> = {
+  quotes: "10:00 quotes",
+  intraday_quotes: "30-minute quotes",
+  eod: "end-of-day prices",
+  open_interest: "open interest",
+};
+/** "10:00 and 30-minute quotes" when both quote parts are missing, otherwise the parts' labels joined. */
+function describeDataFileParts(parts: readonly BacktestDataFilePart[]): string {
+  const bothQuotes = parts.includes("quotes") && parts.includes("intraday_quotes");
+  const labels = parts.filter((part) => !(bothQuotes && part === "intraday_quotes")).map((part) => (bothQuotes && part === "quotes" ? "10:00 and 30-minute quotes" : dataFilePartLabels[part]));
+  return joinWithAnd(labels);
+}
+
+/** The Issues tooltip lists at most this many entries; the rest are counted. */
+const dataFileIssueLinesShown = 20;
+
+/**
+ * The Data files table's Issues tooltip: the file's issue days grouped by kind, one line per day (and expiration), at most
+ * 20 lines, e.g. "2021-04-06 · expiry 2023-01-20: 10:00 quotes and 30-minute quotes (ThetaData sent malformed data)".
+ * Null when the file has none.
+ */
+export function describeDataFileIssues(file: Pick<BacktestDataFileSummary, "issueDays" | "issues">): string | null {
+  if (file.issueDays === 0) return null;
+  const sections: { heading: string; lines: string[] }[] = [
+    {
+      heading: "Nothing stored yet (Update downloads these):",
+      lines: file.issues.notStored.map((run) => (run.weekdays === 1 ? run.firstDate : `${run.firstDate} – ${run.lastDate} (${pluralizeCount(run.weekdays, "weekday")})`)),
+    },
+    {
+      heading: "Stored with parts missing:",
+      lines: file.issues.partial.map((entry) => `${entry.tradingDate}${entry.expiry ? ` · expiry ${entry.expiry}` : ""}: ${describeDataFileParts(entry.parts)} (${entry.reason})`),
+    },
+    {
+      heading: "Could not be retrieved (every download tries again):",
+      lines: file.issues.unavailable.map((entry) => `${entry.tradingDate}: ${entry.part ? `${dataFilePartLabels[entry.part]} ` : ""}(${entry.reason})`),
+    },
+  ];
+  const blocks: string[] = [pluralizeCount(file.issueDays, "day") + " with issues"];
+  let shown = 0;
+  let hidden = 0;
+  for (const section of sections) {
+    if (section.lines.length === 0) continue;
+    const room = Math.max(0, dataFileIssueLinesShown - shown);
+    const lines = section.lines.slice(0, room);
+    hidden += section.lines.length - lines.length;
+    shown += lines.length;
+    if (lines.length > 0) blocks.push([section.heading, ...lines].join("\n"));
+  }
+  if (hidden > 0) blocks.push(`… and ${formatNumber(hidden)} more`);
+  return blocks.join("\n\n");
 }

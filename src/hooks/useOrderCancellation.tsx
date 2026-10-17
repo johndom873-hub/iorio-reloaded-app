@@ -75,6 +75,7 @@ export function useOrderCancellation(onCancelled: () => Promise<void>, onError: 
         )
       }
       confirmLabel="Cancel Order"
+      cancelLabel="Keep Order"
       confirming={cancellingOrderId === confirmation.orderId}
       onConfirm={() => handleCancel(confirmation.orderId)}
       onCancel={() => setConfirmation(null)}

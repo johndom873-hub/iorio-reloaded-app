@@ -1003,6 +1003,12 @@
   border-bottom: 0;
 }
 
+/* A left-aligned column whose neighbour on the left is right-aligned (Data files: Options Days then Spot From, Issues then
+   Splits), so the two columns' values do not run together. */
+.table .data-table-column-gap {
+  padding-left: 1.5rem;
+}
+
 /* Signals: the valuation model's column group (mockup approved 2026-10-10), a faint blue band in both themes.
    Header text #0b4f78 on #e8f2f9 is 8.4:1; #a5dcfb on #1e3a52 is 8.0:1. Body cells keep the table's text colour. */
 .data-table-group-row th.signals-model-group {
@@ -1193,6 +1199,16 @@
 .dotted-underline-label.option-chain-expiries-count {
   cursor: default;
   user-select: none;
+}
+
+/* A tooltip that lists several lines (TooltipSpan multiline), e.g. the Data files table's Issues. */
+.multiline-tooltip .tooltip-inner {
+  max-width: min(40rem, 90vw);
+  text-align: left;
+  white-space: pre-line;
+  padding: 0.6rem 0.75rem;
+  font-size: 0.8rem;
+  line-height: 1.4;
 }
 
 .footnote-tooltip .tooltip-inner {

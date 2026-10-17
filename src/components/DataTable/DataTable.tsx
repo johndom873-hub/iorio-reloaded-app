@@ -17,6 +17,8 @@ export interface DataTableColumn<TRow> {
   group?: { label: string; className?: string; title?: string };
   /** Extra class on the column's body cells (e.g. a tinted group). */
   cellClassName?: string;
+  /** Extra class on the column's header cell (e.g. data-table-column-gap). */
+  headerClassName?: string;
   /** Opt-in sorting: the header becomes a button ordering the rows by this value (nulls last either way). */
   sortValue?: (row: TRow) => number | string | null;
 }
@@ -37,6 +39,15 @@ function readStoredSort(tableId: string): DataTableSort | null {
   } catch {
     return null;
   }
+}
+
+/** The gear's checkbox labels: blank headers left out; a header shared by several columns ("From" under Options and under
+ *  Spot) gets its group label in front, so each checkbox says which column it is. */
+function columnsForVisibilityList<TRow>(columns: DataTableColumn<TRow>[]): { key: string; header: string }[] {
+  const labelled = columns.filter((column) => column.header !== "");
+  const headerCounts = new Map<string, number>();
+  for (const column of labelled) headerCounts.set(column.header, (headerCounts.get(column.header) ?? 0) + 1);
+  return labelled.map((column) => ({ key: column.key, header: (headerCounts.get(column.header) ?? 0) > 1 && column.group ? `${column.group.label} ${column.header}` : column.header }));
 }
 
 /** Adjacent visible columns with the same group label, as header cells; ungrouped runs get one blank cell. */
@@ -180,7 +191,7 @@ export function DataTable<TRow>({
                     as="th"
                     key={column.key}
                     text={column.headerTitle}
-                    className={alignClassName(column.align)}
+                    className={[alignClassName(column.align), column.headerClassName].filter(Boolean).join(" ") || undefined}
                     ariaSort={ariaSort(column)}
                   >
                     {isLastColumn ? (
@@ -199,7 +210,7 @@ export function DataTable<TRow>({
                             to be hidden — exclude it from the toggle list rather than show
                             a blank row (found 2026-08-28). */}
                         <ColumnVisibilityPopover
-                          columns={columns.filter((c) => c.header !== "")}
+                          columns={columnsForVisibilityList(columns)}
                           isColumnVisible={isColumnVisible}
                           onToggleColumn={toggleColumn}
                         />

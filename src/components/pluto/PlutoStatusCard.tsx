@@ -226,6 +226,7 @@ export function PlutoStatusCard({ state, status, settings, now, isPhone, showKpi
       <ConfirmModal
         title={working.length === 1 ? "Cancel the working order?" : `Cancel the ${working.length} working orders?`}
         confirmLabel={working.length === 1 ? "Cancel the order" : "Cancel the orders"}
+        cancelLabel={working.length === 1 ? "Keep the order" : "Keep the orders"}
         confirming={busy === "modal"}
         message={<>IBKR is asked to cancel {working.map((order) => describeOrderLine(order, order.limitPrice)).join("; ")}. Anything already filled stays filled.</>}
         onCancel={() => setPending(null)}

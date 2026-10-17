@@ -6,6 +6,9 @@ interface ConfirmModalProps {
   title: string;
   message: ReactNode;
   confirmLabel?: string;
+  /** The button that closes the dialog without acting. Name what it keeps when the action itself cancels something
+   *  ("Keep downloading" next to "Stop download"), so two buttons never both say "Cancel". */
+  cancelLabel?: string;
   danger?: boolean;
   confirming?: boolean;
   /** A second choice between Cancel and the confirm button (e.g. "Keep it running"); the dialog widens to fit three buttons. */
@@ -26,7 +29,7 @@ interface ConfirmModalProps {
 // Confirmation modal per the app's convention: does NOT close on backdrop
 // click or ESC, since accidentally dismissing it should never be mistaken
 // for confirming — Cancel is the only way out besides the actual buttons.
-export function ConfirmModal({ title, message, confirmLabel = "Confirm", danger = true, confirming = false, secondaryLabel, onSecondary, size, confirmDisabled = false, onConfirm, onCancel }: ConfirmModalProps) {
+export function ConfirmModal({ title, message, confirmLabel = "Confirm", cancelLabel = "Cancel", danger = true, confirming = false, secondaryLabel, onSecondary, size, confirmDisabled = false, onConfirm, onCancel }: ConfirmModalProps) {
   useEffect(() => {
     const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
@@ -48,7 +51,7 @@ export function ConfirmModal({ title, message, confirmLabel = "Confirm", danger 
             <div className="modal-body">{message}</div>
             <div className="modal-footer">
               <button type="button" className="btn btn-link text-secondary" onClick={onCancel} disabled={confirming}>
-                Cancel
+                {cancelLabel}
               </button>
               {secondaryLabel && onSecondary && (
                 <button type="button" className="btn btn-outline-secondary" onClick={onSecondary} disabled={confirming}>

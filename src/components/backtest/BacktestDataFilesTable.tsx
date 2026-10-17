@@ -1,9 +1,10 @@
 import { useState, type FormEvent } from "react";
 import { useNavigate } from "react-router-dom";
 import { errorMessage } from "../../api/client";
-import { backtestMaxSymbolsPerSession, resumeBacktestJob, startBacktestDownload, type BacktestDataFileSummary, type BacktestJobView } from "../../api/backtest";
+import { backtestMaxSymbolsPerSession, deleteBacktestDataFile, resumeBacktestJob, startBacktestDownload, type BacktestDataFileSummary, type BacktestJobView } from "../../api/backtest";
 import { formatFileSize, formatNumber } from "../../lib/formatters";
-import { describeDetectedSplits, intradayDaysMissingExplanation, splitsNotAnalysedExplanation } from "../../lib/backtestPresentation";
+import { describeDataFileIssues, describeDetectedSplits, splitsNotAnalysedExplanation } from "../../lib/backtestPresentation";
+import { ConfirmModal } from "../ConfirmModal";
 import { DataTable, type DataTableColumn } from "../DataTable/DataTable";
 import { Spinner } from "../Spinner";
 import { TooltipSpan } from "../TooltipSpan";
@@ -15,6 +16,10 @@ interface BacktestDataFilesTableProps {
   jobs: BacktestJobView[];
   onFilesChanged: () => Promise<void>;
 }
+
+/** The From, To and Days columns' headings: the file's option days, and the IBKR daily spot (stock) prices in the local DB. */
+const optionsGroup = { label: "Options", className: "text-center", title: "Days with option prices stored in the file (ThetaData)" };
+const spotGroup = { label: "Spot", className: "text-center", title: "IBKR daily spot prices of the stock, in the local database: the forecast and the settlement prices come from them" };
 
 /** The ThetaData history starts in 2020; a new symbol downloads from here unless another date is chosen. */
 const defaultDownloadStartDate = "2020-01-01";
@@ -34,6 +39,8 @@ export function BacktestDataFilesTable({ files, jobs, onFilesChanged }: Backtest
   const [analysedSymbol, setAnalysedSymbol] = useState<string | null>(null);
   const [selectedSymbols, setSelectedSymbols] = useState<Set<string>>(new Set());
   const [bulkUpdateRunning, setBulkUpdateRunning] = useState(false);
+  const [fileToDelete, setFileToDelete] = useState<BacktestDataFileSummary | null>(null);
+  const [deleteRunning, setDeleteRunning] = useState(false);
   const navigate = useNavigate();
   const downloadRequestRunning = pendingSymbol !== null || bulkUpdateRunning;
 
@@ -80,6 +87,26 @@ export function BacktestDataFilesTable({ files, jobs, onFilesChanged }: Backtest
       setSelectedSymbols(new Set(failures.map((failure) => failure.symbol)));
       if (failures.length > 0) setRowError(failures.map((failure) => `${failure.symbol}: ${failure.message}`).join(" "));
       setBulkUpdateRunning(false);
+    }
+  };
+
+  /** Deletes the file and its downloads; the server refuses while a download, backtest or analysis using it runs. */
+  const confirmDeleteFile = async (file: BacktestDataFileSummary) => {
+    setDeleteRunning(true);
+    setRowError(null);
+    try {
+      await deleteBacktestDataFile(file.symbol);
+      setSelectedSymbols((previous) => {
+        const next = new Set(previous);
+        next.delete(file.symbol);
+        return next;
+      });
+      await onFilesChanged();
+    } catch (err) {
+      setRowError(errorMessage(err, `Could not delete the ${file.symbol} data file.`));
+    } finally {
+      setDeleteRunning(false);
+      setFileToDelete(null);
     }
   };
 
@@ -162,56 +189,33 @@ export function BacktestDataFilesTable({ files, jobs, onFilesChanged }: Backtest
           <strong title="No complete days yet">{file.symbol}</strong>
         ),
     },
-    { key: "from", header: "From", cellClassName: "font-mono text-nowrap", render: (file) => file.firstDate ?? "—" },
-    { key: "to", header: "To", cellClassName: "font-mono text-nowrap", render: (file) => file.lastDate ?? "—" },
-    { key: "days", header: "Trading days", headerTitle: "Days stored with data", align: "right", render: (file) => formatNumber(file.completeDays) },
-    {
-      key: "missing",
-      header: "Missing",
-      headerTitle: "Weekdays between From and To with nothing stored (a gap to fill). Holidays are stored as days without data, so they do not count.",
-      align: "right",
-      render: (file) => <span className={file.missingWeekdays > 0 ? "iorio-note-amber" : "text-secondary"}>{formatNumber(file.missingWeekdays)}</span>,
-    },
+    { key: "from", header: "From", group: optionsGroup, cellClassName: "font-mono text-nowrap", render: (file) => file.firstDate ?? "—" },
+    { key: "to", header: "To", group: optionsGroup, cellClassName: "font-mono text-nowrap", render: (file) => file.lastDate ?? "—" },
+    { key: "days", header: "Days", headerTitle: "Days with option prices", group: optionsGroup, align: "right", render: (file) => formatNumber(file.completeDays) },
+    // No IBKR bars: an amber "none" under From, since a backtest needs them.
+    { key: "spotFrom", header: "From", group: spotGroup, headerClassName: "data-table-column-gap", cellClassName: "font-mono text-nowrap data-table-column-gap", render: (file) => file.barsFirstDate ?? <span className="iorio-note-amber">none</span> },
+    { key: "spotTo", header: "To", group: spotGroup, cellClassName: "font-mono text-nowrap", render: (file) => file.barsLastDate ?? "—" },
+    { key: "spotDays", header: "Days", headerTitle: "Days with spot prices", group: spotGroup, align: "right", render: (file) => formatNumber(file.barsCount) },
     {
       key: "issues",
       header: "Issues",
-      headerTitle: "Stored days of which the downloader could not retrieve a part or an expiration: the day is stored with what was retrieved.",
-      align: "right",
-      render: (file) => <span className={file.daysWithIssues > 0 ? "iorio-note-amber" : "text-secondary"}>{formatNumber(file.daysWithIssues ?? 0)}</span>,
-    },
-    {
-      key: "unavailable",
-      header: "Unavailable",
-      headerTitle: "Days the downloader could not retrieve at all, or whose intraday quotes it could not. Every later download asks for them again.",
-      align: "right",
-      render: (file) => <span className={file.unavailableDays > 0 ? "iorio-note-amber" : "text-secondary"}>{formatNumber(file.unavailableDays ?? 0)}</span>,
-    },
-    {
-      key: "intraday",
-      header: "Intraday days",
-      headerTitle: "Days with complete intraday quotes.",
+      headerTitle: "Days with a problem in the option data: nothing stored yet, stored with parts missing, or not retrievable. Point at the count for the list.",
       align: "right",
       render: (file) =>
-        file.intradayDays === null || file.intradayDays === undefined ? (
-          <TooltipSpan text={intradayDaysMissingExplanation} className="text-secondary">
-            —
+        file.issueDays > 0 ? (
+          <TooltipSpan text={describeDataFileIssues(file)} multiline className="iorio-note-amber dotted-underline-label">
+            {formatNumber(file.issueDays)}
           </TooltipSpan>
         ) : (
-          formatNumber(file.intradayDays)
+          <span className="text-secondary">0</span>
         ),
-    },
-    {
-      key: "bars",
-      header: "Daily bars",
-      headerTitle: "IBKR daily bars in the local database for the symbol: the forecast and the settlement prices come from them.",
-      cellClassName: "font-mono text-nowrap",
-      render: (file) => (file.barsFirstDate && file.barsLastDate ? `${file.barsFirstDate} → ${file.barsLastDate}` : <span className="iorio-note-amber">none</span>),
     },
     {
       key: "splits",
       header: "Splits",
+      headerClassName: "data-table-column-gap",
       headerTitle: "Stock splits found in the file's period (new shares per old share, from the first day on the new scale). IBKR's bars are split-adjusted and the option prices are as traded, so a session puts each day's prices on that day's traded scale.",
-      cellClassName: "font-mono text-nowrap",
+      cellClassName: "font-mono text-nowrap data-table-column-gap",
       render: (file) =>
         !file.detectedSplits ? (
           <TooltipSpan text={splitsNotAnalysedExplanation} className="text-secondary">
@@ -253,6 +257,9 @@ export function BacktestDataFilesTable({ files, jobs, onFilesChanged }: Backtest
             >
               {busy && <Spinner size="sm" />}
               {status === "stopped" ? "Resume" : "Update"}
+            </button>
+            <button type="button" className="btn btn-outline-danger" disabled={downloadRequestRunning || deleteRunning} onClick={() => setFileToDelete(file)}>
+              Delete
             </button>
           </div>
         );
@@ -351,6 +358,24 @@ export function BacktestDataFilesTable({ files, jobs, onFilesChanged }: Backtest
         toolbar={header}
         beforeTable={errors}
       />
+      {fileToDelete && (
+        <ConfirmModal
+          title={`Delete ${fileToDelete.symbol}'s data file?`}
+          message={
+            <>
+              <p>
+                {fileToDelete.symbol}.sqlite ({formatNumber(fileToDelete.completeDays)} trading days
+                {fileToDelete.firstDate && fileToDelete.lastDate ? `, ${fileToDelete.firstDate} to ${fileToDelete.lastDate}` : ""}, {formatFileSize(fileToDelete.sizeBytes)}) and its downloads in Background jobs are deleted.
+              </p>
+              <p className="mb-0">Past backtests keep their results. Downloading {fileToDelete.symbol} again starts from scratch.</p>
+            </>
+          }
+          confirmLabel="Delete"
+          confirming={deleteRunning}
+          onConfirm={() => void confirmDeleteFile(fileToDelete)}
+          onCancel={() => setFileToDelete(null)}
+        />
+      )}
       {analysedSymbol && (
         <TickerAnalysisModal
           symbol={analysedSymbol}
