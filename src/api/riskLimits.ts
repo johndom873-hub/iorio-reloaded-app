@@ -8,7 +8,7 @@ import type { StrategyKey } from "./strategy";
  * Percentages are 0-100; deltas are absolute values between 0 and 1; expiry window is whole days.
  */
 export interface TradingSettings {
-  maxPositionPctOfPortfolio: number;
+  maxOrderPctOfPortfolio: number;
   maxConcentrationPerTickerPct: number;
   minCashReservePct: number;
   deltaTargetMin: number;

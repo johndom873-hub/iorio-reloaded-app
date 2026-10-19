@@ -107,7 +107,7 @@ export function BackgroundJobsProvider({ children }: { children: ReactNode }) {
   // and reopens on logout/login so a shared machine's next user gets their
   // own stream. Replaces the old per-order 2s client poll: that only ever
   // tracked orders this browser itself started via startOrderJob, so an
-  // order placed outside this browser (Genosuke chat) or a position closed
+  // order placed outside this browser (by Pluto) or a position closed
   // purely by IBKR (an option expiring) never surfaced anywhere in the UI.
   // Every order_status event re-fetches the full order (the notification
   // payload only carries its id) and reuses the same upsertOrderJob path

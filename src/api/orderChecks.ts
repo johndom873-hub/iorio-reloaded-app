@@ -18,7 +18,7 @@ export interface OrderLimitsResult {
   reasons: string[];
 }
 
-// Single shared evaluation of the blocking limits (max position %, max exposure per ticker %, min cash
+// Single shared evaluation of the blocking limits (max order size %, max exposure per ticker %, min cash
 // reserve %, delta band) for any opening or rolling order -- the same function the backend also runs at
 // order-confirm time and in the order's live quote stream.
 export async function checkOrderLimits(params: OrderLimitsCheckParams): Promise<OrderLimitsResult> {

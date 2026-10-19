@@ -35,7 +35,7 @@ import { useSignalsTickerModal } from "../hooks/useSignalsTickerModal";
 // Every field is kept as the text of its input; percentages and deltas keep up to two decimals
 // (rounding them to whole numbers on load used to turn a stored 2.5 into 3 on the next save).
 interface SettingsFormState {
-  maxPositionPctOfPortfolio: string;
+  maxOrderPctOfPortfolio: string;
   maxConcentrationPerTickerPct: string;
   minCashReservePct: string;
   deltaTargetMin: string;
@@ -52,7 +52,7 @@ interface SettingsFormState {
 
 function toFormState(settings: TradingSettings): SettingsFormState {
   return {
-    maxPositionPctOfPortfolio: formatInputNumber(settings.maxPositionPctOfPortfolio),
+    maxOrderPctOfPortfolio: formatInputNumber(settings.maxOrderPctOfPortfolio),
     maxConcentrationPerTickerPct: formatInputNumber(settings.maxConcentrationPerTickerPct),
     minCashReservePct: formatInputNumber(settings.minCashReservePct),
     deltaTargetMin: formatInputNumber(settings.deltaTargetMin),
@@ -69,7 +69,7 @@ function toFormState(settings: TradingSettings): SettingsFormState {
 }
 
 const fieldLabels: Record<keyof SettingsFormState, string> = {
-  maxPositionPctOfPortfolio: "Max order size %",
+  maxOrderPctOfPortfolio: "Max order size %",
   maxConcentrationPerTickerPct: "Max exposure per ticker %",
   minCashReservePct: "Min cash reserve %",
   deltaTargetMin: "Delta min",
@@ -92,7 +92,7 @@ function firstBlankField(form: SettingsFormState): string | null {
 
 function toUpdateInput(form: SettingsFormState): TradingSettingsInput {
   return {
-    maxPositionPctOfPortfolio: Number(form.maxPositionPctOfPortfolio),
+    maxOrderPctOfPortfolio: Number(form.maxOrderPctOfPortfolio),
     maxConcentrationPerTickerPct: Number(form.maxConcentrationPerTickerPct),
     minCashReservePct: Number(form.minCashReservePct),
     deltaTargetMin: Number(form.deltaTargetMin),
@@ -688,13 +688,13 @@ export function RiskLimitsPage() {
 
               <SettingsSection title="Order limits — these block an order" description="An order that would break one of these cannot be confirmed.">
                 <NumberField
-                  label={fieldLabels.maxPositionPctOfPortfolio}
+                  label={fieldLabels.maxOrderPctOfPortfolio}
                   unit="percent"
                   readOnly={!isAdmin}
-                  value={formState.maxPositionPctOfPortfolio}
+                  value={formState.maxOrderPctOfPortfolio}
                   step="0.5"
                   help="The most a single new order may be worth, as a % of total portfolio value. A larger order is blocked. It limits each order on its own: several orders can still build one ticker up to the Max exposure per ticker %."
-                  onChange={(value) => updateField("maxPositionPctOfPortfolio", value)}
+                  onChange={(value) => updateField("maxOrderPctOfPortfolio", value)}
                 />
                 <NumberField
                   label={fieldLabels.maxConcentrationPerTickerPct}

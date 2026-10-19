@@ -33,7 +33,7 @@ export type AppNotification =
 // notificationBroadcaster.ts whenever an order_requests row changes
 // (regardless of which process changed it: this browser's own
 // confirm/cancel, the worker on an IBKR fill, or an order placed entirely
-// outside this browser via Genosuke chat) or a position closes on
+// outside this browser, by Pluto) or a position closes on
 // expiry/assignment.
 //
 // Shared on purpose: BackgroundJobsContext, PositionsPage, PulsePage and

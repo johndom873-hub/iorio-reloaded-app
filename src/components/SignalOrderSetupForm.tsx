@@ -128,7 +128,7 @@ export function SignalOrderSetupForm({ symbol, signals, candidate, spotPrice, ne
           { legType: "option", optionType: isCall ? "call" : "put", entryPrice: String(candidate.bid), strikePrice: String(candidate.strike), quantity, multiplier: 100 },
         ]);
 
-  // The blocking limits (max position %, max exposure per ticker %, min cash
+  // The blocking limits (max order size %, max exposure per ticker %, min cash
   // reserve %) depend on the chosen contract quantity and live portfolio state, so they're re-checked
   // against the backend (debounced) rather than read off candidate.flags, which is fixed at generation
   // time. This is cosmetic only -- POST /orders/:id/confirm re-evaluates the same check server-side and
