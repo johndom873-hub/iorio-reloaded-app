@@ -105,8 +105,7 @@ export function backtestSettingGroupSummary(group: BacktestSettingGroup, text: (
       return [decisionMakerLabel[text("decisionMaker") as keyof typeof decisionMakerLabel] ?? shown("decisionMaker"), text("baseline.looks") === "every_look" ? "every look" : "once a day", text("baseline.entry") === "covered_call" ? "Covered Call entry" : "Cash-Secured Put entry"].join(" · ");
     case "Put ladder": {
       const puts = text("baseline.putsWhenNoCall");
-      if (puts === "off") return "no Puts when no call is sold";
-      if (puts === "dte_budget") return `one Put, ${shown("baseline.putBudgetPctPerDte")} per day to expiry`;
+      if (puts === "off") return "no ladder";
       const shock = text("baseline.ladderShock") === "history" ? `shock from history ${text("baseline.ladderShockMinPct")}–${shown("baseline.ladderShockMaxPct")}` : `fixed shock ${shown("baseline.ladderShockPct")}`;
       return `${text("baseline.ladderRungs")} rungs · shares ≤ ${shown("baseline.ladderSharesPct")} · ${shock}`;
     }
@@ -118,6 +117,10 @@ export function backtestSettingGroupSummary(group: BacktestSettingGroup, text: (
       ].join(" · ");
     case "Contract choice":
       return `|delta| ${text("baseline.minAbsDelta")}–${text("baseline.maxAbsDelta")} · ${text("baseline.minDte")}–${text("baseline.maxDte")} DTE · spread ≤ ${shown("baseline.maxSpreadPctOfMid")} · by ${shown("baseline.ranking").toLowerCase()}`;
+    case "Entry filters": {
+      const filters = [text("baseline.entryExtensionFilter") === "on" ? `extension z ≥ ${text("baseline.entryMaxExtensionZ")}` : null, text("baseline.entryIvRankFilter") === "on" ? `IV Rank ≥ ${text("baseline.entryMaxIvRank")}` : null].filter((filter) => filter !== null);
+      return filters.length === 0 ? "off" : `no new entry at ${filters.join(" or ")}`;
+    }
     case "Exits":
       return [Number(text("baseline.takeProfitPct")) > 0 ? `take profit at ${shown("baseline.takeProfitPct")}` : "hold to expiry", Number(text("baseline.shareStopLossPct")) > 0 ? `share stop ${shown("baseline.shareStopLossPct")}` : "no share stop"].join(" · ");
     case "Capital and sizing":
@@ -147,4 +150,18 @@ const labPathsByTickerField: Record<BacktestLabTickerField, readonly string[]> =
 export function labTickersKeepingTheirOwn(path: string, overrides: readonly BacktestLabTickerOverrides[]): string[] {
   const fields = (Object.keys(labPathsByTickerField) as BacktestLabTickerField[]).filter((field) => labPathsByTickerField[field].includes(path));
   return overrides.filter((row) => fields.some((field) => row[field] !== null)).map((row) => row.symbol);
+}
+
+const settingPathPattern = /\b(?:baseline|pluto|trading|policy|model|lab|fixed)\.[A-Za-z]+\b|\bkellyFraction\b|\bdecisionMaker\b/g;
+const labOnlyLabels: Record<string, string> = { "lab.defaultPotDollars": "Default pot" };
+
+/** A refusal from the API with each setting key ("baseline.putsWhenNoCall") written as its label ("Puts when no call is sold"). */
+export function labelSettingPaths(message: string, rows: readonly BacktestSettingRow[]): string {
+  const labelByPath = new Map(rows.map((row) => [row.path, row.label]));
+  return message.replace(settingPathPattern, (path) => labelByPath.get(path) ?? labOnlyLabels[path] ?? path);
+}
+
+/** The setting keys a refusal names, first mention first. */
+export function settingPathsInMessage(message: string): string[] {
+  return [...new Set(message.match(settingPathPattern) ?? [])];
 }

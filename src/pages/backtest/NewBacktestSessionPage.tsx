@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { errorMessage } from "../../api/client";
+import { labelSettingPaths } from "../../lib/backtestSettingGroups";
 import {
   backtestMaxRunsPerBatch,
   backtestMaxSymbolsPerSession,
@@ -166,6 +167,10 @@ export function NewBacktestSessionPage() {
 
   const [template, setTemplate] = useState<BacktestSettingsTemplate | null>(null);
   const [templateError, setTemplateError] = useState<string | null>(null);
+  // A refusal names settings by key ("baseline.putsWhenNoCall"); shown by their labels. A ref, so the estimate callbacks read the loaded rows.
+  const templateRowsRef = useRef<BacktestSettingsTemplate["rows"]>([]);
+  templateRowsRef.current = template?.rows ?? [];
+  const refusalText = (err: unknown, fallback: string) => labelSettingPaths(errorMessage(err, fallback), templateRowsRef.current);
   const [sourceSession, setSourceSession] = useState<BacktestSessionDetail | null>(null);
   const [sourceBatch, setSourceBatch] = useState<BacktestBatchDetail | null>(null);
   const [sourceLoaded, setSourceLoaded] = useState(sourceSessionId === null && sourceBatchId === null);
@@ -408,7 +413,7 @@ export function NewBacktestSessionPage() {
         setEstimate({ requestText: debouncedEstimateRequestText, result, error: null });
         setLatestResult(result);
       })
-      .catch((err) => !cancelled && setEstimate({ requestText: debouncedEstimateRequestText, result: null, error: errorMessage(err, "Could not estimate the session.") }));
+      .catch((err) => !cancelled && setEstimate({ requestText: debouncedEstimateRequestText, result: null, error: refusalText(err, "Could not estimate the session.") }));
     return () => {
       cancelled = true;
     };
@@ -451,7 +456,7 @@ export function NewBacktestSessionPage() {
           // An older answer arriving after a newer request does not replace the newer one.
           if (askedRunTexts.current[key] === text) setRunLatestResults((previous) => ({ ...previous, [key]: result }));
         })
-        .catch((err) => setRunEstimates((previous) => ({ ...previous, [key]: { requestText: text, result: null, error: errorMessage(err, "Could not estimate the run.") } })));
+        .catch((err) => setRunEstimates((previous) => ({ ...previous, [key]: { requestText: text, result: null, error: refusalText(err, "Could not estimate the run.") } })));
     }
   }, [debouncedRunRequests]);
   const runEstimateIsCurrent = (key: string) => runRequestTexts[key] !== null && runRequestTexts[key] !== undefined && runEstimates[key]?.requestText === runRequestTexts[key];
@@ -672,7 +677,7 @@ export function NewBacktestSessionPage() {
       }
     } catch (err) {
       setConfirmOpen(false);
-      setSubmitError(errorMessage(err, several ? "Could not start the runs." : "Could not start the session."));
+      setSubmitError(refusalText(err, several ? "Could not start the runs." : "Could not start the session."));
       setSubmitting(false);
     }
   };

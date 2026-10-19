@@ -13,7 +13,8 @@ import {
   type BacktestLabTickerOverrides,
 } from "../../api/backtestAnalysis";
 import { buildBacktestOverrides, formatSettingRowValue, gradeOptions, isSettingChanged, settingInputText, settingValueProblem, tradeGradeLabel } from "../../lib/backtestPresentation";
-import { backtestSettingGroupSummary, backtestSettingLines, backtestSettingSectionTitles, groupBacktestSettingRows, labTickersKeepingTheirOwn, plutoRulesSectionNote, settingAppliesNow, type BacktestSettingLine } from "../../lib/backtestSettingGroups";
+import { ApiError } from "../../api/client";
+import { backtestSettingGroupSummary, backtestSettingLines, backtestSettingSectionTitles, groupBacktestSettingRows, labelSettingPaths, labTickersKeepingTheirOwn, plutoRulesSectionNote, settingAppliesNow, settingPathsInMessage, type BacktestSettingLine } from "../../lib/backtestSettingGroups";
 import { formatBrowserClockTime, formatBrowserDayMonth, formatCurrency, formatDayMonthYear, formatNumber, pluralizeCount } from "../../lib/formatters";
 import { ConfirmModal } from "../ConfirmModal";
 import { DataTable, type DataTableColumn } from "../DataTable/DataTable";
@@ -200,13 +201,41 @@ export function BacktestLabSettingsModal({ onClose }: { onClose: () => void }) {
     const templateRows = groups.flatMap((group) => group.rows).filter((row) => row.path !== potPath);
     return { overrides: buildBacktestOverrides(templateRows, valueByPath), ...(changedPaths.includes(potPath) && pot !== undefined ? { defaultPotDollars: Number(pot.trim()) } : {}) };
   };
+  const allRows = useMemo(() => groups.flatMap((group) => group.rows), [groups]);
+  /** The API's refusal with the settings it names written as their labels. */
+  const refusal = (message: string) => labelSettingPaths(message, allRows);
+
+  // The server's own checks as you edit (Marcelo 2026-10-19): half a second after the last change the values go to the
+  // preview (nothing written), and a refusal shows on the rows it names and holds Review and save.
+  const requestBodyText = hasChanges && problems.length === 0 ? JSON.stringify(requestBody()) : null;
+  const [serverCheck, setServerCheck] = useState<{ bodyText: string; problem: string | null } | null>(null);
+  useEffect(() => {
+    if (requestBodyText === null) return;
+    let cancelled = false;
+    const timer = window.setTimeout(() => {
+      previewBacktestLabSettings(JSON.parse(requestBodyText))
+        .then(() => {
+          if (!cancelled) setServerCheck({ bodyText: requestBodyText, problem: null });
+        })
+        .catch((error) => {
+          // Only a refusal of the values counts; a network failure leaves Review and save to say so.
+          if (!cancelled && error instanceof ApiError && error.status === 400) setServerCheck({ bodyText: requestBodyText, problem: error.message });
+        });
+    }, 500);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [requestBodyText]);
+  const serverProblem = serverCheck !== null && serverCheck.bodyText === requestBodyText ? serverCheck.problem : null;
+  const serverProblemPaths = serverProblem ? settingPathsInMessage(serverProblem) : [];
   const startSave = async () => {
     setBusy("preview");
     setActionError(null);
     try {
       setPreview(await previewBacktestLabSettings(requestBody()));
     } catch (error) {
-      setActionError(error instanceof Error ? error.message : "Could not check the changes.");
+      setActionError(error instanceof Error ? refusal(error.message) : "Could not check the changes.");
     } finally {
       setBusy(null);
     }
@@ -220,7 +249,7 @@ export function BacktestLabSettingsModal({ onClose }: { onClose: () => void }) {
       await load();
     } catch (error) {
       setPreview(null);
-      setActionError(error instanceof Error ? error.message : "Could not save the lab settings.");
+      setActionError(error instanceof Error ? refusal(error.message) : "Could not save the lab settings.");
     } finally {
       setBusy(null);
     }
@@ -262,6 +291,7 @@ export function BacktestLabSettingsModal({ onClose }: { onClose: () => void }) {
             </div>
           ))}
           {!applies && lead.appliesWhen && <div className="pm-help lab-settings-condition">{lead.appliesWhen.explanation}</div>}
+          {serverProblem && line.rows.some((row) => serverProblemPaths.includes(row.path)) && <div className="pm-help t-bad">{refusal(serverProblem)}</div>}
         </div>
         <div>
           {line.rows.length > 1 && line.rows.every((row) => row.editable) ? (
@@ -389,12 +419,13 @@ export function BacktestLabSettingsModal({ onClose }: { onClose: () => void }) {
                   </span>{" "}
                   <span className="muted">· {changedPaths.map((path) => `${rowLabel(path)} ${shownValue(path, settingInputText(rowByPath.get(path)!.now))} → ${shownValue(path)}`).join(" · ")}</span>
                   {problems.length > 0 && <div className="t-bad pm-wrap">{problems[0]}</div>}
-                  {actionError && <div className="t-bad pm-wrap">{actionError}</div>}
+                  {serverProblem && <div className="t-bad pm-wrap">{refusal(serverProblem)}</div>}
+                  {actionError && actionError !== (serverProblem && refusal(serverProblem)) && <div className="t-bad pm-wrap">{actionError}</div>}
                 </div>
                 <button type="button" className="pm-btn" onClick={discard} disabled={busy !== null}>
                   Discard
                 </button>
-                <button type="button" className="pm-btn primary" onClick={() => void startSave()} disabled={busy !== null || problems.length > 0}>
+                <button type="button" className="pm-btn primary" onClick={() => void startSave()} disabled={busy !== null || problems.length > 0 || serverProblem !== null}>
                   {busy === "preview" && <Spinner size="sm" />}
                   Review and save
                 </button>

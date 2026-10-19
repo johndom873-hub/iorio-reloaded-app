@@ -30,8 +30,7 @@ export interface BacktestBaselineSettings {
   maxSharesPctOfAccount: number;
   minCallYieldPct: number;
   minCallYieldAppliesTo: "every_call" | "new_covered_calls";
-  putsWhenNoCall: "off" | "dte_budget" | "reserve_ladder";
-  putBudgetPctPerDte: number;
+  putsWhenNoCall: "off" | "reserve_ladder";
   /** The CC + Put Ladder (putsWhenNoCall "reserve_ladder"): the shares' share of the pot, the rungs and the shock. */
   ladderSharesPct: number;
   ladderRungs: number;
@@ -57,6 +56,11 @@ export interface BacktestBaselineSettings {
   looks: "every_look" | "first_look";
   volatilityEdgeFilter: "off" | "entries" | "all_sales";
   minVolatilityEdgePoints: number;
+  /** The drop-risk filters on new entries (the API's entryDropRiskFilters.ts): each on or off with its own limit. */
+  entryExtensionFilter: "off" | "on";
+  entryMaxExtensionZ: number;
+  entryIvRankFilter: "off" | "on";
+  entryMaxIvRank: number;
   ranking: "premium_yield" | "edge_yield" | "time_value" | "premium_dollars" | "premium_per_day";
   expiryChoice: "any_in_range" | "nearest_qualifying";
   coverage: "best_contract" | "fill_down_ranking";
@@ -404,7 +408,7 @@ export interface BacktestSettingChoice {
   unavailableReason?: string;
 }
 
-export type BacktestSettingGroup = "How the session runs" | "Put ladder" | "Calls and Covered Calls" | "Contract choice" | "Exits" | "Capital and sizing" | "Candidate quality" | "Model" | "System checks" | "Rules' choices";
+export type BacktestSettingGroup = "How the session runs" | "Put ladder" | "Calls and Covered Calls" | "Contract choice" | "Entry filters" | "Exits" | "Capital and sizing" | "Candidate quality" | "Model" | "System checks" | "Rules' choices";
 
 /** "baseline_wheel": rows the Baseline wheel (the CC + Put Ladder) reads, some shared with the rules and the AI model; "pluto_rules": rows only the rules and the AI model read. */
 export type BacktestSettingSection = "baseline_wheel" | "pluto_rules";
