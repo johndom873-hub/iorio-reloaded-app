@@ -7,9 +7,10 @@ import { useColumnVisibility } from "./DataTable/useColumnVisibility";
 import { ApexChart } from "./charts/ApexChart";
 import { ClosePositionModal } from "./ClosePositionModal";
 import { RecoveryPathModal } from "./RecoveryPathModal";
+import { useChartPriceRange } from "../hooks/useChartPriceRange";
 import { useTheme } from "../hooks/useTheme";
 import type { Greeks, Position, UnrealizedPnlResult } from "../api/positions";
-import { computePayoff } from "../lib/payoff";
+import { computePayoff, computePayoffChartPoints, type PayoffPoint } from "../lib/payoff";
 import {
   daysAgo,
   formatCurrency,
@@ -77,10 +78,10 @@ const payoffAxisMaximumStepsBelowZero = 4;
 // Zero-anchored y axis for the payoff chart: from -k·top to top, where top = max gain + 5% and k covers the lowest plotted
 // P&L, capped so a lopsided position (a put's small premium against a huge max loss) keeps its gain side readable; the
 // steeper part of the loss then runs off the bottom (Max Loss is shown above the chart).
-function buildPayoffYAxis(payoff: ReturnType<typeof computePayoff>): { min?: number; max?: number; tickAmount?: number } {
+function buildPayoffYAxis(payoff: ReturnType<typeof computePayoff>, chartPoints: PayoffPoint[]): { min?: number; max?: number; tickAmount?: number } {
   if (!payoff || !(payoff.maxGain > 0)) return {};
   const top = payoff.maxGain * payoffAxisMaximumGainMargin;
-  const lowestPnl = Math.min(0, ...payoff.points.map((point) => point.pnl));
+  const lowestPnl = Math.min(0, ...chartPoints.map((point) => point.pnl));
   const stepsBelowZero = Math.min(payoffAxisMaximumStepsBelowZero, Math.max(1, Math.ceil(-lowestPnl / top - 1e-9)));
   return { min: -stepsBelowZero * top, max: top, tickAmount: stepsBelowZero + 1 };
 }
@@ -172,11 +173,13 @@ export function PositionCard({
 
   const payoff = useMemo(
     // Hedges and unstructured positions have no strategy payoff diagram.
-    () => (position.strategyKey === "covered_call" || position.strategyKey === "cash_secured_put" ? computePayoff(position.strategyKey, displayedLegs, currentPrice, position.breakEven ?? null) : null),
-    [position, displayedLegs, currentPrice],
+    () => (position.strategyKey === "covered_call" || position.strategyKey === "cash_secured_put" ? computePayoff(position.strategyKey, displayedLegs, position.breakEven ?? null) : null),
+    [position, displayedLegs],
   );
+  const chartPriceRange = useChartPriceRange(payoff?.breakeven ?? null, currentPrice);
+  const payoffChartPoints = useMemo(() => (payoff && chartPriceRange ? computePayoffChartPoints(payoff, chartPriceRange) : []), [payoff, chartPriceRange]);
 
-  const payoffYAxis = useMemo(() => buildPayoffYAxis(payoff), [payoff]);
+  const payoffYAxis = useMemo(() => buildPayoffYAxis(payoff, payoffChartPoints), [payoff, payoffChartPoints]);
 
   // What really traded for each leg (approved mockup 2026-10-16): IBKR's fills and commission, beside the cost P&L counts.
   const renderLegFill = (leg: (typeof displayedLegs)[number]) => {
@@ -477,14 +480,15 @@ export function PositionCard({
               <ApexChart
                 type="area"
                 height={196}
-                series={[{ name: "P&L at Expiration", data: payoff.points.map((p) => ({ x: p.price, y: p.pnl })) }]}
+                series={[{ name: "P&L at Expiration", data: payoffChartPoints.map((p) => ({ x: p.price, y: p.pnl })) }]}
                 options={{
                   xaxis: { type: "numeric", labels: { formatter: (value: string) => formatCurrency(Number(value)) } },
                   // Top of the axis is the max gain + 5% (Marcelo, 2026-09-30). Ticks are anchored on $0 and step in multiples of that top, so
                   // the top and $0 are always ticks (a bare `max` leaves Apex's ticks on odd values).
                   yaxis: { ...payoffYAxis, labels: { formatter: (value: number) => formatCurrency(Math.round(value) + 0, 0) } },
                   // Apex leaves ~30px above the plot: pull the chart up so its top gridline lines up with the top of the legs table beside it.
-                chart: { offsetY: -30, parentHeightOffset: 0 },
+                  // No animations: every tick moves the Current line and re-renders the chart, which would otherwise replay a morph each time.
+                chart: { offsetY: -30, parentHeightOffset: 0, animations: { enabled: false } },
                 grid: { padding: { top: 0 } },
                   tooltip: {
                     x: { formatter: (value: number) => formatCurrency(value) },

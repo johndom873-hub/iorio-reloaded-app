@@ -22,41 +22,55 @@ export interface PayoffResult {
   maxGain: number;
   maxLoss: number;
   breakeven: number;
-  points: PayoffPoint[];
+  /** P&L at expiration if the stock closes at `price`. */
+  payoffAt: (price: number) => number;
+}
+
+export interface ChartPriceRange {
+  low: number;
+  high: number;
 }
 
 const chartPointCount = 60;
-// The chart shows the break-even ±15% (Marcelo, 2026-09-30), widened just enough to keep the current price on it.
+// The chart shows the break-even ±15% (Marcelo, 2026-09-30). A current price within 2% of an edge widens that edge to 5% past the price
+// (Marcelo, 2026-10-19), and a held range never narrows again: the axis stays still between widenings instead of moving with every tick.
 const chartRangeFraction = 0.15;
-const currentPriceMarginFraction = 0.02;
+const currentPriceEdgeMarginFraction = 0.02;
+const currentPriceWidenedMarginFraction = 0.05;
 
 // Expiration-only "hockey stick" math, approved 2026-08-19 — see PROGRESS.md
 // and the Positions screen plan. Uses each leg's actual multiplier rather
 // than assuming 100, since the schema explicitly supports non-standard
 // multipliers (post-split/special-dividend adjusted contracts).
-export function computeChartPriceRange(breakeven: number, currentPrice: number | null): { low: number; high: number } {
-  let low = breakeven * (1 - chartRangeFraction);
-  let high = breakeven * (1 + chartRangeFraction);
-  if (currentPrice !== null && currentPrice > 0) {
-    low = Math.min(low, currentPrice * (1 - currentPriceMarginFraction));
-    high = Math.max(high, currentPrice * (1 + currentPriceMarginFraction));
-  }
-  return { low, high };
+
+// The chart's price range, widened from heldRange (the range already shown) or the break-even ±15% when there is none.
+// Returns heldRange itself when the price needs no widening, so an unchanged range keeps its identity.
+// Example: break-even $111.69 → $94.94–$128.44; a price of $94.95 is within 2% of $94.94, so the low edge becomes $94.95 × 0.95 = $90.20,
+// and it moves again only when the price falls below $92.04 ($90.20 ÷ 0.98).
+export function computeChartPriceRange(breakeven: number, currentPrice: number | null, heldRange: ChartPriceRange | null = null): ChartPriceRange {
+  const range = heldRange ?? { low: breakeven * (1 - chartRangeFraction), high: breakeven * (1 + chartRangeFraction) };
+  if (currentPrice === null || !(currentPrice > 0)) return range;
+  const widensLow = currentPrice * (1 - currentPriceEdgeMarginFraction) < range.low;
+  const widensHigh = currentPrice * (1 + currentPriceEdgeMarginFraction) > range.high;
+  if (!widensLow && !widensHigh) return range;
+  return {
+    low: widensLow ? currentPrice * (1 - currentPriceWidenedMarginFraction) : range.low,
+    high: widensHigh ? currentPrice * (1 + currentPriceWidenedMarginFraction) : range.high,
+  };
 }
 
-function buildChartPoints(breakeven: number, currentPrice: number | null, payoffAt: (price: number) => number): PayoffPoint[] {
-  const { low, high } = computeChartPriceRange(breakeven, currentPrice);
-  const step = (high - low) / (chartPointCount - 1);
+export function computePayoffChartPoints(payoff: PayoffResult, range: ChartPriceRange): PayoffPoint[] {
+  const step = (range.high - range.low) / (chartPointCount - 1);
   return Array.from({ length: chartPointCount }, (_, i) => {
-    const price = low + step * i;
-    return { price, pnl: payoffAt(price) };
+    const price = range.low + step * i;
+    return { price, pnl: payoff.payoffAt(price) };
   });
 }
 
 // A covered call's net cost per share is the position's own break-even when known (its shares' cost less the premium earned on
 // them, earlier calls and the put that delivered them included; approved 2026-10-16), else the stock entry less this call's premium.
 // Max gain is negative when the shares cost more than the strike plus that premium: assignment then sells them at a loss.
-export function computeCoveredCallPayoff(legs: PayoffLegInput[], currentPrice: number | null = null, positionBreakEven: number | null = null): PayoffResult | null {
+export function computeCoveredCallPayoff(legs: PayoffLegInput[], positionBreakEven: number | null = null): PayoffResult | null {
   const stockLeg = legs.find((leg) => leg.legType === "stock");
   const callLeg = legs.find((leg) => leg.legType === "option" && leg.optionType === "call");
   if (!stockLeg || !callLeg || callLeg.strikePrice === null) return null;
@@ -78,11 +92,11 @@ export function computeCoveredCallPayoff(legs: PayoffLegInput[], currentPrice: n
     maxGain: (strike - netCostPerShare) * shareCount,
     maxLoss: netCostPerShare * shareCount,
     breakeven: netCostPerShare,
-    points: buildChartPoints(netCostPerShare, currentPrice, payoffAt),
+    payoffAt,
   };
 }
 
-export function computeCashSecuredPutPayoff(legs: PayoffLegInput[], currentPrice: number | null = null): PayoffResult | null {
+export function computeCashSecuredPutPayoff(legs: PayoffLegInput[]): PayoffResult | null {
   const putLeg = legs.find((leg) => leg.legType === "option" && leg.optionType === "put");
   if (!putLeg || putLeg.strikePrice === null) return null;
 
@@ -100,13 +114,13 @@ export function computeCashSecuredPutPayoff(legs: PayoffLegInput[], currentPrice
     maxGain: putPremium * shareCount,
     maxLoss: (strike - putPremium) * shareCount,
     breakeven: strike - putPremium,
-    points: buildChartPoints(strike - putPremium, currentPrice, payoffAt),
+    payoffAt,
   };
 }
 
-export function computePayoff(strategyKey: StrategyKey, legs: PayoffLegInput[], currentPrice: number | null = null, positionBreakEven: number | null = null): PayoffResult | null {
-  if (strategyKey === "covered_call") return computeCoveredCallPayoff(legs, currentPrice, positionBreakEven);
-  return computeCashSecuredPutPayoff(legs, currentPrice);
+export function computePayoff(strategyKey: StrategyKey, legs: PayoffLegInput[], positionBreakEven: number | null = null): PayoffResult | null {
+  if (strategyKey === "covered_call") return computeCoveredCallPayoff(legs, positionBreakEven);
+  return computeCashSecuredPutPayoff(legs);
 }
 
 // Adapts an unconfirmed OrderRequest's legs (role/action/unitPrice/strike,
