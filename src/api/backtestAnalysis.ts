@@ -21,6 +21,9 @@ export type AnalysisRunStatus = "queued" | "running" | "stopped" | "succeeded" |
 export type AnalysisDteRange = "1-7" | "8-14" | "15-30" | "31-45";
 export const analysisDteRanges: readonly AnalysisDteRange[] = ["1-7", "8-14", "15-30", "31-45"];
 export type AnalysisChainView = "C" | "P" | "Pcap";
+/** Every contract, or only those inside the shared |delta| range. */
+export type AnalysisDeltaFilter = "any" | "band";
+type AnalysisChainGrid = Record<AnalysisChainView, Record<string, Record<AnalysisDteRange, AnalysisGridCell>>>;
 export type AnalysisPriceRange = "All" | "10Y" | "5Y" | "2Y" | "1Y";
 
 /** Run with these values: the settings panel's values over the ticker's lab values. ladderShockPct null = the shock rule. */
@@ -245,12 +248,16 @@ export interface AnalysisFigures {
   maxDrawdown: Record<AnalysisPriceRange, AnalysisMaxDrawdown | null>;
   shock: { startDate: string; windowFrom: string; closes: number; maxDrawdown: number | null; shock: number; rule: "history" | "fixed" };
   chains: {
-    grid: Record<AnalysisChainView, Record<string, Record<AnalysisDteRange, AnalysisGridCell>>>;
+    /** At the lab's |delta| rules. */
+    grid: AnalysisChainGrid;
+    /** Absent on analyses computed before 2026-10-19. */
+    gridByDelta?: Record<AnalysisDeltaFilter, AnalysisChainGrid>;
     years: Record<string, { from: string; to: string }>;
     monthly: AnalysisMonthRow[];
     daysWithoutPrice: number;
     daysWithNothingPassing: string[];
     spreadShareUnder25: number | null;
+    spreadShareUnder25ByDelta?: Record<AnalysisDeltaFilter, number | null>;
     lastDay: { date: string; spot: number | null; shock: number; cap: number | null; bestCappedPut: AnalysisCappedPut | null; /** Absent on analyses computed before 2026-10-19. */ bestEntryCall?: AnalysisCappedPut | null; passingCalls: number; passingPuts: number; passingCappedPuts: number } | null;
     chainMap: AnalysisChainMapContract[];
     scanSeconds: number;

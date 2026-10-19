@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import type { ApexOptions } from "apexcharts";
 import { IconAlertCircle, IconCircleCheck, IconCircleX } from "@tabler/icons-react";
-import { analysisDteRanges, type AnalysisChainView, type AnalysisFigures } from "../../../api/backtestAnalysis";
+import { analysisDteRanges, type AnalysisChainView, type AnalysisDeltaFilter, type AnalysisFigures } from "../../../api/backtestAnalysis";
 import { analysisChartColors, liquidityLevel, type AnalysisLevel, type AnalysisPanelValues } from "../../../lib/analysisPresentation";
 import { formatCurrency, formatDayMonth, formatDayMonthYear, formatPercentage, formatYearMonth } from "../../../lib/formatters";
 import { useTheme } from "../../../hooks/useTheme";
@@ -12,7 +12,8 @@ import { AnalysisCard, AnalysisSeriesKey } from "./analysisBits";
 
 // Option liquidity and yield by year and days to expiry, coloured by the share of days with a passing contract (no
 // minimum yield: Marcelo 2026-10-15), and the monthly chart of contracts passing, Calls and Puts stacked. The Puts toggle
-// (all Puts, or those under the first rung's cap) is shared by both cards.
+// (all Puts, or those under the first rung's cap) is shared by both cards. The |delta| toggle (Marcelo 2026-10-19) shows the
+// year × expiry grids at any |delta| or inside the shared range, Calls and Puts alike; the monthly chart stays at the lab's rules.
 
 const rangeLabels: Record<(typeof analysisDteRanges)[number], string> = { "1-7": "1–7", "8-14": "8–14", "15-30": "15–30", "31-45": "31–45" };
 const levelIcons: Record<AnalysisLevel, typeof IconCircleCheck> = { good: IconCircleCheck, fair: IconAlertCircle, poor: IconCircleX };
@@ -45,9 +46,15 @@ export function AnalysisLiquidityCards({ figures, computedWith, putsCapped, onPu
   const { theme } = useTheme();
   const colors = analysisChartColors[theme];
   const [side, setSide] = useState<"C" | "P">("P");
+  const [deltaFilter, setDeltaFilter] = useState<AnalysisDeltaFilter>("any");
   const view: AnalysisChainView = side === "C" ? "C" : putsCapped ? "Pcap" : "P";
-  const who = view === "C" ? "Calls" : view === "P" ? "Puts" : "Puts under the first rung's cap";
-  const years = Object.keys(figures.chains.grid[view]).sort();
+  const gridByDelta = figures.chains.gridByDelta;
+  const grid = gridByDelta ? gridByDelta[deltaFilter] : figures.chains.grid;
+  const band = `|delta| ${computedWith.minAbsDelta.toFixed(2)}–${computedWith.maxAbsDelta.toFixed(2)}`;
+  const deltaRule = !gridByDelta ? "|delta| as the lab's rules set it" : deltaFilter === "any" ? "any |delta|" : band;
+  const who = `${view === "C" ? "Calls" : view === "P" ? "Puts" : "Puts under the first rung's cap"}${gridByDelta ? `, ${deltaRule}` : ""}`;
+  const spreadShareUnder25 = figures.chains.spreadShareUnder25ByDelta?.[deltaFilter] ?? figures.chains.spreadShareUnder25;
+  const years = Object.keys(grid[view]).sort();
   const lastDay = figures.chains.lastDay;
 
   const yearNote = (year: string) => {
@@ -85,7 +92,7 @@ export function AnalysisLiquidityCards({ figures, computedWith, putsCapped, onPu
                 {yearNote(year)}
               </th>
               {analysisDteRanges.map((range) => {
-                const cell = figures.chains.grid[view][year]?.[range];
+                const cell = grid[view][year]?.[range];
                 if (!cell) return <td key={range} className="text-end">—</td>;
                 const share = cell.days === 0 ? 0 : cell.daysWithPassing / cell.days;
                 const tip = `${who}, ${rangeLabels[range]} days, ${year}: ${cell.daysWithPassing} of ${cell.days} days had a passing contract (${formatPercentage(share, 0)}) · median ${cell.medianPassingPerDay} contract${cell.medianPassingPerDay === 1 ? "" : "s"} a day passing · best yield, median of each day's best: ${formatPercentage(cell.medianBestYield)} · pooled median yield: ${formatPercentage(cell.pooledMedianYield, 0)}`;
@@ -147,7 +154,7 @@ export function AnalysisLiquidityCards({ figures, computedWith, putsCapped, onPu
     };
   }, [figures.chains.monthly, putsCapped, colors]);
 
-  const filters = `|delta| ${computedWith.minAbsDelta.toFixed(2)}–${computedWith.maxAbsDelta.toFixed(2)}, ${computedWith.minDte}–${computedWith.maxDte} days, spread at most ${computedWith.maxSpreadPctOfMid}% of the mid, bid at least $0.05, up to 20% of the previous session's volume, a positive premium after the $0.68 fee`;
+  const filters = `${deltaRule}, ${computedWith.minDte}–${computedWith.maxDte} days, spread at most ${computedWith.maxSpreadPctOfMid}% of the mid, bid at least $0.05, up to 20% of the previous session's volume, a positive premium after the $0.68 fee`;
   const actions = (
     <>
       <BacktestSegmentedSwitch
@@ -160,6 +167,17 @@ export function AnalysisLiquidityCards({ figures, computedWith, putsCapped, onPu
         onChange={setSide}
       />
       {side === "P" && <AnalysisPutsSwitch capped={putsCapped} onChange={onPutsCappedChange} />}
+      {gridByDelta && (
+        <BacktestSegmentedSwitch
+          ariaLabel="Which |delta|"
+          options={[
+            { value: "any", label: "Any |delta|" },
+            { value: "band", label: "In band" },
+          ]}
+          value={deltaFilter}
+          onChange={setDeltaFilter}
+        />
+      )}
     </>
   );
 
@@ -178,7 +196,8 @@ export function AnalysisLiquidityCards({ figures, computedWith, putsCapped, onPu
               </p>
             )}
             <p className="mb-0">
-              Filters: {filters}. Spreads: {formatPercentage(figures.chains.spreadShareUnder25, 0)} of the contracts that passed quoted at or under 25% of the mid.
+              Filters: {filters}. Spreads: {formatPercentage(spreadShareUnder25, 0)} of the contracts that passed quoted at or under 25% of the mid.
+              {gridByDelta ? ` In band: ${band}, the lab's shared range, for Calls and Puts alike.` : " Re-run the analysis to compare any |delta| with the shared range."}
             </p>
           </>
         }
