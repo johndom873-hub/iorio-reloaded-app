@@ -1,6 +1,7 @@
 import type { BacktestSettingRow } from "../../api/backtest";
 import { useMediaQuery } from "../../hooks/useMediaQuery";
-import { describeUnavailableChoices, formatSettingRowValue, gradeOptions, isSettingChanged, settingUnitSuffix, settingValueProblem, tradeGradeLabel } from "../../lib/backtestPresentation";
+import { describeUnavailableChoices, formatSettingRowValue, gradeOptions, isSettingChanged, settingInputText, settingUnitSuffix, settingValueProblem, tradeGradeLabel } from "../../lib/backtestPresentation";
+import { backtestSettingSectionTitles, groupBacktestSettingRows, plutoRulesSectionNote, settingAppliesNow } from "../../lib/backtestSettingGroups";
 
 interface BacktestSettingsTableProps {
   rows: BacktestSettingRow[];
@@ -11,18 +12,7 @@ interface BacktestSettingsTableProps {
   showPerTicker?: boolean;
 }
 
-const perTickerGroup = "Baseline wheel";
 const perTickerExplanation = "A change here goes to every ticker, over its lab value; a value set under Tickers still wins.";
-
-function groupedRows(rows: BacktestSettingRow[]): { group: string; rows: BacktestSettingRow[] }[] {
-  const groups: { group: string; rows: BacktestSettingRow[] }[] = [];
-  for (const row of rows) {
-    const existing = groups.find((entry) => entry.group === row.group);
-    if (existing) existing.rows.push(row);
-    else groups.push({ group: row.group, rows: [row] });
-  }
-  return groups;
-}
 
 /** What is off in a choice row (a choice that cannot be picked yet), under its select so it shows without opening the list. */
 function UnavailableChoicesHint({ row }: { row: BacktestSettingRow }) {
@@ -111,13 +101,15 @@ function PerTickerIntro() {
   );
 }
 
-function rowState(row: BacktestSettingRow, valueByPath: Record<string, string>) {
+function rowState(row: BacktestSettingRow, valueByPath: Record<string, string>, valueOf: (path: string) => string | undefined) {
   const value = valueByPath[row.path] ?? String(row.now);
   return {
     value,
     changed: row.editable && isSettingChanged(row, value),
     invalid: row.editable && settingValueProblem(row, value) !== null,
     note: row.note ?? (row.editable ? null : "Read-only in a backtest."),
+    /** Why the session won't read this value with the others as they are; null when it will. */
+    notAppliedNote: settingAppliesNow(row, valueOf) ? null : `Not applied now. ${row.appliesWhen?.explanation ?? ""}`.trim(),
     /** A choice's values are sentences: they wrap and read in the text font, not the numbers' mono. */
     isChoice: row.unit === "choice",
   };
@@ -128,13 +120,26 @@ function rowState(row: BacktestSettingRow, valueByPath: Record<string, string>) 
  *  session's input). */
 export function BacktestSettingsTable({ rows, valueByPath, onValueChange, onReset, showPerTicker = false }: BacktestSettingsTableProps) {
   const isPhone = useMediaQuery("(max-width: 767px)");
-  const groups = groupedRows(rows);
+  const groups = groupBacktestSettingRows(rows);
+  const nowByPath = new Map(rows.map((row) => [row.path, settingInputText(row.now)]));
+  const valueOf = (path: string) => valueByPath[path] ?? nowByPath.get(path);
+  const perTickerGroup = groups.find((entry) => entry.rows.some((row) => row.perTicker))?.group;
+  /** The Pluto section starts at its first group, under its title and note. */
+  const firstPlutoGroup = groups.find((entry) => entry.section === "pluto_rules")?.group;
 
   if (isPhone) {
     return (
       <div>
         {groups.map(({ group, rows: groupRows }) => (
           <section key={group}>
+            {group === firstPlutoGroup && (
+              <div className="px-3 py-2 border-bottom backtest-settings-section-band">
+                <div className="subheader">{backtestSettingSectionTitles.pluto_rules}</div>
+                <div className="text-secondary" style={{ fontSize: "0.78rem" }}>
+                  {plutoRulesSectionNote}
+                </div>
+              </div>
+            )}
             <div className="backtest-settings-group-band px-3 py-1">
               <h4 className="subheader mb-0">{group}</h4>
             </div>
@@ -144,7 +149,7 @@ export function BacktestSettingsTable({ rows, valueByPath, onValueChange, onRese
               </div>
             )}
             {groupRows.map((row) => {
-              const { value, changed, invalid, note, isChoice } = rowState(row, valueByPath);
+              const { value, changed, invalid, note, notAppliedNote, isChoice } = rowState(row, valueByPath, valueOf);
               const control = row.editable ? (
                 <SettingInput row={row} value={value} changed={changed} invalid={invalid} onValueChange={(next) => onValueChange(row.path, next)} />
               ) : (
@@ -159,6 +164,11 @@ export function BacktestSettingsTable({ rows, valueByPath, onValueChange, onRese
                   {note && (
                     <div className="text-secondary" style={{ fontSize: "0.75rem", lineHeight: 1.35 }}>
                       {note}
+                    </div>
+                  )}
+                  {notAppliedNote && (
+                    <div className="backtest-setting-not-applied" style={{ fontSize: "0.75rem", lineHeight: 1.35 }}>
+                      {notAppliedNote}
                     </div>
                   )}
                   {isChoice ? (
@@ -211,6 +221,16 @@ export function BacktestSettingsTable({ rows, valueByPath, onValueChange, onRese
         </thead>
         <tbody>
           {groups.map(({ group, rows: groupRows }) => [
+            group === firstPlutoGroup && (
+              <tr key="section-pluto-rules" className="backtest-settings-section-row">
+                <td colSpan={5} style={{ whiteSpace: "normal" }}>
+                  <div className="subheader">{backtestSettingSectionTitles.pluto_rules}</div>
+                  <div className="text-secondary" style={{ fontSize: "0.78rem" }}>
+                    {plutoRulesSectionNote}
+                  </div>
+                </td>
+              </tr>
+            ),
             <tr key={`group-${group}`} className="backtest-settings-group-row">
               <td colSpan={5}>
                 <span className="subheader">{group}</span>
@@ -224,7 +244,7 @@ export function BacktestSettingsTable({ rows, valueByPath, onValueChange, onRese
               </tr>
             ),
             ...groupRows.map((row) => {
-              const { value, changed, invalid, note, isChoice } = rowState(row, valueByPath);
+              const { value, changed, invalid, note, notAppliedNote, isChoice } = rowState(row, valueByPath, valueOf);
               const nowClassName = isChoice ? "text-secondary backtest-setting-choice-now" : "font-mono text-secondary text-nowrap";
               return (
                 <tr key={row.path} className={changed ? "backtest-setting-changed" : undefined}>
@@ -240,7 +260,10 @@ export function BacktestSettingsTable({ rows, valueByPath, onValueChange, onRese
                       <span className={nowClassName}>{formatSettingRowValue(row, row.now)}</span>
                     )}
                   </td>
-                  <td className="text-secondary backtest-wrapping-note">{note}</td>
+                  <td className="text-secondary backtest-wrapping-note">
+                    {note}
+                    {notAppliedNote && <div className="backtest-setting-not-applied">{notAppliedNote}</div>}
+                  </td>
                   <td className="text-end">{changed && <ResetButton onReset={() => onReset(row.path)} />}</td>
                 </tr>
               );

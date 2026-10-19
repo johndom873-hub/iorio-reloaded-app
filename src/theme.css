@@ -1917,6 +1917,23 @@
   padding-top: 0.35rem;
   padding-bottom: 0.35rem;
 }
+/* The Pluto section's heading (New session settings): its title and why the CC + Put Ladder ignores it. */
+.backtest-settings-section-row > td {
+  --tblr-table-bg: var(--tblr-bg-surface);
+  padding-top: 0.9rem;
+  border-top: 2px solid var(--tblr-border-color);
+}
+.backtest-settings-section-band {
+  border-top: 2px solid var(--tblr-border-color);
+}
+/* A setting the session won't read with the other values as they are. */
+.backtest-setting-not-applied {
+  color: #1d6fb8;
+  margin-top: 0.15rem;
+}
+:root[data-bs-theme="dark"] .backtest-setting-not-applied {
+  color: #7cc4fa;
+}
 /* Notes in a table cell wrap instead of stretching the table. */
 .backtest-wrapping-note {
   white-space: normal;
@@ -2692,28 +2709,38 @@
   }
 }
 
-/* ---- Lab settings section (Backtesting; mockup approved 2026-10-15) ---- */
-.backtest-lab-icon { flex: none; }
-/* "Edit the global lab settings" scrolls here: the header stays clear of the top bar where it is fixed (desktop). */
-@media (min-width: 992px) {
-  #backtest-lab-settings { scroll-margin-top: calc(var(--iorio-topbar-height) + 0.75rem); }
+/* ---- Lab settings (Backtesting; modal mockup approved 2026-10-19), on Pluto's settings classes (PlutoPage.css) ---- */
+.lab-settings-modal .modal-body.pm { background: var(--page); padding: 1.25rem 1.25rem 1.5rem; }
+.lab-settings-subtitle { font-size: 0.8rem; margin-top: 0.15rem; }
+.lab-settings-modal .pm-snav { top: 0; }
+/* The save bar sticks to the top of the scrolling body; its shadow hides the rows scrolling past above it. */
+.lab-settings-modal .pm-savebar { top: 0; box-shadow: 0 -1.25rem 0 0 var(--page), var(--menu-shadow); }
+@media (min-width: 768px) {
+  .lab-settings-modal .pm-field { grid-template-columns: minmax(0, 1fr) 210px; }
 }
-.backtest-lab-group-toggle { display: inline-flex; align-items: center; gap: 0.45rem; padding: 0; border: 0; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; }
-.backtest-lab-saved-line { margin-top: 0.25rem; font-size: 0.75rem; color: var(--tblr-secondary-color); }
-.backtest-lab-footer { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem 0.75rem; }
-.backtest-lab-pending { display: inline-flex; align-items: center; padding: 0.15rem 0.5rem; border: 1px solid currentColor; border-radius: var(--tblr-border-radius); font-size: 0.72rem; font-weight: 600; }
-.backtest-lab-problem { color: var(--analysis-poor-ink); font-size: 0.78rem; }
-.backtest-lab-confirm-change { padding: 0.6rem 0.75rem; border: 1px solid var(--tblr-border-color); border-radius: var(--tblr-border-radius); }
-.backtest-lab-table td:first-child { width: 16rem; }
-.backtest-lab-change-cell { min-width: 15rem; }
-.backtest-lab-change { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; white-space: normal; }
-/* Phone: group bands are full-width 44px buttons; Discard and Save stay in view at the bottom of the section. */
+.lab-settings-modal .pm-field label.lab-settings-label { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.lab-settings-condition { color: var(--azure-text); }
+.lab-settings-modal .pm-input.lab-settings-fixed { background: var(--surface-2); }
+.lab-settings-fixed-value { display: flex; align-items: center; justify-content: flex-end; width: 100%; padding: 0 10px; color: var(--strong); font-variant-numeric: tabular-nums; }
+.lab-settings-modal .pm-input .unit.lab-settings-prefix { border-left: 0; border-right: 1px solid var(--border); }
+.lab-settings-kept { font-size: 0.75rem; color: var(--muted); margin-top: 4px; text-align: right; }
+.lab-settings-snav-section + .lab-settings-snav-section { border-top: 1px solid var(--border-soft); margin-top: 6px; padding-top: 6px; }
+.lab-settings-snav-title { font-size: 0.72rem; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; color: var(--muted); padding: 4px 10px; }
+.lab-settings-section-title { font-size: 0.75rem; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; color: var(--muted); margin: 8px 0 0; }
+.lab-settings-audit-change { font-variant-numeric: tabular-nums; }
+.lab-settings-overrides { margin-top: 1.25rem; }
 @media (max-width: 767.98px) {
-  .backtest-lab-group-toggle { width: 100%; min-height: 2.75rem; }
-  .backtest-lab-footer { position: sticky; bottom: 0; z-index: 2; background: var(--tblr-bg-surface); }
-  .backtest-lab-saved-line .analysis-link { padding: 0.85rem 0.5rem; margin: -0.85rem -0.5rem; }
-  .backtest-lab-phone-input .form-select { width: 100%; }
+  .lab-settings-modal .modal-body.pm { padding: 1rem 0.75rem 1.25rem; }
+  .lab-settings-modal .pm-savebar { flex-wrap: wrap; box-shadow: 0 -1rem 0 0 var(--page), var(--menu-shadow); }
+  .lab-settings-modal .pm-savebar .body { flex-basis: calc(100% - 20px); white-space: normal; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; }
+  .lab-settings-modal .pm-savebar .pm-btn { flex: 1; min-height: 44px; }
 }
+/* Narrower than Pluto's three columns: the nav wraps its links in rows, one section per row. */
+@media (max-width: 1199.98px) {
+  .lab-settings-snav-section { display: flex; flex-wrap: wrap; gap: 2px; width: 100%; }
+  .lab-settings-snav-title { width: 100%; }
+}
+.backtest-lab-confirm-change { padding: 0.6rem 0.75rem; border: 1px solid var(--tblr-border-color); border-radius: var(--tblr-border-radius); }
 
 /* ---- Backtest batches (mockup approved 2026-10-17) ---- */
 /* New session, several runs: a run's band in the Runs card, and the batch table's buy-and-hold band (the settings group row's surface). */

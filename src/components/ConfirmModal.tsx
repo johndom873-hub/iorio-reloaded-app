@@ -19,6 +19,8 @@ interface ConfirmModalProps {
   size?: "sm" | "lg";
   /** Disables the confirm button (e.g. while what it confirms is still being worked out). */
   confirmDisabled?: boolean;
+  /** Over another modal: the backdrop and dialog sit at 1100, above the first modal's 1050. */
+  stacked?: boolean;
   onConfirm: () => void;
   onCancel: () => void;
 }
@@ -29,19 +31,22 @@ interface ConfirmModalProps {
 // Confirmation modal per the app's convention: does NOT close on backdrop
 // click or ESC, since accidentally dismissing it should never be mistaken
 // for confirming — Cancel is the only way out besides the actual buttons.
-export function ConfirmModal({ title, message, confirmLabel = "Confirm", cancelLabel = "Cancel", danger = true, confirming = false, secondaryLabel, onSecondary, size, confirmDisabled = false, onConfirm, onCancel }: ConfirmModalProps) {
+export function ConfirmModal({ title, message, confirmLabel = "Confirm", cancelLabel = "Cancel", danger = true, confirming = false, secondaryLabel, onSecondary, size, confirmDisabled = false, stacked = false, onConfirm, onCancel }: ConfirmModalProps) {
+  const zIndex = stacked ? 1100 : 1050;
   useEffect(() => {
+    // Stacked: the modal underneath already holds the page still, and restores it when it closes.
+    if (stacked) return;
     const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
     return () => {
       document.body.style.overflow = previousOverflow;
     };
-  }, []);
+  }, [stacked]);
 
   return (
     <>
-      <div className="modal-backdrop show" style={{ zIndex: 1050, backgroundColor: "rgba(0,0,0,0.5)", opacity: 1 }} />
-      <div className="modal show d-block" style={{ zIndex: 1050 }}>
+      <div className="modal-backdrop show" style={{ zIndex, backgroundColor: "rgba(0,0,0,0.5)", opacity: 1 }} />
+      <div className="modal show d-block" style={{ zIndex }}>
         <div className={`modal-dialog modal-dialog-centered modal-dialog-scrollable ${size ? `modal-${size}` : secondaryLabel ? "" : "modal-sm"}`}>
           <div className="modal-content">
             <div className="modal-header">

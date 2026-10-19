@@ -404,10 +404,33 @@ export interface BacktestSettingChoice {
   unavailableReason?: string;
 }
 
+export type BacktestSettingGroup = "How the session runs" | "Put ladder" | "Calls and Covered Calls" | "Contract choice" | "Exits" | "Capital and sizing" | "Candidate quality" | "Model" | "System checks" | "Rules' choices";
+
+/** "baseline_wheel": rows the Baseline wheel (the CC + Put Ladder) reads, some shared with the rules and the AI model; "pluto_rules": rows only the rules and the AI model read. */
+export type BacktestSettingSection = "baseline_wheel" | "pluto_rules";
+
+/** A row's value against another row's: `oneOf` / `noneOf` its choice values, or a number `above`. */
+export interface BacktestSettingCondition {
+  path: string;
+  oneOf?: string[];
+  noneOf?: string[];
+  above?: number;
+}
+
+/** When a row's value is read at all: every condition in `allOf`, and one of `anyOf` when given. */
+export interface BacktestSettingApplicability {
+  allOf?: BacktestSettingCondition[];
+  anyOf?: BacktestSettingCondition[];
+  explanation: string;
+}
+
 /** One row of the New session settings table. `path` addresses the value inside BacktestSettings, e.g. "pluto.minEdgeYieldPct" or "policy.roll". */
 export interface BacktestSettingRow {
   path: string;
-  group: "Capital and sizing" | "Candidate quality" | "Model" | "Trading window and system checks" | "Decisions (stand-in for the AI)" | "Baseline wheel";
+  group: BacktestSettingGroup;
+  section: BacktestSettingSection;
+  /** Absent: always read (in its section's sessions). */
+  appliesWhen?: BacktestSettingApplicability;
   label: string;
   /** "time" is a clock time, "HH:MM" Eastern. */
   unit: "percent" | "number" | "integer" | "dollars" | "grade" | "days" | "time" | "choice";
@@ -954,7 +977,6 @@ export interface BacktestCompareResponse {
 
 // ---- Names the screens use for parts of the contract above ----
 
-export type BacktestSettingGroup = BacktestSettingRow["group"];
 export type BacktestSettingUnit = BacktestSettingRow["unit"];
 export type BacktestTradeEnding = NonNullable<BacktestTrade["endedBy"]>;
 export type BacktestCompareSession = BacktestCompareResponse["sessions"][number];
