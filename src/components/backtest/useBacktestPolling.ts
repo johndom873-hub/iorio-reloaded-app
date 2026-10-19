@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { ApiError, errorMessage } from "../../api/client";
 import { fetchBacktestOverview, type BacktestOverview } from "../../api/backtest";
 import { usePollWhileVisible } from "../../hooks/usePollWhileVisible";
+import { reuseUnchangedValues } from "../../lib/structuralSharing";
 import { fastPollIntervalMs, idlePollIntervalMs, isBacktestJobActive } from "../../lib/backtestPresentation";
 
 // Progress lives in the API's database (each job runs in its own process), so the screens only poll: every 2 s while a job
@@ -49,7 +50,8 @@ export function usePolledBacktestResource<TData>(fetcher: () => Promise<TData>, 
   const reload = useCallback(async () => {
     try {
       const next = await fetcherRef.current();
-      setData(next);
+      // An unchanged poll keeps the previous object (no re-render); a changed one keeps every unchanged part's reference.
+      setData((previous) => (previous === null ? next : reuseUnchangedValues<TData>(previous, next)));
       setLoadError(null);
       failingSinceMsRef.current = null;
       setRefreshFailing(false);

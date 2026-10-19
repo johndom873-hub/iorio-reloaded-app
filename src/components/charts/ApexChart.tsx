@@ -1,3 +1,4 @@
+import { useMemo } from "react";
 import ReactApexChart from "react-apexcharts";
 import type { ApexOptions, ApexYAxis } from "apexcharts";
 import { useTheme } from "../../hooks/useTheme";
@@ -21,10 +22,17 @@ const gridColorByTheme = { light: "rgba(0,0,0,0.08)", dark: "rgba(255,255,255,0.
 // repeating config at every call site.
 export function ApexChart({ type, series, options = {}, height = 300 }: ApexChartProps) {
   const { theme } = useTheme();
+  // Memoised: the same options object for the same inputs, so a re-render with unchanged chart inputs hands the chart
+  // nothing new.
+  const mergedOptions = useMemo(() => mergeThemeOptions(options, theme), [options, theme]);
+
+  return <ReactApexChart type={type} series={series} options={mergedOptions} height={height} />;
+}
+
+function mergeThemeOptions(options: ApexOptions, theme: keyof typeof textColorByTheme): ApexOptions {
   const textColor = textColorByTheme[theme];
   const gridColor = gridColorByTheme[theme];
-
-  const mergedOptions: ApexOptions = {
+  return {
     ...options,
     chart: {
       toolbar: { show: false },
@@ -51,6 +59,4 @@ export function ApexChart({ type, series, options = {}, height = 300 }: ApexChar
     legend: { ...options.legend, labels: { colors: textColor, ...options.legend?.labels } },
     tooltip: { theme, ...options.tooltip },
   };
-
-  return <ReactApexChart type={type} series={series} options={mergedOptions} height={height} />;
 }
