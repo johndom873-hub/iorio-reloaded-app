@@ -2428,6 +2428,13 @@
   .analysis-chip .btn-icon { width: 2.75rem !important; height: 2.75rem !important; margin: -0.5rem -0.4rem -0.5rem -0.4rem; }
 }
 
+/* Wheel cycle card: the summary figures never break mid-number; on a phone they shrink to fit a half-width column. */
+.cycle-card-figure { font-size: 1.25rem; white-space: nowrap; }
+@media (max-width: 575.98px) {
+  .cycle-card-figure { font-size: 1rem; }
+  .cycle-card-select { min-height: 2.75rem; }
+}
+
 /* ---- New session: per-ticker pots (mockup approved 2026-10-15) ---- */
 /* Where a ticker's value came from: solid fills, the same in both themes (white on #6c757d 4.7:1, on #0369a1 5.9:1,
    on #0f766e 5.5:1; black on #f59f00 9.8:1). */

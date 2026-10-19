@@ -104,7 +104,7 @@ export function CycleCard({ symbol, unrealizedPnlByPositionId = {} }: { symbol: 
           {cycles!.length > 1 && (
             <select
               id="cycle-select"
-              className="form-select"
+              className="form-select cycle-card-select"
               style={{ maxWidth: "24rem" }}
               value={selectedIndex}
               onChange={(event) => setSelectedIndex(Number(event.target.value))}
@@ -127,19 +127,19 @@ export function CycleCard({ symbol, unrealizedPnlByPositionId = {} }: { symbol: 
           <div className="row g-3">
             <div className="col-6 col-md-3">
               <div className="text-secondary" style={{ fontSize: "0.72rem", textTransform: "uppercase" }}>Cycle P&amp;L</div>
-              <div className={`fw-bold font-mono ${pnlTextClass(cycle.total)}`} style={{ fontSize: "1.25rem" }}>{formatSignedPnl(cycle.total)}</div>
+              <div className={`cycle-card-figure fw-bold font-mono ${pnlTextClass(cycle.total)}`}>{formatSignedPnl(cycle.total)}</div>
             </div>
             <div className="col-6 col-md-3">
               <div className="text-secondary" style={{ fontSize: "0.72rem", textTransform: "uppercase" }}>Net premium</div>
-              <div className={`fw-bold font-mono ${pnlTextClass(cycle.netPremium)}`} style={{ fontSize: "1.25rem" }}>{formatSignedPnl(cycle.netPremium)}</div>
+              <div className={`cycle-card-figure fw-bold font-mono ${pnlTextClass(cycle.netPremium)}`}>{formatSignedPnl(cycle.netPremium)}</div>
             </div>
             <div className="col-6 col-md-3">
               <div className="text-secondary" style={{ fontSize: "0.72rem", textTransform: "uppercase" }}>Stock P&amp;L</div>
-              <div className={`fw-bold font-mono ${pnlTextClass(cycle.stock)}`} style={{ fontSize: "1.25rem" }}>{formatSignedPnl(cycle.stock)}</div>
+              <div className={`cycle-card-figure fw-bold font-mono ${pnlTextClass(cycle.stock)}`}>{formatSignedPnl(cycle.stock)}</div>
             </div>
             <div className="col-6 col-md-3">
               <div className="text-secondary" style={{ fontSize: "0.72rem", textTransform: "uppercase" }}>Break-even</div>
-              <div className="fw-bold font-mono" style={{ fontSize: "1.25rem" }}>
+              <div className="cycle-card-figure fw-bold font-mono">
                 {cycle.breakEvenPerShare === null ? "—" : cycle.breakEvenPerShare <= 0 ? "Free" : formatCurrency(cycle.breakEvenPerShare, 2)}
               </div>
             </div>
@@ -188,7 +188,11 @@ export function CycleCard({ symbol, unrealizedPnlByPositionId = {} }: { symbol: 
                     )}
                     {visible("stockPrice") && (
                       <td className={`text-end font-mono text-nowrap ${row.stockPrice === null ? "text-secondary" : ""}`}>
-                        {row.stockPrice === null ? "—" : formatTransactionPrice(row.stockPrice, { withDollarSign: true })}
+                        {row.stockPrice === null
+                          ? "—"
+                          : row.stockPriceSource === "close" || row.stockPriceSource === "live"
+                            ? formatCurrency(row.stockPrice)
+                            : formatTransactionPrice(row.stockPrice, { withDollarSign: true })}
                         {row.stockPrice !== null && (row.stockPriceSource === "close" || row.stockPriceSource === "live") && (
                           <span className="text-secondary ms-1" style={{ fontSize: "0.72rem", fontFamily: "var(--tblr-font-sans-serif)" }}>
                             {row.stockPriceSource}
