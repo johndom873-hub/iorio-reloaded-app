@@ -20,14 +20,12 @@ export interface ScreenerScanRow {
   isShortlisted: boolean;
 }
 
-export type ScreenerBestRankBucket = "1-10" | "11-20" | "21-30" | "31-40" | "41-50" | "unmatched";
-
 export interface ScreenerFilters {
   search?: string;
   sector?: string[];
   minIv?: number;
   minOpenInterest?: number;
-  bestRankBucket?: ScreenerBestRankBucket;
+  maxPrice?: number;
   matchedScanCodes?: string[];
 }
 

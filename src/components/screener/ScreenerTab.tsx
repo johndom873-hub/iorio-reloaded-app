@@ -7,7 +7,6 @@ import {
   addScreenerResultToShortlist,
   fetchScreenerResults,
   fetchScreenerSectors,
-  type ScreenerBestRankBucket,
   type ScreenerFilters,
   type ScreenerScanRow,
 } from "../../api/screener";
@@ -23,20 +22,11 @@ interface FilterFormState {
   sector: string[];
   minIv: string;
   minOpenInterest: string;
-  bestRankBucket: ScreenerBestRankBucket | "";
+  maxPrice: string;
   matchedScanCodes: string[];
 }
 
-const emptyFilterForm: FilterFormState = { search: "", sector: [], minIv: "", minOpenInterest: "", bestRankBucket: "", matchedScanCodes: [] };
-
-const bestRankBucketOptions: { value: ScreenerBestRankBucket; label: string }[] = [
-  { value: "1-10", label: "1 – 10" },
-  { value: "11-20", label: "11 – 20" },
-  { value: "21-30", label: "21 – 30" },
-  { value: "31-40", label: "31 – 40" },
-  { value: "41-50", label: "41 – 50" },
-  { value: "unmatched", label: "Unmatched (didn't clear this refresh)" },
-];
+const emptyFilterForm: FilterFormState = { search: "", sector: [], minIv: "", minOpenInterest: "", maxPrice: "", matchedScanCodes: [] };
 
 // The 6 scan codes run-daily-screener-scan-job.ts queries — kept here as the
 // filter's option list rather than fetched, since this set only ever changes
@@ -79,12 +69,13 @@ function loadStoredFilters(): FilterFormState {
 function toFilters(form: FilterFormState): ScreenerFilters {
   const minIv = form.minIv.trim() === "" ? undefined : Number(form.minIv) / 100;
   const minOpenInterest = form.minOpenInterest.trim() === "" ? undefined : Number(form.minOpenInterest);
+  const maxPrice = form.maxPrice.trim() === "" ? undefined : Number(form.maxPrice);
   return {
     search: form.search.trim() || undefined,
     sector: form.sector.length > 0 ? form.sector : undefined,
     minIv,
     minOpenInterest,
-    bestRankBucket: form.bestRankBucket || undefined,
+    maxPrice,
     matchedScanCodes: form.matchedScanCodes.length > 0 ? form.matchedScanCodes : undefined,
   };
 }
@@ -352,19 +343,17 @@ export function ScreenerTab({ onOpenTickerModal }: ScreenerTabProps) {
               />
             </div>
             <div>
-              <label className="form-label">Best Rank</label>
-              <select
-                className="form-select"
-                value={form.bestRankBucket}
-                onChange={(event) => setForm((prev) => ({ ...prev, bestRankBucket: event.target.value as ScreenerBestRankBucket | "" }))}
-              >
-                <option value="">Any</option>
-                {bestRankBucketOptions.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {option.label}
-                  </option>
-                ))}
-              </select>
+              <label className="form-label">Max Price $</label>
+              <input
+                type="number"
+                className="form-control"
+                placeholder="e.g. 50"
+                title="Last price from the nightly refresh; tickers with no price are left out"
+                min="0"
+                step="any"
+                value={form.maxPrice}
+                onChange={(event) => setForm((prev) => ({ ...prev, maxPrice: event.target.value }))}
+              />
             </div>
             <div>
               <label className="form-label">Match Type</label>
