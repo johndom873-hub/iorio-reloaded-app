@@ -23,6 +23,7 @@ import {
   type BacktestSettingsOverrides,
   type BacktestSettingUnit,
   type BacktestTablesMode,
+  type BacktestTickerSuitability,
   type BacktestTrade,
   type BacktestTradeEnding,
   type BacktestWheelCycleSummary,
@@ -63,6 +64,23 @@ import { gradeBadgeClass, gradeLabel } from "./signalsPresentation";
 
 // Labels, badge classes, explanations and small derivations for the Backtesting screens (mockup approved 2026-10-12,
 // figures defined in the API's docs/backtesting/FORMULAS.md). Every explanation uses the formula sheet's wording.
+
+// ---- Data files ----
+
+/** A ticker's suitability for the CC + Put Ladder: "pending" until an admin marks it. */
+export type TickerSuitabilityStatus = BacktestTickerSuitability["status"];
+
+export const tickerSuitabilityLabel: Record<TickerSuitabilityStatus, string> = {
+  pending: "Pending",
+  suitable: "Suitable",
+  unsuitable: "Unsuitable",
+};
+
+export const tickerSuitabilityBadgeClass: Record<TickerSuitabilityStatus, string> = {
+  pending: "bg-secondary",
+  suitable: "bg-success",
+  unsuitable: "bg-danger",
+};
 
 // ---- Jobs ----
 

@@ -24,6 +24,9 @@ import {
 import { analysisBacktestName, analysisTickerKeys, differingAnalysisKeys, type AnalysisPanelKey, type AnalysisPanelValues } from "../../../lib/analysisPresentation";
 import { formatBrowserClockTime, formatDayMonthYear, formatNumber } from "../../../lib/formatters";
 import { useSignalsTickerModal } from "../../../hooks/useSignalsTickerModal";
+import { useIsAdmin } from "../../../hooks/useAuth";
+import { TickerSuitabilityModal } from "../TickerSuitabilityModal";
+import { AnalysisTickerFacts, AnalysisTickerIdentity } from "./AnalysisTickerHeader";
 import { Spinner } from "../../Spinner";
 import { usePolledBacktestResource } from "../useBacktestPolling";
 import { AnalysisCard, AnalysisNote, AnalysisProgressBar } from "./analysisBits";
@@ -91,10 +94,14 @@ interface TickerAnalysisModalProps {
   symbol: string;
   onClose: () => void;
   onEditGlobalSettings: () => void;
+  /** After a Suitability save from the header: the opener's table reloads (otherwise it shows on its next poll). */
+  onSuitabilitySaved?: () => Promise<void>;
 }
 
-export function TickerAnalysisModal({ symbol, onClose, onEditGlobalSettings }: TickerAnalysisModalProps) {
+export function TickerAnalysisModal({ symbol, onClose, onEditGlobalSettings, onSuitabilitySaved }: TickerAnalysisModalProps) {
   const navigate = useNavigate();
+  const isAdmin = useIsAdmin();
+  const [suitabilityOpen, setSuitabilityOpen] = useState(false);
   const signalsTicker = useSignalsTickerModal();
   const isActive = useCallback((view: { active: AnalysisRunView[] }) => view.active.length > 0, []);
   const fetchView = useCallback(() => fetchTickerAnalysis(symbol), [symbol]);
@@ -159,14 +166,14 @@ export function TickerAnalysisModal({ symbol, onClose, onEditGlobalSettings }: T
     if (trialRunId && view?.trial?.id === trialRunId) setShowTrial(true);
   }, [trialRunId, view?.trial?.id]);
 
-  // ESC closes the window, unless the Signals ticker window is open over it or the confirmation is.
+  // ESC closes the window, unless the Signals ticker window, the confirmation or the Suitability window is open over it.
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape" && !confirm && !signalsTicker.symbol) onClose();
+      if (event.key === "Escape" && !confirm && !signalsTicker.symbol && !suitabilityOpen) onClose();
     };
     document.addEventListener("keydown", onKeyDown);
     return () => document.removeEventListener("keydown", onKeyDown);
-  }, [onClose, confirm, signalsTicker.symbol]);
+  }, [onClose, confirm, signalsTicker.symbol, suitabilityOpen]);
 
   useEffect(() => {
     const previousOverflow = document.body.style.overflow;
@@ -497,12 +504,23 @@ export function TickerAnalysisModal({ symbol, onClose, onEditGlobalSettings }: T
                 <h5 className="modal-title" id="analysis-modal-title">
                   {symbol}
                 </h5>
+                {view && <AnalysisTickerIdentity symbol={symbol} profile={view.profile} suitability={view.suitability} onOpenSuitability={isAdmin ? () => setSuitabilityOpen(true) : null} />}
+                {figuresForDates && (
+                  <div className="d-none d-sm-block">
+                    <AnalysisTickerFacts symbol={symbol} figures={figuresForDates} />
+                  </div>
+                )}
               </div>
               <div className="d-none d-sm-block">{statusLine}</div>
               <button type="button" className="btn-close" aria-label="Close" onClick={onClose} />
             </div>
             <div className="modal-body">
               <div className="d-sm-none">{statusLine}</div>
+              {figuresForDates && (
+                <div className="d-sm-none mb-3">
+                  <AnalysisTickerFacts symbol={symbol} figures={figuresForDates} />
+                </div>
+              )}
               {body}
             </div>
           </div>
@@ -522,6 +540,17 @@ export function TickerAnalysisModal({ symbol, onClose, onEditGlobalSettings }: T
           error={confirmError}
           onStart={() => void startBacktest()}
           onCancel={() => setConfirm(null)}
+        />
+      )}
+      {suitabilityOpen && view && (
+        <TickerSuitabilityModal
+          symbol={symbol}
+          suitability={view.suitability}
+          stacked
+          onSaved={async () => {
+            await Promise.all([reload(), onSuitabilitySaved?.()]);
+          }}
+          onClose={() => setSuitabilityOpen(false)}
         />
       )}
     </>

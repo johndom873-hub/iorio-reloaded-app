@@ -268,3 +268,43 @@ export function analysisSignedClass(value: number | null | undefined): string {
   if (value === null || value === undefined || value === 0) return "";
   return value > 0 ? "analysis-ink-good" : "analysis-ink-poor";
 }
+
+// ---- The window's header (Marcelo 2026-10-19) ----
+
+type AnalysisBar = AnalysisFigures["bars"][number];
+
+/** The last daily close and its change from the one before (a fraction); null without bars. */
+export function lastCloseWithChange(bars: readonly AnalysisBar[]): { date: string; close: number; change: number | null } | null {
+  const last = bars.at(-1);
+  if (!last) return null;
+  const previous = bars.at(-2);
+  return { date: last[0], close: last[4], change: previous && previous[4] > 0 ? last[4] / previous[4] - 1 : null };
+}
+
+/** The 52-week range: the lowest low and highest high of the last 252 sessions, and where the last close sits in it (0 = the low, 1 = the high). */
+export function fiftyTwoWeekRange(bars: readonly AnalysisBar[]): { low: number; high: number; position: number | null } | null {
+  const window = bars.slice(-252);
+  if (window.length === 0) return null;
+  const low = Math.min(...window.map((bar) => bar[3]));
+  const high = Math.max(...window.map((bar) => bar[2]));
+  return { low, high, position: high > low ? (window.at(-1)![4] - low) / (high - low) : null };
+}
+
+/**
+ * IV percentile (approved 2026-10-19): the share of the last 252 sessions with an implied volatility whose IV is at or below
+ * the last session's. Null when the last session has none.
+ */
+export function impliedVolatilityPercentile(bars: readonly AnalysisBar[]): { impliedVolatility: number; percentile: number; sessions: number } | null {
+  const window = bars.slice(-252).flatMap((bar) => (bar[5] === null ? [] : [bar[5]]));
+  const today = bars.at(-1)?.[5] ?? null;
+  if (today === null || window.length === 0) return null;
+  return { impliedVolatility: today, percentile: window.filter((value) => value <= today).length / window.length, sessions: window.length };
+}
+
+const tickerKindLabel = { stock: "Stock", adr: "ADR", etf: "ETF", other: "Other" } as const;
+
+/** The header's category chips: "Stock", "Finance", "Investment Banks/Brokers"; an ETF is "ETF" alone (its sector only says "Miscellaneous"). */
+export function tickerCategoryLabels(profile: { kind: keyof typeof tickerKindLabel | null; sector: string | null; industry: string | null }): string[] {
+  if (profile.kind === "etf") return ["ETF"];
+  return [profile.kind ? tickerKindLabel[profile.kind] : null, profile.sector, profile.industry].filter((label): label is string => !!label);
+}

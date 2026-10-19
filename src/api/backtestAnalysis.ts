@@ -1,5 +1,5 @@
 import { apiRequest } from "./client";
-import type { BacktestMetrics, BacktestSettingsTemplate } from "./backtest";
+import type { BacktestMetrics, BacktestSettingsTemplate, BacktestTickerProfile, BacktestTickerSuitability } from "./backtest";
 
 // The Analyse window (Backtesting → Data files) and the lab settings it reads. Mirrors the API's src/backtest/analysis/
 // (analysisFigures.ts, analysisStore.ts, analysisBacktest.ts, analysisSummary.ts, analysisSessions.ts) and
@@ -244,7 +244,7 @@ export interface AnalysisFigures {
     daysWithoutPrice: number;
     daysWithNothingPassing: string[];
     spreadShareUnder25: number | null;
-    lastDay: { date: string; spot: number | null; shock: number; cap: number | null; bestCappedPut: AnalysisCappedPut | null; passingCalls: number; passingPuts: number; passingCappedPuts: number } | null;
+    lastDay: { date: string; spot: number | null; shock: number; cap: number | null; bestCappedPut: AnalysisCappedPut | null; /** Absent on analyses computed before 2026-10-19. */ bestEntryCall?: AnalysisCappedPut | null; passingCalls: number; passingPuts: number; passingCappedPuts: number } | null;
     chainMap: AnalysisChainMapContract[];
     scanSeconds: number;
   };
@@ -319,6 +319,10 @@ export interface TickerAnalysisView {
   currentHash: string;
   fileLastDate: string | null;
   currentFormulasVersion: number;
+  /** The header's name and classification; null when nothing is stored for the ticker. */
+  profile: BacktestTickerProfile | null;
+  /** As on the Data files table; null: Pending. */
+  suitability: BacktestTickerSuitability | null;
 }
 
 export interface AnalysisSessionRow {

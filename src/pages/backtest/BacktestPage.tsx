@@ -57,7 +57,7 @@ export function BacktestPage() {
         </div>
       )}
       <BacktestJobsCard jobs={overview.jobs} onJobsChanged={reload} />
-      <BacktestDataFilesTable files={overview.files} jobs={overview.jobs} onFilesChanged={reload} />
+      <BacktestDataFilesTable files={overview.files} jobs={overview.jobs} suitabilityBySymbol={overview.suitabilityBySymbol} onFilesChanged={reload} />
       <BacktestLabSettingsCard />
       <BacktestSessionsTable />
     </>

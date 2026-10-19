@@ -1,7 +1,8 @@
 import { useState, type FormEvent } from "react";
 import { useNavigate } from "react-router-dom";
 import { errorMessage } from "../../api/client";
-import { backtestMaxSymbolsPerSession, deleteBacktestDataFile, resumeBacktestJob, startBacktestDownload, type BacktestDataFileSummary, type BacktestJobView } from "../../api/backtest";
+import { backtestMaxSymbolsPerSession, deleteBacktestDataFile, resumeBacktestJob, startBacktestDownload, type BacktestDataFileSummary, type BacktestJobView, type BacktestTickerSuitability } from "../../api/backtest";
+import { useIsAdmin } from "../../hooks/useAuth";
 import { formatFileSize, formatNumber } from "../../lib/formatters";
 import { describeDataFileIssues, describeDetectedSplits, splitsNotAnalysedExplanation } from "../../lib/backtestPresentation";
 import { ConfirmModal } from "../ConfirmModal";
@@ -10,10 +11,14 @@ import { Spinner } from "../Spinner";
 import { TooltipSpan } from "../TooltipSpan";
 import { BacktestCardTitle } from "./backtestBits";
 import { TickerAnalysisModal } from "./analysis/TickerAnalysisModal";
+import { TickerSuitabilityBadge } from "./TickerSuitabilityBadge";
+import { TickerSuitabilityModal } from "./TickerSuitabilityModal";
 
 interface BacktestDataFilesTableProps {
   files: BacktestDataFileSummary[];
   jobs: BacktestJobView[];
+  /** The tickers marked Suitable or Unsuitable; the rest are Pending. */
+  suitabilityBySymbol: Record<string, BacktestTickerSuitability>;
   onFilesChanged: () => Promise<void>;
 }
 
@@ -30,7 +35,7 @@ function latestDownloadJob(jobs: BacktestJobView[], symbol: string): BacktestJob
 }
 
 /** Data files: one SQLite file per symbol with every contract's 10:00 ET quote; Update downloads only the missing days. */
-export function BacktestDataFilesTable({ files, jobs, onFilesChanged }: BacktestDataFilesTableProps) {
+export function BacktestDataFilesTable({ files, jobs, suitabilityBySymbol, onFilesChanged }: BacktestDataFilesTableProps) {
   const [newSymbol, setNewSymbol] = useState("");
   const [newStartDate, setNewStartDate] = useState(defaultDownloadStartDate);
   const [pendingSymbol, setPendingSymbol] = useState<string | null>(null);
@@ -41,6 +46,8 @@ export function BacktestDataFilesTable({ files, jobs, onFilesChanged }: Backtest
   const [bulkUpdateRunning, setBulkUpdateRunning] = useState(false);
   const [fileToDelete, setFileToDelete] = useState<BacktestDataFileSummary | null>(null);
   const [deleteRunning, setDeleteRunning] = useState(false);
+  const [suitabilitySymbol, setSuitabilitySymbol] = useState<string | null>(null);
+  const isAdmin = useIsAdmin();
   const navigate = useNavigate();
   const downloadRequestRunning = pendingSymbol !== null || bulkUpdateRunning;
 
@@ -188,6 +195,16 @@ export function BacktestDataFilesTable({ files, jobs, onFilesChanged }: Backtest
         ) : (
           <strong title="No complete days yet">{file.symbol}</strong>
         ),
+    },
+    {
+      key: "suitability",
+      header: "Suitability",
+      headerTitle: isAdmin
+        ? "Whether the ticker suits the CC + Put Ladder: Pending until marked. Click a badge to mark it or edit its note."
+        : "Whether the ticker suits the CC + Put Ladder: Pending until an admin marks it. Point at a badge for its note.",
+      render: (file) => (
+        <TickerSuitabilityBadge symbol={file.symbol} suitability={suitabilityBySymbol[file.symbol] ?? null} onOpen={isAdmin ? () => setSuitabilitySymbol(file.symbol) : null} />
+      ),
     },
     { key: "from", header: "From", group: optionsGroup, cellClassName: "font-mono text-nowrap", render: (file) => file.firstDate ?? "—" },
     { key: "to", header: "To", group: optionsGroup, cellClassName: "font-mono text-nowrap", render: (file) => file.lastDate ?? "—" },
@@ -376,10 +393,14 @@ export function BacktestDataFilesTable({ files, jobs, onFilesChanged }: Backtest
           onCancel={() => setFileToDelete(null)}
         />
       )}
+      {suitabilitySymbol && (
+        <TickerSuitabilityModal symbol={suitabilitySymbol} suitability={suitabilityBySymbol[suitabilitySymbol] ?? null} onSaved={onFilesChanged} onClose={() => setSuitabilitySymbol(null)} />
+      )}
       {analysedSymbol && (
         <TickerAnalysisModal
           symbol={analysedSymbol}
           onClose={() => setAnalysedSymbol(null)}
+          onSuitabilitySaved={onFilesChanged}
           onEditGlobalSettings={() => {
             setAnalysedSymbol(null);
             document.getElementById("backtest-lab-settings")?.scrollIntoView({ behavior: "smooth", block: "start" });

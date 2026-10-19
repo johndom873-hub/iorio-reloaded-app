@@ -356,9 +356,36 @@ export interface BacktestSessionsPage {
   symbols: string[];
 }
 
+/** A ticker's name and classification for the Analyse window's header. */
+export interface BacktestTickerProfile {
+  /** "tradingview": full name, sector, industry and kind; "ibkr": IBKR's stored name (upper case, cut short) and sector, until TradingView answers. */
+  source: "tradingview" | "ibkr";
+  companyName: string | null;
+  /** "NASDAQ", "NYSE", "AMEX" (TradingView's name for NYSE Arca), "CBOE"; IBKR's primary exchange in the fallback. */
+  exchange: string | null;
+  sector: string | null;
+  industry: string | null;
+  /** Null when not known (IBKR's sector only says "ETF"). */
+  kind: "stock" | "adr" | "etf" | "other" | null;
+}
+
+/**
+ * Whether a ticker suits the CC + Put Ladder, as an admin marked it on the Data files table. A ticker without one is Pending;
+ * "pending" is a Pending ticker with a note (the window only marks Suitable or Unsuitable).
+ */
+export interface BacktestTickerSuitability {
+  status: "pending" | "suitable" | "unsuitable";
+  note: string;
+  updatedAt: string;
+  /** Null when the user who marked it was deleted. */
+  updatedByName: string | null;
+}
+
 export interface BacktestOverview {
   dataDirectory: string;
   files: BacktestDataFileSummary[];
+  /** By symbol: the tickers marked so far (the rest are Pending). */
+  suitabilityBySymbol: Record<string, BacktestTickerSuitability>;
   /**
    * The backtests, then the downloads. Backtests: the 50 latest, finished or not, latest activity first. Downloads: the
    * running one, the stopped ones, the queue in the order it starts them, then the finished ones, the last to end first;
@@ -959,6 +986,11 @@ export async function cancelBacktestJob(jobId: string): Promise<void> {
 
 export async function resumeBacktestJob(jobId: string): Promise<void> {
   await apiRequest<unknown>(`/backtest/jobs/${encodeURIComponent(jobId)}/resume`, { method: "POST" });
+}
+
+/** Marks the ticker Suitable or Unsuitable with its note (admin only; 403 for a trader). */
+export function saveTickerSuitability(symbol: string, status: "suitable" | "unsuitable", note: string): Promise<BacktestTickerSuitability> {
+  return apiRequest<BacktestTickerSuitability>(`/backtest/ticker-suitability/${encodeURIComponent(symbol)}`, { method: "PUT", body: JSON.stringify({ status, note }) });
 }
 
 /** Deletes the symbol's data file and its downloads from the job list; refused (409) while anything using it runs. */

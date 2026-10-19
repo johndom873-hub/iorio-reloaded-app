@@ -755,3 +755,10 @@ export function formatPercentagePoints(fractionOrNull: number | null | undefined
   if (fractionOrNull === null || fractionOrNull === undefined || Number.isNaN(fractionOrNull)) return "—";
   return `${(fractionOrNull * 100).toFixed(decimalPlaces)} pts`;
 }
+
+/** 1 → "1st", 2 → "2nd", 3 → "3rd", 11 → "11th", 22 → "22nd", 78 → "78th". */
+export function formatOrdinal(value: number): string {
+  const lastTwo = Math.abs(value) % 100;
+  const suffix = lastTwo >= 11 && lastTwo <= 13 ? "th" : ({ 1: "st", 2: "nd", 3: "rd" } as Record<number, string>)[lastTwo % 10] ?? "th";
+  return `${value}${suffix}`;
+}
