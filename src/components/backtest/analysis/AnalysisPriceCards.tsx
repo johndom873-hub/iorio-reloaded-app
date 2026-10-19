@@ -77,8 +77,8 @@ export function AnalysisPriceCards({ symbol, figures, shown, showingTrial, stale
     const allDates = figures.fitDays.map(([date]) => date);
     const inRange = ([from, to]: [string, string]) => to >= first && from <= last;
     const backtest = figures.analysisBacktest && "sessionId" in figures.analysisBacktest ? figures.analysisBacktest : null;
-    // Each day against the pot the analysis backtest's ladder sized from that day (none for a trial: it has no backtest).
-    const potOnDay = showingTrial ? null : potOnDayFrom(backtest?.potPath);
+    // Each day against the pot the analysis backtest's ladder sized from that day (an Analyse Only run has its own backtest).
+    const potOnDay = potOnDayFrom(backtest?.potPath);
     const smallRuns = potOnDay ? dateRuns(tooSmallDates(figures.fitDays, shown, potOnDay), allDates).filter(inRange) : [];
     const strikeDates = backtest ? [...new Set(backtest.tooLargeDays.filter(([, , givenUp]) => givenUp !== null).map(([date]) => date))] : [];
     const strikeRuns = dateRuns(strikeDates, allDates).filter(inRange);

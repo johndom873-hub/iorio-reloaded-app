@@ -26,7 +26,7 @@ import { formatBrowserClockTime, formatDayMonthYear, formatNumber } from "../../
 import { useSignalsTickerModal } from "../../../hooks/useSignalsTickerModal";
 import { useIsAdmin } from "../../../hooks/useAuth";
 import { TickerSuitabilityModal } from "../TickerSuitabilityModal";
-import { AnalysisTickerFacts, AnalysisTickerIdentity } from "./AnalysisTickerHeader";
+import { AnalysisTickerIdentity } from "./AnalysisTickerHeader";
 import { Spinner } from "../../Spinner";
 import { usePolledBacktestResource } from "../useBacktestPolling";
 import { AnalysisCard, AnalysisNote, AnalysisProgressBar } from "./analysisBits";
@@ -35,14 +35,14 @@ import { AnalysisChainMapCard } from "./AnalysisChainMapCard";
 import { AnalysisFitCard, AnalysisPotCard, AnalysisShockCard, AnalysisTooLargeCard } from "./AnalysisFitCards";
 import { AnalysisCorrelationCard, AnalysisDataQualityCard, AnalysisEarningsCard, AnalysisProfileCard } from "./AnalysisInfoCards";
 import { AnalysisLiquidityCards } from "./AnalysisLiquidityCards";
-import { AnalysisClaudeCards, AnalysisKpiTiles } from "./AnalysisOverviewCards";
+import { AnalysisClaudeCards, AnalysisFitTiles, AnalysisKpiTiles } from "./AnalysisOverviewCards";
 import { AnalysisPriceCards } from "./AnalysisPriceCards";
 import { AnalysisSessionsCard } from "./AnalysisSessionsCard";
 import { AnalysisSettingsCard, draftFromValues, type AnalysisDraft } from "./AnalysisSettingsCard";
 
 // The Analyse window (Backtesting → Data files; mockup approved 2026-10-15): the stored analysis of one ticker at its
 // backtesting (lab) values, recomputed by Update Analysis or by saving the ticker's values, with a settings panel to try
-// values (Run with these values, never saved), save them for the ticker, or backtest them. Near full screen like the
+// values (Analyse Only, never saved) or save them for the ticker and analyse (Save and Analyse): both run the same analysis. Near full screen like the
 // Signals ticker window; full screen on a phone. Informational: closes on ESC and the backdrop.
 
 /** A run's lab values as the settings panel's values. */
@@ -196,7 +196,6 @@ export function TickerAnalysisModal({ symbol, onClose, onEditGlobalSettings, onS
   const trialRun = view?.active.find((run) => run.reason === "trial") ?? null;
   const ruleShock = shownFigures?.shock.shock ?? 0.8;
   const stale = savedRun !== null && stored !== null;
-  const bestLadder = useMemo(() => (sessions ?? []).filter((row) => row.ladder && row.excessCalmar !== null).sort((a, b) => b.excessCalmar! - a.excessCalmar!)[0] ?? null, [sessions]);
 
   const run = async (kind: "update" | "run" | "cancel" | "earnings", work: () => Promise<void>) => {
     setBusy(kind);
@@ -426,6 +425,7 @@ export function TickerAnalysisModal({ symbol, onClose, onEditGlobalSettings, onS
     body = (
       <>
         {notices}
+        <AnalysisKpiTiles figures={shownFigures} />
         {settingsError && <div className="alert alert-danger mb-0">{settingsError}</div>}
         {draft && configured && global && (
           <AnalysisSettingsCard
@@ -448,25 +448,31 @@ export function TickerAnalysisModal({ symbol, onClose, onEditGlobalSettings, onS
             actionError={actionError}
             onSave={(values) => void saveForTicker(values)}
             onRun={(values) => void runTrial(values)}
-            onBacktest={(values) => {
-              setConfirmError(null);
-              setConfirm({ values });
-            }}
             onBackToStored={() => setShowTrial(false)}
             onEditGlobal={onEditGlobalSettings}
           />
         )}
-        <AnalysisClaudeCards symbol={symbol} analysis={shownAnalysis!} shown={shown} ruleShock={ruleShock} stale={stale} onTry={(values) => setDraft(draftFromValues(values))} onBacktest={(values) => setConfirm({ values })} />
-        <AnalysisKpiTiles symbol={symbol} figures={shownFigures} shown={shown} showingTrial={trial !== null} bestLadder={bestLadder} />
+        <AnalysisFitTiles figures={shownFigures} shown={shown} showingTrial={trial !== null} />
+        <AnalysisClaudeCards symbol={symbol} analysis={shownAnalysis!} shown={shown} ruleShock={ruleShock} stale={stale} onTry={(values) => {
+            setDraft(draftFromValues(global ? { ...values, minDte: global.minDte, maxDte: global.maxDte, maxSpreadPctOfMid: global.maxSpreadPctOfMid } : values));
+            // Show where the values went (Marcelo 2026-10-19): the Settings card, opened, scrolled to the top of the window.
+            setSettingsOpen(true);
+            requestAnimationFrame(() =>
+              document
+                .getElementById("analysis-settings-body")
+                ?.closest(".card")
+                ?.scrollIntoView({ behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth", block: "start" }),
+            );
+          }} onBacktest={(values) => setConfirm({ values })} />
         <AnalysisPriceCards symbol={symbol} figures={shownFigures} shown={shown} showingTrial={trial !== null} stale={stale} missingBars={missingBars} />
         <AnalysisLiquidityCards symbol={symbol} figures={shownFigures} computedWith={shown} putsCapped={putsCapped} onPutsCappedChange={setPutsCapped} stale={stale} />
         <AnalysisChainMapCard figures={shownFigures} computedWith={shown} putsCapped={putsCapped} onPutsCappedChange={setPutsCapped} stale={stale} />
         <div className="analysis-two-col">
           <AnalysisFitCard symbol={symbol} figures={shownFigures} shown={shown} showingTrial={trial !== null} stale={stale} />
-          <AnalysisPotCard symbol={symbol} figures={trial ? { ...shownFigures, analysisBacktest: stored.figures?.analysisBacktest ?? null } : shownFigures} shown={shown} showingTrial={trial !== null} stale={stale} />
+          <AnalysisPotCard symbol={symbol} figures={shownFigures} shown={shown} showingTrial={trial !== null} stale={stale} />
         </div>
         <div className="analysis-two-col">
-          <AnalysisTooLargeCard figures={stored.figures ?? shownFigures} stale={stale || trial !== null} onOpenSession={(sessionId) => navigate(`/backtest/sessions/${sessionId}`)} />
+          <AnalysisTooLargeCard figures={shownFigures} stale={stale} onOpenSession={(sessionId) => navigate(`/backtest/sessions/${sessionId}`)} />
           <AnalysisShockCard figures={shownFigures} ladderShockMinPct={shownAnalysis!.labValues.effective.baseline.ladderShockMinPct} ladderShockMaxPct={shownAnalysis!.labValues.effective.baseline.ladderShockMaxPct} lookbackYears={shownAnalysis!.labValues.effective.baseline.ladderShockLookbackYears} />
         </div>
         <AnalysisSessionsCard symbol={symbol} sessions={sessions} loadError={sessionsError} analysisSessionId={stored.sessionId} />
@@ -500,27 +506,18 @@ export function TickerAnalysisModal({ symbol, onClose, onEditGlobalSettings, onS
           <div className="modal-content">
             <div className="modal-header">
               <div className="flex-grow-1" style={{ minWidth: 0 }}>
-                <div className="analysis-eyebrow">Ticker analysis</div>
-                <h5 className="modal-title" id="analysis-modal-title">
-                  {symbol}
-                </h5>
-                {view && <AnalysisTickerIdentity symbol={symbol} profile={view.profile} suitability={view.suitability} onOpenSuitability={isAdmin ? () => setSuitabilityOpen(true) : null} />}
-                {figuresForDates && (
-                  <div className="d-none d-sm-block">
-                    <AnalysisTickerFacts symbol={symbol} figures={figuresForDates} />
-                  </div>
-                )}
+                <div className="analysis-header-title-row">
+                  <h5 className="modal-title" id="analysis-modal-title">
+                    {symbol}
+                  </h5>
+                  {view && <AnalysisTickerIdentity symbol={symbol} profile={view.profile} suitability={view.suitability} onOpenSuitability={isAdmin ? () => setSuitabilityOpen(true) : null} />}
+                </div>
               </div>
               <div className="d-none d-sm-block">{statusLine}</div>
               <button type="button" className="btn-close" aria-label="Close" onClick={onClose} />
             </div>
             <div className="modal-body">
               <div className="d-sm-none">{statusLine}</div>
-              {figuresForDates && (
-                <div className="d-sm-none mb-3">
-                  <AnalysisTickerFacts symbol={symbol} figures={figuresForDates} />
-                </div>
-              )}
               {body}
             </div>
           </div>

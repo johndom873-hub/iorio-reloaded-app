@@ -52,6 +52,7 @@ export function BacktestDataFilesTable({ files, jobs, suitabilityBySymbol, onFil
   const downloadRequestRunning = pendingSymbol !== null || bulkUpdateRunning;
 
   const selectedFiles = files.filter((file) => selectedSymbols.has(file.symbol)).sort((a, b) => a.symbol.localeCompare(b.symbol));
+  const allFilesSelected = files.length > 0 && selectedFiles.length === files.length;
   const filesWithoutCompleteDays = selectedFiles.filter((file) => !file.firstDate || !file.lastDate);
   const backtestBlockedReason =
     filesWithoutCompleteDays.length > 0
@@ -177,6 +178,21 @@ export function BacktestDataFilesTable({ files, jobs, suitabilityBySymbol, onFil
     {
       key: "select",
       header: "",
+      // Select all: ticked when every file is selected, half-ticked when some are; a click selects all, or clears all when all are.
+      headerContent: (
+        <label className="backtest-checkbox-hit">
+          <input
+            type="checkbox"
+            className="form-check-input m-0"
+            aria-label="Select all data files"
+            checked={allFilesSelected}
+            ref={(input) => {
+              if (input) input.indeterminate = !allFilesSelected && selectedFiles.length > 0;
+            }}
+            onChange={() => setSelectedSymbols(allFilesSelected ? new Set() : new Set(files.map((file) => file.symbol)))}
+          />
+        </label>
+      ),
       render: (file) => (
         <label className="backtest-checkbox-hit">
           <input type="checkbox" className="form-check-input m-0" aria-label={`Select ${file.symbol}`} checked={selectedSymbols.has(file.symbol)} onChange={() => toggleSelected(file.symbol)} />

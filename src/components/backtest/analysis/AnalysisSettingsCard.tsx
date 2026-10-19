@@ -83,7 +83,6 @@ interface AnalysisSettingsCardProps {
   actionError: string | null;
   onSave: (values: AnalysisPanelValues) => void;
   onRun: (values: AnalysisPanelValues) => void;
-  onBacktest: (values: AnalysisPanelValues) => void;
   onBackToStored: () => void;
   onEditGlobal: () => void;
 }
@@ -98,7 +97,6 @@ export function AnalysisSettingsCard(props: AnalysisSettingsCardProps) {
   const changed = changedFrom(configured);
   const pending = changedFrom(displayed);
   const savable = changed.filter((key) => analysisTickerKeys.includes(key));
-  const globalOnly = changed.filter((key) => !analysisTickerKeys.includes(key));
   const awayFromGlobal = changedFrom(global);
 
   // The two checks at the last stored price, live as you type.
@@ -122,7 +120,7 @@ export function AnalysisSettingsCard(props: AnalysisSettingsCardProps) {
     keys.some((key) => changed.includes(key)) ? (
       <span className="analysis-ink-fair d-inline-flex align-items-center gap-1" style={{ fontSize: "0.7rem", fontWeight: 600 }}>
         <IconRefresh size={12} aria-hidden="true" />
-        Changed: run to see its effect
+        Changed: analyse to see its effect
       </span>
     ) : null;
   const input = (key: AnalysisPanelKey, label: string, attributes: { min?: number; max?: number; step: number; placeholder?: string }, invalid: boolean, describedBy?: string) => (
@@ -238,27 +236,19 @@ export function AnalysisSettingsCard(props: AnalysisSettingsCardProps) {
             {savable.length > 0 && (
               <button type="button" className="btn btn-primary d-inline-flex align-items-center gap-1" disabled={props.busy !== null || lotMessage !== null || rungMessage !== null} onClick={() => props.onSave(values)}>
                 {props.busy === "save" ? <Spinner size="sm" /> : <IconCheck size={16} aria-hidden="true" />}
-                Save for {symbol}
+                Save and Analyse
               </button>
             )}
             <button type="button" className={`btn ${savable.length > 0 ? "btn-outline-primary" : "btn-primary"} d-inline-flex align-items-center gap-1`} disabled={props.busy !== null} onClick={() => props.onRun(values)}>
               {props.busy === "run" ? <Spinner size="sm" /> : <IconRefresh size={16} aria-hidden="true" />}
-              Run with these values
-            </button>
-            <button type="button" className="btn btn-outline-primary" disabled={props.busy !== null} onClick={() => props.onBacktest(values)}>
-              Backtest these values
+              Analyse Only
             </button>
           </>
         }
       >
         <p>
-          <b>Changed: {describeAnalysisValues(values, pending, ruleShock)}.</b> The cards below still show {props.showingTrial ? "your last run" : "the stored analysis"}. <b>Save for {symbol}</b> keeps them as {symbol}'s backtesting settings and updates the stored analysis at once. <b>Run with these values</b> recomputes the analysis without saving.
+          <b>Changed: {describeAnalysisValues(values, pending, ruleShock)}.</b> The cards below still show {props.showingTrial ? "your last run" : "the stored analysis"}. Both buttons run the full analysis with these values, backtest included. <b>Save and Analyse</b> also keeps them as {symbol}'s backtesting settings; <b>Analyse Only</b> saves nothing.
         </p>
-        {globalOnly.length > 0 && (
-          <p style={{ fontSize: "0.75rem" }}>
-            {describeAnalysisValues(values, globalOnly, ruleShock)}: global only, so Save for {symbol} leaves {globalOnly.length === 1 ? "it" : "them"} at the global value; Run with these values and Backtest these values use {globalOnly.length === 1 ? "it" : "them"}.
-          </p>
-        )}
       </AnalysisNote>
     );
   } else if (props.showingTrial && values) {
@@ -271,9 +261,6 @@ export function AnalysisSettingsCard(props: AnalysisSettingsCardProps) {
           <>
             <button type="button" className="btn btn-outline-primary" onClick={props.onBackToStored}>
               Back to the stored analysis
-            </button>
-            <button type="button" className="btn btn-outline-primary" onClick={() => props.onBacktest(values)}>
-              Backtest these values
             </button>
           </>
         }
@@ -293,7 +280,7 @@ export function AnalysisSettingsCard(props: AnalysisSettingsCardProps) {
             <p className="analysis-settings-source">
               <span>
                 <b>{symbol}'s backtesting ladder settings:</b> the backtesting global values
-                {props.overriddenKeys.length > 0 ? `, with ${symbol}'s overrides for ${describeAnalysisValues(configured, props.overriddenKeys, ruleShock)}` : `; ${symbol} has no overrides saved`}. Each box says where its value comes from. Pot, shares, rungs, shock and |delta| can be saved for {symbol}; days to expiry and the spread limit are global only; the fixed rules are the engine's. Global values are changed on the Backtesting screen:{" "}
+                {props.overriddenKeys.length > 0 ? `, with ${symbol}'s overrides for ${describeAnalysisValues(configured, props.overriddenKeys, ruleShock)}` : `; ${symbol} has no overrides saved`}. Each box says where its value comes from. Pot, shares, rungs, shock and |delta| can be saved for {symbol}; days to expiry and the spread limit are global only (changed in the global lab settings); the fixed rules are the engine's. Global values are changed on the Backtesting screen:{" "}
                 <button type="button" className="analysis-link" onClick={props.onEditGlobal}>
                   Edit the global lab settings
                 </button>
@@ -301,7 +288,7 @@ export function AnalysisSettingsCard(props: AnalysisSettingsCardProps) {
               </span>
             </p>
             <div className="analysis-settings-groups">
-              <fieldset className="analysis-settings-group">
+              <fieldset className="analysis-settings-group is-ladder">
                 <legend>Ladder</legend>
                 <div className="analysis-fields">
                   {single("potDollars", "Pot", { text: "$", before: true }, { min: 1000, step: 1000 }, { hint: `The dollars ${symbol} starts with in a backtest`, message: problem(["potDollars"]) ?? (lotMessage || rungMessage ? "Too small at the last price: see below." : null) })}
@@ -310,17 +297,20 @@ export function AnalysisSettingsCard(props: AnalysisSettingsCardProps) {
                   {single("ladderShockPct", "Shock", { text: "%" }, { min: 1, max: 99, step: 1, placeholder: String(Math.round(ruleShock * 100)) }, { hint: `The rule gives ${Math.round(ruleShock * 100)}%; empty uses it` })}
                 </div>
               </fieldset>
-              <fieldset className="analysis-settings-group">
+              <fieldset className="analysis-settings-group is-contracts">
                 <legend>Contracts the strategy may sell</legend>
                 <div className="analysis-fields">
                   {pair("minAbsDelta", "maxAbsDelta", "Calls' |delta|", { min: 0, max: 1, step: 0.05 })}
-                  {pair("minDte", "maxDte", "Days to expiry", { min: 0, max: 365, step: 1 })}
-                  {single("maxSpreadPctOfMid", "Spread limit", { text: "% of the mid" }, { min: 1, max: 200, step: 5 })}
-                  <p className="analysis-field-hint mb-0" style={{ gridColumn: "1 / -1" }}>
-                    <span className="analysis-src-tag">Fixed</span> Fixed rules: {analysisFixedRulesText}
-                  </p>
                 </div>
               </fieldset>
+            </div>
+            <div className="analysis-settings-notes">
+              <p className="analysis-field-hint mb-0">
+                <span className="analysis-src-tag">Global</span> {values ? describeAnalysisValues(values, ["minDte", "maxDte", "maxSpreadPctOfMid"], ruleShock) : "Days to expiry and the spread limit"}: set in the global lab settings only.
+              </p>
+              <p className="analysis-field-hint mb-0">
+                <span className="analysis-src-tag">Fixed</span> Fixed rules: {analysisFixedRulesText}
+              </p>
             </div>
           </>
         ) : (

@@ -96,6 +96,61 @@ export function fitHistoryByYear(fitDays: AnalysisFigures["fitDays"], values: An
   return byYear;
 }
 
+/** The Backtesting fit tile's bar, the verdict's for the configured pot (analysisVerdictThresholds.configuredPotFitsShare in the API): lot and rungs each fit on 95% of days. */
+export const analysisConfiguredPotFitsShare = 0.95;
+
+/**
+ * Over the last 12 months to `lastDate`, at each day's 10:00 price and shock: the share of days that day's pot bought a lot,
+ * and the share a Put at the first cap fit a rung (then every rung fits: each gets the same cash, and the lower rungs' Puts
+ * cost less). Null without days.
+ */
+export function fitSharesLastTwelveMonths(fitDays: AnalysisFigures["fitDays"], values: AnalysisPanelValues, potOnDay: (date: string) => number, lastDate: string): { days: number; lotShare: number; rungShare: number } | null {
+  const from = oneYearBefore(lastDate);
+  const days = fitDays.filter(([date]) => date > from && date <= lastDate);
+  if (days.length === 0) return null;
+  const fits = days.map(([date, price, ruleShock]) => dayFits(price, shockFor(values, ruleShock), potOnDay(date), values));
+  return { days: days.length, lotShare: fits.filter((fit) => fit.lot).length / days.length, rungShare: fits.filter((fit) => fit.rung).length / days.length };
+}
+
+/** The Put sales tile's window, in calendar days. */
+export const singleContractPutWindowDays = 30;
+
+/**
+ * Put sales over the last 30 calendar days to `lastDate`, volume only (Marcelo 2026-10-19): each day, a rung of the
+ * configured pot sells floor(rung ÷ (strike × 100)) contracts of the day's ladder Put (the best yield under the first cap),
+ * at least one (the price is not the question); the day counts when that is within the Put's volume limit (20% of the
+ * previous session's volume), so one contract series takes the whole rung. A day with no qualifying Put counts as not sold.
+ * The sale's share of the previous session's volume is its median over the days with a Put. Null on analyses without the
+ * previous-session volumes (before 2026-10-19).
+ */
+export function singleContractPutSales(fitDays: AnalysisFigures["fitDays"], values: AnalysisPanelValues, lastDate: string): { days: number; singleDays: number; noPutDays: number; medianContracts: number | null; medianVolumeShare: number | null } | null {
+  const from = new Date(Date.parse(`${lastDate}T00:00:00Z`) - singleContractPutWindowDays * 86_400_000).toISOString().slice(0, 10);
+  const days = fitDays.filter(([date]) => date > from && date <= lastDate);
+  if (days.length === 0 || days.some((day) => day.length < 7)) return null;
+  const rung = (values.potDollars * (1 - values.ladderSharesPct / 100)) / values.ladderRungs;
+  let singleDays = 0;
+  let noPutDays = 0;
+  const contracts: number[] = [];
+  const shares: number[] = [];
+  for (const [, , , volumeCap, strike, , previousVolume] of days) {
+    if (volumeCap == null || strike == null) {
+      noPutDays++;
+      continue;
+    }
+    const wanted = Math.max(1, Math.floor(rung / (strike * 100)));
+    contracts.push(wanted);
+    if (previousVolume != null && previousVolume > 0) shares.push(wanted / previousVolume);
+    if (wanted <= volumeCap) singleDays++;
+  }
+  const median = (list: number[]) => {
+    if (list.length === 0) return null;
+    const sorted = [...list].sort((a, b) => a - b);
+    const middle = sorted.length >> 1;
+    return sorted.length % 2 ? sorted[middle]! : (sorted[middle - 1]! + sorted[middle]!) / 2;
+  };
+  return { days: days.length, singleDays, noPutDays, medianContracts: median(contracts), medianVolumeShare: median(shares) };
+}
+
 /** The days a lot or a rung did not fit that day's pot: the price chart's "pot too small" shading. */
 export function tooSmallDates(fitDays: AnalysisFigures["fitDays"], values: AnalysisPanelValues, potOnDay: (date: string) => number): string[] {
   return fitDays
@@ -272,23 +327,6 @@ export function analysisSignedClass(value: number | null | undefined): string {
 // ---- The window's header (Marcelo 2026-10-19) ----
 
 type AnalysisBar = AnalysisFigures["bars"][number];
-
-/** The last daily close and its change from the one before (a fraction); null without bars. */
-export function lastCloseWithChange(bars: readonly AnalysisBar[]): { date: string; close: number; change: number | null } | null {
-  const last = bars.at(-1);
-  if (!last) return null;
-  const previous = bars.at(-2);
-  return { date: last[0], close: last[4], change: previous && previous[4] > 0 ? last[4] / previous[4] - 1 : null };
-}
-
-/** The 52-week range: the lowest low and highest high of the last 252 sessions, and where the last close sits in it (0 = the low, 1 = the high). */
-export function fiftyTwoWeekRange(bars: readonly AnalysisBar[]): { low: number; high: number; position: number | null } | null {
-  const window = bars.slice(-252);
-  if (window.length === 0) return null;
-  const low = Math.min(...window.map((bar) => bar[3]));
-  const high = Math.max(...window.map((bar) => bar[2]));
-  return { low, high, position: high > low ? (window.at(-1)![4] - low) / (high - low) : null };
-}
 
 /**
  * IV percentile (approved 2026-10-19): the share of the last 252 sessions with an implied volatility whose IV is at or below

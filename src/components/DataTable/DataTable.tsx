@@ -8,6 +8,8 @@ import { TooltipSpan } from "../TooltipSpan";
 export interface DataTableColumn<TRow> {
   key: string;
   header: string;
+  /** Drawn in the header cell instead of `header` (e.g. a select-all checkbox); the gear's list still uses `header`. */
+  headerContent?: ReactNode;
   render: (row: TRow) => ReactNode;
   /** Right-align numeric/currency columns, or center a short fixed-width one (e.g. a badge). */
   align?: "left" | "right" | "center";
@@ -148,6 +150,7 @@ export function DataTable<TRow>({
     chooseSort({ key: column.key, direction: typeof sample === "string" ? "asc" : "desc" });
   };
   const headerLabel = (column: DataTableColumn<TRow>) => {
+    if (column.headerContent !== undefined) return column.headerContent;
     if (!column.sortValue) return <span>{column.header}</span>;
     const active = sort?.key === column.key;
     const Indicator = !active ? IconSelector : sort!.direction === "asc" ? IconChevronUp : IconChevronDown;
@@ -215,7 +218,7 @@ export function DataTable<TRow>({
                           onToggleColumn={toggleColumn}
                         />
                       </div>
-                    ) : column.sortValue ? (
+                    ) : column.sortValue || column.headerContent !== undefined ? (
                       headerLabel(column)
                     ) : (
                       column.header

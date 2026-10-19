@@ -129,6 +129,12 @@ export interface AnalysisChainMapContract {
   yieldAtMid: number | null;
 }
 
+/** The Options volume and Open interest tiles: every contract in the file; "capped Puts" are those at or under the day's first-rung cap. */
+export interface AnalysisOptionActivity {
+  volume: { sessions: number; fromDate: string; toDate: string; averagePerDay: number; callShare: number | null; cappedPutsAveragePerDay: number | null; yearSessions: number; yearAveragePerDay: number } | null;
+  openInterest: { date: string; total: number; callShare: number | null; cappedPuts: number | null } | null;
+}
+
 export interface AnalysisCappedPut {
   strike: number;
   expiry: string;
@@ -219,7 +225,8 @@ export interface AnalysisBacktestFigures {
 /** The formulas version whose figures carry each day's largest-pot contracts and the backtest's pot path. */
 export const analysisEveryDayPotFormulasVersion = 5;
 
-export type AnalysisFitDayRow = [string, number, number, (number | null)?, (number | null)?, (number | null)?];
+/** [date, price, shock, the ladder Put's volume limit, its strike, the entry Call's volume limit, the ladder Put's previous-session volume (since 2026-10-19)]. */
+export type AnalysisFitDayRow = [string, number, number, (number | null)?, (number | null)?, (number | null)?, (number | null)?];
 
 export interface AnalysisFigures {
   formulasVersion: number;
@@ -255,6 +262,8 @@ export interface AnalysisFigures {
   fitDays: AnalysisFitDayRow[];
   /** The largest pot's contracts were chosen without the lab's volatility-edge filter or Edge Yield ranking. */
   largestPotWithoutModel?: boolean;
+  /** Options volume and open interest; absent on analyses computed before 2026-10-19, null when the file couldn't be read. */
+  optionActivity?: AnalysisOptionActivity | null;
   earnings: {
     reports: AnalysisReport[];
     medianAbsMove: number | null;

@@ -1,8 +1,8 @@
 import type { ReactNode } from "react";
 import { IconAlertTriangle, IconCheck, IconSparkles, IconX } from "@tabler/icons-react";
-import type { AnalysisFigures, AnalysisRecommendationKey, AnalysisSessionRow, AnalysisSummary, StoredAnalysis } from "../../../api/backtestAnalysis";
-import { analysisSignedClass, firstRungCap, lotPriceCeiling, rungPriceCeiling, shockFor, type AnalysisPanelValues } from "../../../lib/analysisPresentation";
-import { formatBrowserClockTime, formatCurrency, formatDayMonthYear, formatPercentage, formatSignedPercentage } from "../../../lib/formatters";
+import type { AnalysisFigures, AnalysisRecommendationKey, AnalysisSummary, StoredAnalysis } from "../../../api/backtestAnalysis";
+import { analysisConfiguredPotFitsShare, analysisSignedClass, firstRungCap, fitSharesLastTwelveMonths, impliedVolatilityPercentile, lotPriceCeiling, rungPriceCeiling, shockFor, singleContractPutSales, singleContractPutWindowDays, type AnalysisPanelValues } from "../../../lib/analysisPresentation";
+import { formatBrowserClockTime, formatCompactNumber, formatCurrency, formatDayMonth, formatDayMonthYear, formatNumber, formatOrdinal, formatPercentage, formatSignedPercentage } from "../../../lib/formatters";
 import { AnalysisCard, AnalysisNote } from "./analysisBits";
 
 // The Summary and the Recommendation from Claude, and the KPI tiles (mockup approved 2026-10-15).
@@ -171,36 +171,49 @@ export function AnalysisClaudeCards({ symbol, analysis, shown, ruleShock, stale,
 }
 
 interface AnalysisKpiTilesProps {
-  symbol: string;
   figures: AnalysisFigures;
   shown: AnalysisPanelValues;
   showingTrial: boolean;
-  bestLadder: AnalysisSessionRow | null;
 }
 
-export function AnalysisKpiTiles({ symbol, figures, shown, showingTrial, bestLadder }: AnalysisKpiTilesProps) {
+function FitBadge({ fits }: { fits: boolean }) {
+  return (
+    <span className={`badge ${fits ? "bg-success text-success-fg" : "bg-danger text-danger-fg"} d-inline-flex align-items-center gap-1`} style={{ fontSize: "0.72rem" }}>
+      {fits ? <IconCheck size={12} aria-hidden="true" /> : <IconX size={12} aria-hidden="true" />}
+      {fits ? "Fits" : "Doesn't fit"}
+    </span>
+  );
+}
+
+const shareSplit = (callShare: number | null) => (callShare === null ? null : `Calls ${formatPercentage(callShare, 0)} · Puts ${formatPercentage(1 - callShare, 0)}`);
+
+type AnalysisTile = { label: string; value: ReactNode; sub: ReactNode };
+
+function AnalysisTileGrid({ tiles, className }: { tiles: AnalysisTile[]; className: string }) {
+  return (
+    <div className={className}>
+      {tiles.map((tile) => (
+        <div key={tile.label} className="card analysis-kpi">
+          <span className="subheader">{tile.label}</span>
+          <span className="analysis-kpi-value">{tile.value}</span>
+          <span className="analysis-kpi-sub">{tile.sub}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/** The figures above the Settings card: price, volatility and the options market. */
+export function AnalysisKpiTiles({ figures }: { figures: AnalysisFigures }) {
   const lastBar = figures.bars.at(-1);
   const yearAgo = figures.bars.length > 252 ? figures.bars[figures.bars.length - 253] : null;
   const oneYear = lastBar && yearAgo ? lastBar[4] / yearAgo[4] - 1 : null;
-  const drawdown = figures.maxDrawdown.All;
-  const lastDay = figures.chains.lastDay;
-  const price = lastDay?.spot ?? null;
-  const shock = shockFor(shown, figures.shock.shock);
-  const cap = price === null ? null : firstRungCap(price, shock, shown.ladderRungs);
-  const lots = price === null ? 0 : Math.floor((shown.potDollars * shown.ladderSharesPct) / 100 / (price * 100));
-  const rung = (shown.potDollars * (1 - shown.ladderSharesPct / 100)) / shown.ladderRungs;
-  const fits = price !== null && price <= lotPriceCeiling(shown) && price <= rungPriceCeiling(shown, shock);
-  // The rule keeps the Max drawdown within its floor and ceiling: say which bound it hit, if any.
-  const rawDrawdown = figures.shock.maxDrawdown;
-  const ruleText =
-    figures.shock.closes < 250 || rawDrawdown === null
-      ? "Under 250 closes: the new-listing value"
-      : rawDrawdown > figures.shock.shock + 1e-9
-        ? `Max drawdown ${formatPercentage(rawDrawdown)} kept at the ${formatPercentage(figures.shock.shock, 0)} ceiling`
-        : rawDrawdown < figures.shock.shock - 1e-9
-          ? `Max drawdown ${formatPercentage(rawDrawdown)} raised to the ${formatPercentage(figures.shock.shock, 0)} floor`
-          : "the stock's Max drawdown over the lookback";
-  const tiles: { label: string; value: ReactNode; sub: ReactNode }[] = [
+  const impliedVolatility = impliedVolatilityPercentile(figures.bars);
+  const activity = figures.optionActivity;
+  const missingActivity = activity === undefined ? "Update Analysis to see it" : "Not in the data file";
+  const volume = activity?.volume ?? null;
+  const openInterest = activity?.openInterest ?? null;
+  const tiles: AnalysisTile[] = [
     {
       label: "Last close",
       value: lastBar ? formatCurrency(lastBar[4]) : "—",
@@ -212,41 +225,78 @@ export function AnalysisKpiTiles({ symbol, figures, shown, showingTrial, bestLad
         "No daily bars"
       ),
     },
-    { label: "Max drawdown", value: drawdown ? formatPercentage(-drawdown.depth) : "—", sub: drawdown ? `${formatDayMonthYear(drawdown.peakDate)} → ${formatDayMonthYear(drawdown.troughDate)}` : "No daily bars" },
     {
-      label: shown.ladderShockPct === null ? "Recommended shock" : "Shock entered",
-      value: formatPercentage(shock, 0),
-      sub: shown.ladderShockPct !== null ? `The rule gives ${formatPercentage(figures.shock.shock, 0)}` : ruleText,
+      label: "Implied volatility",
+      value: formatPercentage(impliedVolatility?.impliedVolatility ?? figures.volatility.impliedNow),
+      sub: impliedVolatility ? `${formatOrdinal(Math.round(impliedVolatility.percentile * 100))} percentile of the last ${impliedVolatility.sessions} sessions (IBKR)` : "No IBKR implied volatility",
     },
-    { label: "Volatility, 21-day", value: formatPercentage(figures.volatility.yangZhang21Now), sub: `Yang-Zhang · implied ${formatPercentage(figures.volatility.impliedNow)} (IBKR)` },
+    { label: "Volatility, 21-day", value: formatPercentage(figures.volatility.yangZhang21Now), sub: "Yang-Zhang, from the daily bars" },
     {
-      label: showingTrial ? "Fit at your values" : `Fit at ${symbol}'s settings`,
-      value:
-        price === null ? (
-          "—"
-        ) : (
-          <span className={`badge ${fits ? "bg-success text-success-fg" : "bg-danger text-danger-fg"} d-inline-flex align-items-center gap-1`} style={{ fontSize: "0.72rem" }}>
-            {fits ? <IconCheck size={12} aria-hidden="true" /> : <IconX size={12} aria-hidden="true" />}
-            {fits ? "Fits" : "Doesn't fit"}
-          </span>
-        ),
-      sub: price === null || cap === null ? "No 10:00 price" : `${lots} lot${lots === 1 ? "" : "s"} · a Put at the ${formatCurrency(cap)} cap needs ${formatCurrency(cap * 100, 0)} of a ${formatCurrency(rung, 0)} rung`,
+      label: "Open interest",
+      value: openInterest ? formatCompactNumber(openInterest.total) : "—",
+      sub: openInterest
+        ? [shareSplit(openInterest.callShare), formatDayMonthYear(openInterest.date), openInterest.cappedPuts === null ? null : `Puts under the first rung's limit: ${formatCompactNumber(openInterest.cappedPuts)}`].filter(Boolean).join(" · ")
+        : missingActivity,
     },
     {
-      label: "Best CC + Put Ladder backtest",
-      value: bestLadder?.excessCalmar === null || bestLadder === null ? "—" : bestLadder.excessCalmar.toFixed(2),
-      sub: bestLadder ? `Excess Calmar · CAGR ${formatPercentage(bestLadder.cagr)}, Max drawdown ${formatPercentage(bestLadder.maxDrawdown)}` : "No ladder backtest of 2 years or more",
+      label: "Options volume",
+      value: volume ? `${formatCompactNumber(volume.averagePerDay)} a day` : "—",
+      sub: volume
+        ? [
+            shareSplit(volume.callShare),
+            `${volume.sessions} sessions to ${formatDayMonth(volume.toDate)}`,
+            `12-month average ${formatCompactNumber(volume.yearAveragePerDay)}`,
+            volume.cappedPutsAveragePerDay === null ? null : `Puts under the first rung's limit: ${formatCompactNumber(volume.cappedPutsAveragePerDay)} a day`,
+          ]
+            .filter(Boolean)
+            .join(" · ")
+        : missingActivity,
     },
   ];
-  return (
-    <div className="analysis-kpi-grid">
-      {tiles.map((tile) => (
-        <div key={tile.label} className="card analysis-kpi">
-          <span className="subheader">{tile.label}</span>
-          <span className="analysis-kpi-value">{tile.value}</span>
-          <span className="analysis-kpi-sub">{tile.sub}</span>
-        </div>
-      ))}
-    </div>
-  );
+  return <AnalysisTileGrid tiles={tiles} className="analysis-kpi-grid" />;
+}
+
+/**
+ * Below the Settings card: whether the settings shown fit. Backtesting fit (Marcelo 2026-10-19): today's check on each day of
+ * the last 12 months, at that day's 10:00 price and the configured pot, share level and rungs.
+ */
+export function AnalysisFitTiles({ figures, shown, showingTrial }: AnalysisKpiTilesProps) {
+  const lastDay = figures.chains.lastDay;
+  const price = lastDay?.spot ?? null;
+  const shock = shockFor(shown, figures.shock.shock);
+  const cap = price === null ? null : firstRungCap(price, shock, shown.ladderRungs);
+  const lots = price === null ? 0 : Math.floor((shown.potDollars * shown.ladderSharesPct) / 100 / (price * 100));
+  const rung = (shown.potDollars * (1 - shown.ladderSharesPct / 100)) / shown.ladderRungs;
+  const fitsToday = price !== null && price <= lotPriceCeiling(shown) && price <= rungPriceCeiling(shown, shock);
+  const fitShares = fitSharesLastTwelveMonths(figures.fitDays, shown, () => shown.potDollars, figures.optionLastDate);
+  const fitBar = analysisConfiguredPotFitsShare;
+  const putSales = singleContractPutSales(figures.fitDays, shown, figures.optionLastDate);
+  const rungDollars = formatCurrency(rung, 0);
+  const putSalesNotes = putSales
+    ? [
+        putSales.medianContracts === null ? null : `${formatNumber(putSales.medianContracts)} contract${putSales.medianContracts === 1 ? "" : "s"} a ${rungDollars} rung (median)`,
+        putSales.medianVolumeShare === null ? null : `median ${formatPercentage(putSales.medianVolumeShare)} of the previous session's volume`,
+        putSales.noPutDays > 0 ? `${putSales.noPutDays} day${putSales.noPutDays === 1 ? "" : "s"} with no qualifying Put` : null,
+      ].filter(Boolean)
+    : [];
+  const tiles: AnalysisTile[] = [
+    {
+      label: showingTrial ? "Backtesting fit, your values" : "Backtesting fit",
+      value: fitShares ? <FitBadge fits={fitShares.lotShare >= fitBar && fitShares.rungShare >= fitBar} /> : "—",
+      sub: fitShares
+        ? `Lot fits ${formatPercentage(fitShares.lotShare, 0)}, all ${shown.ladderRungs} rung${shown.ladderRungs === 1 ? "" : "s"} ${formatPercentage(fitShares.rungShare, 0)} of the last 12 months' days at ${formatCurrency(shown.potDollars, 0)} · ${shown.ladderSharesPct}% shares (${formatPercentage(fitBar, 0)} needed)`
+        : "No 10:00 prices in the last 12 months",
+    },
+    {
+      label: showingTrial ? "Today's fit, your values" : "Today's fit",
+      value: price === null ? "—" : <FitBadge fits={fitsToday} />,
+      sub: price === null || cap === null || !lastDay ? "No 10:00 price" : `${formatDayMonth(lastDay.date)} · ${lots} lot${lots === 1 ? "" : "s"} · a Put at the ${formatCurrency(cap)} cap needs ${formatCurrency(cap * 100, 0)} of a ${formatCurrency(rung, 0)} rung`,
+    },
+    {
+      label: `Put sales, last ${singleContractPutWindowDays} days`,
+      value: putSales ? `${putSales.singleDays} of ${putSales.days} days` : "—",
+      sub: putSales ? `Days the volume let a rung sell the best-yield Put in one contract series · ${putSalesNotes.join(" · ")}` : "Update Analysis to see it",
+    },
+  ];
+  return <AnalysisTileGrid tiles={tiles} className="analysis-kpi-grid analysis-fit-grid" />;
 }

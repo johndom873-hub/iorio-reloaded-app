@@ -56,10 +56,10 @@ const fitHistoryColumns = [
 function FitHistory({ figures, values, shock, showingTrial }: { figures: AnalysisFigures; values: AnalysisPanelValues; shock: number; showingTrial: boolean }) {
   const { isColumnVisible, toggleColumn } = useColumnVisibility("analysis-fit-history", fitHistoryColumns.map((column) => column.key));
   const backtest = figures.analysisBacktest && "sessionId" in figures.analysisBacktest ? figures.analysisBacktest : null;
-  const potOnDay = showingTrial ? null : potOnDayFrom(backtest?.potPath);
+  const potOnDay = potOnDayFrom(backtest?.potPath);
   if (potOnDay === null) {
     const why = showingTrial
-      ? "Save to see the fit history with a live-like pot: it follows the analysis backtest's account, and a run with unsaved values has no backtest."
+      ? "This run with your values has no backtest (runs before 2026-10-19 skipped it): Analyse Only again to see the fit history with a live-like pot."
       : figures.formulasVersion < analysisEveryDayPotFormulasVersion
         ? "Computed with an older version of the formulas: Update Analysis to see the fit history with a live-like pot."
         : `The fit history follows the analysis backtest's account, which this analysis does not have${figures.analysisBacktest && "error" in figures.analysisBacktest ? `: ${figures.analysisBacktest.error}` : "."}`;
