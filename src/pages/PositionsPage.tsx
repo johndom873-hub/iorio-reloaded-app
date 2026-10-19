@@ -126,11 +126,11 @@ export function PositionsPage() {
   // Same race as in the Signals modal's useTickerPositions: a fill flips
   // order_requests.status to "filled" well before reconcilePositionsFromIbkr
   // actually creates the position row, and nothing else here re-fetches once
-  // it does. Refetch on the worker's "position_opened" push instead of
-  // relying on this page's own poll/mount timing to catch up eventually.
+  // it does. Refetch on the worker's "positions_changed" push, which also
+  // covers closes and shares moving between positions.
   useEffect(() => {
     return openNotificationStream((notification) => {
-      if (notification.type === "position_opened") loadPositions();
+      if (notification.type === "positions_changed") loadPositions();
     });
   }, [loadPositions]);
 

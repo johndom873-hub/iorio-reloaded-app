@@ -138,6 +138,11 @@ export function retryMultiplexerConnectionNow() {
     clearTimeout(reconnectTimer);
     reconnectTimer = null;
   }
+  // The browser may still be re-opening the old EventSource itself (a drop it retries on its own keeps `source`).
+  // Close it first: its late hello would otherwise run a second connection beside the new one, under the same generation.
+  connectionGeneration += 1;
+  source?.close();
+  source = null;
   void connect();
 }
 

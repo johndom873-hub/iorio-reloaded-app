@@ -8,6 +8,9 @@ export type AppNotification =
   | { type: "order_status"; orderId: string }
   | { type: "position_closed"; positionId: string; symbol: string; message: string }
   | { type: "position_opened"; positionId: string; symbol: string }
+  // A reconciliation pass changed these tickers' open positions or legs, sent once it has finished writing: screens
+  // holding a position list re-fetch on this, not on position_opened, which goes out mid-pass.
+  | { type: "positions_changed"; symbols: string[] }
   // Iorio Pulse — see notificationChannel.ts on the backend.
   | { type: "job_started"; jobName: string }
   | { type: "job_completed"; jobName: string; status: Exclude<JobRunStatus, "running"> }

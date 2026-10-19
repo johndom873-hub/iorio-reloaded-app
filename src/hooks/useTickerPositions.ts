@@ -44,11 +44,10 @@ export function useTickerPositions(symbol: string): TickerPositionsData {
   }, [loadPositions]);
 
   // A fill's position row is created asynchronously by the worker, which publishes
-  // "position_opened" once it exists — refetch then rather than guessing at a delay
-  // (found 2026-09-09: a real SPCX CSP fill left the modal showing no position).
+  // "positions_changed" once its pass has finished writing — refetch then rather than guessing at a delay.
   useEffect(() => {
     return openNotificationStream((notification) => {
-      if (notification.type === "position_opened" && notification.symbol === symbol) void loadPositions();
+      if (notification.type === "positions_changed" && notification.symbols.includes(symbol)) void loadPositions();
     });
   }, [symbol, loadPositions]);
 

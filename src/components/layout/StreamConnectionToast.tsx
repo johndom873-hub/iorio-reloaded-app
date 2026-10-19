@@ -19,44 +19,46 @@ const RETRY_BUTTON_LOCK_MS = 1_500;
 
 export function StreamConnectionToast() {
   const [status, setStatus] = useState<MultiplexerConnectionStatus>({ isReconnecting: false, reconnectingSinceMs: null });
-  const [isVisible, setIsVisible] = useState(false);
+  // The outage the toast was shown for, by its start time. The toast shows only while the live status is still that
+  // same outage, so a show timer that fires just as the connection comes back cannot leave it up after recovery.
+  const [shownOutageSinceMs, setShownOutageSinceMs] = useState<number | null>(null);
   const [showReconnected, setShowReconnected] = useState(false);
   const [isRetrying, setIsRetrying] = useState(false);
 
   useEffect(() => subscribeToMultiplexerConnectionStatus(setStatus), []);
 
-  useEffect(() => {
-    if (status.isReconnecting && status.reconnectingSinceMs !== null) {
-      const remainingMs = Math.max(0, SHOW_AFTER_OUTAGE_MS - (Date.now() - status.reconnectingSinceMs));
-      const timer = setTimeout(() => {
-        setShowReconnected(false);
-        setIsVisible(true);
-      }, remainingMs);
-      return () => clearTimeout(timer);
-    }
-    // Back online: if the outage toast was showing, confirm briefly, then go away.
-    if (isVisible) {
-      setIsVisible(false);
-      setShowReconnected(true);
-      const timer = setTimeout(() => setShowReconnected(false), RECONNECTED_MESSAGE_MS);
-      return () => clearTimeout(timer);
-    }
-    return undefined;
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- isVisible is only read to decide the recovery message, not a trigger.
-  }, [status.isReconnecting, status.reconnectingSinceMs]);
+  const outageSinceMs = status.isReconnecting ? status.reconnectingSinceMs : null;
+  const isOutageShown = outageSinceMs !== null && shownOutageSinceMs === outageSinceMs;
 
-  if (!isVisible && !showReconnected) return null;
+  useEffect(() => {
+    if (outageSinceMs !== null) {
+      setShowReconnected(false);
+      const remainingMs = Math.max(0, SHOW_AFTER_OUTAGE_MS - (Date.now() - outageSinceMs));
+      const timer = setTimeout(() => setShownOutageSinceMs(outageSinceMs), remainingMs);
+      return () => clearTimeout(timer);
+    }
+    if (shownOutageSinceMs === null) return undefined;
+    // Back online after an outage the toast showed: confirm briefly, then go away.
+    setShownOutageSinceMs(null);
+    setShowReconnected(true);
+    const timer = setTimeout(() => setShowReconnected(false), RECONNECTED_MESSAGE_MS);
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- shownOutageSinceMs is only read to decide the recovery message, not a trigger.
+  }, [outageSinceMs]);
+
+  if (!isOutageShown && !showReconnected) return null;
+  const isShowingReconnected = !isOutageShown;
 
   return (
     <div className="toast-container position-fixed end-0 p-3" style={{ top: "var(--iorio-topbar-height)", zIndex: 1091 }}>
       <div className="toast show iorio-stream-connection-toast" role="status" aria-live="polite">
         <div className="toast-header">
-          {showReconnected ? <IconPlugConnected size={18} className="me-2 text-success" /> : <IconWifiOff size={18} className="me-2 text-warning" />}
-          <strong className="me-auto">{showReconnected ? "Reconnected" : "Live data disconnected"}</strong>
+          {isShowingReconnected ? <IconPlugConnected size={18} className="me-2 text-success" /> : <IconWifiOff size={18} className="me-2 text-warning" />}
+          <strong className="me-auto">{isShowingReconnected ? "Reconnected" : "Live data disconnected"}</strong>
         </div>
         <div className="toast-body d-flex align-items-center justify-content-between gap-3">
-          <span>{showReconnected ? "Live prices are updating again." : "Reconnecting… the values shown are not live."}</span>
-          {!showReconnected && (
+          <span>{isShowingReconnected ? "Live prices are updating again." : "Reconnecting… the values shown are not live."}</span>
+          {!isShowingReconnected && (
             <button
               type="button"
               className="btn btn-primary btn-sm"
