@@ -2510,7 +2510,8 @@
 .price-chart-draggable { cursor: grab; touch-action: pan-y; user-select: none; border-radius: var(--tblr-border-radius); }
 .price-chart-draggable.is-dragging { cursor: grabbing; }
 .price-chart-draggable:focus-visible { outline: 2px solid var(--tblr-primary); outline-offset: 2px; }
-.analysis-rung-dot { display: inline-block; width: 0.6rem; height: 0.6rem; border-radius: 50%; background: var(--analysis-ladder); box-shadow: 0 0 0 2px var(--tblr-bg-surface), 0 0 0 3px var(--analysis-ladder); }
+/* A rung's badge, as the chart draws it: white on a blue dark enough for 4.5:1 in both themes, ringed in the ladder's blue. */
+.analysis-rung-badge { display: inline-flex; align-items: center; justify-content: center; min-width: 1rem; height: 1rem; padding: 0 0.25rem; border-radius: 0.5rem; background: #1f6bc4; border: 1px solid var(--analysis-ladder); color: #ffffff; font-size: 0.65rem; font-weight: 700; line-height: 1; }
 .analysis-stat-pair { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.5rem; }
 .analysis-stat-pair > div { border: 1px solid var(--tblr-border-color); border-radius: var(--tblr-border-radius); padding: 0.4rem 0.6rem; display: flex; flex-direction: column; gap: 0.05rem; }
 .analysis-stat-pair b { font-family: var(--tblr-font-monospace); font-size: 0.95rem; color: var(--tblr-emphasis-color); }

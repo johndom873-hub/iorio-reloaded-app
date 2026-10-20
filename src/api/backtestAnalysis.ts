@@ -228,8 +228,12 @@ export interface AnalysisBacktestFigures {
    * cap (null: none fits), the floor, why no ladder Put could be sold (null: one could)]. Absent before formulas version 6.
    */
   ladderLevels?: [string, number | null, number | null, AnalysisLadderPutBlock | null][];
-  /** Each rung sold, split-adjusted: [date, its highest strike, its fills [strike, expiry, contracts]]. Absent before formulas version 6. */
-  ladderRungsSold?: [string, number, [number, string, number][]][];
+  /**
+   * Each rung sold, split-adjusted: [date, its highest strike, its fills [strike, expiry, contracts], the rung it reaches
+   * [its number, the ticker's rungs, the reserve's slices it fills up to, the reserve committed before it in dollars] (null
+   * when its sale recorded no reserve; absent in figures stored before it)]. Absent before formulas version 6.
+   */
+  ladderRungsSold?: [string, number, [number, string, number][], ([number, number, number, number] | null)?][];
   /**
    * Each backtest day, at the 10:00 marks before its orders: [date, the shares held at those marks (null: not recorded),
    * the account value]. Absent before formulas version 7.

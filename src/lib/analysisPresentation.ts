@@ -314,8 +314,8 @@ export function analysisBacktestName(symbol: string, values: AnalysisPanelValues
 
 /** The window's chart colours per theme (mockup approved 2026-10-15, contrast checked in both). */
 export const analysisChartColors = {
-  light: { series1: "#2a78d6", series2: "#eb6834", candleUp: "#2fb344", candleDown: "#d63939", drawdown: "#d63939", shadeSmall: "#f59f00", shadeStrike: "#6f42c1", ladder: "#2a78d6", accountInShares: "#0f7d6e", surface: "#ffffff", border: "#dadfe5", text: "#1d273b", secondary: "#49566c" },
-  dark: { series1: "#3987e5", series2: "#d95926", candleUp: "#2fb344", candleDown: "#d63939", drawdown: "#d63939", shadeSmall: "#f5b458", shadeStrike: "#b18cf0", ladder: "#3987e5", accountInShares: "#4fc9b8", surface: "#2a3648", border: "#45566e", text: "#f9fafb", secondary: "#9ba9be" },
+  light: { series1: "#2a78d6", series2: "#eb6834", candleUp: "#2fb344", candleDown: "#d63939", drawdown: "#d63939", shadeSmall: "#f59f00", shadeStrike: "#6f42c1", ladder: "#2a78d6", rungBadge: "#1f6bc4", accountInShares: "#0f7d6e", surface: "#ffffff", border: "#dadfe5", text: "#1d273b", secondary: "#49566c" },
+  dark: { series1: "#3987e5", series2: "#d95926", candleUp: "#2fb344", candleDown: "#d63939", drawdown: "#d63939", shadeSmall: "#f5b458", shadeStrike: "#b18cf0", ladder: "#3987e5", rungBadge: "#1f6bc4", accountInShares: "#4fc9b8", surface: "#2a3648", border: "#45566e", text: "#f9fafb", secondary: "#9ba9be" },
 } as const;
 
 /** Why no ladder Put could be sold on a day, as the price chart's tooltip says it. */

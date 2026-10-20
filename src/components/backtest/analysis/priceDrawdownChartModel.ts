@@ -181,6 +181,14 @@ export interface PriceDrawdownChartInput {
 
 export type PriceDrawdownChart = ReturnType<typeof buildPriceDrawdownChart>;
 
+/** Moves a point annotation's label from above its point onto it, so a rung's badge sits on its strike. */
+const rungBadgeOffsetY = 4;
+
+/** "Rung 2 of 2 (reaches 1.44 slices of the reserve; $11,305 already committed)". */
+function describeRungReached([rungNumber, rungs, slices, committed]: [number, number, number, number]): string {
+  return `Rung ${rungNumber} of ${rungs} (reaches ${slices.toFixed(2)} slices of the reserve${committed > 0 ? `; ${formatCurrency(committed, 0)} already committed` : ""})`;
+}
+
 export function buildPriceDrawdownChart(input: PriceDrawdownChartInput) {
   const { symbol, bars, drawdown, theme, logScale, countedDates } = input;
   if (bars.length === 0) return null;
@@ -237,7 +245,7 @@ export function buildPriceDrawdownChart(input: PriceDrawdownChartInput) {
         const ladderLine = level
           ? `<div>Ladder cap ${level[1] === null ? "none" : formatCurrency(level[1])} · floor ${level[2] === null ? "none" : formatCurrency(level[2])}${level[3] === null ? "" : ` · no ladder Put: ${analysisLadderPutBlockText[level[3]]}`}</div>`
           : "";
-        const rungLines = (rungsByDate.get(bar[0]) ?? []).map(([, , fills]) => `<div>Rung sold: ${fills.map(([strike, expiry, contracts]) => `${formatOptionContractLabel({ strike, right: "P", expiry, dte: daysToExpiry(expiry, bar[0]) })}${formatOrderSize(contracts, null)}`).join(", ")}</div>`).join("");
+        const rungLines = (rungsByDate.get(bar[0]) ?? []).map(([, , fills, reached]) => `<div>${reached ? describeRungReached(reached) : "Rung sold"}: ${fills.map(([strike, expiry, contracts]) => `${formatOptionContractLabel({ strike, right: "P", expiry, dte: daysToExpiry(expiry, bar[0]) })}${formatOrderSize(contracts, null)}`).join(", ")}</div>`).join("");
         const sharesLine = accountInShares[dataPointIndex] ? `<div>${accountInSharesText(accountInShares[dataPointIndex])}</div>` : "";
         return `<div style="padding:0.4rem 0.6rem;font-size:0.75rem"><b>${formatDayMonthYear(bar[0])}</b><div style="font-family:var(--tblr-font-monospace)">O ${bar[1].toFixed(2)} · H ${bar[2].toFixed(2)} · L ${bar[3].toFixed(2)} · C ${bar[4].toFixed(2)}</div>${ladderLine}${rungLines}${sharesLine}</div>`;
       },
@@ -257,7 +265,17 @@ export function buildPriceDrawdownChart(input: PriceDrawdownChartInput) {
               { x: timeOfDate(drawdown.troughDate), y: toAxis(drawdown.trough), marker: { size: 4, fillColor: colors.surface, strokeColor: colors.text, strokeWidth: 2 } },
             ]
           : []),
-        ...[...rungsByDate.values()].flat().map(([date, strike]) => ({ x: timeOfDate(date), y: toAxis(strike), marker: { size: 5, fillColor: colors.ladder, strokeColor: colors.surface, strokeWidth: 2 } })),
+        // A numbered badge per rung (approved 2026-10-20: the reserve's slice it reaches); a dot where none was recorded.
+        ...[...rungsByDate.values()].flat().map(([date, strike, , reached]) =>
+          reached
+            ? {
+                x: timeOfDate(date),
+                y: toAxis(strike),
+                marker: { size: 0 },
+                label: { text: String(reached[0]), textAnchor: "middle", offsetY: rungBadgeOffsetY, borderColor: colors.ladder, borderWidth: 1, borderRadius: 8, style: { background: colors.rungBadge, color: "#ffffff", fontSize: "0.65rem", fontWeight: 700, padding: { left: 4, right: 4, top: 1, bottom: 2 } } },
+              }
+            : { x: timeOfDate(date), y: toAxis(strike), marker: { size: 5, fillColor: colors.ladder, strokeColor: colors.surface, strokeWidth: 2 } },
+        ),
       ],
     },
     dataLabels: { enabled: false },

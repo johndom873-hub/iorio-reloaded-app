@@ -95,7 +95,7 @@ export function LadderLegendItems() {
         Ladder floor: the last rung's cap, the shares' average cost × (1 − S)
       </span>
       <span className="analysis-legend-item">
-        <span className="analysis-rung-dot" />A rung sold (its highest strike)
+        <span className="analysis-rung-badge">2</span>A rung sold at its highest strike, numbered by the reserve's slice it reaches
       </span>
     </>
   );
