@@ -93,8 +93,8 @@ export function BacktestBatchCombinedCard({ batchId, runs, waitingRunNumbers, sc
   const start = combined.metrics.startValue;
   const rows: SeriesRow[] = [
     { key: "combined", name: `Combined · ${describeRunList(runNumbers)}`, color: batchCombinedColor(theme), line: "solid", figures: combined.metrics, optionsSold: combined.metrics.tradeCount, cycles: combined.metrics.cycleCount ?? null },
-    { key: "baseline", name: "Buy and hold of the same tickers and pots", color: buyAndHoldColorByTheme[theme], line: "dashed", figures: combined.baselineFigures, optionsSold: null, cycles: null },
-    ...(combined.spyBaselineFigures ? [{ key: "spy", name: "Buy and hold · SPY", color: spyBuyAndHoldColorByTheme[theme], line: "dotted" as const, figures: combined.spyBaselineFigures, optionsSold: null, cycles: null }] : []),
+    { key: "baseline", name: "Buy and hold of the same tickers and pots", color: buyAndHoldColorByTheme[theme], line: "solid", figures: combined.baselineFigures, optionsSold: null, cycles: null },
+    ...(combined.spyBaselineFigures ? [{ key: "spy", name: "Buy and hold · SPY", color: spyBuyAndHoldColorByTheme[theme], line: "solid" as const, figures: combined.spyBaselineFigures, optionsSold: null, cycles: null }] : []),
   ];
   const lines = rows.map((row) => ({
     name: row.name,

@@ -17,7 +17,7 @@ import { useMediaQuery } from "../../hooks/useMediaQuery";
 import { useTheme } from "../../hooks/useTheme";
 import { pluralizeCount } from "../../lib/formatters";
 import { decidedByPhrase, spyBuyAndHoldColorByTheme, tablesModeLabel } from "../../lib/backtestPresentation";
-import { batchBuyAndHoldColor, batchRunColor, batchSpyBaseline, buyAndHoldGroups, describeRunDifferences, parseTickedRuns, storedRunValues } from "../../lib/backtestBatchPresentation";
+import { batchBuyAndHoldColor, batchBuyAndHoldLineStyles, batchRunColor, batchSpyBaseline, buyAndHoldGroups, describeRunDifferences, parseTickedRuns, storedRunValues } from "../../lib/backtestBatchPresentation";
 
 const pageTitle = "Backtest batch";
 
@@ -111,10 +111,12 @@ export function BacktestBatchPage() {
     </div>
   );
 
+  const drawnBuyAndHold = buyAndHold.filter((group) => group.points.length > 0);
+  const buyAndHoldLines = batchBuyAndHoldLineStyles(drawnBuyAndHold);
   const lines: BacktestValueLine[] = [
     ...finishedRuns.map((run) => ({ name: `Run ${run.runNumber}`, color: batchRunColor(theme, run.runNumber), line: "solid" as const, points: run.points })),
-    ...buyAndHold.filter((group) => group.points.length > 0).map((group) => ({ name: `Buy and hold · ${group.symbols.join(", ")}`, color: batchBuyAndHoldColor(theme, group), line: "dashed" as const, points: group.points })),
-    ...(spy ? [{ name: "Buy and hold · SPY", color: spyBuyAndHoldColorByTheme[theme], line: "dotted" as const, points: spy.points }] : []),
+    ...drawnBuyAndHold.map((group, index) => ({ name: `Buy and hold · ${group.symbols.join(", ")}`, color: batchBuyAndHoldColor(theme, group), line: buyAndHoldLines[index]!, points: group.points })),
+    ...(spy ? [{ name: "Buy and hold · SPY", color: spyBuyAndHoldColorByTheme[theme], line: "solid" as const, points: spy.points }] : []),
   ];
 
   return (
@@ -136,7 +138,7 @@ export function BacktestBatchPage() {
 
       <BacktestCard
         title="Account value"
-        description="% since the start, every trading day at 10:00 ET; the dashed and dotted lines are buy and hold, for comparison only"
+        description="% since the start, every trading day at 10:00 ET; buy and hold of the symbols (solid in the text colour when runs share it, dashed in a run's colour when it is that run's alone) and of SPY (grey) are for comparison only"
         actions={<BacktestValueScaleSwitch scale={valueScale} onChange={setValueScale} />}
         className="mb-3"
       >

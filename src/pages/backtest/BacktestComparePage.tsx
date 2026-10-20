@@ -21,7 +21,7 @@ import { BacktestCompareChart } from "../../components/backtest/BacktestCharts";
 import { usePolledBacktestResource } from "../../components/backtest/useBacktestPolling";
 import { useTheme } from "../../hooks/useTheme";
 import { formatCurrency } from "../../lib/formatters";
-import { backtestMetricExplanation, backtestSeriesColorsByTheme, bestValueIndex, buyAndHoldColorByTheme, compareMetricRows, describeOverrideChanges, spyBuyAndHoldColorByTheme } from "../../lib/backtestPresentation";
+import { backtestMetricExplanation, backtestSeriesColorsByTheme, bestValueIndex, buyAndHoldColorByTheme, buyAndHoldLineStyle, compareMetricRows, describeOverrideChanges, spyBuyAndHoldColorByTheme } from "../../lib/backtestPresentation";
 import { escapeTooltipHtml } from "../../lib/signalsPresentation";
 
 const pageTitle = "Compare";
@@ -73,7 +73,7 @@ function buildCompareColumns(comparison: BacktestCompareResponse, settingRows: B
   const samePeriod = groupSessions(comparison.sessions, periodOf).length === 1;
   const singleGroup = groupSessions(comparison.sessions, symbolsAndPeriodOf).length === 1;
 
-  const buyAndHoldColumn = (group: BacktestCompareSession[], kind: "baseline" | "spy") => {
+  const buyAndHoldColumn = (group: BacktestCompareSession[], kind: "baseline" | "spy", index: number) => {
     const session = group.find((candidate) => curveByKey.has(`${kind}:${candidate.id}`)) ?? group[0]!;
     const curve = curveByKey.get(`${kind}:${session.id}`);
     const column: CompareColumn = {
@@ -84,15 +84,15 @@ function buildCompareColumns(comparison: BacktestCompareResponse, settingRows: B
       wheelCycles: null,
       kind,
       color: kind === "baseline" ? buyAndHoldColorByTheme[theme] : spyBuyAndHoldColorByTheme[theme],
-      line: kind === "baseline" ? "dashed" : "dotted",
+      line: buyAndHoldLineStyle(kind === "baseline" ? "symbols" : "spy", index),
     };
     return { column, curve: curve ? { ...curve, label: samePeriod ? column.name : `${column.name} (${session.startDate} → ${session.endDate})` } : undefined };
   };
-  const baselines = groupSessions(comparison.sessions, symbolsAndPeriodOf).map((group) => buyAndHoldColumn(group, "baseline"));
+  const baselines = groupSessions(comparison.sessions, symbolsAndPeriodOf).map((group, index) => buyAndHoldColumn(group, "baseline", index));
   const spyBaselines = groupSessions(
     comparison.sessions.filter((session) => session.spyBaselineMetrics !== null),
     periodOf,
-  ).map((group) => buyAndHoldColumn(group, "spy"));
+  ).map((group, index) => buyAndHoldColumn(group, "spy", index));
 
   const isCurve = (curve: BacktestCompareCurve | undefined): curve is BacktestCompareCurve => curve !== undefined;
   return {
@@ -245,7 +245,7 @@ export function BacktestComparePage() {
 
       <BacktestCard
         title="Account value"
-        description="every trading day at 10:00 ET; the grey buy-and-hold lines are for comparison only"
+        description="every trading day at 10:00 ET; buy and hold of the symbols (in the text colour) and of SPY (grey) are for comparison only"
         actions={<BacktestValueScaleSwitch scale={valueScale} onChange={setValueScale} />}
         className="mb-3"
       >

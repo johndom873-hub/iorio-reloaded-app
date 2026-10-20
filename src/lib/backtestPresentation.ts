@@ -23,6 +23,7 @@ import {
   type BacktestPnlBasis,
   type BacktestPosition,
   type BacktestPositionLeg,
+  type BacktestSessionDay,
   type BacktestSettingChoice,
   type BacktestSettingRow,
   type BacktestSettings,
@@ -718,18 +719,21 @@ export const backtestSeriesColorsByTheme = {
   dark: ["#3987e5", "#d95926", "#199e70", "#c98500", "#d55181", "#008300", "#9085e9", "#e66767"],
 } as const;
 
-/** Buy and hold is the reference line: grey and dashed, never a categorical slot. */
-export const buyAndHoldColorByTheme = { light: "#6b7280", dark: "#a3acb9" } as const;
+/** Buy and hold of the symbols, the reference line (Marcelo 2026-10-20): solid in the body colour (white on dark, near-black
+ *  on light), never a categorical slot. */
+export const buyAndHoldColorByTheme = { light: "#1f2937", dark: "#f9fafb" } as const;
+/** The dash a second or later buy-and-hold line of the symbols takes (other periods or symbol groups), 3 more each. */
 export const buyAndHoldDashArray = 5;
 
-/** Buy and hold of SPY, the second reference line: a darker grey (lighter on dark) and dotted, so it never reads as the symbols' line. */
-export const spyBuyAndHoldColorByTheme = { light: "#1f2937", dark: "#e5e7eb" } as const;
+/** Buy and hold of SPY, the second reference line: solid in a mid grey apart from the symbols' white. */
+export const spyBuyAndHoldColorByTheme = { light: "#6b7280", dark: "#8b95a7" } as const;
+/** The dash a second or later SPY line takes (another period), 2 more each. */
 export const spyBuyAndHoldDashArray = 2;
 
-/** A session's own account chart and its comparison table (Marcelo 2026-10-20): both buy-and-hold lines solid, the
- *  symbols' in the body colour (white on dark), SPY's in a mid grey apart from it. */
-export const sessionBuyAndHoldColorByTheme = { light: "#1f2937", dark: "#f9fafb" } as const;
-export const sessionSpyBuyAndHoldColorByTheme = { light: "#6b7280", dark: "#8b95a7" } as const;
+/** A buy-and-hold line's style: the first of its kind on a chart solid, later ones dashed (the symbols') or dotted (SPY). */
+export function buyAndHoldLineStyle(kind: "symbols" | "spy", index: number): "solid" | "dashed" | "dotted" {
+  return index === 0 ? "solid" : kind === "symbols" ? "dashed" : "dotted";
+}
 
 /** A YYYY-MM-DD trading date as the chart's x value (UTC midnight; the axes format in UTC so the day never shifts). */
 export function tradingDateToChartTime(tradingDate: string): number {
@@ -855,8 +859,8 @@ function noSaleReasons(noSaleDays: BacktestNoSaleDays, entryFilterLimits: Backte
   return reasons.filter(([days]) => days > 0).map(([days, reason]) => ({ reason, days }));
 }
 
-/** An idle or uncovered row's reason, short ("No entry: extension z ≥ 1", "No call: no candidate, not enough cash"). */
-export function describeIdleStretchReason(stretch: BacktestIdleStretch, lead: "No entry" | "No call", entryFilterLimits: BacktestCycleGap["entryFilterLimits"] | null = null): string {
+/** An idle or uncovered row's reason, short ("No entry: extension z ≥ 1", "No call on 900 of 1,100 shares: no candidate"). */
+export function describeIdleStretchReason(stretch: BacktestIdleStretch, lead: string, entryFilterLimits: BacktestCycleGap["entryFilterLimits"] | null = null): string {
   const reasons = noSaleReasons(stretch.noSaleDays, entryFilterLimits);
   return reasons.length === 0 ? `${lead}: no reason recorded` : `${lead}: ${reasons.map((entry) => entry.reason).join(", ")}`;
 }
@@ -884,6 +888,31 @@ export function describeIdleStretchRules(stretch: BacktestIdleStretch, lead: "No
   return lines.join("\n");
 }
 
+/**
+ * The account's return over a stretch of session days (Marcelo 2026-10-20): its value at the 10:00 mark of the session
+ * after the stretch's last day (the last day's own mark when none follows) ÷ its value at the first day's 10:00 mark − 1.
+ * Each mark is before that day's orders, so a cycle's return counts what its closing day did. Null when a date is not one
+ * of the session's days.
+ */
+export function accountReturnOver(days: readonly Pick<BacktestSessionDay, "tradingDate" | "accountValue">[], firstDate: string, lastDate: string | null): number | null {
+  const first = days.findIndex((day) => day.tradingDate === firstDate);
+  const last = lastDate === null ? days.length - 1 : days.findIndex((day) => day.tradingDate === lastDate);
+  if (first === -1 || last === -1 || days[first]!.accountValue <= 0) return null;
+  return days[Math.min(last + 1, days.length - 1)]!.accountValue / days[first]!.accountValue - 1;
+}
+
+/**
+ * Buy and hold over a stretch (Marcelo 2026-10-20), close to close on split-adjusted closes, as the Idle rows' stock move:
+ * C(last day) ÷ C(the trading day before the first) − 1. `closes` are [date, adjusted close] in date order; null when a
+ * close is missing.
+ */
+export function closeToCloseReturn(closes: readonly [string, number | null][], firstDate: string, lastDate: string): number | null {
+  const first = closes.findIndex(([date]) => date === firstDate);
+  const before = first > 0 ? closes[first - 1]![1] : null;
+  const last = closes.find(([date]) => date === lastDate)?.[1] ?? null;
+  return before === null || last === null || before <= 0 ? null : last / before - 1;
+}
+
 /** An uncovered stretch's shares: "2,400", or "700 of 1,000" when only some were uncovered. */
 export function describeUncoveredShares(stretch: Pick<BacktestUncoveredStretch, "sharesUncovered" | "sharesHeld">): string {
   return stretch.sharesUncovered === stretch.sharesHeld ? formatNumber(stretch.sharesHeld) : `${formatNumber(stretch.sharesUncovered)} of ${formatNumber(stretch.sharesHeld)}`;
@@ -891,35 +920,37 @@ export function describeUncoveredShares(stretch: Pick<BacktestUncoveredStretch, 
 
 /**
  * A cycle timeline row as the Wheel cycles table lists it: a short event name ("Sold put", "Put assigned", "Assigned" for
- * a call assigned, "To CC"), what happened ("$59 Put · 10 Jan (7DTE) sold @ 0.30 · $4.76 commission"), and whether it
- * opened an option (its expiry then shows as the row's close).
+ * a call assigned, "To CC"), what happened ("$59 Put · 10 Jan (7DTE) · 7× @ 0.30 · $4.76 commission"), whether it
+ * opened an option (its expiry then shows as the row's close), and the stock price that goes with it: the 10:00 price
+ * the day's looks saw for a trade, the day's close for an assignment, a hand-over or a mark.
  */
-export function describeCycleTimelineEvent(row: BacktestCycleTimelineRow): { name: string; detail: string; opensOption: boolean } {
+export function describeCycleTimelineEvent(row: BacktestCycleTimelineRow): { name: string; detail: string; opensOption: boolean; priceAt: "tenOclock" | "close" } {
   const commission = row.commissionDollars ? ` · ${formatCurrency(row.commissionDollars)} commission` : "";
   const shares = pluralizeCount(row.quantity, "share");
   const contractOf = (right: string) => (row.strike !== null && row.expiryDate !== null ? formatOptionContractLabel({ strike: row.strike, right: right === "put" ? "P" : "C", expiry: row.expiryDate, dte: daysToExpiry(row.expiryDate, row.tradingDate) }) : `${right}s`);
   const strike = row.strike === null ? "" : ` the ${formatCurrency(row.strike)} strike`;
   const price = row.stockPrice === null ? "" : formatCurrency(row.stockPrice);
+  const contracts = Math.round(row.quantity / 100);
   const opened = /^(Sold|Bought) (put|call) @ (\S+)(.*)$/.exec(row.label);
-  if (opened) return { name: `${opened[1]} ${opened[2]}`, detail: `${contractOf(opened[2]!)} ${opened[1]!.toLowerCase()} @ ${opened[3]}${opened[4]}${commission}`, opensOption: true };
+  if (opened) return { name: `${opened[1]} ${opened[2]}`, detail: `${contractOf(opened[2]!)}${formatOrderSize(contracts, Number(opened[3]))}${opened[4]}${commission}`, opensOption: true, priceAt: "tenOclock" };
   const boughtBack = /^Bought back (put|call) @ (\S+)$/.exec(row.label);
-  if (boughtBack) return { name: "Bought back", detail: `${contractOf(boughtBack[1]!)} bought back @ ${boughtBack[2]}${commission}`, opensOption: false };
+  if (boughtBack) return { name: "Bought back", detail: `${contractOf(boughtBack[1]!)}${formatOrderSize(contracts, Number(boughtBack[2]))}${commission}`, opensOption: false, priceAt: "tenOclock" };
   if (row.label.startsWith("Put assigned")) {
     const close = row.strike !== null && row.quantity > 0 && row.stockDollars !== 0 ? `, worth ${formatCurrency(row.strike + row.stockDollars / row.quantity)} at the close` : "";
-    return { name: "Put assigned", detail: `${shares} bought at${strike}${close}${commission}`, opensOption: false };
+    return { name: "Put assigned", detail: `${shares} bought at${strike}${close}${commission}`, opensOption: false, priceAt: "close" };
   }
-  if (row.label.startsWith("Call assigned")) return { name: "Assigned", detail: `${shares} sold at${strike}${commission}`, opensOption: false };
+  if (row.label.startsWith("Call assigned")) return { name: "Assigned", detail: `${shares} sold at${strike}${commission}`, opensOption: false, priceAt: "close" };
   const handed = /^Shares handed to (CC|Unstructured)$/.exec(row.label);
   if (handed) {
     const to = handed[1] === "CC" ? "CC" : "N/S";
-    return { name: `To ${to}`, detail: `${shares} handed to ${to} ${row.stockPriceSource === "close" ? `at the ${price} close` : `at their ${price} cost`}`, opensOption: false };
+    return { name: `To ${to}`, detail: `${shares} handed to ${to} ${row.stockPriceSource === "close" ? `at the ${price} close` : `at their ${price} cost`}`, opensOption: false, priceAt: "close" };
   }
-  if (row.label === "Bought shares" || row.label === "Sold shares") return { name: row.label, detail: `${shares} @ ${price}${commission}`, opensOption: false };
+  if (row.label === "Bought shares" || row.label === "Sold shares") return { name: row.label, detail: `${shares} @ ${price}${commission}`, opensOption: false, priceAt: "tenOclock" };
   const marked = /^Marked to the (\S+) close$/.exec(row.label);
-  if (marked) return { name: "Marked", detail: `${shares} still held, at the ${price} close of ${marked[1]}`, opensOption: false };
+  if (marked) return { name: "Marked", detail: `${shares} still held, at the ${price} close of ${marked[1]}`, opensOption: false, priceAt: "close" };
   const openMarked = /^Open (put|call) marked to market$/.exec(row.label);
-  if (openMarked) return { name: "Marked", detail: `${contractOf(openMarked[1]!)} still open, marked to market`, opensOption: false };
-  return { name: row.label, detail: commission.replace(/^ · /, ""), opensOption: false };
+  if (openMarked) return { name: "Marked", detail: `${contractOf(openMarked[1]!)}${formatOrderSize(contracts, null)} still open, marked to market`, opensOption: false, priceAt: "close" };
+  return { name: row.label, detail: commission.replace(/^ · /, ""), opensOption: false, priceAt: "close" };
 }
 
 // ---- Positions (the simulated book, as the platform's position rows would read) ----

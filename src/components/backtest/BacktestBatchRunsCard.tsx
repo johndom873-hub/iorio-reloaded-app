@@ -3,7 +3,7 @@ import type { BacktestBatchRun, BacktestMetrics } from "../../api/backtest";
 import { useTheme } from "../../hooks/useTheme";
 import { formatCurrency, formatNumber, formatPercentagePoints, formatRatio, formatSecondsInWords, pnlTextClass } from "../../lib/formatters";
 import { backtestMetricExplanation, bestValueIndex, describeJobRowTiming, signedPercentDisplay, spyBuyAndHoldColorByTheme } from "../../lib/backtestPresentation";
-import { batchBuyAndHoldColor, batchRunColor, cagrVersusBuyAndHold, describeRunList, type BatchBuyAndHoldGroup } from "../../lib/backtestBatchPresentation";
+import { batchBuyAndHoldColor, batchBuyAndHoldLineStyles, batchRunColor, cagrVersusBuyAndHold, describeRunList, type BatchBuyAndHoldGroup } from "../../lib/backtestBatchPresentation";
 import { ColumnVisibilityPopover } from "../DataTable/ColumnVisibilityPopover";
 import { useColumnVisibility } from "../DataTable/useColumnVisibility";
 import { DottedLabelTooltip } from "../HelpTooltip";
@@ -136,7 +136,11 @@ export function BacktestBatchRunsCard({ runs, descriptions, buyAndHold, spyMetri
     );
   };
 
-  const referenceRow = (key: string, name: string, detail: string, color: string, line: "dashed" | "dotted", metrics: BacktestMetrics | null, showsDollars: boolean) => (
+  // The same styles as the batch chart, which draws the groups with points.
+  const drawnBuyAndHold = buyAndHold.filter((group) => group.points.length > 0);
+  const lineStyles = batchBuyAndHoldLineStyles(drawnBuyAndHold);
+  const lineStyleByKey = new Map(drawnBuyAndHold.map((group, index) => [group.key, lineStyles[index]!]));
+  const referenceRow = (key: string, name: string, detail: string, color: string, line: "solid" | "dashed" | "dotted", metrics: BacktestMetrics | null, showsDollars: boolean) => (
     <tr key={key}>
       <td className="backtest-batch-run-cell">
         <div className="backtest-batch-run-line">
@@ -236,9 +240,9 @@ export function BacktestBatchRunsCard({ runs, descriptions, buyAndHold, spyMetri
               </td>
             </tr>
             {buyAndHold.map((group) =>
-              referenceRow(group.key, `Buy and hold · ${group.symbols.join(", ")}`, `for ${describeRunList(group.runNumbers)} · the same pots`, batchBuyAndHoldColor(theme, group), "dashed", group.metrics, true),
+              referenceRow(group.key, `Buy and hold · ${group.symbols.join(", ")}`, `for ${describeRunList(group.runNumbers)} · the same pots`, batchBuyAndHoldColor(theme, group), lineStyleByKey.get(group.key) ?? "dashed", group.metrics, true),
             )}
-            {referenceRow("spy", "Buy and hold · SPY", "each run's capital in SPY", spyBuyAndHoldColorByTheme[theme], "dotted", spyMetrics, false)}
+            {referenceRow("spy", "Buy and hold · SPY", "each run's capital in SPY", spyBuyAndHoldColorByTheme[theme], "solid", spyMetrics, false)}
           </tbody>
         </table>
       </div>

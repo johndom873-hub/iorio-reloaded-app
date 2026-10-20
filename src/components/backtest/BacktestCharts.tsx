@@ -13,8 +13,6 @@ import {
   formatChartDollars,
   roundToShownPercent,
   roundValueAxis,
-  sessionBuyAndHoldColorByTheme,
-  sessionSpyBuyAndHoldColorByTheme,
   spyBuyAndHoldColorByTheme,
   spyBuyAndHoldDashArray,
   tradingDateToChartTime,
@@ -111,8 +109,8 @@ export function BacktestSessionCharts({ days, scale, baselineLabel, spyBaselineL
 
   const series: ChartSeries[] = [
     { name: "This session", color: backtestSeriesColorsByTheme[theme][0], width: 2, dash: 0, values: days.map((day) => day.accountValue), drawdowns: days.map((day) => day.drawdown) },
-    { name: baselineLabel, color: sessionBuyAndHoldColorByTheme[theme], width: 1.5, dash: 0, values: days.map((day) => day.baselineValue), drawdowns: baselineDrawdowns },
-    ...(hasSpy ? [{ name: spyBaselineLabel, color: sessionSpyBuyAndHoldColorByTheme[theme], width: 1.5, dash: 0, values: spyValues, drawdowns: spyDrawdowns }] : []),
+    { name: baselineLabel, color: buyAndHoldColorByTheme[theme], width: 1.5, dash: 0, values: days.map((day) => day.baselineValue), drawdowns: baselineDrawdowns },
+    ...(hasSpy ? [{ name: spyBaselineLabel, color: spyBuyAndHoldColorByTheme[theme], width: 1.5, dash: 0, values: spyValues, drawdowns: spyDrawdowns }] : []),
   ];
   const base = baseLineChartOptions(isPhone, days.length);
   const allValues = series.flatMap((entry) => entry.values.filter((value): value is number => value !== null));
@@ -148,7 +146,8 @@ export function BacktestSessionCharts({ days, scale, baselineLabel, spyBaselineL
   );
 }
 
-/** One line of a batch chart: a run or the combined portfolio (solid), buy and hold of its tickers (dashed), SPY (dotted). */
+/** One line of a batch chart: a run or the combined portfolio, buy and hold of its tickers, SPY; dashed and dotted lines take
+ *  a longer dash each (the second dashed 5, the next 8). */
 export interface BacktestValueLine {
   name: string;
   color: string;
@@ -162,7 +161,7 @@ const growthIndexLabel = (index: number, decimalPlaces: number) => formatSignedP
 /**
  * A batch's lines (mockup approved 2026-10-17): in "percent", each as % since its own start (an index of 100 there), so runs of
  * different capital share one axis (D11); in "dollars", as account values (the combined portfolio, one account). Linear or Log
- * as on the session page; the dashed and dotted lines are for comparison only.
+ * as on the session page; the buy-and-hold lines are for comparison only.
  */
 export function BacktestValueLinesChart({ scale, lines, mode }: { scale: BacktestValueScale; lines: BacktestValueLine[]; mode: "percent" | "dollars" }) {
   const isPhone = useMediaQuery("(max-width: 767px)");
@@ -209,8 +208,8 @@ interface CompareChartProps {
   spyBaselineCurves: BacktestCompareCurve[];
 }
 
-/** Every compared session's account value (categorical colours in order), buy and hold of their symbols (grey, dashed) and of
- *  SPY (dark grey, dotted): the buy-and-hold lines are for comparison only. */
+/** Every compared session's account value (categorical colours in order), buy and hold of their symbols (white on dark) and of
+ *  SPY (grey), the first of each solid and later ones (other periods or symbols) dashed and dotted: for comparison only. */
 export function BacktestCompareChart({ scale, sessionCurves, baselineCurves, spyBaselineCurves }: CompareChartProps) {
   const { theme } = useTheme();
   const isPhone = useMediaQuery("(max-width: 767px)");
@@ -224,7 +223,7 @@ export function BacktestCompareChart({ scale, sessionCurves, baselineCurves, spy
     colors: [...sessionCurves.map((_, index) => palette[index % palette.length]), ...baselineCurves.map(() => buyAndHoldColorByTheme[theme]), ...spyBaselineCurves.map(() => spyBuyAndHoldColorByTheme[theme])],
     stroke: {
       width: [...sessionCurves.map(() => 2), ...baselineCurves.map(() => 1.5), ...spyBaselineCurves.map(() => 2)],
-      dashArray: [...sessionCurves.map(() => 0), ...baselineCurves.map((_, index) => buyAndHoldDashArray + index * 3), ...spyBaselineCurves.map((_, index) => spyBuyAndHoldDashArray + index * 2)],
+      dashArray: [...sessionCurves.map(() => 0), ...baselineCurves.map((_, index) => (index === 0 ? 0 : buyAndHoldDashArray + (index - 1) * 3)), ...spyBaselineCurves.map((_, index) => (index === 0 ? 0 : spyBuyAndHoldDashArray + (index - 1) * 2))],
       curve: "straight",
     },
     yaxis: valueAxisOptions(scale, allValues, isPhone, curves.map((curve) => curve.label)),

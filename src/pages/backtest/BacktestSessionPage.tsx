@@ -224,7 +224,7 @@ export function BacktestSessionPage() {
 
       <BacktestRunNotesCard notes={session.notes} runStatistics={session.runStatistics} />
       <BacktestTickerStatisticsTable tickerStatistics={detail.tickerStatistics} allSymbolsStatistics={detail.allSymbolsStatistics} />
-      {(detail.cycles.length > 0 || detail.positions.length > 0) && <BacktestCyclesTable sessionId={session.id} cycles={detail.cycles} cycleGaps={detail.cycleGaps ?? []} symbols={symbols} sessionDays={detail.days} />}
+      {(detail.cycles.length > 0 || detail.positions.length > 0) && <BacktestCyclesTable sessionId={session.id} status={session.status} cycles={detail.cycles} cycleGaps={detail.cycleGaps ?? []} symbols={symbols} sessionDays={detail.days} />}
 
       <div className="backtest-results-pair mb-3">
         <BacktestMonthlyReturnsCard monthlyReturns={detail.monthlyReturns} baselineLabel={session.baselineLabel} spyBaselineLabel={session.spyBaselineLabel} />

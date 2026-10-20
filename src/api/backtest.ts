@@ -1124,6 +1124,20 @@ export function fetchBacktestSession(sessionId: string): Promise<BacktestSession
   return apiRequest<BacktestSessionDetail>(`/backtest/sessions/${encodeURIComponent(sessionId)}`);
 }
 
+/**
+ * A session symbol's stock prices day by day (GET /backtest/sessions/:id/stock-prices): the trading day before the
+ * session's first, then every day to its last, as [date, the 10:00 price as traded, the close as traded, the
+ * split-adjusted close]; a price null when not known.
+ */
+export interface BacktestSessionStockPrices {
+  symbol: string;
+  days: [string, number | null, number | null, number | null][];
+}
+
+export function fetchBacktestSessionStockPrices(sessionId: string, symbol: string): Promise<BacktestSessionStockPrices> {
+  return apiRequest<BacktestSessionStockPrices>(`/backtest/sessions/${encodeURIComponent(sessionId)}/stock-prices?symbol=${encodeURIComponent(symbol)}`);
+}
+
 /** A cycle's timeline and uncovered stretches; null for a session run before cycles kept them. */
 export async function fetchBacktestCycleDetail(sessionId: string, symbol: string, cycleNumber: number): Promise<BacktestCycleDetail | null> {
   const { detail } = await apiRequest<{ detail: BacktestCycleDetail | null }>(`/backtest/sessions/${encodeURIComponent(sessionId)}/cycles/${encodeURIComponent(symbol)}/${cycleNumber}`);

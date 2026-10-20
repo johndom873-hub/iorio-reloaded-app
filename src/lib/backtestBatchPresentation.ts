@@ -1,5 +1,5 @@
 import { backtestTickerBaselineKeys, type BacktestBatchRun, type BacktestMetrics, type BacktestSessionBatchRef, type BacktestSessionListItem, type BacktestTickerValueKey } from "../api/backtest";
-import { backtestSeriesColorsByTheme, buyAndHoldColorByTheme, formatAbsDelta, parseDollarAmountText, tickerValueTextProblem } from "./backtestPresentation";
+import { backtestSeriesColorsByTheme, buyAndHoldColorByTheme, buyAndHoldLineStyle, formatAbsDelta, parseDollarAmountText, tickerValueTextProblem } from "./backtestPresentation";
 import { formatCurrency } from "./formatters";
 
 // Backtest batches (mockup approved by Marcelo 2026-10-17, https://claude.ai/artifact/9rs1PXZGBnkphdMu2wc6yf): up to 9 runs on
@@ -141,6 +141,13 @@ export function buyAndHoldGroups(runs: BacktestBatchRun[]): BatchBuyAndHoldGroup
  *  grey when several runs share it, since no one run's colour would be right. */
 export function batchBuyAndHoldColor(theme: "light" | "dark", group: Pick<BatchBuyAndHoldGroup, "runNumbers">): string {
   return group.runNumbers.length === 1 ? batchRunColor(theme, group.runNumbers[0]!) : buyAndHoldColorByTheme[theme];
+}
+
+/** Each buy-and-hold line's style, in the groups' order: one shared by several runs in the reference white, solid for the
+ *  first and dashed after; one of a single run, in that run's colour, always dashed so it never reads as the run itself. */
+export function batchBuyAndHoldLineStyles(groups: readonly Pick<BatchBuyAndHoldGroup, "runNumbers">[]): ("solid" | "dashed" | "dotted")[] {
+  let shared = 0;
+  return groups.map((group) => (group.runNumbers.length === 1 ? "dashed" : buyAndHoldLineStyle("symbols", shared++)));
 }
 
 /** Buy and hold of SPY for the batch: its % figures and line are the same whatever a run's capital, so a finished run's stand for all; null when none kept it. */
