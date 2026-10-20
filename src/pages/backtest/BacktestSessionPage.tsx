@@ -5,6 +5,7 @@ import { deleteBacktestSession, fetchBacktestSession, fetchBacktestSettingsTempl
 import { ConfirmModal } from "../../components/ConfirmModal";
 import { PageHeader } from "../../components/layout/PageHeader";
 import { Spinner } from "../../components/Spinner";
+import { TooltipSpan } from "../../components/TooltipSpan";
 import { BacktestAccuracyTable } from "../../components/backtest/BacktestAccuracyTable";
 import { BacktestBackLink, BacktestCard, BacktestJobProgress, BacktestJobStatusBadge, BacktestValueScaleSwitch } from "../../components/backtest/backtestBits";
 import { useBacktestValueScale } from "../../components/backtest/useBacktestValueScale";
@@ -25,9 +26,12 @@ import { usePolledBacktestResource } from "../../components/backtest/useBacktest
 import { useTickingNow } from "../../hooks/useTickingNow";
 import { formatBrowserClockTime, formatBrowserDayMonth, formatCurrency, formatDuration } from "../../lib/formatters";
 import {
+  backtestSessionTitle,
   decisionMakerLabel,
   describeLlmCalls,
   describeOverrideChanges,
+  describeSessionTickerValues,
+  describeSessionTickerValueSources,
   describeSessionSplits,
   isBacktestJobActive,
   sessionDecisionMaker,
@@ -126,7 +130,7 @@ export function BacktestSessionPage() {
     <>
       <BacktestBackLink batch={session.batch} />
       <PageHeader
-        title={`${session.name} · ${session.symbol}`}
+        title={backtestSessionTitle(session.name, symbols, session.symbol)}
         subtitle={subtitle}
         actions={
           <div className="d-flex flex-wrap align-items-center justify-content-end gap-2">
@@ -149,6 +153,22 @@ export function BacktestSessionPage() {
         <div className="mb-2" style={{ fontSize: "0.8rem" }}>
           <span className="badge bg-indigo text-indigo-fg me-2">{decisionMakerLabel.llm}</span>
           <span className="text-secondary">{llmCalls ? `${describeLlmCalls(llmCalls)}.` : "Claude through the subscription; the calls show once the run has looked at a day."} The model's reasons are each action's "Chosen because" in the Actions log.</span>
+        </div>
+      )}
+      {session.symbolSettings && (
+        <div className="text-secondary mb-2" style={{ fontSize: "0.8rem" }}>
+          {symbols.flatMap((symbol) => {
+            const settings = session.symbolSettings?.[symbol];
+            return settings
+              ? [
+                  <div key={symbol}>
+                    <TooltipSpan text={describeSessionTickerValueSources(settings)} multiline className="dotted-underline-label">
+                      {describeSessionTickerValues(symbol, settings)}
+                    </TooltipSpan>
+                  </div>,
+                ]
+              : [];
+          })}
         </div>
       )}
       {sessionSplits && (

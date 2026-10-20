@@ -24,6 +24,7 @@ import {
   type BacktestPosition,
   type BacktestPositionLeg,
   type BacktestSessionDay,
+  type BacktestSymbolSettings,
   type BacktestSettingChoice,
   type BacktestSettingRow,
   type BacktestSettings,
@@ -1301,6 +1302,35 @@ export function describeTickerValueGroup(group: BacktestTickerValueGroup, values
   if (group === "rungs") return formatNumber(Number(values.ladderRungs));
   if (group === "shock") return describeShock(values, true);
   return `${formatAbsDelta(Number(values.minAbsDelta))}–${formatAbsDelta(Number(values.maxAbsDelta))}`;
+}
+
+/**
+ * The values a ticker of a "pots" session ran on, for the session's header: "SPY: $800,000 pot · 65% shares · 3 rungs ·
+ * fixed 35% shock · |delta| 0.05–0.30" (a shock from history: "40–80% shock from history").
+ */
+export function describeSessionTickerValues(symbol: string, settings: Pick<BacktestSymbolSettings, "potDollars" | "baseline">): string {
+  const values = { potDollars: settings.potDollars, ...settings.baseline };
+  const shock = values.ladderShock === "fixed" ? `fixed ${describeShock(values, false)} shock` : `${describeShock(values, false)} shock from history`;
+  return `${symbol}: ${describeTickerValueGroup("pot", values)} pot · ${describeTickerValueGroup("share", values)} shares · ${describeTickerValueGroup("rungs", values)} rungs · ${shock} · |delta| ${describeTickerValueGroup("delta", values)}`;
+}
+
+/** Where each of those values came from, one per line ("Fixed shock: the ticker's saved lab value"), for its tooltip. */
+export function describeSessionTickerValueSources(settings: Pick<BacktestSymbolSettings, "baseline" | "source">): string {
+  const shockKey: BacktestTickerValueKey = settings.baseline.ladderShock === "fixed" ? "ladderShockPct" : "ladderShockMinPct";
+  const keys: BacktestTickerValueKey[] = ["potDollars", "ladderSharesPct", "ladderRungs", shockKey, "minAbsDelta"];
+  return keys
+    .map((key) => {
+      const label = key === "minAbsDelta" ? "|delta| range" : key === "ladderShockMinPct" ? "Shock range" : tickerValueLabel[key];
+      const source = settings.source[key];
+      return `${label}: ${source ? backtestValueSourceTitle[source] : "not recorded"}`;
+    })
+    .join("\n");
+}
+
+/** A session's page title: its name, then its symbols unless the name already names each of them ("Analysis · SPY · …"). */
+export function backtestSessionTitle(name: string, symbols: readonly string[], symbolText: string): string {
+  const named = symbols.every((symbol) => new RegExp(`(^|[^A-Z0-9.])${symbol.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}($|[^A-Z0-9.])`).test(name));
+  return named ? name : `${name} · ${symbolText}`;
 }
 
 /** A Reset button's text: "Reset to 30%", "Reset to 60–80%"; "Clear" for a pot with nothing under it. */
