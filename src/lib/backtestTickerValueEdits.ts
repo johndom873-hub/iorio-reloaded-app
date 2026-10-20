@@ -13,11 +13,13 @@ import {
   describeTickerResetTarget,
   mostSpecificValueSource,
   parseDollarAmountText,
+  settingInputText,
   tickerValueGroupKeys,
   tickerValueInputText,
   tickerValueTextProblem,
   type BacktestTickerValueGroup,
 } from "./backtestPresentation";
+import { differingAnalysisKeys, type AnalysisPanelValues } from "./analysisPresentation";
 
 // New session, per-ticker pots (mockup approved 2026-10-15): the Tickers card's typed values, what the estimate resolved,
 // and the request's symbolSettings built from both. A typed value is an edit ("This session") only while it differs from
@@ -211,4 +213,30 @@ export function buildTickerRowModels(input: { symbols: string[]; edits: Backtest
     ];
     return { symbol, resolution: symbolResolution, display, weight: symbolResolution?.weight ?? null, problems };
   });
+}
+
+/**
+ * What the Analyse window's Backtest button hands the New session form (Marcelo 2026-10-20): the values on screen (a trial's,
+ * else the ticker's saved ones) that differ from the ticker's saved values, as this session's typed edits: the ticker's
+ * own values on its Tickers row, the global-only ones (days to expiry, spread) as the session's settings.
+ */
+export interface AnalysisSessionValues {
+  symbol: string;
+  tickerEdits: Partial<Record<BacktestTickerValueKey, string>>;
+  /** Setting path ("baseline.minDte") → the setting input's text. */
+  settingValues: Record<string, string>;
+}
+
+export function analysisSessionValues(symbol: string, shown: AnalysisPanelValues, saved: AnalysisPanelValues): AnalysisSessionValues {
+  const tickerEdits: AnalysisSessionValues["tickerEdits"] = {};
+  const settingValues: Record<string, string> = {};
+  for (const key of differingAnalysisKeys(shown, saved)) {
+    if (key === "ladderShockPct") {
+      // No fixed shock on screen: the shock from history, at the lab's range.
+      if (shown.ladderShockPct === null) tickerEdits.ladderShock = "history";
+      else Object.assign(tickerEdits, { ladderShock: "fixed", ladderShockPct: tickerValueInputText("ladderShockPct", shown.ladderShockPct) });
+    } else if (key === "minDte" || key === "maxDte" || key === "maxSpreadPctOfMid") settingValues[`baseline.${key}`] = settingInputText(shown[key]);
+    else tickerEdits[key] = tickerValueInputText(key, shown[key]);
+  }
+  return { symbol, tickerEdits, settingValues };
 }

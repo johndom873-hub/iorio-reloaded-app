@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
-import { Link, useNavigate, useSearchParams } from "react-router-dom";
+import { Link, useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { errorMessage } from "../../api/client";
 import { labelSettingPaths } from "../../lib/backtestSettingGroups";
 import {
@@ -72,6 +72,7 @@ import {
   tickerEditProblems,
   tickerEditsFromSession,
   tickerValueBelowEdit,
+  type AnalysisSessionValues,
   type BacktestCapitalMode,
   type BacktestTickerEdits,
   type BacktestTickerResolution,
@@ -163,6 +164,8 @@ export function NewBacktestSessionPage() {
   const sourceSessionId = searchParams.get("from");
   const sourceBatchId = searchParams.get("fromBatch");
   const requestedSymbolsParam = searchParams.get("symbols");
+  // From the Analyse window's Backtest button: the values on screen that differ from the ticker's saved ones.
+  const analysisValues = (useLocation().state as { analysisValues?: AnalysisSessionValues } | null)?.analysisValues ?? null;
   const { data: overview, loadError: overviewError } = useBacktestOverview();
 
   const [template, setTemplate] = useState<BacktestSettingsTemplate | null>(null);
@@ -300,9 +303,13 @@ export function NewBacktestSessionPage() {
         })),
       );
     }
-    setValueByPath(initialValueByPath(template, sourceSession));
+    const fromAnalysis = !source && !sourceBatch && analysisValues !== null && initialSymbols.includes(analysisValues.symbol) ? analysisValues : null;
+    if (fromAnalysis && Object.keys(fromAnalysis.tickerEdits).length > 0) setTickerEdits({ [fromAnalysis.symbol]: fromAnalysis.tickerEdits });
+    const editablePaths = new Set(template.rows.filter((row) => row.editable).map((row) => row.path));
+    const analysisSettingValues = Object.fromEntries(Object.entries(fromAnalysis?.settingValues ?? {}).filter(([path]) => editablePaths.has(path)));
+    setValueByPath({ ...initialValueByPath(template, sourceSession), ...analysisSettingValues });
     setInitialized(true);
-  }, [initialized, overview, template, sourceLoaded, sourceSession, sourceBatch, requestedSymbolsParam]);
+  }, [initialized, overview, template, sourceLoaded, sourceSession, sourceBatch, requestedSymbolsParam, analysisValues]);
 
   /** Picking or dropping a symbol: custom dates become all that the picked files share; years narrowed by hand stay while they
    *  are still inside that period, and otherwise (or when they were all of the old period) become all of it. With no shared

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { IconChartCandle, IconCircle, IconCircleCheck, IconRefresh } from "@tabler/icons-react";
+import { IconChartCandle, IconCircle, IconCircleCheck, IconFlask, IconRefresh } from "@tabler/icons-react";
 import { errorMessage } from "../../../api/client";
 import { createBacktestSession, startBacktestDownload, type BacktestSettingsOverrides } from "../../../api/backtest";
 import {
@@ -35,6 +35,7 @@ import { AnalysisChainMapCard } from "./AnalysisChainMapCard";
 import { AnalysisFitCard, AnalysisPotCard, AnalysisShockCard, AnalysisTooLargeCard } from "./AnalysisFitCards";
 import { AnalysisCorrelationCard, AnalysisDataQualityCard, AnalysisEarningsCard, AnalysisProfileCard } from "./AnalysisInfoCards";
 import { BacktestLabSettingsModal } from "../BacktestLabSettingsModal";
+import { analysisSessionValues } from "../../../lib/backtestTickerValueEdits";
 import { AnalysisLiquidityCards } from "./AnalysisLiquidityCards";
 import { AnalysisClaudeCards, AnalysisFitTiles, AnalysisKpiTiles } from "./AnalysisOverviewCards";
 import { AnalysisPriceCards } from "./AnalysisPriceCards";
@@ -286,6 +287,23 @@ export function TickerAnalysisModal({ symbol, onClose, onSuitabilitySaved }: Tic
     }
   };
 
+  // A new session of the ticker on the New session form, with the values on screen (a trial's differ from the saved ones).
+  const openNewSession = () => {
+    const values = shown && configured ? analysisSessionValues(symbol, shown, configured) : { symbol, tickerEdits: {}, settingValues: {} };
+    navigate(`/backtest/new?symbols=${encodeURIComponent(symbol)}`, { state: { analysisValues: values } });
+  };
+  const newSessionButton = (
+    <button
+      type="button"
+      className="btn btn-outline-secondary d-inline-flex align-items-center gap-1"
+      title={trial ? `A new backtest session of ${symbol} with this trial's values` : `A new backtest session of ${symbol} with its saved values`}
+      onClick={openNewSession}
+    >
+      <IconFlask size={16} aria-hidden="true" />
+      Backtest
+    </button>
+  );
+
   const statusLine = (
     <div className="analysis-status-line">
       {stored && (
@@ -306,6 +324,7 @@ export function TickerAnalysisModal({ symbol, onClose, onSuitabilitySaved }: Tic
           </button>
         )
       )}
+      {newSessionButton}
     </div>
   );
 
