@@ -922,12 +922,11 @@ export function describeUncoveredShares(stretch: Pick<BacktestUncoveredStretch, 
 /**
  * A cycle timeline row as the Wheel cycles table lists it: a short event name ("Sold put", "Put assigned", "Call assigned",
  * "To CC"), what happened ("$59 Put · 10 Jan (7DTE) · 7× @ 0.30 · 61.4% a year": a sale shows the annualised yield the
- * engine recorded for it instead of its commission; other trades their commission), whether it
+ * engine recorded for it; no row shows its commission, which the cycle's P&L already counts), whether it
  * opened an option (its expiry then shows as the row's close), and the stock price that goes with it: the 10:00 price
  * the day's looks saw for a trade, the day's close for an assignment, a hand-over or a mark.
  */
 export function describeCycleTimelineEvent(row: BacktestCycleTimelineRow): { name: string; detail: string; opensOption: boolean; priceAt: "tenOclock" | "close" } {
-  const commission = row.commissionDollars ? ` · ${formatCurrency(row.commissionDollars)} commission` : "";
   const shares = pluralizeCount(row.quantity, "share");
   const contractOf = (right: string) => (row.strike !== null && row.expiryDate !== null ? formatOptionContractLabel({ strike: row.strike, right: right === "put" ? "P" : "C", expiry: row.expiryDate, dte: daysToExpiry(row.expiryDate, row.tradingDate) }) : `${right}s`);
   const strike = row.strike === null ? "" : ` the ${formatCurrency(row.strike)} strike`;
@@ -935,27 +934,27 @@ export function describeCycleTimelineEvent(row: BacktestCycleTimelineRow): { nam
   const contracts = Math.round(row.quantity / 100);
   const opened = /^(Sold|Bought) (put|call) @ (\S+)(.*)$/.exec(row.label);
   if (opened) {
-    const saleYield = opened[1] === "Sold" ? (row.premiumYield == null ? "" : ` · ${formatPercentage(row.premiumYield, 1)} a year`) : commission;
+    const saleYield = opened[1] === "Sold" ? (row.premiumYield == null ? "" : ` · ${formatPercentage(row.premiumYield, 1)} a year`) : "";
     return { name: `${opened[1]} ${opened[2]}`, detail: `${contractOf(opened[2]!)}${formatOrderSize(contracts, Number(opened[3]))}${opened[4]}${saleYield}`, opensOption: true, priceAt: "tenOclock" };
   }
   const boughtBack = /^Bought back (put|call) @ (\S+)$/.exec(row.label);
-  if (boughtBack) return { name: "Bought back", detail: `${contractOf(boughtBack[1]!)}${formatOrderSize(contracts, Number(boughtBack[2]))}${commission}`, opensOption: false, priceAt: "tenOclock" };
+  if (boughtBack) return { name: "Bought back", detail: `${contractOf(boughtBack[1]!)}${formatOrderSize(contracts, Number(boughtBack[2]))}`, opensOption: false, priceAt: "tenOclock" };
   if (row.label.startsWith("Put assigned")) {
     const close = row.strike !== null && row.quantity > 0 && row.stockDollars !== 0 ? `, worth ${formatCurrency(row.strike + row.stockDollars / row.quantity)} at the close` : "";
-    return { name: "Put assigned", detail: `${shares} bought at${strike}${close}${commission}`, opensOption: false, priceAt: "close" };
+    return { name: "Put assigned", detail: `${shares} bought at${strike}${close}`, opensOption: false, priceAt: "close" };
   }
-  if (row.label.startsWith("Call assigned")) return { name: "Call assigned", detail: `${shares} sold at${strike}${commission}`, opensOption: false, priceAt: "close" };
+  if (row.label.startsWith("Call assigned")) return { name: "Call assigned", detail: `${shares} sold at${strike}`, opensOption: false, priceAt: "close" };
   const handed = /^Shares handed to (CC|Unstructured)$/.exec(row.label);
   if (handed) {
     const to = handed[1] === "CC" ? "CC" : "N/S";
     return { name: `To ${to}`, detail: `${shares} handed to ${to} ${row.stockPriceSource === "close" ? `at the ${price} close` : `at their ${price} cost`}`, opensOption: false, priceAt: "close" };
   }
-  if (row.label === "Bought shares" || row.label === "Sold shares") return { name: row.label, detail: `${shares} @ ${price}${commission}`, opensOption: false, priceAt: "tenOclock" };
+  if (row.label === "Bought shares" || row.label === "Sold shares") return { name: row.label, detail: `${shares} @ ${price}`, opensOption: false, priceAt: "tenOclock" };
   const marked = /^Marked to the (\S+) close$/.exec(row.label);
   if (marked) return { name: "Marked", detail: `${shares} still held, at the ${price} close of ${marked[1]}`, opensOption: false, priceAt: "close" };
   const openMarked = /^Open (put|call) marked to market$/.exec(row.label);
   if (openMarked) return { name: "Marked", detail: `${contractOf(openMarked[1]!)}${formatOrderSize(contracts, null)} still open, marked to market`, opensOption: false, priceAt: "close" };
-  return { name: row.label, detail: commission.replace(/^ · /, ""), opensOption: false, priceAt: "close" };
+  return { name: row.label, detail: "", opensOption: false, priceAt: "close" };
 }
 
 // ---- Positions (the simulated book, as the platform's position rows would read) ----
