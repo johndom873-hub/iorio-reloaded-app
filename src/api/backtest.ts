@@ -925,6 +925,8 @@ export interface BacktestCycleTimelineRow {
   premiumDollars: number;
   stockDollars: number;
   unrealized: boolean;
+  /** A sold option's annualised yield as the engine recorded it at the sale, contract-weighted over the row's fills; null when none was kept. */
+  premiumYield?: number | null;
 }
 
 /** The days of a stretch on which each reason stopped a sale: a day counts under every reason seen on it, and as unrecorded when none was. */

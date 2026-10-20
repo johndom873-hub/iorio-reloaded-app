@@ -921,7 +921,8 @@ export function describeUncoveredShares(stretch: Pick<BacktestUncoveredStretch, 
 
 /**
  * A cycle timeline row as the Wheel cycles table lists it: a short event name ("Sold put", "Put assigned", "Call assigned",
- * "To CC"), what happened ("$59 Put · 10 Jan (7DTE) · 7× @ 0.30 · $4.76 commission"), whether it
+ * "To CC"), what happened ("$59 Put · 10 Jan (7DTE) · 7× @ 0.30 · 61.4% a year": a sale shows the annualised yield the
+ * engine recorded for it instead of its commission; other trades their commission), whether it
  * opened an option (its expiry then shows as the row's close), and the stock price that goes with it: the 10:00 price
  * the day's looks saw for a trade, the day's close for an assignment, a hand-over or a mark.
  */
@@ -933,7 +934,10 @@ export function describeCycleTimelineEvent(row: BacktestCycleTimelineRow): { nam
   const price = row.stockPrice === null ? "" : formatCurrency(row.stockPrice);
   const contracts = Math.round(row.quantity / 100);
   const opened = /^(Sold|Bought) (put|call) @ (\S+)(.*)$/.exec(row.label);
-  if (opened) return { name: `${opened[1]} ${opened[2]}`, detail: `${contractOf(opened[2]!)}${formatOrderSize(contracts, Number(opened[3]))}${opened[4]}${commission}`, opensOption: true, priceAt: "tenOclock" };
+  if (opened) {
+    const saleYield = opened[1] === "Sold" ? (row.premiumYield == null ? "" : ` · ${formatPercentage(row.premiumYield, 1)} a year`) : commission;
+    return { name: `${opened[1]} ${opened[2]}`, detail: `${contractOf(opened[2]!)}${formatOrderSize(contracts, Number(opened[3]))}${opened[4]}${saleYield}`, opensOption: true, priceAt: "tenOclock" };
+  }
   const boughtBack = /^Bought back (put|call) @ (\S+)$/.exec(row.label);
   if (boughtBack) return { name: "Bought back", detail: `${contractOf(boughtBack[1]!)}${formatOrderSize(contracts, Number(boughtBack[2]))}${commission}`, opensOption: false, priceAt: "tenOclock" };
   if (row.label.startsWith("Put assigned")) {
