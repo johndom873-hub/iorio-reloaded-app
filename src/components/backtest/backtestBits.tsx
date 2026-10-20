@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { IconArrowLeft, IconChevronDown } from "@tabler/icons-react";
-import type { BacktestJobDisplayStatus, BacktestJobView } from "../../api/backtest";
+import type { BacktestJobDisplayStatus, BacktestJobView, BacktestSessionBatchRef } from "../../api/backtest";
 import { formatRelativeAge, formatSecondsInWords, formatShortAgeWithSeconds, formatSignedPnl, pnlTextClass } from "../../lib/formatters";
 import {
   describeJobProgress,
@@ -118,12 +118,28 @@ export function BacktestCollapseToggle({ isOpen, onToggle }: { isOpen: boolean; 
   );
 }
 
-export function BacktestBackLink() {
-  return (
-    <Link to="/backtest" className="d-inline-flex align-items-center gap-1 mb-1 text-decoration-none" style={{ fontSize: "0.8rem" }}>
+/** Back to Backtesting; a run of a batch also links to its batch ("← Backtesting / Batch test · Run 2 of 3"). */
+export function BacktestBackLink({ batch = null }: { batch?: BacktestSessionBatchRef | null }) {
+  const backtesting = (
+    <Link to="/backtest" className="d-inline-flex align-items-center gap-1 text-decoration-none">
       <IconArrowLeft size={14} aria-hidden="true" />
       Backtesting
     </Link>
+  );
+  if (!batch) return <div className="mb-1" style={{ fontSize: "0.8rem" }}>{backtesting}</div>;
+  return (
+    <nav aria-label="Breadcrumb" className="d-flex flex-wrap align-items-center gap-2 mb-1" style={{ fontSize: "0.8rem" }}>
+      {backtesting}
+      <span aria-hidden="true" className="text-secondary">
+        /
+      </span>
+      <Link to={`/backtest/batches/${encodeURIComponent(batch.id)}`} className="text-decoration-none">
+        Batch {batch.name}
+      </Link>
+      <span className="text-secondary">
+        · Run {batch.runNumber} of {batch.runCount}
+      </span>
+    </nav>
   );
 }
 

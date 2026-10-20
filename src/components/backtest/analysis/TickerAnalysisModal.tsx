@@ -34,6 +34,7 @@ import { AnalysisBacktestConfirm } from "./AnalysisBacktestConfirm";
 import { AnalysisChainMapCard } from "./AnalysisChainMapCard";
 import { AnalysisFitCard, AnalysisPotCard, AnalysisShockCard, AnalysisTooLargeCard } from "./AnalysisFitCards";
 import { AnalysisCorrelationCard, AnalysisDataQualityCard, AnalysisEarningsCard, AnalysisProfileCard } from "./AnalysisInfoCards";
+import { BacktestLabSettingsModal } from "../BacktestLabSettingsModal";
 import { AnalysisLiquidityCards } from "./AnalysisLiquidityCards";
 import { AnalysisClaudeCards, AnalysisFitTiles, AnalysisKpiTiles } from "./AnalysisOverviewCards";
 import { AnalysisPriceCards } from "./AnalysisPriceCards";
@@ -93,15 +94,16 @@ function describeRunStep(run: AnalysisRunView): string {
 interface TickerAnalysisModalProps {
   symbol: string;
   onClose: () => void;
-  onEditGlobalSettings: () => void;
   /** After a Suitability save from the header: the opener's table reloads (otherwise it shows on its next poll). */
   onSuitabilitySaved?: () => Promise<void>;
 }
 
-export function TickerAnalysisModal({ symbol, onClose, onEditGlobalSettings, onSuitabilitySaved }: TickerAnalysisModalProps) {
+export function TickerAnalysisModal({ symbol, onClose, onSuitabilitySaved }: TickerAnalysisModalProps) {
   const navigate = useNavigate();
   const isAdmin = useIsAdmin();
   const [suitabilityOpen, setSuitabilityOpen] = useState(false);
+  // The global lab settings open over this window; closing them comes back here.
+  const [labSettingsOpen, setLabSettingsOpen] = useState(false);
   const signalsTicker = useSignalsTickerModal();
   const isActive = useCallback((view: { active: AnalysisRunView[] }) => view.active.length > 0, []);
   const fetchView = useCallback(() => fetchTickerAnalysis(symbol), [symbol]);
@@ -166,14 +168,15 @@ export function TickerAnalysisModal({ symbol, onClose, onEditGlobalSettings, onS
     if (trialRunId && view?.trial?.id === trialRunId) setShowTrial(true);
   }, [trialRunId, view?.trial?.id]);
 
-  // ESC closes the window, unless the Signals ticker window, the confirmation or the Suitability window is open over it.
+  // ESC closes the window, unless the Signals ticker window, the confirmation, the Suitability window or the lab settings
+  // are open over it.
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape" && !confirm && !signalsTicker.symbol && !suitabilityOpen) onClose();
+      if (event.key === "Escape" && !confirm && !signalsTicker.symbol && !suitabilityOpen && !labSettingsOpen) onClose();
     };
     document.addEventListener("keydown", onKeyDown);
     return () => document.removeEventListener("keydown", onKeyDown);
-  }, [onClose, confirm, signalsTicker.symbol, suitabilityOpen]);
+  }, [onClose, confirm, signalsTicker.symbol, suitabilityOpen, labSettingsOpen]);
 
   useEffect(() => {
     const previousOverflow = document.body.style.overflow;
@@ -449,7 +452,7 @@ export function TickerAnalysisModal({ symbol, onClose, onEditGlobalSettings, onS
             onSave={(values) => void saveForTicker(values)}
             onRun={(values) => void runTrial(values)}
             onBackToStored={() => setShowTrial(false)}
-            onEditGlobal={onEditGlobalSettings}
+            onEditGlobal={() => setLabSettingsOpen(true)}
           />
         )}
         <AnalysisFitTiles figures={shownFigures} shown={shown} showingTrial={trial !== null} />
@@ -548,6 +551,16 @@ export function TickerAnalysisModal({ symbol, onClose, onEditGlobalSettings, onS
             await Promise.all([reload(), onSuitabilitySaved?.()]);
           }}
           onClose={() => setSuitabilityOpen(false)}
+        />
+      )}
+      {labSettingsOpen && (
+        <BacktestLabSettingsModal
+          stacked
+          onClose={() => {
+            setLabSettingsOpen(false);
+            // A global save changes the values shown here and may start this analysis's update.
+            void Promise.all([loadSettings(), reload()]);
+          }}
         />
       )}
     </>

@@ -1,4 +1,4 @@
-import { useMemo, useState, type ReactNode } from "react";
+import { Fragment, useMemo, useState, type ReactNode } from "react";
 import { IconChevronDown, IconChevronUp, IconSelector } from "@tabler/icons-react";
 import { useColumnVisibility } from "./useColumnVisibility";
 import { ColumnVisibilityPopover } from "./ColumnVisibilityPopover";
@@ -23,6 +23,13 @@ export interface DataTableColumn<TRow> {
   headerClassName?: string;
   /** Opt-in sorting: the header becomes a button ordering the rows by this value (nulls last either way). */
   sortValue?: (row: TRow) => number | string | null;
+}
+
+/** A full-width row drawn before or after a data row: a gap between rows, a row's opened detail. */
+export interface DataTableExtraRow {
+  key: string;
+  className?: string;
+  content: ReactNode;
 }
 
 export type DataTableSortDirection = "asc" | "desc";
@@ -82,6 +89,8 @@ interface DataTableProps<TRow> {
   /** Rendered under the table, inside the card (e.g. a legend). */
   afterTable?: ReactNode;
   onRowClick?: (row: TRow) => void;
+  /** With onRowClick: the rows it applies to (all when absent). */
+  isRowClickable?: (row: TRow) => boolean;
   rowClassName?: (row: TRow) => string | undefined;
   /** Extra data-* attributes per row (e.g. data-live-contracts for useVisibleLiveContracts); `index` is the row's position in `rows`. */
   rowAttributes?: (row: TRow, index: number) => Record<`data-${string}`, string>;
@@ -91,6 +100,8 @@ interface DataTableProps<TRow> {
   maxVisibleRows?: number;
   /** With sortable columns (sortValue): the order the rows start in until the user picks one (saved per tableId in localStorage). */
   defaultSort?: DataTableSort;
+  /** Full-width rows drawn before and after a data row (they move with it when the rows are sorted). */
+  extraRows?: (row: TRow) => { before?: DataTableExtraRow[]; after?: DataTableExtraRow[] } | null;
 }
 
 export function DataTable<TRow>({
@@ -105,11 +116,13 @@ export function DataTable<TRow>({
   beforeTable,
   afterTable,
   onRowClick,
+  isRowClickable,
   rowClassName,
   rowAttributes,
   dense = false,
   maxVisibleRows,
   defaultSort,
+  extraRows,
 }: DataTableProps<TRow>) {
   const { isColumnVisible, toggleColumn } = useColumnVisibility(
     tableId,
@@ -242,20 +255,32 @@ export function DataTable<TRow>({
                 </td>
               </tr>
             ) : (
-              sortedRows.map((row, rowIndex) => (
-                <tr
-                  key={rowKey(row)}
-                  {...rowAttributes?.(row, rowIndex)}
-                  className={[rowClassName?.(row), onRowClick ? "cursor-pointer" : undefined].filter(Boolean).join(" ") || undefined}
-                  onClick={onRowClick ? () => onRowClick(row) : undefined}
-                >
-                  {visibleColumns.map((column) => (
-                    <td key={column.key} className={[alignClassName(column.align), column.cellClassName].filter(Boolean).join(" ") || undefined}>
-                      {column.render(row)}
-                    </td>
-                  ))}
-                </tr>
-              ))
+              sortedRows.map((row, rowIndex) => {
+                const extras = extraRows?.(row);
+                const clickable = onRowClick !== undefined && (isRowClickable?.(row) ?? true);
+                const extraRow = (extra: DataTableExtraRow) => (
+                  <tr key={extra.key} className={["data-table-extra-row", extra.className].filter(Boolean).join(" ")}>
+                    <td colSpan={visibleColumns.length}>{extra.content}</td>
+                  </tr>
+                );
+                return (
+                  <Fragment key={rowKey(row)}>
+                    {extras?.before?.map(extraRow)}
+                    <tr
+                      {...rowAttributes?.(row, rowIndex)}
+                      className={[rowClassName?.(row), clickable ? "cursor-pointer" : undefined].filter(Boolean).join(" ") || undefined}
+                      onClick={clickable ? () => onRowClick!(row) : undefined}
+                    >
+                      {visibleColumns.map((column) => (
+                        <td key={column.key} className={[alignClassName(column.align), column.cellClassName].filter(Boolean).join(" ") || undefined}>
+                          {column.render(row)}
+                        </td>
+                      ))}
+                    </tr>
+                    {extras?.after?.map(extraRow)}
+                  </Fragment>
+                );
+              })
             )}
           </tbody>
           {footerCells && !loading && rows.length > 0 && (

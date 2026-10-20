@@ -103,7 +103,8 @@ function FieldInput({ row, value, onChange, id }: { row: BacktestSettingRow; val
   );
 }
 
-export function BacktestLabSettingsModal({ onClose }: { onClose: () => void }) {
+/** stacked: opened over another window (the Analyse window), so above its backdrop. */
+export function BacktestLabSettingsModal({ onClose, stacked = false }: { onClose: () => void; stacked?: boolean }) {
   const [lab, setLab] = useState<BacktestLabSettingsView | null>(null);
   const [overrides, setOverrides] = useState<BacktestLabTickerOverrides[] | null>(null);
   const [audit, setAudit] = useState<BacktestLabAuditRow[] | null>(null);
@@ -325,7 +326,12 @@ export function BacktestLabSettingsModal({ onClose }: { onClose: () => void }) {
   const groupCard = (group: EditorGroup) => {
     const isOpen = openGroup === group.key;
     const changedCount = group.rows.filter((row) => changedPaths.includes(row.path)).length;
-    const toggle = () => setOpenGroup((current) => (current === group.key ? null : group.key));
+    // Opening a group scrolls its title to the top, so its settings come into view.
+    const toggle = () => {
+      if (isOpen) return setOpenGroup(null);
+      setOpenGroup(group.key);
+      setScrollTarget(group.key);
+    };
     return (
       <section
         key={group.key}
@@ -515,8 +521,8 @@ export function BacktestLabSettingsModal({ onClose }: { onClose: () => void }) {
 
   return (
     <>
-      <div className="modal-backdrop show" style={{ zIndex: 1050, backgroundColor: "rgba(0,0,0,0.5)", opacity: 1 }} />
-      <div className="modal show d-block lab-settings-modal" style={{ zIndex: 1050 }} role="dialog" aria-modal="true" aria-labelledby="lab-settings-title">
+      <div className="modal-backdrop show" style={{ zIndex: stacked ? 1100 : 1050, backgroundColor: "rgba(0,0,0,0.5)", opacity: 1 }} />
+      <div className="modal show d-block lab-settings-modal" style={{ zIndex: stacked ? 1100 : 1050 }} role="dialog" aria-modal="true" aria-labelledby="lab-settings-title">
         <div className="modal-dialog modal-dialog-scrollable modal-dialog-inset">
           <div className="modal-content">
             <div className="modal-header">

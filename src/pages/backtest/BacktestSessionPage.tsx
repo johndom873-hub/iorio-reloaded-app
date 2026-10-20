@@ -19,6 +19,7 @@ import { BacktestCyclesTable } from "../../components/backtest/BacktestCyclesTab
 import { BacktestFillsTable } from "../../components/backtest/BacktestFillsTable";
 import { BacktestPositionsTable } from "../../components/backtest/BacktestPositionsTable";
 import { BacktestRunNotesCard } from "../../components/backtest/BacktestRunNotesCard";
+import { BacktestSessionPriceCard } from "../../components/backtest/BacktestSessionPriceCard";
 import { BacktestTickerStatisticsTable } from "../../components/backtest/BacktestTickerStatisticsTable";
 import { usePolledBacktestResource } from "../../components/backtest/useBacktestPolling";
 import { useTickingNow } from "../../hooks/useTickingNow";
@@ -123,7 +124,7 @@ export function BacktestSessionPage() {
 
   return (
     <>
-      <BacktestBackLink />
+      <BacktestBackLink batch={session.batch} />
       <PageHeader
         title={`${session.name} · ${session.symbol}`}
         subtitle={subtitle}
@@ -192,8 +193,8 @@ export function BacktestSessionPage() {
         title="Account value"
         description={
           detail.days.some((day) => day.spyBaselineValue !== null)
-            ? "Marked to market every trading day at 10:00 ET. The grey lines, buy and hold of the session's symbols (dashed) and of SPY (dotted), are for comparison only."
-            : "Marked to market every trading day at 10:00 ET. The grey dashed line, buy and hold of the session's symbols, is for comparison only (this session has no SPY line)."
+            ? "Marked to market every trading day at 10:00 ET. Buy and hold of the session's symbols (white in the dark theme, near-black in the light) and of SPY (grey) are for comparison only."
+            : "Marked to market every trading day at 10:00 ET. Buy and hold of the session's symbols (white in the dark theme, near-black in the light) is for comparison only (this session has no SPY line)."
         }
         actions={detail.days.length < 2 ? undefined : <BacktestValueScaleSwitch scale={valueScale} onChange={setValueScale} />}
         className="mb-3"
@@ -209,6 +210,8 @@ export function BacktestSessionPage() {
         </div>
       </BacktestCard>
 
+      <BacktestSessionPriceCard sessionId={session.id} symbols={symbols} status={session.status} />
+
       <div className="mb-3">
         <BacktestBaselineComparisonTable
           metrics={session.metrics}
@@ -221,7 +224,7 @@ export function BacktestSessionPage() {
 
       <BacktestRunNotesCard notes={session.notes} runStatistics={session.runStatistics} />
       <BacktestTickerStatisticsTable tickerStatistics={detail.tickerStatistics} allSymbolsStatistics={detail.allSymbolsStatistics} />
-      {(detail.cycles.length > 0 || detail.positions.length > 0) && <BacktestCyclesTable cycles={detail.cycles} symbols={symbols} />}
+      {(detail.cycles.length > 0 || detail.positions.length > 0) && <BacktestCyclesTable sessionId={session.id} cycles={detail.cycles} cycleGaps={detail.cycleGaps ?? []} symbols={symbols} sessionDays={detail.days} />}
 
       <div className="backtest-results-pair mb-3">
         <BacktestMonthlyReturnsCard monthlyReturns={detail.monthlyReturns} baselineLabel={session.baselineLabel} spyBaselineLabel={session.spyBaselineLabel} />

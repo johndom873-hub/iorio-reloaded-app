@@ -902,6 +902,86 @@ export interface BacktestCycle {
   dataFlags: string[];
 }
 
+/**
+ * One row of a cycle's timeline, from the platform's cycle derivation: a sale, buyback, assignment, share hand-over
+ * between strategies or mark of what is still open, owned by one strategy. The rows' premium and stock add up to the
+ * cycle's net premium and stock P&L, and per strategy to its buckets. Prices and shares are as traded on the row's day.
+ */
+export interface BacktestCycleTimelineRow {
+  /** The instant; null for a mark row of what is still open. */
+  at: string | null;
+  /** The Eastern date of `at`, or a mark row's date. */
+  tradingDate: string;
+  label: string;
+  bucket: keyof BacktestCycle["buckets"];
+  instrument: "stock" | "option";
+  /** Shares-equivalent (1 contract = 100). */
+  quantity: number;
+  strike: number | null;
+  expiryDate: string | null;
+  stockPrice: number | null;
+  stockPriceSource: "execution" | "close" | null;
+  commissionDollars: number | null;
+  premiumDollars: number;
+  stockDollars: number;
+  unrealized: boolean;
+}
+
+/** The days of a stretch on which each reason stopped a sale: a day counts under every reason seen on it, and as unrecorded when none was. */
+export interface BacktestNoSaleDays {
+  extensionZ: number;
+  ivRank: number;
+  ladderPutInstead: number;
+  cash: number;
+  volume: number;
+  noCandidate: number;
+  unrecorded: number;
+}
+
+/** Whole sessions with nothing sold where something was due. Stock move: C(last idle day) ÷ C(the session before the first) − 1, split-adjusted; null when a close is missing. */
+export interface BacktestIdleStretch {
+  firstIdleDay: string;
+  lastIdleDay: string;
+  idleSessions: number;
+  stockMove: number | null;
+  noSaleDays: BacktestNoSaleDays;
+  /** Why no contract qualified, on the days a look found none; null when none did (or on sessions run before it was kept). */
+  noCandidate: BacktestNoCandidateDetail | null;
+}
+
+/** The baseline's contract checks, in the order it applies them: a contract drops out at the first it fails. */
+export const backtestCandidateChecks = ["outsideExpiryRange", "spansEarnings", "belowCost", "aboveCeiling", "noUsableQuote", "spreadTooWide", "tooLittleVolume", "noImpliedVolatility", "outsideDeltaRange", "alreadyHeld", "noTimeValue", "belowMinimumYield", "noForecast", "belowVolatilityEdge"] as const;
+export type BacktestCandidateCheck = (typeof backtestCandidateChecks)[number];
+
+/** A stretch's days on which a look found no contract within the rules: on how many each check left contracts out, and the first such day in full, each check with its rule then and the contracts it left out. */
+export interface BacktestNoCandidateDetail {
+  right: "C" | "P";
+  days: number;
+  daysByCheck: Partial<Record<BacktestCandidateCheck, number>>;
+  firstDay: { date: string; lookTimeEt: string; checks: { check: BacktestCandidateCheck; rule: string; contracts: number }[] };
+}
+
+/** A stretch of a symbol with no cycle open: before its first cycle, between two, or after its last closed one. */
+export interface BacktestCycleGap extends BacktestIdleStretch {
+  symbol: string;
+  afterCycleNumber: number | null;
+  beforeCycleNumber: number | null;
+  /** The Entry filters' limits when they blocked an entry in the gap; null for a filter that did not. */
+  entryFilterLimits: { extensionZ: number | null; ivRank: number | null };
+}
+
+/** A stretch of a cycle's sessions with shares held and no call on some of them (as traded on its first day). */
+export interface BacktestUncoveredStretch extends BacktestIdleStretch {
+  sharesUncovered: number;
+  sharesHeld: number;
+}
+
+/** A cycle's detail, read when its row is opened; null for sessions run before cycles kept it. */
+export interface BacktestCycleDetail {
+  timeline: BacktestCycleTimelineRow[];
+  uncoveredStretches: BacktestUncoveredStretch[];
+}
+
 /** Per-ticker figures over the session's positions, option sales and cycles. */
 export interface BacktestTickerStatistics {
   symbol: string;
@@ -965,6 +1045,8 @@ export interface BacktestSessionDetail {
   /** The simulated book: empty for sessions run before the wheel was simulated. */
   positions: BacktestPosition[];
   cycles: BacktestCycle[];
+  /** Each symbol's stretches with no cycle open, oldest first; empty for sessions run before gaps were kept. */
+  cycleGaps: BacktestCycleGap[];
   /** One row per symbol. */
   tickerStatistics: BacktestTickerStatistics[];
   /** The same figures over every symbol together (symbol "All symbols"); null when the session has no book. */
@@ -1040,6 +1122,12 @@ export function estimateBacktestSession(request: CreateBacktestSessionRequest): 
 
 export function fetchBacktestSession(sessionId: string): Promise<BacktestSessionDetail> {
   return apiRequest<BacktestSessionDetail>(`/backtest/sessions/${encodeURIComponent(sessionId)}`);
+}
+
+/** A cycle's timeline and uncovered stretches; null for a session run before cycles kept them. */
+export async function fetchBacktestCycleDetail(sessionId: string, symbol: string, cycleNumber: number): Promise<BacktestCycleDetail | null> {
+  const { detail } = await apiRequest<{ detail: BacktestCycleDetail | null }>(`/backtest/sessions/${encodeURIComponent(sessionId)}/cycles/${encodeURIComponent(symbol)}/${cycleNumber}`);
+  return detail;
 }
 
 function pageQueryString(query: BacktestBookPageQuery | BacktestSessionsPageQuery): string {

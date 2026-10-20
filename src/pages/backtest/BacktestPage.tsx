@@ -67,7 +67,7 @@ export function BacktestPage() {
         </div>
       )}
       <BacktestJobsCard jobs={overview.jobs} onJobsChanged={reload} />
-      <BacktestDataFilesTable files={overview.files} jobs={overview.jobs} suitabilityBySymbol={overview.suitabilityBySymbol} onFilesChanged={reload} onOpenLabSettings={() => setLabSettingsOpen(true)} />
+      <BacktestDataFilesTable files={overview.files} jobs={overview.jobs} suitabilityBySymbol={overview.suitabilityBySymbol} onFilesChanged={reload} />
       <BacktestSessionsTable />
       {labSettingsOpen && <BacktestLabSettingsModal onClose={() => setLabSettingsOpen(false)} />}
     </>

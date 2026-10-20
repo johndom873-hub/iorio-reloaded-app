@@ -13,6 +13,8 @@ import {
   formatChartDollars,
   roundToShownPercent,
   roundValueAxis,
+  sessionBuyAndHoldColorByTheme,
+  sessionSpyBuyAndHoldColorByTheme,
   spyBuyAndHoldColorByTheme,
   spyBuyAndHoldDashArray,
   tradingDateToChartTime,
@@ -109,8 +111,8 @@ export function BacktestSessionCharts({ days, scale, baselineLabel, spyBaselineL
 
   const series: ChartSeries[] = [
     { name: "This session", color: backtestSeriesColorsByTheme[theme][0], width: 2, dash: 0, values: days.map((day) => day.accountValue), drawdowns: days.map((day) => day.drawdown) },
-    { name: baselineLabel, color: buyAndHoldColorByTheme[theme], width: 1.5, dash: buyAndHoldDashArray, values: days.map((day) => day.baselineValue), drawdowns: baselineDrawdowns },
-    ...(hasSpy ? [{ name: spyBaselineLabel, color: spyBuyAndHoldColorByTheme[theme], width: 2, dash: spyBuyAndHoldDashArray, values: spyValues, drawdowns: spyDrawdowns }] : []),
+    { name: baselineLabel, color: sessionBuyAndHoldColorByTheme[theme], width: 1.5, dash: 0, values: days.map((day) => day.baselineValue), drawdowns: baselineDrawdowns },
+    ...(hasSpy ? [{ name: spyBaselineLabel, color: sessionSpyBuyAndHoldColorByTheme[theme], width: 1.5, dash: 0, values: spyValues, drawdowns: spyDrawdowns }] : []),
   ];
   const base = baseLineChartOptions(isPhone, days.length);
   const allValues = series.flatMap((entry) => entry.values.filter((value): value is number => value !== null));

@@ -1,7 +1,7 @@
 import type { BacktestMetrics } from "../../api/backtest";
 import { useTheme } from "../../hooks/useTheme";
 import { formatCurrency, formatRatio } from "../../lib/formatters";
-import { backtestMetricExplanation, backtestSeriesColorsByTheme, buyAndHoldColorByTheme, spyBuyAndHoldColorByTheme } from "../../lib/backtestPresentation";
+import { backtestMetricExplanation, backtestSeriesColorsByTheme, sessionBuyAndHoldColorByTheme, sessionSpyBuyAndHoldColorByTheme } from "../../lib/backtestPresentation";
 import { DataTable, type DataTableColumn } from "../DataTable/DataTable";
 import { BacktestCardTitle, BacktestSeriesSwatch, SignedPercent } from "./backtestBits";
 
@@ -47,8 +47,8 @@ export function BacktestBaselineComparisonTable({ metrics, baselineMetrics, base
   const { theme } = useTheme();
   const rows: ComparisonRow[] = [
     { key: "session", name: "This session", metrics, color: backtestSeriesColorsByTheme[theme][0], line: "solid" },
-    { key: "baseline", name: baselineLabel, metrics: baselineMetrics, color: buyAndHoldColorByTheme[theme], line: "dashed" },
-    ...(spyBaselineMetrics ? [{ key: "spy" as const, name: spyBaselineLabel, metrics: spyBaselineMetrics, color: spyBuyAndHoldColorByTheme[theme], line: "dotted" as const }] : []),
+    { key: "baseline", name: baselineLabel, metrics: baselineMetrics, color: sessionBuyAndHoldColorByTheme[theme], line: "solid" },
+    ...(spyBaselineMetrics ? [{ key: "spy" as const, name: spyBaselineLabel, metrics: spyBaselineMetrics, color: sessionSpyBuyAndHoldColorByTheme[theme], line: "solid" as const }] : []),
   ];
 
   return (

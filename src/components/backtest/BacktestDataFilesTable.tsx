@@ -20,8 +20,6 @@ interface BacktestDataFilesTableProps {
   /** The tickers marked Suitable or Unsuitable; the rest are Pending. */
   suitabilityBySymbol: Record<string, BacktestTickerSuitability>;
   onFilesChanged: () => Promise<void>;
-  /** The Analyse window's "edit the global values": the Lab settings. */
-  onOpenLabSettings: () => void;
 }
 
 /** The From, To and Days columns' headings: the file's option days, and the IBKR daily spot (stock) prices in the local DB. */
@@ -37,7 +35,7 @@ function latestDownloadJob(jobs: BacktestJobView[], symbol: string): BacktestJob
 }
 
 /** Data files: one SQLite file per symbol with every contract's 10:00 ET quote; Update downloads only the missing days. */
-export function BacktestDataFilesTable({ files, jobs, suitabilityBySymbol, onFilesChanged, onOpenLabSettings }: BacktestDataFilesTableProps) {
+export function BacktestDataFilesTable({ files, jobs, suitabilityBySymbol, onFilesChanged }: BacktestDataFilesTableProps) {
   const [newSymbol, setNewSymbol] = useState("");
   const [newStartDate, setNewStartDate] = useState(defaultDownloadStartDate);
   const [pendingSymbol, setPendingSymbol] = useState<string | null>(null);
@@ -419,10 +417,6 @@ export function BacktestDataFilesTable({ files, jobs, suitabilityBySymbol, onFil
           symbol={analysedSymbol}
           onClose={() => setAnalysedSymbol(null)}
           onSuitabilitySaved={onFilesChanged}
-          onEditGlobalSettings={() => {
-            setAnalysedSymbol(null);
-            onOpenLabSettings();
-          }}
         />
       )}
     </div>

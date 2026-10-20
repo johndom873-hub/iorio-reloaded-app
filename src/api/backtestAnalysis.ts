@@ -223,10 +223,46 @@ export interface AnalysisBacktestFigures {
   tooLargeDays: [string, "C" | "P", number | null, number][];
   /** [date, the pot the ladder sizes from: max(account at the open cycle's start, last night's account)]. Absent before formulas version 5. */
   potPath?: [string, number][];
+  /**
+   * Each day the cycle held shares (the day's first look, before its orders), split-adjusted: [date, the next ladder Put's
+   * cap (null: none fits), the floor, why no ladder Put could be sold (null: one could)]. Absent before formulas version 6.
+   */
+  ladderLevels?: [string, number | null, number | null, AnalysisLadderPutBlock | null][];
+  /** Each rung sold, split-adjusted: [date, its highest strike, its fills [strike, expiry, contracts]]. Absent before formulas version 6. */
+  ladderRungsSold?: [string, number, [number, string, number][]][];
+  /**
+   * Each backtest day, at the 10:00 marks before its orders: [date, the shares held at those marks (null: not recorded),
+   * the account value]. Absent before formulas version 7.
+   */
+  accountInShares?: [string, number | null, number][];
 }
+
+/**
+ * A session's "Price and Max drawdown" chart: the symbol's IBKR daily bars over the session's period (split-adjusted), the
+ * Max drawdown of each range in it, and that session's ladder levels, rungs sold and orders over one strike.
+ */
+export interface BacktestSessionPriceChart {
+  symbol: string;
+  bars: AnalysisFigures["bars"];
+  maxDrawdown: AnalysisFigures["maxDrawdown"];
+  ladderLevels: NonNullable<AnalysisBacktestFigures["ladderLevels"]>;
+  ladderRungsSold: NonNullable<AnalysisBacktestFigures["ladderRungsSold"]>;
+  tooLargeDays: AnalysisBacktestFigures["tooLargeDays"];
+  /** Null in a session of more than one symbol: the account's shares are every symbol's. */
+  accountInShares: NonNullable<AnalysisBacktestFigures["accountInShares"]> | null;
+}
+
+/** Why no ladder Put could be sold at a day's first look. */
+export type AnalysisLadderPutBlock = "ladder_puts_off" | "every_lot_has_a_call" | "a_put_is_open" | "no_cap";
 
 /** The formulas version whose figures carry each day's largest-pot contracts and the backtest's pot path. */
 export const analysisEveryDayPotFormulasVersion = 5;
+
+/** The formulas version whose analysis backtests carry the ladder's daily cap and floor and the rungs sold. */
+export const analysisLadderLevelsFormulasVersion = 6;
+
+/** The formulas version whose analysis backtests carry each day's shares value (the account in shares line). */
+export const analysisAccountInSharesFormulasVersion = 7;
 
 /** [date, price, shock, the ladder Put's volume limit, its strike, the entry Call's volume limit, the ladder Put's previous-session volume (since 2026-10-19)]. */
 export type AnalysisFitDayRow = [string, number, number, (number | null)?, (number | null)?, (number | null)?, (number | null)?];
@@ -418,6 +454,10 @@ export function startTickerAnalysis(symbol: string, values?: AnalysisTrialValues
 
 export function cancelTickerAnalysis(analysisId: string): Promise<AnalysisRunView> {
   return apiRequest<AnalysisRunView>(`/backtest/analyses/runs/${encoded(analysisId)}/cancel`, { method: "POST" });
+}
+
+export function fetchBacktestSessionPriceChart(sessionId: string, symbol: string): Promise<BacktestSessionPriceChart> {
+  return apiRequest<BacktestSessionPriceChart>(`/backtest/sessions/${encodeURIComponent(sessionId)}/price-chart?symbol=${encoded(symbol)}`);
 }
 
 export function fetchAnalysisSessions(symbol: string): Promise<AnalysisSessionRow[]> {

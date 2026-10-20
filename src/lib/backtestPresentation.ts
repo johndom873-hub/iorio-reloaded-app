@@ -1,19 +1,25 @@
 import { analysisStepLabels, type AnalysisStep } from "../api/backtestAnalysis";
 import {
+  backtestCandidateChecks,
   defaultBacktestPolicySettings,
   type BacktestAccuracyBand,
   type BacktestAction,
   type BacktestActionKind,
+  type BacktestCandidateCheck,
   type BacktestCycle,
+  type BacktestCycleGap,
+  type BacktestCycleTimelineRow,
   type BacktestDataFilePart,
   type BacktestDataFileSummary,
   type BacktestDecisionMaker,
   type BacktestDetectedSplit,
   type BacktestFill,
+  type BacktestIdleStretch,
   type BacktestJobDisplayStatus,
   type BacktestJobView,
   type BacktestMetrics,
   type BacktestMonthlyReturn,
+  type BacktestNoSaleDays,
   type BacktestPnlBasis,
   type BacktestPosition,
   type BacktestPositionLeg,
@@ -26,6 +32,7 @@ import {
   type BacktestTickerSuitability,
   type BacktestTrade,
   type BacktestTradeEnding,
+  type BacktestUncoveredStretch,
   type BacktestWheelCycleSummary,
   type EffectiveBacktestSettings,
   type LlmSessionEstimate,
@@ -719,6 +726,11 @@ export const buyAndHoldDashArray = 5;
 export const spyBuyAndHoldColorByTheme = { light: "#1f2937", dark: "#e5e7eb" } as const;
 export const spyBuyAndHoldDashArray = 2;
 
+/** A session's own account chart and its comparison table (Marcelo 2026-10-20): both buy-and-hold lines solid, the
+ *  symbols' in the body colour (white on dark), SPY's in a mid grey apart from it. */
+export const sessionBuyAndHoldColorByTheme = { light: "#1f2937", dark: "#f9fafb" } as const;
+export const sessionSpyBuyAndHoldColorByTheme = { light: "#6b7280", dark: "#8b95a7" } as const;
+
 /** A YYYY-MM-DD trading date as the chart's x value (UTC midnight; the axes format in UTC so the day never shifts). */
 export function tradingDateToChartTime(tradingDate: string): number {
   return Date.parse(`${tradingDate}T00:00:00Z`);
@@ -803,6 +815,111 @@ export function cycleStockDollars(cycle: Pick<BacktestCycle, "buckets">): number
 export function describeBreakEven(breakEvenPerShare: number | null): string {
   if (breakEvenPerShare === null) return "—";
   return breakEvenPerShare <= 0 ? "Free" : formatCurrency(breakEvenPerShare, 2);
+}
+
+/** A span of the session's trading days by number (1 = its first): "7", or "2 → 16"; "—" when a day is not one of them. */
+export function describeSessionSpan(first: number | null, last: number | null = first): string {
+  if (first === null || last === null) return "—";
+  return first === last ? formatNumber(first) : `${formatNumber(first)} → ${formatNumber(last)}`;
+}
+
+/** The baseline's contract checks in short, for the days each left contracts out ("spread too wide 3 · too little volume 2"). */
+const candidateCheckLabels: Record<BacktestCandidateCheck, string> = {
+  outsideExpiryRange: "expiry outside the range",
+  spansEarnings: "spans earnings",
+  belowCost: "strike below the floor",
+  aboveCeiling: "strike above the ceiling",
+  noUsableQuote: "no usable quote",
+  spreadTooWide: "spread too wide",
+  tooLittleVolume: "too little volume",
+  noImpliedVolatility: "no implied volatility",
+  outsideDeltaRange: "delta outside the range",
+  alreadyHeld: "already held",
+  noTimeValue: "no time value",
+  belowMinimumYield: "yield below the minimum",
+  noForecast: "no forecast",
+  belowVolatilityEdge: "volatility edge too low",
+};
+
+/** Why nothing was sold on a stretch's days, reason by reason; the Entry filters name their limit when it is known. */
+function noSaleReasons(noSaleDays: BacktestNoSaleDays, entryFilterLimits: BacktestCycleGap["entryFilterLimits"] | null): { reason: string; days: number }[] {
+  const reasons: [number, string][] = [
+    [noSaleDays.extensionZ, entryFilterLimits?.extensionZ != null ? `extension z ≥ ${entryFilterLimits.extensionZ}` : "the extension z filter"],
+    [noSaleDays.ivRank, entryFilterLimits?.ivRank != null ? `IV Rank ≥ ${entryFilterLimits.ivRank}` : "the IV Rank filter"],
+    [noSaleDays.ladderPutInstead, "a ladder put sold instead"],
+    [noSaleDays.cash, "not enough cash"],
+    [noSaleDays.volume, "the volume limit"],
+    [noSaleDays.noCandidate, "no candidate"],
+    [noSaleDays.unrecorded, "no reason recorded"],
+  ];
+  return reasons.filter(([days]) => days > 0).map(([days, reason]) => ({ reason, days }));
+}
+
+/** An idle or uncovered row's reason, short ("No entry: extension z ≥ 1", "No call: no candidate, not enough cash"). */
+export function describeIdleStretchReason(stretch: BacktestIdleStretch, lead: "No entry" | "No call", entryFilterLimits: BacktestCycleGap["entryFilterLimits"] | null = null): string {
+  const reasons = noSaleReasons(stretch.noSaleDays, entryFilterLimits);
+  return reasons.length === 0 ? `${lead}: no reason recorded` : `${lead}: ${reasons.map((entry) => entry.reason).join(", ")}`;
+}
+
+/**
+ * The full rules behind an idle or uncovered row, for its tooltip: the days each reason was seen (a day counts under
+ * every reason seen at any of its looks), and when no contract qualified, the first such day's checks in the order the
+ * baseline applies them, each with its rule then and the contracts it left out, and over several days, the days each
+ * check left contracts out.
+ */
+export function describeIdleStretchRules(stretch: BacktestIdleStretch, lead: "No entry" | "No call", entryFilterLimits: BacktestCycleGap["entryFilterLimits"] | null = null): string {
+  const lines = [`${lead}, the days each reason was seen (a day counts under every reason seen at any of its looks):`];
+  for (const { reason, days } of noSaleReasons(stretch.noSaleDays, entryFilterLimits)) lines.push(`• ${reason}: ${pluralizeCount(days, "day")}`);
+  const noCandidate = stretch.noCandidate;
+  if (noCandidate) {
+    const noun = noCandidate.right === "P" ? "put" : "call";
+    const contracts = noCandidate.firstDay.checks.reduce((sum, check) => sum + check.contracts, 0);
+    lines.push("", `No candidate on ${noCandidate.firstDay.date} at ${noCandidate.firstDay.lookTimeEt} ET: none of ${pluralizeCount(contracts, noun)} qualified. Each check in order, and the ${noun}s it left out:`);
+    for (const check of noCandidate.firstDay.checks) lines.push(`• ${check.rule}: ${formatNumber(check.contracts)}`);
+    if (noCandidate.days > 1) {
+      const byCheck = backtestCandidateChecks.flatMap((check) => (noCandidate.daysByCheck[check] ? [`${candidateCheckLabels[check]} ${formatNumber(noCandidate.daysByCheck[check]!)}`] : []));
+      lines.push("", `On the ${formatNumber(noCandidate.days)} days with no candidate, the days each check left ${noun}s out: ${byCheck.join(" · ")}`);
+    }
+  }
+  return lines.join("\n");
+}
+
+/** An uncovered stretch's shares: "2,400", or "700 of 1,000" when only some were uncovered. */
+export function describeUncoveredShares(stretch: Pick<BacktestUncoveredStretch, "sharesUncovered" | "sharesHeld">): string {
+  return stretch.sharesUncovered === stretch.sharesHeld ? formatNumber(stretch.sharesHeld) : `${formatNumber(stretch.sharesUncovered)} of ${formatNumber(stretch.sharesHeld)}`;
+}
+
+/**
+ * A cycle timeline row as the Wheel cycles table lists it: a short event name ("Sold put", "Put assigned", "Assigned" for
+ * a call assigned, "To CC"), what happened ("$59 Put · 10 Jan (7DTE) sold @ 0.30 · $4.76 commission"), and whether it
+ * opened an option (its expiry then shows as the row's close).
+ */
+export function describeCycleTimelineEvent(row: BacktestCycleTimelineRow): { name: string; detail: string; opensOption: boolean } {
+  const commission = row.commissionDollars ? ` · ${formatCurrency(row.commissionDollars)} commission` : "";
+  const shares = pluralizeCount(row.quantity, "share");
+  const contractOf = (right: string) => (row.strike !== null && row.expiryDate !== null ? formatOptionContractLabel({ strike: row.strike, right: right === "put" ? "P" : "C", expiry: row.expiryDate, dte: daysToExpiry(row.expiryDate, row.tradingDate) }) : `${right}s`);
+  const strike = row.strike === null ? "" : ` the ${formatCurrency(row.strike)} strike`;
+  const price = row.stockPrice === null ? "" : formatCurrency(row.stockPrice);
+  const opened = /^(Sold|Bought) (put|call) @ (\S+)(.*)$/.exec(row.label);
+  if (opened) return { name: `${opened[1]} ${opened[2]}`, detail: `${contractOf(opened[2]!)} ${opened[1]!.toLowerCase()} @ ${opened[3]}${opened[4]}${commission}`, opensOption: true };
+  const boughtBack = /^Bought back (put|call) @ (\S+)$/.exec(row.label);
+  if (boughtBack) return { name: "Bought back", detail: `${contractOf(boughtBack[1]!)} bought back @ ${boughtBack[2]}${commission}`, opensOption: false };
+  if (row.label.startsWith("Put assigned")) {
+    const close = row.strike !== null && row.quantity > 0 && row.stockDollars !== 0 ? `, worth ${formatCurrency(row.strike + row.stockDollars / row.quantity)} at the close` : "";
+    return { name: "Put assigned", detail: `${shares} bought at${strike}${close}${commission}`, opensOption: false };
+  }
+  if (row.label.startsWith("Call assigned")) return { name: "Assigned", detail: `${shares} sold at${strike}${commission}`, opensOption: false };
+  const handed = /^Shares handed to (CC|Unstructured)$/.exec(row.label);
+  if (handed) {
+    const to = handed[1] === "CC" ? "CC" : "N/S";
+    return { name: `To ${to}`, detail: `${shares} handed to ${to} ${row.stockPriceSource === "close" ? `at the ${price} close` : `at their ${price} cost`}`, opensOption: false };
+  }
+  if (row.label === "Bought shares" || row.label === "Sold shares") return { name: row.label, detail: `${shares} @ ${price}${commission}`, opensOption: false };
+  const marked = /^Marked to the (\S+) close$/.exec(row.label);
+  if (marked) return { name: "Marked", detail: `${shares} still held, at the ${price} close of ${marked[1]}`, opensOption: false };
+  const openMarked = /^Open (put|call) marked to market$/.exec(row.label);
+  if (openMarked) return { name: "Marked", detail: `${contractOf(openMarked[1]!)} still open, marked to market`, opensOption: false };
+  return { name: row.label, detail: commission.replace(/^ · /, ""), opensOption: false };
 }
 
 // ---- Positions (the simulated book, as the platform's position rows would read) ----

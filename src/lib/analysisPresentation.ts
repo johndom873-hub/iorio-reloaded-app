@@ -1,4 +1,4 @@
-import type { AnalysisFigures } from "../api/backtestAnalysis";
+import type { AnalysisFigures, AnalysisLadderPutBlock, AnalysisMaxDrawdown } from "../api/backtestAnalysis";
 import { formatCurrency } from "./formatters";
 
 // The Analyse window's formulas the browser recomputes as values change (approved 2026-10-15; the API computes the same
@@ -314,9 +314,17 @@ export function analysisBacktestName(symbol: string, values: AnalysisPanelValues
 
 /** The window's chart colours per theme (mockup approved 2026-10-15, contrast checked in both). */
 export const analysisChartColors = {
-  light: { series1: "#2a78d6", series2: "#eb6834", candleUp: "#2fb344", candleDown: "#d63939", drawdown: "#d63939", shadeSmall: "#f59f00", shadeStrike: "#6f42c1", surface: "#ffffff", border: "#dadfe5", text: "#1d273b", secondary: "#49566c" },
-  dark: { series1: "#3987e5", series2: "#d95926", candleUp: "#2fb344", candleDown: "#d63939", drawdown: "#d63939", shadeSmall: "#f5b458", shadeStrike: "#b18cf0", surface: "#2a3648", border: "#45566e", text: "#f9fafb", secondary: "#9ba9be" },
+  light: { series1: "#2a78d6", series2: "#eb6834", candleUp: "#2fb344", candleDown: "#d63939", drawdown: "#d63939", shadeSmall: "#f59f00", shadeStrike: "#6f42c1", ladder: "#2a78d6", accountInShares: "#0f7d6e", surface: "#ffffff", border: "#dadfe5", text: "#1d273b", secondary: "#49566c" },
+  dark: { series1: "#3987e5", series2: "#d95926", candleUp: "#2fb344", candleDown: "#d63939", drawdown: "#d63939", shadeSmall: "#f5b458", shadeStrike: "#b18cf0", ladder: "#3987e5", accountInShares: "#4fc9b8", surface: "#2a3648", border: "#45566e", text: "#f9fafb", secondary: "#9ba9be" },
 } as const;
+
+/** Why no ladder Put could be sold on a day, as the price chart's tooltip says it. */
+export const analysisLadderPutBlockText: Record<AnalysisLadderPutBlock, string> = {
+  ladder_puts_off: "ladder Puts are off",
+  every_lot_has_a_call: "every lot has a Call",
+  a_put_is_open: "a Put is open (one at a time)",
+  no_cap: "no Put fits under the cap",
+};
 
 /** A signed figure's ink in the window: green above zero, red below (Tabler's dark .text-danger fails on the card). */
 export function analysisSignedClass(value: number | null | undefined): string {
@@ -345,4 +353,23 @@ const tickerKindLabel = { stock: "Stock", adr: "ADR", etf: "ETF", other: "Other"
 export function tickerCategoryLabels(profile: { kind: keyof typeof tickerKindLabel | null; sector: string | null; industry: string | null }): string[] {
   if (profile.kind === "etf") return ["ETF"];
   return [profile.kind ? tickerKindLabel[profile.kind] : null, profile.sector, profile.industry].filter((label): label is string => !!label);
+}
+
+/**
+ * Max drawdown of the bars on screen (the API's formula): max over days of (1 − close ÷ the highest close before it), with
+ * the first close back at or above the peak looked for in all the bars. Null under two bars.
+ */
+export function maxDrawdownOfBars(bars: AnalysisFigures["bars"], allBars: AnalysisFigures["bars"] = bars): AnalysisMaxDrawdown | null {
+  if (bars.length < 2) return null;
+  let peakIndex = 0;
+  let best = { depth: 0, peakIndex: 0, troughIndex: 0 };
+  bars.forEach((bar, index) => {
+    if (bar[4] > bars[peakIndex]![4]) peakIndex = index;
+    const depth = 1 - bar[4] / bars[peakIndex]![4];
+    if (depth > best.depth) best = { depth, peakIndex, troughIndex: index };
+  });
+  const peak = bars[best.peakIndex]!;
+  const trough = bars[best.troughIndex]!;
+  const recovered = allBars.find((bar) => bar[0] > trough[0] && bar[4] >= peak[4]) ?? null;
+  return { depth: best.depth, peakDate: peak[0], peak: peak[4], troughDate: trough[0], trough: trough[4], recoveredOn: recovered?.[0] ?? null };
 }

@@ -101,6 +101,11 @@ export function formatCurrency(amountInDollars: number | null | undefined, decim
   }).format(amountInDollars);
 }
 
+/** A price axis label: whole dollars from $10 (and $0), one decimal from $1 ("$3.2"), two below ("$0.45"). */
+export function formatAxisDollars(amountInDollars: number): string {
+  return formatCurrency(amountInDollars, amountInDollars >= 10 || amountInDollars === 0 ? 0 : amountInDollars >= 1 ? 1 : 2);
+}
+
 // Same as formatCurrency, but drops decimal places entirely when the amount
 // is a whole number (e.g. option strikes, which are usually round dollars).
 export function formatCurrencyTrimmed(amountInDollars: number | null | undefined, decimalPlaces = 2): string {

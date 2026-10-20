@@ -147,7 +147,7 @@ function FitHistory({ figures, values, shock, showingTrial }: { figures: Analysi
         </table>
       </div>
       <p className="text-secondary mt-2 mb-1" style={{ fontSize: "0.75rem" }}>
-        At a {formatCurrency(values.potDollars, 0)} pot: lot ceiling {formatCurrency(lotPriceCeiling(values))} · rung ceiling {formatCurrency(rungPriceCeiling(values, shock))} at S = {Math.round(shock * 100)}%; above these prices a check fails. Both are drawn on the price chart when they fall within its range.
+        At a {formatCurrency(values.potDollars, 0)} pot: lot ceiling {formatCurrency(lotPriceCeiling(values))} · rung ceiling {formatCurrency(rungPriceCeiling(values, shock))} at S = {Math.round(shock * 100)}%; above these prices a check fails.
       </p>
       <p className="mb-0">
         <span className="analysis-formula">lot ceiling = pot × p ÷ 100 · rung ceiling = pot × (1 − p) ÷ (100 × (n − S))</span>

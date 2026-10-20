@@ -1160,6 +1160,93 @@
   border-top: 2px solid var(--tblr-border-color);
 }
 
+/* DataTable's extraRows: full-width rows between data rows (a gap, an opened detail), never highlighted on hover. Their
+   content sits in a .data-table-sticky-panel as wide as the table's visible box (DataTableStickyPanel), so it stays in
+   view while a wide table scrolls sideways on a phone. */
+.table-hover > tbody > tr.data-table-extra-row:hover > * {
+  --tblr-table-bg-state: initial;
+  --tblr-table-color-state: initial;
+}
+.table > tbody > tr.data-table-extra-row > td {
+  padding: 0;
+}
+.data-table-sticky-panel {
+  position: sticky;
+  left: 0;
+  box-sizing: border-box;
+}
+
+/* Wheel cycles table (BacktestCyclesTable): the Idle rows and an opened cycle's trades sit on the page's own background, a
+   step below the card in both themes; Idle and Uncovered rows read in the secondary grey. A trade's event name (and an
+   Uncovered row's label) is indented under its cycle. */
+.table > tbody > tr.backtest-cycle-idle-row > td,
+.table > tbody > tr.backtest-cycle-trade-row > td,
+.table > tbody > tr.backtest-cycle-state-row > td {
+  background-color: var(--tblr-body-bg);
+}
+.table > tbody > tr.backtest-cycle-idle-row > td {
+  color: var(--tblr-secondary-color);
+}
+.backtest-cycle-event-name {
+  display: inline-block;
+  padding-left: 0.75rem;
+  font-weight: 400;
+}
+.backtest-cycle-row-detail {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.375rem;
+  min-width: 20rem;
+  white-space: normal;
+}
+.backtest-cycle-state {
+  padding: 0.5rem 0.5rem 0.5rem 2rem;
+}
+/* The chevron that opens a cycle sits in its cell's left padding (1.25rem), out of the flow: the column keeps its width,
+   so By strategy keeps its lines at 1440px. On a phone (the table scrolls sideways there) the cell's padding grows to
+   hold a 44px tap area. */
+.table td.backtest-cycle-label-cell {
+  position: relative;
+}
+.backtest-cycle-toggle {
+  position: absolute;
+  left: 0.125rem;
+  top: 50%;
+  transform: translateY(-50%);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1rem;
+  height: 1.5rem;
+  padding: 0;
+  border: 0;
+  border-radius: var(--tblr-border-radius);
+  background: transparent;
+  color: var(--tblr-secondary-color);
+}
+.backtest-cycle-toggle:hover {
+  background-color: var(--tblr-border-color);
+  color: var(--tblr-body-color);
+}
+@media (max-width: 767.98px) {
+  /* Beats Tabler's .card-table tr td:first-child padding. A row is at least 44px tall, and the chevron's button fills its
+     own row's height, so a tap never lands on the next cycle's. */
+  .table.card-table tr > td.backtest-cycle-label-cell,
+  .table.card-table tr > th.backtest-cycle-label-cell {
+    padding-left: 2.75rem;
+  }
+  .table.card-table tr > td.backtest-cycle-label-cell {
+    height: 2.8125rem;
+  }
+  .backtest-cycle-toggle {
+    left: 0;
+    top: 0;
+    bottom: 0;
+    transform: none;
+    width: 2.75rem;
+    height: auto;
+  }
+}
 /* Dashboard Allocation bar — segmented, hover shows "label — %" (mirrors Pulse's .alloc-bar). */
 .allocation-bar {
   display: flex;
@@ -2181,8 +2268,12 @@
   --analysis-density-out-rgb: 107, 114, 128;
   --analysis-link: #0369a1;
   --analysis-link-hover: #075985;
+  --analysis-ladder: #2a78d6;
+  --analysis-account-in-shares: #0f7d6e;
 }
 :root[data-bs-theme="dark"] {
+  --analysis-ladder: #3987e5;
+  --analysis-account-in-shares: #4fc9b8;
   --analysis-good: #2b5247;
   --analysis-fair: #574d38;
   --analysis-poor: #503745;
@@ -2395,7 +2486,16 @@
 .analysis-shade-swatch.is-strike { background: rgba(111, 66, 193, 0.45); }
 :root[data-bs-theme="dark"] .analysis-shade-swatch.is-small { background: rgba(245, 180, 88, 0.35); }
 :root[data-bs-theme="dark"] .analysis-shade-swatch.is-strike { background: rgba(177, 140, 240, 0.55); }
-.analysis-dash-line { display: inline-block; width: 1.2rem; height: 0; border-top: 2px dashed var(--tblr-body-color); }
+.analysis-ladder-line { display: inline-block; width: 1.2rem; height: 0; border-top: 2px solid var(--analysis-ladder); }
+.analysis-ladder-line.is-dashed { border-top-style: dashed; }
+.analysis-ladder-line.is-account-in-shares { border-top-color: var(--analysis-account-in-shares); }
+.analysis-panel-label { margin: 0.25rem 0 0 3.25rem; font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--tblr-secondary-color); }
+/* A price chart whose window a drag moves (priceDrawdownChart.tsx): horizontal drags move it, vertical swipes still scroll
+   the page on a phone. */
+.price-chart-draggable { cursor: grab; touch-action: pan-y; user-select: none; border-radius: var(--tblr-border-radius); }
+.price-chart-draggable.is-dragging { cursor: grabbing; }
+.price-chart-draggable:focus-visible { outline: 2px solid var(--tblr-primary); outline-offset: 2px; }
+.analysis-rung-dot { display: inline-block; width: 0.6rem; height: 0.6rem; border-radius: 50%; background: var(--analysis-ladder); box-shadow: 0 0 0 2px var(--tblr-bg-surface), 0 0 0 3px var(--analysis-ladder); }
 .analysis-stat-pair { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.5rem; }
 .analysis-stat-pair > div { border: 1px solid var(--tblr-border-color); border-radius: var(--tblr-border-radius); padding: 0.4rem 0.6rem; display: flex; flex-direction: column; gap: 0.05rem; }
 .analysis-stat-pair b { font-family: var(--tblr-font-monospace); font-size: 0.95rem; color: var(--tblr-emphasis-color); }
