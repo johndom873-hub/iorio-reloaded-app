@@ -29,11 +29,9 @@ import {
   describeUncoveredShares,
   summarizeCycleTotals,
 } from "../../lib/backtestPresentation";
-import { escapeTooltipHtml } from "../../lib/signalsPresentation";
 import { CycleBucketBadge } from "../CycleBucketBadge";
 import { DataTable, type DataTableColumn, type DataTableExtraRow } from "../DataTable/DataTable";
 import { DataTableStickyPanel } from "../DataTable/DataTableStickyPanel";
-import { DottedLabelTooltip } from "../HelpTooltip";
 import { Spinner } from "../Spinner";
 import { TooltipSpan } from "../TooltipSpan";
 import { BacktestCard, BacktestCardTitle, BacktestCollapseToggle } from "./backtestBits";
@@ -151,7 +149,7 @@ function gapCell(key: string, gap: BacktestCycleGap, context: CellContext): Reac
 
 /** An uncovered stretch is one of a cycle's breakdown rows: its Session # is its first session's alone. */
 function uncoveredCell(key: string, cycle: BacktestCycle, stretch: BacktestUncoveredStretch, context: CellContext): ReactNode {
-  if (["pnl", "status", "premium", "stock", "flags"].includes(key)) return null;
+  if (["pnl", "status", "premium", "stock"].includes(key)) return null;
   return stretchCell(key, stretch, {
     label: <span className="backtest-cycle-event-name">Uncovered</span>,
     sessions: describeSessionSpan(context.sessionNumberOf(stretch.firstIdleDay)),
@@ -231,12 +229,6 @@ function cycleCell(key: string, cycle: BacktestCycle, context: CellContext): Rea
       return <SignedDollars value={cycleStockDollars(cycle)} />;
     case "strategies":
       return <CycleStrategies cycle={cycle} />;
-    case "flags":
-      return cycle.dataFlags.length === 0 ? (
-        dash
-      ) : (
-        <DottedLabelTooltip label={pluralizeCount(cycle.dataFlags.length, "flag")} tooltipHtml={escapeTooltipHtml(cycle.dataFlags.join("; "))} className="iorio-note-amber text-nowrap" />
-      );
     default:
       return null;
   }
@@ -297,7 +289,6 @@ const columnDefinitions: Omit<DataTableColumn<CyclesTableRow>, "render">[] = [
     header: "By strategy",
     headerTitle: "Each strategy's part of the cycle P&L, as the platform's Profit & Loss scoreboard attributes it. A trade: the strategy that owns it and what happened. Idle and uncovered stretches: why nothing was sold, the full rules in the tooltip.",
   },
-  { key: "flags", header: "Data flags", headerTitle: "Where the platform's cycle engine found the cycle's ledger incomplete; its figures may be off." },
 ];
 
 /** A cycle's trades and its uncovered stretches, each stretch before the first trade dated on or after its first session. */
