@@ -34,7 +34,6 @@ import {
   type BacktestTickerSuitability,
   type BacktestTrade,
   type BacktestTradeEnding,
-  type BacktestUncoveredStretch,
   type BacktestWheelCycleSummary,
   type EffectiveBacktestSettings,
   type LlmSessionEstimate,
@@ -861,14 +860,14 @@ function noSaleReasons(noSaleDays: BacktestNoSaleDays, entryFilterLimits: Backte
   return reasons.filter(([days]) => days > 0).map(([days, reason]) => ({ reason, days }));
 }
 
-/** An idle or uncovered row's reason, short ("No entry: extension z ≥ 1", "No call on 900 of 1,100 shares: no candidate"). */
+/** An Idle or Stock only row's reason, short ("No entry: extension z ≥ 1", "No option on 1,100 shares: no candidate"). */
 export function describeIdleStretchReason(stretch: BacktestIdleStretch, lead: string, entryFilterLimits: BacktestCycleGap["entryFilterLimits"] | null = null): string {
   const reasons = noSaleReasons(stretch.noSaleDays, entryFilterLimits);
   return reasons.length === 0 ? `${lead}: no reason recorded` : `${lead}: ${reasons.map((entry) => entry.reason).join(", ")}`;
 }
 
 /**
- * The full rules behind an idle or uncovered row, for its tooltip: the days each reason was seen (a day counts under
+ * The full rules behind an Idle or Stock only row, for its tooltip: the days each reason was seen (a day counts under
  * every reason seen at any of its looks), and when no contract qualified, the first such day's checks in the order the
  * baseline applies them, each with its rule then and the contracts it left out, and over several days, the days each
  * check left contracts out.
@@ -913,11 +912,6 @@ export function closeToCloseReturn(closes: readonly [string, number | null][], f
   const before = first > 0 ? closes[first - 1]![1] : null;
   const last = closes.find(([date]) => date === lastDate)?.[1] ?? null;
   return before === null || last === null || before <= 0 ? null : last / before - 1;
-}
-
-/** An uncovered stretch's shares: "2,400", or "700 of 1,000" when only some were uncovered. */
-export function describeUncoveredShares(stretch: Pick<BacktestUncoveredStretch, "sharesUncovered" | "sharesHeld">): string {
-  return stretch.sharesUncovered === stretch.sharesHeld ? formatNumber(stretch.sharesHeld) : `${formatNumber(stretch.sharesUncovered)} of ${formatNumber(stretch.sharesHeld)}`;
 }
 
 /**

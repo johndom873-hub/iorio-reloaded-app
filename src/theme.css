@@ -1177,8 +1177,8 @@
 }
 
 /* Wheel cycles table (BacktestCyclesTable): the Idle rows and an opened cycle's trades sit on the page's own background, a
-   step below the card in both themes; Idle and Uncovered rows read in the secondary grey. A trade's event name (and an
-   Uncovered row's label) is indented under its cycle. */
+   step below the card in both themes; Idle and Stock only rows read in the secondary grey. A trade's event name (and a
+   Stock only row's label) is indented under its cycle. */
 .table > tbody > tr.backtest-cycle-idle-row > td,
 .table > tbody > tr.backtest-cycle-trade-row > td,
 .table > tbody > tr.backtest-cycle-state-row > td {

@@ -979,16 +979,15 @@ export interface BacktestCycleGap extends BacktestIdleStretch {
   entryFilterLimits: { extensionZ: number | null; ivRank: number | null };
 }
 
-/** A stretch of a cycle's sessions with shares held and no call on some of them (as traded on its first day). */
-export interface BacktestUncoveredStretch extends BacktestIdleStretch {
-  sharesUncovered: number;
+/** A stretch of a cycle's sessions with shares held and no option open, put or call (shares as traded on its first day). */
+export interface BacktestStockOnlyStretch extends BacktestIdleStretch {
   sharesHeld: number;
 }
 
 /** A cycle's detail, read when its row is opened; null for sessions run before cycles kept it. */
 export interface BacktestCycleDetail {
   timeline: BacktestCycleTimelineRow[];
-  uncoveredStretches: BacktestUncoveredStretch[];
+  stockOnlyStretches: BacktestStockOnlyStretch[];
 }
 
 /** Per-ticker figures over the session's positions, option sales and cycles. */
