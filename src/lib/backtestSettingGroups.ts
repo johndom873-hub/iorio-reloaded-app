@@ -102,7 +102,7 @@ const rollSummaries: Record<string, string> = { flagged_legs: "roll flagged legs
 export function backtestSettingGroupSummary(group: BacktestSettingGroup, text: (path: string) => string, shown: (path: string) => string): string {
   switch (group) {
     case "How the session runs":
-      return [decisionMakerLabel[text("decisionMaker") as keyof typeof decisionMakerLabel] ?? shown("decisionMaker"), text("baseline.looks") === "every_look" ? "every look" : "once a day", text("baseline.entry") === "covered_call" ? "Covered Call entry" : "Cash-Secured Put entry"].join(" · ");
+      return [decisionMakerLabel[text("decisionMaker") as keyof typeof decisionMakerLabel] ?? shown("decisionMaker"), text("baseline.looks") === "every_look" ? "every look" : "once a day", ({ covered_call: "Covered Call entry", higher_yield: "put or Covered Call entry, whichever ranks higher" } as Record<string, string>)[text("baseline.entry")] ?? "Cash-Secured Put entry"].join(" · ");
     case "Put ladder": {
       const puts = text("baseline.putsWhenNoCall");
       if (puts === "off") return "no ladder";

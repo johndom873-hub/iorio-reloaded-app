@@ -17,7 +17,8 @@ export type BacktestDecisionMaker = "rules" | "llm" | "baseline";
 
 /** The baseline wheel (decision maker "baseline"): no Pluto rules and no Signals, everything held to expiry. */
 export interface BacktestBaselineSettings {
-  entry: "put" | "covered_call";
+  /** higher_yield: at each look whichever of a put and a Covered Call ranks higher by the Ranking. */
+  entry: "put" | "covered_call" | "higher_yield";
   minAbsDelta: number;
   maxAbsDelta: number;
   minDte: number;
