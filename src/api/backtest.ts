@@ -899,6 +899,8 @@ export interface BacktestCycle {
   netPremiumDollars: number;
   sharesHeld: number;
   breakEvenPerShare: number | null;
+  /** An open cycle's cash break-even as traded on the session's last day: what each share held must bring for the cycle to end flat. */
+  cashBreakEvenPerShare?: number | null;
   buckets: { csp: BacktestCycleBucket; unstructured: BacktestCycleBucket; cc: BacktestCycleBucket; hedge: BacktestCycleBucket };
   dataFlags: string[];
 }
@@ -928,6 +930,10 @@ export interface BacktestCycleTimelineRow {
   unrealized: boolean;
   /** A sold option's annualised yield as the engine recorded it at the sale, contract-weighted over the row's fills; null when none was kept. */
   premiumYield?: number | null;
+  /** A sold option's delta as the engine recorded it at the sale (a put's negative), contract-weighted; null when none was kept. */
+  delta?: number | null;
+  /** A call on held shares under a break-even rule: the cash break-even its strike was held to at the sale (engine version 3 on); null before. */
+  breakEvenFloor?: number | null;
 }
 
 /** The days of a stretch on which each reason stopped a sale: a day counts under every reason seen on it, and as unrecorded when none was. */

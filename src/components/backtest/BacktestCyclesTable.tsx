@@ -21,6 +21,7 @@ import {
   cycleBucketOrder,
   closeToCloseReturn,
   cycleStockDollars,
+  describeBreakEven,
   describeCycleTimelineEvent,
   describeIdleStretchReason,
   describeIdleStretchRules,
@@ -149,7 +150,7 @@ function gapCell(key: string, gap: BacktestCycleGap, context: CellContext): Reac
 
 /** An uncovered stretch is one of a cycle's breakdown rows: its Session # is its first session's alone. */
 function uncoveredCell(key: string, cycle: BacktestCycle, stretch: BacktestUncoveredStretch, context: CellContext): ReactNode {
-  if (["pnl", "status", "premium", "stock"].includes(key)) return null;
+  if (["pnl", "status", "premium", "stock", "breakEven"].includes(key)) return null;
   return stretchCell(key, stretch, {
     label: <span className="backtest-cycle-event-name">Uncovered</span>,
     sessions: describeSessionSpan(context.sessionNumberOf(stretch.firstIdleDay)),
@@ -175,6 +176,8 @@ function tradeCell(key: string, cycle: BacktestCycle, row: BacktestCycleTimeline
       return describeSessionSpan(context.sessionNumberOf(row.tradingDate));
     case "price":
       return priceText(context.priceOn(cycle.symbol, row.tradingDate, event.priceAt));
+    case "breakEven":
+      return row.breakEvenFloor == null ? null : formatCurrency(row.breakEvenFloor);
     case "premium":
       return tradeDollars(row.premiumDollars);
     case "stock":
@@ -223,6 +226,8 @@ function cycleCell(key: string, cycle: BacktestCycle, context: CellContext): Rea
       return describeSessionSpan(context.sessionNumberOf(cycle.openedOn), cycle.closedOn === null ? context.lastSessionNumber : context.sessionNumberOf(cycle.closedOn));
     case "price":
       return priceText(context.priceOn(cycle.symbol, cycle.openedOn, "tenOclock"));
+    case "breakEven":
+      return cycle.status === "open" && cycle.cashBreakEvenPerShare != null ? describeBreakEven(cycle.cashBreakEvenPerShare) : dash;
     case "premium":
       return <SignedDollars value={cycle.netPremiumDollars} />;
     case "stock":
@@ -279,6 +284,14 @@ const columnDefinitions: Omit<DataTableColumn<CyclesTableRow>, "render">[] = [
     key: "price",
     header: "Price",
     headerTitle: "The stock price as traded. A cycle or a stretch: the 10:00 price on its first day. A trade: the 10:00 price the day's looks saw; an assignment, a hand-over or a mark: that day's close.",
+    align: "right",
+    cellClassName: "text-nowrap",
+  },
+  {
+    key: "breakEven",
+    header: "B-E",
+    headerTitle:
+      "Break-even, in cash: (cost of every share bought in the cycle − what shares that left it brought in − net premium) ÷ shares held; selling the shares held at it leaves the cycle flat (Free once below zero). An open cycle: now. A call sold on held shares under a break-even rule: the break-even its strike was held to at the sale (sessions run from 20 Oct 2026).",
     align: "right",
     cellClassName: "text-nowrap",
   },
@@ -443,7 +456,8 @@ export function BacktestCyclesTable({
   };
   const rowClassName = (row: CyclesTableRow) => {
     if (row.kind === "cycle") return openCycleKeys.has(row.key) ? "table-active" : undefined;
-    return row.kind === "trade" ? "backtest-cycle-trade-row" : row.kind === "uncovered" ? "backtest-cycle-trade-row backtest-cycle-idle-row" : "backtest-cycle-idle-row";
+    if (row.kind === "trade") return /^(Put|Call) assigned/.test(row.row.label) ? "backtest-cycle-trade-row backtest-cycle-assigned-row" : "backtest-cycle-trade-row";
+    return row.kind === "uncovered" ? "backtest-cycle-trade-row backtest-cycle-idle-row" : "backtest-cycle-idle-row";
   };
 
   return (
