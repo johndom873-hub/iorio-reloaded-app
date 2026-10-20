@@ -919,8 +919,8 @@ export function describeUncoveredShares(stretch: Pick<BacktestUncoveredStretch, 
 }
 
 /**
- * A cycle timeline row as the Wheel cycles table lists it: a short event name ("Sold put", "Put assigned", "Assigned" for
- * a call assigned, "To CC"), what happened ("$59 Put · 10 Jan (7DTE) · 7× @ 0.30 · $4.76 commission"), whether it
+ * A cycle timeline row as the Wheel cycles table lists it: a short event name ("Sold put", "Put assigned", "Call assigned",
+ * "To CC"), what happened ("$59 Put · 10 Jan (7DTE) · 7× @ 0.30 · $4.76 commission"), whether it
  * opened an option (its expiry then shows as the row's close), and the stock price that goes with it: the 10:00 price
  * the day's looks saw for a trade, the day's close for an assignment, a hand-over or a mark.
  */
@@ -939,7 +939,7 @@ export function describeCycleTimelineEvent(row: BacktestCycleTimelineRow): { nam
     const close = row.strike !== null && row.quantity > 0 && row.stockDollars !== 0 ? `, worth ${formatCurrency(row.strike + row.stockDollars / row.quantity)} at the close` : "";
     return { name: "Put assigned", detail: `${shares} bought at${strike}${close}${commission}`, opensOption: false, priceAt: "close" };
   }
-  if (row.label.startsWith("Call assigned")) return { name: "Assigned", detail: `${shares} sold at${strike}${commission}`, opensOption: false, priceAt: "close" };
+  if (row.label.startsWith("Call assigned")) return { name: "Call assigned", detail: `${shares} sold at${strike}${commission}`, opensOption: false, priceAt: "close" };
   const handed = /^Shares handed to (CC|Unstructured)$/.exec(row.label);
   if (handed) {
     const to = handed[1] === "CC" ? "CC" : "N/S";
