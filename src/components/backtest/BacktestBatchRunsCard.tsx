@@ -1,9 +1,9 @@
 import { Link, useNavigate } from "react-router-dom";
 import type { BacktestBatchRun, BacktestMetrics } from "../../api/backtest";
 import { useTheme } from "../../hooks/useTheme";
-import { formatCurrency, formatNumber, formatPercentagePoints, formatRatio, formatSecondsInWords, pnlTextClass } from "../../lib/formatters";
+import { formatCurrency, formatNumber, formatRatio, formatSecondsInWords } from "../../lib/formatters";
 import { backtestMetricExplanation, bestValueIndex, describeJobRowTiming, signedPercentDisplay, spyBuyAndHoldColorByTheme } from "../../lib/backtestPresentation";
-import { batchBuyAndHoldColor, batchBuyAndHoldLineStyles, batchRunColor, cagrVersusBuyAndHold, describeRunList, type BatchBuyAndHoldGroup } from "../../lib/backtestBatchPresentation";
+import { batchBuyAndHoldColor, batchBuyAndHoldLineStyles, batchRunColor, describeRunList, type BatchBuyAndHoldGroup } from "../../lib/backtestBatchPresentation";
 import { ColumnVisibilityPopover } from "../DataTable/ColumnVisibilityPopover";
 import { useColumnVisibility } from "../DataTable/useColumnVisibility";
 import { DottedLabelTooltip } from "../HelpTooltip";
@@ -41,15 +41,6 @@ const resultColumns: ResultColumn[] = [
   { key: "endValue", header: "End value", explanation: "The account value on the last session day, at 10:00 ET.", better: null, dollars: true, value: (metrics) => metrics.endValue, format: (value) => plain(formatCurrency(value, 0), "font-mono") },
   { key: "totalReturn", header: "Total return", explanation: backtestMetricExplanation.totalReturn, better: "higher", value: (metrics) => metrics.totalReturn, format: signed },
   { key: "cagr", header: "CAGR", explanation: backtestMetricExplanation.cagr, better: "higher", value: (metrics) => metrics.cagr, format: signed },
-  {
-    key: "versusBuyAndHold",
-    header: "CAGR vs buy and hold",
-    explanation: "The run's CAGR minus the CAGR of buy and hold of its own tickers and pots, in percentage points.",
-    better: "higher",
-    runsOnly: true,
-    value: (metrics, baselineMetrics) => cagrVersusBuyAndHold(metrics, baselineMetrics),
-    format: (value) => plain(formatPercentagePoints(value, 1), pnlTextClass(value === null ? null : Number((value * 100).toFixed(1)))),
-  },
   { key: "sortino", header: "Sortino", explanation: backtestMetricExplanation.sortino, better: "higher", value: (metrics) => metrics.sortino, format: (value) => plain(formatRatio(value, 2)) },
   { key: "maxDrawdown", header: "Max drawdown", explanation: backtestMetricExplanation.maxDrawdown, better: "higher", value: (metrics) => metrics.maxDrawdown, format: signed },
   { key: "worstMonth", header: "Worst month", explanation: backtestMetricExplanation.worstMonth, better: "higher", value: (metrics) => metrics.worstMonth, format: signed },

@@ -80,11 +80,6 @@ export function describeRunList(runNumbers: number[]): string {
   return `Runs ${sorted.slice(0, -1).join(", ")} and ${sorted.at(-1)}`;
 }
 
-/** F2 (approved 2026-10-17): the run's CAGR − the CAGR of buy and hold of its own tickers and pots, as a fraction (shown in pts). */
-export function cagrVersusBuyAndHold(metrics: BacktestMetrics | null, baselineMetrics: BacktestMetrics | null): number | null {
-  return metrics && baselineMetrics ? metrics.cagr - baselineMetrics.cagr : null;
-}
-
 /** The values a stored run ran on (its symbolSettings), for describeRunDifferences. */
 export function storedRunValues(run: Pick<BacktestBatchRun, "session" | "symbolSettings">): BatchRunValues {
   const values: BatchRunValues["values"] = {};
