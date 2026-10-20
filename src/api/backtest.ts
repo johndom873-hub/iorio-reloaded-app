@@ -932,8 +932,8 @@ export interface BacktestCycleTimelineRow {
   premiumYield?: number | null;
   /** A sold option's delta as the engine recorded it at the sale (a put's negative), contract-weighted; null when none was kept. */
   delta?: number | null;
-  /** A call on held shares under a break-even rule: the cash break-even its strike was held to at the sale (engine version 3 on); null before. */
-  breakEvenFloor?: number | null;
+  /** An option sold while the cycle held shares: the cycle's cash break-even just before the sale (a call on held shares under a break-even rule: the floor it was held to). Null while none were held. */
+  breakEvenAtSale?: number | null;
 }
 
 /** The days of a stretch on which each reason stopped a sale: a day counts under every reason seen on it, and as unrecorded when none was. */

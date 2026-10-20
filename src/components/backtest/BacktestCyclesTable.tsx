@@ -177,7 +177,7 @@ function tradeCell(key: string, cycle: BacktestCycle, row: BacktestCycleTimeline
     case "price":
       return priceText(context.priceOn(cycle.symbol, row.tradingDate, event.priceAt));
     case "breakEven":
-      return row.breakEvenFloor == null ? null : formatCurrency(row.breakEvenFloor);
+      return row.breakEvenAtSale == null ? null : formatCurrency(row.breakEvenAtSale);
     case "premium":
       return tradeDollars(row.premiumDollars);
     case "stock":
@@ -291,7 +291,7 @@ const columnDefinitions: Omit<DataTableColumn<CyclesTableRow>, "render">[] = [
     key: "breakEven",
     header: "B-E",
     headerTitle:
-      "Break-even, in cash: (cost of every share bought in the cycle − what shares that left it brought in − net premium) ÷ shares held; selling the shares held at it leaves the cycle flat (Free once below zero). An open cycle: now. A call sold on held shares under a break-even rule: the break-even its strike was held to at the sale (sessions run from 20 Oct 2026).",
+      "Break-even, in cash: (cost of every share bought in the cycle − what shares that left it brought in − net premium) ÷ shares held; selling the shares held at it leaves the cycle flat (Free once below zero). An open cycle: now. An option sold while the cycle held shares: the break-even just before the sale (a call on held shares under a break-even rule: the floor its strike was held to).",
     align: "right",
     cellClassName: "text-nowrap",
   },
