@@ -2,11 +2,11 @@ import { useEffect, useMemo, useRef, useState, type HTMLAttributes, type RefObje
 import type { ApexAxisChartSeries, ApexOptions } from "apexcharts";
 import type { AnalysisBacktestFigures, AnalysisFigures, AnalysisMaxDrawdown, AnalysisPriceRange } from "../../../api/backtestAnalysis";
 import { analysisChartColors, analysisLadderPutBlockText, maxDrawdownOfBars } from "../../../lib/analysisPresentation";
-import { daysToExpiry, formatAxisDollars, formatCurrency, formatDayMonthYear, formatNumber, formatOptionContractLabel, formatOrderSize, formatPercentage } from "../../../lib/formatters";
+import { daysToExpiry, formatAxisDollars, formatCurrency, formatDayMonthYear, formatOptionContractLabel, formatOrderSize, formatPercentage } from "../../../lib/formatters";
 
 // The "Price and Max drawdown" chart, shared by the Analyse window (its analysis backtest) and a session's results (that
 // session): daily candles, the drawdown band, shaded runs of days, the ladder's next Put's cap and floor and the rungs
-// sold, a log scale to switch on, and under the candles the share of the account in shares.
+// sold, a log scale to switch on, and under the candles the account's cash available.
 // This module: its ranges, the window a drag moves, the log scale preference and the chart's options (the components are in
 // priceDrawdownChart.tsx).
 
@@ -52,6 +52,8 @@ export interface PriceWindow {
   canMove: boolean;
   atLatest: boolean;
   toLatest: () => void;
+  /** Moves the window to end at a bar (kept within the bars). */
+  moveTo: (end: number) => void;
   /** Spread on the element the window is dragged on. */
   dragProps: HTMLAttributes<HTMLDivElement> & { ref: RefObject<HTMLDivElement | null> };
 }
@@ -126,7 +128,7 @@ export function usePriceWindow(allBars: AnalysisFigures["bars"], range: Analysis
       moveTo(to + (event.key === "ArrowLeft" ? -step : step));
     },
   };
-  return { from, to, bars, drawdown, canMove, atLatest: to === last, toLatest: () => setChosenEnd(null), dragProps };
+  return { from, to, bars, drawdown, canMove, atLatest: to === last, toLatest: () => setChosenEnd(null), moveTo, dragProps };
 }
 
 
@@ -173,10 +175,8 @@ export interface PriceDrawdownChartInput {
   strikeRuns: [string, string][];
   ladderLevels: NonNullable<AnalysisBacktestFigures["ladderLevels"]>;
   ladderRungsSold: NonNullable<AnalysisBacktestFigures["ladderRungsSold"]>;
-  /** The account in shares, each day; null: no panel. */
-  accountInShares: NonNullable<AnalysisBacktestFigures["accountInShares"]> | null;
-  /** Each day's 10:00 price, for the shares held in the account-in-shares tooltip (absent: the shares are not counted). */
-  tenOclockPriceByDate: ReadonlyMap<string, number>;
+  /** The account's cash available each day at its 10:00 marks: [date, free cash, cash locked in open puts, account value]; null: no panel. */
+  cashAvailable: NonNullable<AnalysisBacktestFigures["cashAvailable"]> | null;
 }
 
 export type PriceDrawdownChart = ReturnType<typeof buildPriceDrawdownChart>;
@@ -205,19 +205,16 @@ export function buildPriceDrawdownChart(input: PriceDrawdownChartInput) {
   const rungsByDate = new Map<string, NonNullable<AnalysisBacktestFigures["ladderRungsSold"]>>();
   for (const rung of input.ladderRungsSold) if (rung[0] >= first && rung[0] <= last) rungsByDate.set(rung[0], [...(rungsByDate.get(rung[0]) ?? []), rung]);
   const lastLevel = levels.findLast((level) => level !== null) ?? null;
-  // The account in shares (approved 2026-10-20): the shares at the 10:00 marks before the day's orders ÷ the account then.
-  const sharesByDate = new Map((input.accountInShares ?? []).map((row) => [row[0], row]));
-  const accountInShares = bars.map((bar) => {
-    const row = sharesByDate.get(bar[0]);
-    return row && row[1] !== null && row[2] > 0 ? { sharesValue: row[1], accountValue: row[2], share: row[1] / row[2], price: input.tenOclockPriceByDate.get(bar[0]) ?? null } : null;
+  // Cash available (approved 2026-10-21): free cash (not locked in open puts) ÷ the account value at the day's 10:00 marks.
+  const cashByDate = new Map((input.cashAvailable ?? []).map((row) => [row[0], row]));
+  const cashAvailable = bars.map((bar) => {
+    const row = cashByDate.get(bar[0]);
+    return row && row[3] > 0 ? { date: row[0], freeCash: row[1], locked: row[2], accountValue: row[3], share: row[1] / row[3] } : null;
   });
-  const accountInSharesText = (day: (typeof accountInShares)[number]) => {
-    if (!day) return "";
-    const holding = day.price !== null && day.sharesValue > 0 ? `${formatNumber(Math.round(day.sharesValue / day.price))} shares × ${formatCurrency(day.price)} = ` : "";
-    return `Account in shares <b>${formatPercentage(day.share, 0)}</b>: ${holding}${formatCurrency(day.sharesValue, 0)} of a ${formatCurrency(day.accountValue, 0)} account`;
-  };
-  const sharesInRange = accountInShares.flatMap((day) => (day ? [day.share] : []));
-  const sharesRecorded = input.accountInShares !== null && input.accountInShares.some(([, sharesValue]) => sharesValue !== null);
+  const cashAvailableText = (day: (typeof cashAvailable)[number]) =>
+    day ? `Cash available <b>${formatPercentage(day.share, 0)}</b>: ${formatCurrency(day.freeCash, 0)} of a ${formatCurrency(day.accountValue, 0)} account${day.locked > 0 ? `; ${formatCurrency(day.locked, 0)} locked in puts` : ""}` : "";
+  const cashInRange = cashAvailable.flatMap((day) => (day ? [day] : []));
+  const cashRecorded = input.cashAvailable !== null && input.cashAvailable.length > 0;
   // The log scale: each price plotted as log10 of itself on a plain axis, the axis labelled back in dollars (ApexCharts'
   // own logarithmic axis drops the candles and shifts the bands).
   const toAxis = (price: number) => (logScale ? Math.log10(price) : price);
@@ -231,8 +228,8 @@ export function buildPriceDrawdownChart(input: PriceDrawdownChartInput) {
     stroke: { width: [1, 2, 2], curve: ["straight", "stepline", "stepline"], dashArray: [0, 5, 0] },
     markers: { size: 0, hover: { size: 0 } },
     legend: { show: false },
-    // With the account in shares below, its panel carries the dates.
-    xaxis: { type: "datetime", labels: { show: !sharesRecorded, datetimeUTC: true }, axisTicks: { show: !sharesRecorded }, tooltip: { enabled: false } },
+    // With the cash available below, its panel carries the dates.
+    xaxis: { type: "datetime", labels: { show: !cashRecorded, datetimeUTC: true }, axisTicks: { show: !cashRecorded }, tooltip: { enabled: false } },
     yaxis: { labels: { formatter: (value: number) => formatAxisDollars(fromAxis(value)), ...axisLabelWidth }, tooltip: { enabled: false } },
     plotOptions: { candlestick: { colors: { upward: colors.candleUp, downward: colors.candleDown }, wick: { useFillColor: true } } },
     grid: { padding: { left: 4, right: 8 } },
@@ -246,8 +243,8 @@ export function buildPriceDrawdownChart(input: PriceDrawdownChartInput) {
           ? `<div>Ladder cap ${level[1] === null ? "none" : formatCurrency(level[1])} · floor ${level[2] === null ? "none" : formatCurrency(level[2])}${level[3] === null ? "" : ` · no ladder Put: ${analysisLadderPutBlockText[level[3]]}`}</div>`
           : "";
         const rungLines = (rungsByDate.get(bar[0]) ?? []).map(([, , fills, reached]) => `<div>${reached ? describeRungReached(reached) : "Rung sold"}: ${fills.map(([strike, expiry, contracts]) => `${formatOptionContractLabel({ strike, right: "P", expiry, dte: daysToExpiry(expiry, bar[0]) })}${formatOrderSize(contracts, null)}`).join(", ")}</div>`).join("");
-        const sharesLine = accountInShares[dataPointIndex] ? `<div>${accountInSharesText(accountInShares[dataPointIndex])}</div>` : "";
-        return `<div style="padding:0.4rem 0.6rem;font-size:0.75rem"><b>${formatDayMonthYear(bar[0])}</b><div style="font-family:var(--tblr-font-monospace)">O ${bar[1].toFixed(2)} · H ${bar[2].toFixed(2)} · L ${bar[3].toFixed(2)} · C ${bar[4].toFixed(2)}</div>${ladderLine}${rungLines}${sharesLine}</div>`;
+        const cashLine = cashAvailable[dataPointIndex] ? `<div>${cashAvailableText(cashAvailable[dataPointIndex])}</div>` : "";
+        return `<div style="padding:0.4rem 0.6rem;font-size:0.75rem"><b>${formatDayMonthYear(bar[0])}</b><div style="font-family:var(--tblr-font-monospace)">O ${bar[1].toFixed(2)} · H ${bar[2].toFixed(2)} · L ${bar[3].toFixed(2)} · C ${bar[4].toFixed(2)}</div>${ladderLine}${rungLines}${cashLine}</div>`;
       },
     },
     annotations: {
@@ -285,13 +282,14 @@ export function buildPriceDrawdownChart(input: PriceDrawdownChartInput) {
     { name: "Ladder cap", type: "line", data: bars.map((bar, index) => ({ x: timeOfDate(bar[0]), y: levels[index]?.[1] == null ? null : toAxis(levels[index]![1]!) })) },
     { name: "Ladder floor", type: "line", data: bars.map((bar, index) => ({ x: timeOfDate(bar[0]), y: levels[index]?.[2] == null ? null : toAxis(levels[index]![2]!) })) },
   ];
-  const highestShare = sharesInRange.length > 0 ? Math.max(...sharesInRange) : 1;
-  const sharesPanel = sharesRecorded
+  const highestShare = cashInRange.length > 0 ? Math.max(...cashInRange.map((day) => day.share)) : 1;
+  const cashPanel = cashRecorded
     ? {
         options: {
           chart: { animations: { enabled: false }, zoom: { enabled: false }, background: "transparent", parentHeightOffset: 0 },
-          colors: [colors.accountInShares],
+          colors: [colors.cashAvailable],
           stroke: { width: 1.75, curve: "straight" },
+          fill: { type: "solid", opacity: 0.14 },
           markers: { size: 0, hover: { size: 0 } },
           legend: { show: false },
           xaxis: { type: "datetime", labels: { datetimeUTC: true }, tooltip: { enabled: false } },
@@ -303,14 +301,15 @@ export function buildPriceDrawdownChart(input: PriceDrawdownChartInput) {
             intersect: false,
             custom: ({ dataPointIndex }: { dataPointIndex: number }) => {
               const bar = bars[dataPointIndex];
-              const day = accountInShares[dataPointIndex];
-              return bar && day ? `<div style="padding:0.4rem 0.6rem;font-size:0.75rem"><b>${formatDayMonthYear(bar[0])}</b><div>${accountInSharesText(day)}</div></div>` : "";
+              const day = cashAvailable[dataPointIndex];
+              return bar && day ? `<div style="padding:0.4rem 0.6rem;font-size:0.75rem"><b>${formatDayMonthYear(bar[0])}</b><div>${cashAvailableText(day)}</div></div>` : "";
             },
           },
         } satisfies ApexOptions,
-        series: [{ name: "Account in shares", data: bars.map((bar, index) => ({ x: timeOfDate(bar[0]), y: accountInShares[index] ? +(accountInShares[index]!.share * 100).toFixed(1) : null })) }],
+        series: [{ name: "Cash available", type: "area", data: bars.map((bar, index) => ({ x: timeOfDate(bar[0]), y: cashAvailable[index] ? +(cashAvailable[index]!.share * 100).toFixed(1) : null })) }],
       }
     : null;
-  const sharesSummary = sharesInRange.length > 0 ? { median: medianOf(sharesInRange)!, highest: highestShare } : null;
-  return { options, series, smallDays: daysIn(smallRuns), strikeDays: daysIn(strikeRuns), lastLevel, sharesPanel, sharesSummary };
+  const lowestDay = cashInRange.reduce<(typeof cashInRange)[number] | null>((lowest, day) => (lowest === null || day.share < lowest.share ? day : lowest), null);
+  const cashSummary = lowestDay ? { median: medianOf(cashInRange.map((day) => day.share))!, lowest: lowestDay.share, lowestDate: lowestDay.date } : null;
+  return { options, series, smallDays: daysIn(smallRuns), strikeDays: daysIn(strikeRuns), lastLevel, cashPanel, cashSummary };
 }

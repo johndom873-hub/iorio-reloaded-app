@@ -2285,11 +2285,15 @@
   --analysis-link: #0369a1;
   --analysis-link-hover: #075985;
   --analysis-ladder: #2a78d6;
-  --analysis-account-in-shares: #0f7d6e;
+  --analysis-cash-available: #0f7d6e;
+  --price-navigator-window: rgba(42, 120, 214, 0.12);
+  --price-navigator-dim: rgba(29, 39, 59, 0.08);
 }
 :root[data-bs-theme="dark"] {
   --analysis-ladder: #3987e5;
-  --analysis-account-in-shares: #4fc9b8;
+  --analysis-cash-available: #4fc9b8;
+  --price-navigator-window: rgba(57, 135, 229, 0.18);
+  --price-navigator-dim: rgba(0, 0, 0, 0.25);
   --analysis-good: #2b5247;
   --analysis-fair: #574d38;
   --analysis-poor: #503745;
@@ -2504,13 +2508,23 @@
 :root[data-bs-theme="dark"] .analysis-shade-swatch.is-strike { background: rgba(177, 140, 240, 0.55); }
 .analysis-ladder-line { display: inline-block; width: 1.2rem; height: 0; border-top: 2px solid var(--analysis-ladder); }
 .analysis-ladder-line.is-dashed { border-top-style: dashed; }
-.analysis-ladder-line.is-account-in-shares { border-top-color: var(--analysis-account-in-shares); }
+.analysis-ladder-line.is-cash-available { border-top-color: var(--analysis-cash-available); }
 .analysis-panel-label { margin: 0.25rem 0 0 3.25rem; font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--tblr-secondary-color); }
 /* A price chart whose window a drag moves (priceDrawdownChart.tsx): horizontal drags move it, vertical swipes still scroll
    the page on a phone. */
 .price-chart-draggable { cursor: grab; touch-action: pan-y; user-select: none; border-radius: var(--tblr-border-radius); }
 .price-chart-draggable.is-dragging { cursor: grabbing; }
 .price-chart-draggable:focus-visible { outline: 2px solid var(--tblr-primary); outline-offset: 2px; }
+/* The price chart's navigator (PriceWindowNavigator): lined up with the plot, past the y-axis labels. */
+.price-navigator-row { margin: 0.25rem 0.5rem 0.25rem 3.25rem; }
+.price-navigator { display: block; width: 100%; height: 2.75rem; cursor: grab; touch-action: none; user-select: none; }
+.price-navigator.is-dragging { cursor: grabbing; }
+.price-navigator:focus-visible { outline: 2px solid var(--tblr-primary); outline-offset: 2px; border-radius: var(--tblr-border-radius); }
+.price-navigator-frame { fill: none; stroke: var(--tblr-border-color); vector-effect: non-scaling-stroke; }
+.price-navigator-line { fill: none; stroke: var(--tblr-secondary-color); stroke-width: 1; vector-effect: non-scaling-stroke; }
+.price-navigator-dim { fill: var(--price-navigator-dim); }
+.price-navigator-window { fill: var(--price-navigator-window); stroke: var(--analysis-ladder); stroke-width: 1.5; vector-effect: non-scaling-stroke; }
+.price-navigator-grip { fill: var(--analysis-ladder); }
 /* A rung's badge, as the chart draws it: white on a blue dark enough for 4.5:1 in both themes, ringed in the ladder's blue. */
 .analysis-rung-badge { display: inline-flex; align-items: center; justify-content: center; min-width: 1rem; height: 1rem; padding: 0 0.25rem; border-radius: 0.5rem; background: #1f6bc4; border: 1px solid var(--analysis-ladder); color: #ffffff; font-size: 0.65rem; font-weight: 700; line-height: 1; }
 .analysis-stat-pair { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.5rem; }

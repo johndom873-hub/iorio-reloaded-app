@@ -1,19 +1,20 @@
 import { useMemo, useState } from "react";
 import type { ApexOptions } from "apexcharts";
-import { analysisAccountInSharesFormulasVersion, analysisLadderLevelsFormulasVersion, type AnalysisFigures, type AnalysisPriceRange } from "../../../api/backtestAnalysis";
+import { analysisLadderLevelsFormulasVersion, type AnalysisFigures, type AnalysisPriceRange } from "../../../api/backtestAnalysis";
 import { analysisChartColors, dateRuns, potOnDayFrom, tooSmallDates, type AnalysisPanelValues } from "../../../lib/analysisPresentation";
 import { formatDayMonthYear, formatNumber, formatPercentage, formatVolatilityPoints } from "../../../lib/formatters";
 import { useTheme } from "../../../hooks/useTheme";
 import { ApexChart } from "../../charts/ApexChart";
 import { AnalysisCard, AnalysisNote, AnalysisSeriesKey } from "./analysisBits";
-import { LadderLegendItems, PriceChartActions, PriceDrawdownCaption, PriceDrawdownCharts, PriceWindowNote } from "./priceDrawdownChart";
+import { LadderLegendItems, PriceChartActions, PriceDrawdownCaption, PriceDrawdownCharts, PriceWindowNavigator, PriceWindowNote } from "./priceDrawdownChart";
 import { buildPriceDrawdownChart, historyYearsOf, medianOf, timeOfDate, useLogScalePreference, usePriceWindow, yearsBefore } from "./priceDrawdownChartModel";
 
 // Price and Max drawdown (daily candles, the drawdown band, the days the pot was too small and the days an order needed
 // more than one strike, and the analysis backtest's ladder: its next Put's cap, its floor and the rungs sold; a log scale
-// to switch on; under the candles, the share of the backtest's account in shares), and volatility (21-day Yang-Zhang and
-// IBKR's implied, implied minus what followed). Mockups approved 2026-10-15 and 2026-10-20 (the ladder; the account in
-// shares and the log scale); the volatility chart follows the price chart's window, which a drag moves (approved 2026-10-20).
+// to switch on; under the candles, the backtest account's cash available, and under both a navigator for the window), and
+// volatility (21-day Yang-Zhang and IBKR's implied, implied minus what followed). Mockups approved 2026-10-15, 2026-10-20
+// (the ladder, the log scale) and 2026-10-21 (cash available, the navigator); the volatility chart follows the price
+// chart's window, which a drag or the navigator moves.
 
 interface AnalysisPriceCardsProps {
   symbol: string;
@@ -40,7 +41,6 @@ export function AnalysisPriceCards({ symbol, figures, shown, showingTrial, stale
     // Each day against the pot the analysis backtest's ladder sized from that day (an Analyse Only run has its own backtest).
     const potOnDay = potOnDayFrom(backtest?.potPath);
     const strikeDates = backtest ? [...new Set(backtest.tooLargeDays.filter(([, , givenUp]) => givenUp !== null).map(([date]) => date))] : [];
-    const sharesRecorded = backtest !== null && backtest.accountInShares !== undefined && figures.formulasVersion >= analysisAccountInSharesFormulasVersion;
     const chart = buildPriceDrawdownChart({
       symbol,
       bars,
@@ -52,14 +52,12 @@ export function AnalysisPriceCards({ symbol, figures, shown, showingTrial, stale
       strikeRuns: dateRuns(strikeDates, allDates),
       ladderLevels: backtest?.ladderLevels ?? [],
       ladderRungsSold: backtest?.ladderRungsSold ?? [],
-      accountInShares: sharesRecorded ? backtest!.accountInShares! : null,
-      tenOclockPriceByDate: new Map(figures.fitDays.map((day) => [day[0], day[1]])),
+      cashAvailable: backtest?.cashAvailable ?? null,
     });
     if (!chart) return null;
-    const sharesMissing = backtest && !chart.sharesPanel ? "computed with an older version of the formulas; Update Analysis to see it" : null;
     // Why the ladder lines are missing: no backtest, or one from before the levels were recorded.
     const ladderMissing = !backtest ? "no analysis backtest" : backtest.ladderLevels === undefined || figures.formulasVersion < analysisLadderLevelsFormulasVersion ? "computed with an older version of the formulas; Update Analysis to see them" : null;
-    return { ...chart, smallDays: potOnDay ? chart.smallDays : null, hasBacktest: backtest !== null, ladderMissing, sharesMissing };
+    return { ...chart, smallDays: potOnDay ? chart.smallDays : null, hasBacktest: backtest !== null, ladderMissing };
   }, [bars, shown, figures, theme, drawdown, symbol, logScale]);
 
   const volatilityChart = useMemo(() => {
@@ -119,6 +117,9 @@ export function AnalysisPriceCards({ symbol, figures, shown, showingTrial, stale
               <PriceDrawdownCharts chart={priceChart} />
             </div>
           )}
+          <div className="price-navigator-row">
+            <PriceWindowNavigator allBars={figures.bars} priceWindow={priceWindow} />
+          </div>
           <PriceWindowNote priceWindow={priceWindow} />
           <PriceDrawdownCaption chart={priceChart} drawdown={drawdown} />
           {priceChart && (
@@ -140,13 +141,11 @@ export function AnalysisPriceCards({ symbol, figures, shown, showingTrial, stale
                   <span className="analysis-legend-item">{priceChart.lastLevel ? "Levels from the analysis's backtest, each day a cycle held shares" : "No cycle held shares in this range (the analysis's backtest)"}</span>
                 </>
               )}
-              {priceChart.sharesPanel ? (
+              {priceChart.cashPanel && (
                 <span className="analysis-legend-item">
-                  <span className="analysis-ladder-line is-account-in-shares" />
-                  Account in shares: the shares held × the day's 10:00 price ÷ the account value, before that day's orders (the analysis's backtest)
+                  <span className="analysis-ladder-line is-cash-available" />
+                  Cash available: the cash not locked in open Cash-Secured Puts (strike × 100 × contracts) ÷ the account value, at the day's 10:00 marks before its orders (the analysis's backtest)
                 </span>
-              ) : (
-                priceChart.sharesMissing && <span className="analysis-legend-item">Account in shares: {priceChart.sharesMissing}</span>
               )}
             </div>
           )}

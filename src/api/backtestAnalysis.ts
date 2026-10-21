@@ -234,11 +234,8 @@ export interface AnalysisBacktestFigures {
    * when its sale recorded no reserve; absent in figures stored before it)]. Absent before formulas version 6.
    */
   ladderRungsSold?: [string, number, [number, string, number][], ([number, number, number, number] | null)?][];
-  /**
-   * Each backtest day, at the 10:00 marks before its orders: [date, the shares held at those marks (null: not recorded),
-   * the account value]. Absent before formulas version 7.
-   */
-  accountInShares?: [string, number | null, number][];
+  /** The whole account's free cash each day at its 10:00 marks: [date, free cash, cash locked in open puts, account value]; read from the session when the analysis opens. */
+  cashAvailable?: [string, number, number, number][];
 }
 
 /**
@@ -252,8 +249,8 @@ export interface BacktestSessionPriceChart {
   ladderLevels: NonNullable<AnalysisBacktestFigures["ladderLevels"]>;
   ladderRungsSold: NonNullable<AnalysisBacktestFigures["ladderRungsSold"]>;
   tooLargeDays: AnalysisBacktestFigures["tooLargeDays"];
-  /** Null in a session of more than one symbol: the account's shares are every symbol's. */
-  accountInShares: NonNullable<AnalysisBacktestFigures["accountInShares"]> | null;
+  /** The whole account's free cash each day at its 10:00 marks (every symbol's in a session of several). */
+  cashAvailable: NonNullable<AnalysisBacktestFigures["cashAvailable"]>;
 }
 
 /** Why no ladder Put could be sold at a day's first look. */
@@ -264,9 +261,6 @@ export const analysisEveryDayPotFormulasVersion = 5;
 
 /** The formulas version whose analysis backtests carry the ladder's daily cap and floor and the rungs sold. */
 export const analysisLadderLevelsFormulasVersion = 6;
-
-/** The formulas version whose analysis backtests carry each day's shares value (the account in shares line). */
-export const analysisAccountInSharesFormulasVersion = 7;
 
 /** [date, price, shock, the ladder Put's volume limit, its strike, the entry Call's volume limit, the ladder Put's previous-session volume (since 2026-10-19)]. */
 export type AnalysisFitDayRow = [string, number, number, (number | null)?, (number | null)?, (number | null)?, (number | null)?];

@@ -6,14 +6,14 @@ import { dateRuns } from "../../lib/analysisPresentation";
 import { formatNumber } from "../../lib/formatters";
 import { Spinner } from "../Spinner";
 import { BacktestCard } from "./backtestBits";
-import { LadderLegendItems, PriceChartActions, PriceDrawdownCaption, PriceDrawdownCharts, PriceWindowNote } from "./analysis/priceDrawdownChart";
+import { LadderLegendItems, PriceChartActions, PriceDrawdownCaption, PriceDrawdownCharts, PriceWindowNavigator, PriceWindowNote } from "./analysis/priceDrawdownChart";
 import { buildPriceDrawdownChart, historyYearsOf, useLogScalePreference, usePriceWindow } from "./analysis/priceDrawdownChartModel";
 
 // The Analyse window's "Price and Max drawdown" chart on a session's results (Marcelo 2026-10-20): over the session's
 // period, with this session's ladder levels, rungs sold and orders over one strike (no "Pot too small": that is the
 // Analyse window's fit); one symbol at a time.
 
-function PriceChartBody({ chart, range, logScale }: { chart: BacktestSessionPriceChart; range: AnalysisPriceRange; logScale: boolean }) {
+function PriceChartBody({ chart, range, logScale, severalSymbols }: { chart: BacktestSessionPriceChart; range: AnalysisPriceRange; logScale: boolean; severalSymbols: boolean }) {
   const { theme } = useTheme();
   const priceWindow = usePriceWindow(chart.bars, range);
   const { bars, drawdown } = priceWindow;
@@ -31,8 +31,7 @@ function PriceChartBody({ chart, range, logScale }: { chart: BacktestSessionPric
       strikeRuns: dateRuns(strikeDates, dates),
       ladderLevels: chart.ladderLevels,
       ladderRungsSold: chart.ladderRungsSold,
-      accountInShares: chart.accountInShares,
-      tenOclockPriceByDate: new Map(),
+      cashAvailable: chart.cashAvailable,
     });
   }, [chart, bars, drawdown, theme, logScale]);
 
@@ -45,6 +44,9 @@ function PriceChartBody({ chart, range, logScale }: { chart: BacktestSessionPric
           <PriceDrawdownCharts chart={drawn} />
         </div>
       )}
+      <div className="price-navigator-row">
+        <PriceWindowNavigator allBars={chart.bars} priceWindow={priceWindow} />
+      </div>
       <PriceWindowNote priceWindow={priceWindow} />
       <PriceDrawdownCaption chart={drawn} drawdown={drawdown} />
       {drawn && (
@@ -61,13 +63,11 @@ function PriceChartBody({ chart, range, logScale }: { chart: BacktestSessionPric
           ) : (
             <span className="analysis-legend-item">Ladder cap and floor: none recorded (no ladder in this session, or it ran before the levels were kept)</span>
           )}
-          {drawn.sharesPanel ? (
+          {drawn.cashPanel && (
             <span className="analysis-legend-item">
-              <span className="analysis-ladder-line is-account-in-shares" />
-              Account in shares: the shares held at the day's 10:00 marks ÷ the account value, before that day's orders
+              <span className="analysis-ladder-line is-cash-available" />
+              Cash available: the cash not locked in open Cash-Secured Puts (strike × 100 × contracts) ÷ the account value, at the day's 10:00 marks before its orders{severalSymbols && " (the whole account, every symbol's)"}
             </span>
-          ) : (
-            <span className="analysis-legend-item">Account in shares: {chart.accountInShares === null ? "not shown in a session of several symbols (the account's shares are every symbol's)" : "not recorded (the session ran before it was kept)"}</span>
           )}
         </div>
       )}
@@ -124,7 +124,7 @@ export function BacktestSessionPriceCard({ sessionId, symbols, status }: { sessi
           <div className="alert alert-danger mb-0">{state.error}</div>
         </div>
       ) : (
-        <PriceChartBody key={state.chart.symbol} chart={state.chart} range={range} logScale={logScale} />
+        <PriceChartBody key={state.chart.symbol} chart={state.chart} range={range} logScale={logScale} severalSymbols={symbols.length > 1} />
       )}
     </BacktestCard>
   );
