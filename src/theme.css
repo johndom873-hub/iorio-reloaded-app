@@ -1187,35 +1187,25 @@
 .table > tbody > tr.backtest-cycle-idle-row > td {
   color: var(--tblr-secondary-color);
 }
-/* A put or call assigned in a cycle's trades (Marcelo 2026-10-21): a solid yellow row, a lighter one in the light theme.
-   A see-through yellow or amber reads brown on the dark rows, and one strong enough to look yellow takes the row's green
-   and red under 4.5:1, so the row is opaque and its text dark in both themes: the body ink, a dark green and a dark red
-   for the P&L (Tabler's and the theme's .text-success/.text-danger are !important, hence these selectors). */
+/* A put or call assigned in a cycle's trades (Marcelo 2026-10-21, option D of the highlight choices): a yellow frame
+   around the row, a 4px bar on its left, no fill, so its text keeps the table's colours. A see-through yellow read
+   brown on the dark rows and a solid one too striking. The frame is non-text UI: #fcc419 is 9.12:1 on the dark rows;
+   in the light theme a yellow that light is 1.54:1, so a deeper gold (#b07d00, 3.48:1). Laid as inset shadows, which
+   take the place of the hover shade on those rows. */
 :root {
-  --backtest-assigned-row-bg: #ffe066;
+  --backtest-assigned-row-frame: #b07d00;
 }
 :root[data-bs-theme="dark"] {
-  --backtest-assigned-row-bg: #fcc419;
-}
-:root {
-  --backtest-assigned-row-ink: #1d273b;
-  --backtest-assigned-row-green: #1b5e20;
-  --backtest-assigned-row-red: #8f1d1d;
+  --backtest-assigned-row-frame: #fcc419;
 }
 .table > tbody > tr.backtest-cycle-assigned-row > td {
-  background-color: var(--backtest-assigned-row-bg);
-  box-shadow: none;
-  color: var(--backtest-assigned-row-ink);
+  box-shadow: inset 0 1px 0 var(--backtest-assigned-row-frame), inset 0 -1px 0 var(--backtest-assigned-row-frame);
 }
-.table > tbody > tr.backtest-cycle-assigned-row td .text-secondary,
-.table > tbody > tr.backtest-cycle-assigned-row td .text-body {
-  color: var(--backtest-assigned-row-ink) !important;
+.table > tbody > tr.backtest-cycle-assigned-row > td:first-child {
+  box-shadow: inset 4px 0 0 var(--backtest-assigned-row-frame), inset 0 1px 0 var(--backtest-assigned-row-frame), inset 0 -1px 0 var(--backtest-assigned-row-frame);
 }
-.table > tbody > tr.backtest-cycle-assigned-row td .text-success {
-  color: var(--backtest-assigned-row-green) !important;
-}
-.table > tbody > tr.backtest-cycle-assigned-row td .text-danger {
-  color: var(--backtest-assigned-row-red) !important;
+.table > tbody > tr.backtest-cycle-assigned-row > td:last-child {
+  box-shadow: inset -1px 0 0 var(--backtest-assigned-row-frame), inset 0 1px 0 var(--backtest-assigned-row-frame), inset 0 -1px 0 var(--backtest-assigned-row-frame);
 }
 .backtest-cycle-event-name {
   display: inline-block;
