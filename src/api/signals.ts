@@ -93,14 +93,10 @@ export interface SignalCandidate {
   askSize: number | null;
   surfaceImpliedVolatility: number;
   midImpliedVolatility: number | null;
-  forecastVolatility: number;
-  edge: number;
-  frictionVolatility: number;
-  netEdge: number;
-  edgeDollars: number;
+  /** Commission per contract in the model's selling costs. */
+  commissionPerContractDollars?: number;
   vega: number;
   dollarRisk: number;
-  riskAdjustedRatio: number;
   annualizedYield: number;
   uncompensatedSharePercent: number | null;
   quoteSource: SignalQuoteSource;
@@ -108,10 +104,8 @@ export interface SignalCandidate {
   quotedAt: string | null;
   flags: SignalFlag[];
   executable: boolean;
-  /** The old net-Edge grade (phasing out); the valuation model's grade is model.grade. */
-  grade: SignalGrade;
-  /** The valuation model's figures (what Pluto acts on); null when it could not value the contract. */
-  model: CandidateModelScore | null;
+  /** The valuation model's figures: what is shown, ranked and acted on (a contract it cannot value is not a candidate). */
+  model: CandidateModelScore;
 }
 
 // Roll Signals (Formula 3j, approved 2026-09-24): every open short option leg scored as a contract to keep,
@@ -138,13 +132,6 @@ export interface HeldLegScore {
   mid: number | null;
   surfaceImpliedVolatility: number | null;
   midImpliedVolatility: number | null;
-  /** Surface IV minus the forecast: what holding still offers, in annualised volatility. */
-  edge: number | null;
-  /** Cost of buying the leg back (the spread cost share of the half-spread + commission, over vega), in annualised volatility. */
-  frictionVolatility: number | null;
-  vega: number | null;
-  holdEdgeDollars: number | null;
-  closeCostDollars: number | null;
   dollarRisk: number | null;
   quoteSource: SignalQuoteSource | null;
   quotedAt: string | null;
@@ -160,11 +147,6 @@ export interface RollSignalCandidate {
   strategyKey: SignalStrategyKey;
   quantity: number;
   replacement: SignalCandidate;
-  /** netEdge(B) − edge(A) − friction(A), a fraction (0.056 = 5.6 vp). */
-  netRollEdge: number;
-  netRollEdgeDollarsPerContract: number;
-  /** × quantity. */
-  netRollEdgeDollars: number;
   /** mid(B) − mid(A), per share; positive unless the warnings say "debit". */
   netCreditPerShare: number;
   /** |delta(B)| − |delta(A)|; positive only with the "higher_delta" warning. */
@@ -172,10 +154,8 @@ export interface RollSignalCandidate {
   dollarRiskChange: number;
   flags: RollSignalFlag[];
   warnings: RollSignalWarning[];
-  /** The old net roll Edge grade (phasing out); the model's is model.grade. */
-  grade: SignalGrade;
-  /** The valuation model's roll (what Pluto acts on): net roll $ per contract and across the held quantity, the roll's edge margin and grade. */
-  model: { netExpectedPnlPerContract: number; netExpectedPnl: number; edgeMargin: number; grade: SignalGrade } | null;
+  /** The valuation model's roll: net roll $ per contract and across the held quantity, the roll's edge margin and grade (a pair it cannot value is not a roll). */
+  model: { netExpectedPnlPerContract: number; netExpectedPnl: number; edgeMargin: number; grade: SignalGrade };
 }
 
 export interface ElevatedVolatilityFlag {
@@ -214,7 +194,6 @@ export interface TickerSignals {
   dayChangePercent: number | null;
   candidates: SignalCandidate[];
   best: SignalCandidate | null;
-  gradeCounts: Record<SignalGrade, number>;
   heldLegs: HeldLegScore[];
   rolls: RollSignalCandidate[];
   bestRoll: RollSignalCandidate | null;
@@ -230,9 +209,13 @@ export interface TickerSignals {
   atmImpliedVolatility: number | null;
   /** The same at-the-money variance on the day basis (trading days), comparable with modelForecast. */
   atmImpliedVolatilityPerSession: number | null;
-  forecast: { volatility: number; windowDays: number } | null;
   /** The valuation model's forecast (21-day Yang-Zhang, annualized on trading days). */
   modelForecast: { perSessionVariance: number; annualizedVolatility: number; windowDays: number } | null;
+  /** FV 63d: 63-day Yang-Zhang, no fallback (display only). */
+  yangZhang63Forecast: { perSessionVariance: number; annualizedVolatility: number; windowDays: number } | null;
+  /** IV Rank and IV Percentile (0-100) over 252 days of IBKR's daily implied volatility. */
+  ivRank: number | null;
+  ivPercentile: number | null;
   dailyBarCount: number;
   dividendCadenceUnknown: boolean;
   caveats: RoadmapItem[];
@@ -451,7 +434,6 @@ export interface SignalsChainCell {
   quotedAt: string | null;
   /** Candidates only. */
   grade: SignalGrade | null;
-  netEdge: number | null;
   /** Filtered only: why Signals left it out, in plain words. */
   reason: string | null;
 }

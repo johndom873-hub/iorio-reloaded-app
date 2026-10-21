@@ -16,8 +16,8 @@ import { Spinner } from "../components/Spinner";
 import { TickColoredPrice } from "../components/TickColoredPrice";
 import { TooltipSpan } from "../components/TooltipSpan";
 import { useSignalsTickerModal } from "../hooks/useSignalsTickerModal";
-import { daysToExpiry, formatCurrency, formatDateTime, formatDaysToExpiry, formatPercentage, formatRelativeTime, formatSignedPercentageValue, formatSignedPnl, formatVolatilityPoints, pnlTextClass } from "../lib/formatters";
-import { candidateContractKey, describeCandidateCompact, describeDayQuotesStatus, describeNoSignalBadge, dollarsPerTenThousandOfExposure, type NoSignalBadge, gradeBadgeClass, gradeExplanation, gradeLabel, modelColumnExplanation, priceSourceLabel, quoteSourceLabel, roadmapStatusBadgeClass, roadmapStatusLabel, signalsColumnExplanation, restScoresFallbackMs } from "../lib/signalsPresentation";
+import { daysToExpiry, formatCurrency, formatDateTime, formatDaysToExpiry, formatPercentage, formatPercentageValue, formatRelativeTime, formatSignedPercentageValue, formatSignedPnl, pnlTextClass } from "../lib/formatters";
+import { candidateContractKey, describeCandidateCompact, describeDayQuotesStatus, describeNoSignalBadge, dollarsPerTenThousandOfExposure, type NoSignalBadge, gradeBadgeClass, gradeLabel, modelColumnExplanation, priceSourceLabel, quoteSourceLabel, roadmapStatusBadgeClass, roadmapStatusLabel, signalsColumnExplanation, restScoresFallbackMs } from "../lib/signalsPresentation";
 import { useTooltip } from "../hooks/useTooltip";
 import { QuoteAgeLabel } from "../components/QuoteAgeLabel";
 
@@ -42,11 +42,10 @@ function GradeBadge({ grade, explanation = modelColumnExplanation.grade, faded =
 
 // The valuation model's column groups (mockup approved 2026-10-10).
 const modelGroup = { label: "Valuation model · what Pluto acts on", className: "signals-model-group", title: "The valuation model's figures for each ticker's top signal: what Pluto ranks, sizes and acts on." };
-const dayBasisGroup = { label: "Day basis", className: "signals-day-basis-group", title: "Volatilities on trading days, the basis the model compares them on." };
-const oldEdgeGroup = { label: "Old Edge · 63-day · phasing out", className: "signals-old-group", title: "The previous Edge measure (63-day forecast, volatility points), shown until it is retired." };
+const dayBasisGroup = { label: "Day basis", className: "signals-day-basis-group", title: "Volatility: the at-the-money IV and the forecasts on trading days, the basis the model compares them on; IV Rank and IV %ile from IBKR's daily IV at the close." };
 const modelCell = "signals-model-cell";
 
-/** The top signal's model figures, or null when the ticker has none or the model could not value it. */
+/** The top signal's model figures, or null when the ticker has none. */
 function topModel(row: SignalsScreenRow) {
   return row.best?.model ?? null;
 }
@@ -101,15 +100,14 @@ function ModelDollars({ value }: { value: number | null }) {
   );
 }
 
-/** No top signal: the badge (Analysing / Unscored / No candidates / Filtered) with the reason always shown under it (approved mockup 2026-10-03). */
+/** No top signal: the badge (Analysing / Unscored / No candidates / Filtered), its reason in a tooltip (Marcelo 2026-10-20). */
 function UnscoredBadge({ row }: { row: SignalsScreenRow }) {
   const frozen = useFrozenTickers().get(row.symbol);
   const badge = describeNoSignalBadge(row, frozen?.reason ?? null);
   return (
-    <div className="d-flex flex-column align-items-start gap-1">
+    <TooltipSpan text={badge.reason?.split(" · ").join("\n")} multiline className={badge.reason ? "signals-no-signal-badge" : undefined}>
       <NoSignalBadgeLabel badge={badge} />
-      {badge.reason && <span className="text-secondary signals-no-signal-reason">{badge.reason}</span>}
-    </div>
+    </TooltipSpan>
   );
 }
 
@@ -356,23 +354,9 @@ export function SignalsPage() {
         },
       },
       { key: "forecast", header: "FV 21d", align: "right", headerTitle: modelColumnExplanation.forecast21, group: dayBasisGroup, render: (row) => <span className="font-mono">{formatPercentage(row.modelForecast?.annualizedVolatility, 1)}</span> },
-      { key: "grade", header: "Grade", headerTitle: gradeExplanation, group: oldEdgeGroup, render: (row) => (row.best ? <GradeBadge grade={row.best.grade} explanation={gradeExplanation} faded /> : null) },
-      {
-        key: "netEdge",
-        header: "Net Edge",
-        align: "right",
-        headerTitle: signalsColumnExplanation.netEdge,
-        group: oldEdgeGroup,
-        render: (row) => (row.best ? <span className="font-mono text-secondary">{formatVolatilityPoints(row.best.netEdge)}</span> : null),
-      },
-      {
-        key: "edgeDollars",
-        header: "Edge $",
-        align: "right",
-        headerTitle: signalsColumnExplanation.edgeDollars,
-        group: oldEdgeGroup,
-        render: (row) => (row.best ? <span className="font-mono text-secondary">{formatSignedPnl(row.best.edgeDollars, 0)}</span> : null),
-      },
+      { key: "forecast63", header: "FV 63d", align: "right", headerTitle: modelColumnExplanation.forecast63, group: dayBasisGroup, render: (row) => <span className="font-mono">{formatPercentage(row.yangZhang63Forecast?.annualizedVolatility, 1)}</span> },
+      { key: "ivRank", header: "IV Rank", align: "right", headerTitle: modelColumnExplanation.ivRank, group: dayBasisGroup, render: (row) => <span className="font-mono">{formatPercentageValue(row.ivRank)}</span> },
+      { key: "ivPercentile", header: "IV %ile", align: "right", headerTitle: modelColumnExplanation.ivPercentile, group: dayBasisGroup, render: (row) => <span className="font-mono">{formatPercentageValue(row.ivPercentile)}</span> },
       {
         key: "momentum",
         header: "Mom.",
@@ -444,7 +428,7 @@ export function SignalsPage() {
 
   const gradesNote = (
     <div className="card-footer text-secondary" style={{ fontSize: "0.8rem", lineHeight: 1.55 }}>
-      <strong>Edge margin</strong>: how far the price is above the model's fair value, as a share of the price (1 − fair ÷ mid); it sets the grade: <strong>Strong</strong> 20% or more · <strong>Good</strong> 10% to 20% · <strong>Weak</strong> 0% to 10%. <strong>Edge $ /10k</strong>: the expected profit per contract held to expiry, after costs, per $10,000 of EXP $ (the exposure: the cash reserved at the strike for a put, the shares at their price for a covered call, less the premium received). <strong>Edge Yield</strong>: that expected profit as a yearly rate on EXP $, over the calendar days left; rows and each ticker's top signal are ranked by it, as Pluto ranks. <strong>Hist Yield</strong>: the same after history's correction, what similar at-the-money sales actually earned. <strong>PoP</strong>: chance the sale ends in profit. <strong>Worst 5% /10k</strong>: the average result of the worst one-in-twenty outcomes, per $10,000 of EXP $. A covered call counts the shares with the call, so it is judged like a cash-secured put. ATM IV and FV are on the day basis (trading days); ATM IV is green above FV, red below. <strong>Old Edge</strong>: the 63-day forecast in volatility points, until retired. Click a ticker for its full opportunity list.
+      <strong>Edge margin</strong>: how far the price is above the model's fair value, as a share of the price (1 − fair ÷ mid); it sets the grade: <strong>Strong</strong> 20% or more · <strong>Good</strong> 10% to 20% · <strong>Weak</strong> 0% to 10%. <strong>Edge $ /10k</strong>: the expected profit per contract held to expiry, after costs, per $10,000 of EXP $ (the exposure: the cash reserved at the strike for a put, the shares at their price for a covered call, less the premium received). <strong>Edge Yield</strong>: that expected profit as a yearly rate on EXP $, over the calendar days left; rows and each ticker's top signal are ranked by it, as Pluto ranks. <strong>Hist Yield</strong>: the same after history's correction, what similar at-the-money sales actually earned. <strong>PoP</strong>: chance the sale ends in profit. <strong>Worst 5% /10k</strong>: the average result of the worst one-in-twenty outcomes, per $10,000 of EXP $. A covered call counts the shares with the call, so it is judged like a cash-secured put. ATM IV and FV are on the day basis (trading days); ATM IV is green above FV 21d, red below. <strong>FV 21d</strong> and <strong>FV 63d</strong>: Yang-Zhang realized volatility over the last 21 and 63 trading days. <strong>IV Rank</strong>: where IBKR's implied volatility at the last close sits between its 252-day low (0%) and high (100%). <strong>IV %ile</strong>: the share of those 252 days with a lower implied volatility. Click a ticker for its full opportunity list.
     </div>
   );
 
@@ -501,7 +485,7 @@ export function SignalsPage() {
                     <>
                       <div className="d-flex flex-wrap align-items-center gap-2">
                         <span className="fw-semibold">{describeCandidateCompact(row.best)}</span>
-                        {model ? <GradeBadge grade={model.grade} /> : <GradeBadge grade={row.best.grade} explanation={gradeExplanation} faded />}
+                        {model && <GradeBadge grade={model.grade} />}
                         {model && (
                           <span className="font-mono" style={{ fontSize: "0.82rem" }}>
                             <span className="signals-mobile-model-label">margin </span>
@@ -509,18 +493,14 @@ export function SignalsPage() {
                           </span>
                         )}
                       </div>
-                      {model ? (
+                      {model && (
                         <div className="signals-mobile-model-grid font-mono">
                           <MobileFigure label="Edge/10k" value={formatSignedPnl(topPerTenThousand(row, (entry) => entry.expectedPnlDollars), 0)} tone={pnlTextClass(topPerTenThousand(row, (entry) => entry.expectedPnlDollars))} />
                           <MobileFigure label="Edge Yield" value={formatSignedPercentageValue(model.expectedAnnualizedReturn * 100, 0)} tone={pnlTextClass(model.expectedAnnualizedReturn)} />
                           <MobileFigure label="Hist Yield" value={formatSignedPercentageValue(model.calibratedAnnualizedReturn * 100, 0)} tone={pnlTextClass(model.calibratedAnnualizedReturn)} />
                           <MobileFigure label="PoP" value={formatPercentage(model.probabilityOfProfit, 0)} />
                           <MobileFigure label="Worst/10k" value={formatSignedPnl(topPerTenThousand(row, (entry) => entry.expectedShortfallDollars), 0)} tone={pnlTextClass(topPerTenThousand(row, (entry) => entry.expectedShortfallDollars))} />
-                          <MobileFigure label="Old" value={formatVolatilityPoints(row.best.netEdge)} tone="text-secondary" />
-                        </div>
-                      ) : (
-                        <div className="text-secondary" style={{ fontSize: "0.78rem" }}>
-                          Not valued by the model · old Edge <span className="font-mono">{formatVolatilityPoints(row.best.netEdge)}</span>
+                          <MobileFigure label="IV Rank" value={formatPercentageValue(row.ivRank)} />
                         </div>
                       )}
                     </>
@@ -544,7 +524,7 @@ export function SignalsPage() {
             );
           })}
           <p className="text-secondary mb-0" style={{ fontSize: "0.72rem", lineHeight: 1.45 }}>
-            Edge/10k and Worst/10k: per $10,000 of EXP $ (net of the premium). Edge Yield: the expected profit as a yearly rate on EXP $; Hist Yield: the same after history's correction. Old = the 63-day Edge, until retired.
+            Edge/10k and Worst/10k: per $10,000 of EXP $ (net of the premium). Edge Yield: the expected profit as a yearly rate on EXP $; Hist Yield: the same after history's correction. IV Rank: where IBKR's implied volatility at the last close sits in its 252-day range.
           </p>
         </div>
       </div>

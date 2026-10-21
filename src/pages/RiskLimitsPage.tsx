@@ -814,7 +814,7 @@ export function RiskLimitsPage() {
                   readOnly={!isAdmin}
                   value={formState.spreadCostChargedPct}
                   step="5"
-                  help="How much of the half-spread (the distance from the mid to the bid) Signals counts as a trading cost. Orders go out as limits at the mid, but a fill can come up to half a spread below the fair price at that moment. 0 assumes every fill is worth the full mid, 100 assumes every fill is at the bid. Changes Net Edge, Edge $, grades and roll scores."
+                  help="How much of the half-spread (the distance from the mid to the bid) Signals counts as a trading cost. Orders go out as limits at the mid, but a fill can come up to half a spread below the fair price at that moment. 0 assumes every fill is worth the full mid, 100 assumes every fill is at the bid. Changes the valuation model's Edge $, Edge Yield, grades and roll values."
                   onChange={(value) => updateField("spreadCostChargedPct", value)}
                 />
               </SettingsSection>

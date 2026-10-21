@@ -14,10 +14,11 @@ export type AppNotification =
   // Iorio Pulse — see notificationChannel.ts on the backend.
   | { type: "job_started"; jobName: string }
   | { type: "job_completed"; jobName: string; status: Exclude<JobRunStatus, "running"> }
-  // Day Signals: a pooled contract's grade went up between two refresh cycles.
-  | { type: "signal_upgraded"; symbol: string; strategyKey: string; strike: number; expiry: string; dte: number; previousGrade: string; grade: string; netEdge: number; edgeDollars: number; annualizedYield: number }
-  // Roll Signals: a (held leg, replacement) roll's grade went up between two refresh cycles.
-  | { type: "roll_signal_upgraded"; symbol: string; strategyKey: string; legId: string; heldStrike: number; heldExpiry: string; heldDte: number | null; strike: number; expiry: string; dte: number; previousGrade: string; grade: string; netRollEdge: number; netRollEdgeDollars: number; netCreditPerShare: number }
+  // Day Signals: a pooled contract's valuation-model grade went up between two refresh cycles. Events stored before
+  // 2026-10-20 graded on the old net Edge and carry none of the model figures.
+  | { type: "signal_upgraded"; symbol: string; strategyKey: string; strike: number; expiry: string; dte: number; previousGrade: string; grade: string; edgeMargin?: number; edgeYield?: number; expectedPnlDollars?: number; exposureDollars?: number }
+  // Roll Signals: a (held leg, replacement) roll's model grade went up between two refresh cycles (same note on older events).
+  | { type: "roll_signal_upgraded"; symbol: string; strategyKey: string; legId: string; heldStrike: number; heldExpiry: string; heldDte: number | null; strike: number; expiry: string; dte: number; previousGrade: string; grade: string; edgeMargin?: number; netExpectedPnl?: number; netCreditPerShare: number }
   // Roll Signals: an open short leg's |delta| crossed the assignment-risk threshold (once per leg per trading day).
   | { type: "assignment_risk"; symbol: string; strategyKey: string; positionId: string; legId: string; right: "C" | "P"; strike: number; expiry: string; dte: number | null; delta: number; spotPrice: number | null }
   | { type: "genosuke_reply"; preview: string }

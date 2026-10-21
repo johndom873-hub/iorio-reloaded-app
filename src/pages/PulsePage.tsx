@@ -56,7 +56,7 @@ import { TotalPnlChart } from "../components/pulse/TotalPnlChart";
 import { SuccessProbabilityChart, type SuccessProbabilitySeries } from "../components/pulse/SuccessProbabilityChart";
 import { EnvironmentBadges } from "../components/layout/EnvironmentBadges";
 import { useEnvironmentStatus } from "../hooks/useEnvironmentStatus";
-import { describeAssignmentRisk, describeSignalUpgradeCompact, describeUnscoredReason } from "../lib/signalsPresentation";
+import { describeAssignmentRisk, describeSignalUpgradeCompact, describeUnscoredReason, dollarsPerTenThousandOfExposure } from "../lib/signalsPresentation";
 import { openPositionsSignature } from "../lib/positionsSignature";
 import { allocationBarPercents, portfolioFromExposure } from "../lib/portfolioFromExposure";
 import { usePollWhileVisible } from "../hooks/usePollWhileVisible";
@@ -496,7 +496,7 @@ export function PulsePage() {
   const totalUnrealizedPnlPercent =
     totalUnrealizedPnl !== null && accountValueBeforeUnrealizedPnl ? (totalUnrealizedPnl / accountValueBeforeUnrealizedPnl) * 100 : null;
 
-  // --- Top Signals by Edge $ ---
+  // --- Top Signals by Edge Yield ---
   // REST snapshot pricing, re-fetched every minute while the tab is live: holds no IBKR market-data lines (the live
   // signalsScreen stream would add a stock line per shortlist ticker plus a best-contract option line).
   const [signalRows, setSignalRows] = useState<SignalsScreenRow[]>([]);
@@ -505,11 +505,11 @@ export function PulsePage() {
   }, []);
   useEffect(() => refreshSignals(), [refreshSignals]);
   usePollWhileVisible(refreshSignals, topSignalsRefreshIntervalMs);
-  // One signal per ticker (its best candidate), positive Edge $ only, highest first. No length cap —
+  // One signal per ticker (its best candidate), positive Edge Yield only, highest first, as Pluto ranks. No length cap —
   // mirrors the Trades panel's "fetch generously, let overflow:hidden clip" design.
   const topSignals = signalRows
-    .flatMap((row) => (row.best && row.best.edgeDollars > 0 ? [{ symbol: row.symbol, candidate: row.best }] : []))
-    .sort((a, b) => b.candidate.edgeDollars - a.candidate.edgeDollars);
+    .flatMap((row) => (row.best && row.best.model.expectedAnnualizedReturn > 0 ? [{ symbol: row.symbol, candidate: row.best }] : []))
+    .sort((a, b) => b.candidate.model.expectedAnnualizedReturn - a.candidate.model.expectedAnnualizedReturn);
   const scoredTickerCount = signalRows.filter((row) => row.unscoredReason === null).length;
   // Why the other tickers are not counted (Analysing / Unscored with the reason), for the panel's count tooltip.
   const unscoredTickersTooltip = signalRows
@@ -964,11 +964,11 @@ export function PulsePage() {
       <span>Tkr</span>
       <span>Type</span>
       <span>Strike / Expiry</span>
-      <span style={{ textAlign: "right" }}>Edge $</span>
-      <span style={{ textAlign: "right" }}>Yield</span>
+      <span style={{ textAlign: "right" }}>Edge/10k</span>
+      <span style={{ textAlign: "right" }}>Edge Yield</span>
     </div>
   );
-  const signalsEmpty = <div className="panel-empty">No signals with positive Edge $.</div>;
+  const signalsEmpty = <div className="panel-empty">No signals with a positive Edge Yield.</div>;
   const signalRowsRendered = topSignals.map(({ symbol, candidate }) => (
     <div className="yield-row" key={symbol}>
       <span className="yield-sym">
@@ -977,8 +977,8 @@ export function PulsePage() {
       </span>
       <span className={`strat-badge ${candidate.strategyKey === "covered_call" ? "cc" : "csp"}`}>{strategyAbbrev(candidate.strategyKey)}</span>
       <span className="yield-strike">{signalStrikeLabel(candidate)}</span>
-      <span className="yield-edge">{formatCompactDollars(candidate.edgeDollars)}</span>
-      <span className="yield-pct">{(candidate.annualizedYield * 100).toFixed(1)}%</span>
+      <span className="yield-edge">{formatCompactDollars(dollarsPerTenThousandOfExposure(candidate.model.expectedPnlDollars, candidate.model.capitalAtRiskDollars))}</span>
+      <span className="yield-pct">{formatPercentageValue(candidate.model.expectedAnnualizedReturn * 100, 1)}</span>
     </div>
   ));
 
@@ -1487,7 +1487,7 @@ export function PulsePage() {
           </div>
           <div className="panel">
             <div className="panel-title">
-              Top Signals <span className="panel-subtitle">by Edge $</span>
+              Top Signals <span className="panel-subtitle">by Edge Yield</span>
               <TooltipSpan className="count" text={unscoredTickersTooltip ? `${scoredTickerCount} of ${signalRows.length} tickers scored. ${unscoredTickersTooltip}` : `All ${signalRows.length} tickers scored`}>
                 {topSignals.length} of {scoredTickerCount}
               </TooltipSpan>

@@ -1,6 +1,6 @@
 import type { AppNotification } from "../api/notifications";
 import type { DayQuotesFrameStatus, HeldLegScore, HeldLegUnscoredReason, RoadmapStatus, RollSignalCandidate, RollSignalFlag, RollSignalWarning, SignalCandidate, SignalFlag, SignalGrade, SignalQuoteSource, SignalsNoCandidatesReason, SignalsPriceSource, SignalsUnscoredDetail, SignalsUnscoredReason, MacroEvent } from "../api/signals";
-import { easternMinutesOfDay, formatCurrencyTrimmed, formatDate, formatEasternTime, formatLocalTime, formatMonthDay, formatOptionContractShort, formatPercentageValue, formatShortAge, formatShortAgeWithSeconds, formatSignedPnl, formatVolatilityPoints } from "./formatters";
+import { easternMinutesOfDay, formatCurrencyTrimmed, formatDate, formatEasternTime, formatLocalTime, formatMonthDay, formatOptionContractShort, formatPercentageValue, formatShortAge, formatShortAgeWithSeconds, formatSignedPercentageValue, formatSignedPnl } from "./formatters";
 
 // Labels, badge classes and short explanations for the Signals screen and
 // modal (mockup approved 2026-09-22). Every label a user can see has a plain
@@ -12,7 +12,6 @@ export const gradeLabel: Record<SignalGrade, string> = { strong: "Strong", good:
 // so this grade scale doesn't drift if those general-purpose semantic colors change elsewhere.
 export const gradeBadgeClass: Record<SignalGrade, string> = { strong: "badge-grade-strong", good: "badge-grade-good", weak: "badge-grade-weak", avoid: "badge-grade-avoid" };
 
-export const gradeExplanation = "Old Edge grade (63-day forecast, phasing out): fixed net Edge cut points, Strong = 10vp or more, Good = 5-10vp, Weak = 0-5vp, Avoid = net Edge at or below zero.";
 
 // ---- The valuation model's figures (mockup approved 2026-10-10; EXP $ net of the premium and yields on calendar days, 2026-10-12) ----
 
@@ -23,20 +22,14 @@ export function dollarsPerTenThousandOfExposure(dollars: number, exposureDollars
   return exposureDollars > 0 ? (dollars * 10_000) / exposureDollars : null;
 }
 
-/** Pluto's order (the API's compareCandidatesByModel): Edge Yield, then Edge $; contracts the model could not value last, by the old Edge $. */
+/** Pluto's order (the API's compareCandidatesByModel): Edge Yield, then Edge $. */
 export function compareCandidatesByModel(a: SignalCandidate, b: SignalCandidate): number {
-  if (a.model && b.model && (a.model.expectedAnnualizedReturn !== b.model.expectedAnnualizedReturn || a.model.expectedPnlDollars !== b.model.expectedPnlDollars)) {
-    return b.model.expectedAnnualizedReturn - a.model.expectedAnnualizedReturn || b.model.expectedPnlDollars - a.model.expectedPnlDollars;
-  }
-  if (Boolean(a.model) !== Boolean(b.model)) return a.model ? -1 : 1;
-  return b.edgeDollars - a.edgeDollars || b.netEdge - a.netEdge;
+  return b.model.expectedAnnualizedReturn - a.model.expectedAnnualizedReturn || b.model.expectedPnlDollars - a.model.expectedPnlDollars;
 }
 
-/** Rolls in Pluto's order (the API's compareRollsByModel): the model's net roll $ across the held quantity; unvalued rolls last, by the old net roll Edge $. */
+/** Rolls in Pluto's order (the API's compareRollsByModel): the model's net roll $ across the held quantity. */
 export function compareRollsByModel(a: RollSignalCandidate, b: RollSignalCandidate): number {
-  if (a.model && b.model && a.model.netExpectedPnl !== b.model.netExpectedPnl) return b.model.netExpectedPnl - a.model.netExpectedPnl;
-  if (Boolean(a.model) !== Boolean(b.model)) return a.model ? -1 : 1;
-  return b.netRollEdgeDollars - a.netRollEdgeDollars || b.netRollEdge - a.netRollEdge;
+  return b.model.netExpectedPnl - a.model.netExpectedPnl;
 }
 
 /** Header tooltips and legends for the model's columns. */
@@ -52,6 +45,9 @@ export const modelColumnExplanation = {
   premiumYield: "The premium kept after costs, as a yearly rate on EXP $ over the calendar days to expiry: income, not an expectation.",
   dayBasisAtmIv: "At-the-money implied volatility nearest 30 days, on the day basis (trading days, like the forecast). Green when above the 21-day forecast, red when below.",
   forecast21: "The valuation model's forecast: 21-day Yang-Zhang realized volatility, on trading days.",
+  forecast63: "63-day Yang-Zhang realized volatility, on trading days: the slower read beside the model's 21-day forecast. Blank with under 64 daily bars.",
+  ivRank: "IV Rank: where IBKR's implied volatility at the last close sits between its low (0%) and high (100%) of the last 252 trading days.",
+  ivPercentile: "IV Percentile: the share of the last 252 trading days whose implied volatility (IBKR, at the close) was below the last close's.",
 } as const;
 
 export const unscoredReasonLabel: Record<SignalsUnscoredReason, string> = {
@@ -229,11 +225,12 @@ function signalUpgradeContract(notification: Extract<AppNotification, { type: "s
   return formatOptionContractShort(notification.strike, notification.strategyKey === "covered_call" ? "C" : "P", notification.dte);
 }
 
-/** "AAOI 95P 4DTE upgraded Weak → Good (+6.3vp, +$142)" — the in-app toast. */
+/** "AAOI 95P 4DTE upgraded Weak → Good (margin 14%, Edge Yield +38%)" — the in-app toast (an event stored before the model grades: the grades only). */
 export function describeSignalUpgrade(notification: Extract<AppNotification, { type: "signal_upgraded" }>): string {
   const previous = gradeLabel[notification.previousGrade as SignalGrade] ?? notification.previousGrade;
   const next = gradeLabel[notification.grade as SignalGrade] ?? notification.grade;
-  return `${notification.symbol} ${signalUpgradeContract(notification)} upgraded ${previous} → ${next} (${formatVolatilityPoints(notification.netEdge)}, ${formatSignedPnl(notification.edgeDollars, 0)})`;
+  const figures = notification.edgeMargin !== undefined && notification.edgeYield !== undefined ? ` (margin ${formatPercentageValue(notification.edgeMargin * 100)}, Edge Yield ${formatSignedPercentageValue(notification.edgeYield * 100, 0)})` : "";
+  return `${notification.symbol} ${signalUpgradeContract(notification)} upgraded ${previous} → ${next}${figures}`;
 }
 
 /** "AAOI 95P 4DTE → Good" — Pulse's Latest Events, whose rows have room for little more than the contract. */
@@ -379,7 +376,6 @@ export const heldLegUnscoredReasonLabel: Record<HeldLegUnscoredReason, string> =
   no_forecast: "no volatility forecast for this ticker",
 };
 
-export const netRollEdgeExplanation = "Net roll Edge = net Edge of the new contract (sold at the bid) − Edge of holding the current leg − friction to buy it back at the ask, in volatility points. Graded on the same cut points as a new trade.";
 
 /** "Put $95 · 9 DTE" for a held leg. */
 export function describeHeldLeg(leg: Pick<HeldLegScore, "right" | "strike" | "dte">): string {
@@ -391,7 +387,7 @@ export function describeRoll(roll: RollSignalCandidate, held: Pick<HeldLegScore,
   return `${describeHeldLeg(held)} → ${describeHeldLeg({ right: roll.replacement.strategyKey === "covered_call" ? "C" : "P", strike: roll.replacement.strike, dte: roll.replacement.dte })}`;
 }
 
-/** "COIN 177.5P 4DTE → 170P 18DTE roll upgraded Weak → Good (+5.6vp, +$262)" — the in-app toast. */
+/** "COIN 177.5P 4DTE → 170P 18DTE roll upgraded Weak → Good (margin 14%, +$262)" — the in-app toast (an event stored before the model grades: the grades only). */
 export function describeRollSignalUpgrade(notification: Extract<AppNotification, { type: "roll_signal_upgraded" }>): string {
   const right = notification.strategyKey === "covered_call" ? "C" : "P";
   const previous = gradeLabel[notification.previousGrade as SignalGrade] ?? notification.previousGrade;
@@ -399,7 +395,8 @@ export function describeRollSignalUpgrade(notification: Extract<AppNotification,
   // heldDte is absent from payloads sent by an api deploy older than this app's.
   const held = formatOptionContractShort(notification.heldStrike, right, notification.heldDte ?? null);
   const replacement = formatOptionContractShort(notification.strike, right, notification.dte);
-  return `${notification.symbol} ${held} → ${replacement} roll upgraded ${previous} → ${next} (${formatVolatilityPoints(notification.netRollEdge)}, ${formatSignedPnl(notification.netRollEdgeDollars, 0)})`;
+  const figures = notification.edgeMargin !== undefined && notification.netExpectedPnl !== undefined ? ` (margin ${formatPercentageValue(notification.edgeMargin * 100)}, ${formatSignedPnl(notification.netExpectedPnl, 0)})` : "";
+  return `${notification.symbol} ${held} → ${replacement} roll upgraded ${previous} → ${next}${figures}`;
 }
 
 /** "HOOD 120P 3DTE, Δ −0.53" — the assignment-risk toast and Pulse's Latest Events. */
@@ -414,9 +411,6 @@ export const signalsColumnExplanation = {
   day: "Change versus the previous session's close.",
   best: modelColumnExplanation.topSignal,
   yield: "Annualised yield of the Top Signal contract: mid premium / exposure (the strike for a put, the share price for a covered call, less the premium), annualised to a 365-day year.",
-  grade: gradeExplanation,
-  netEdge: "Net Edge = implied volatility at the strike (fitted surface) minus the forecast volatility minus friction (the Risk & Limits spread cost share of the half-spread, plus commission), in volatility points.",
-  edgeDollars: "Net Edge x vega x 100: the excess premium in dollars per contract.",
   atmIv: modelColumnExplanation.dayBasisAtmIv,
   forecast: modelColumnExplanation.forecast21,
   momentum: "Trailing 12-month return skipping the most recent month (12-1 momentum).",

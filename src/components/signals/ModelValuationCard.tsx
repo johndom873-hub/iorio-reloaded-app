@@ -3,13 +3,13 @@ import { fetchPlutoSizingCaps, type PlutoSizingCaps } from "../../api/pluto";
 import type { CandidateModelScore, HeldLegScore, RollSignalCandidate, SignalCandidate, TickerSignals } from "../../api/signals";
 import { FLASH_DURATION_MS, flashClassName, useFlashOnChange } from "../../hooks/useFlashOnChange";
 import { useTooltip } from "../../hooks/useTooltip";
-import { formatCurrency, formatPercentage, formatSignedPercentageValue, formatSignedPnl, formatVolatilityPoints, pnlTextClass } from "../../lib/formatters";
-import { candidateContractKey, dollarsPerTenThousandOfExposure, gradeBadgeClass, gradeExplanation, gradeLabel, modelColumnExplanation } from "../../lib/signalsPresentation";
+import { formatCurrency, formatPercentage, formatSignedPercentageValue, formatSignedPnl, pnlTextClass } from "../../lib/formatters";
+import { candidateContractKey, dollarsPerTenThousandOfExposure, gradeBadgeClass, gradeLabel, modelColumnExplanation } from "../../lib/signalsPresentation";
 import { TooltipSpan } from "../TooltipSpan";
 
 // The order panel's valuation box (mockup approved 2026-10-10; EXP $ net of the premium and yields on calendar days,
 // 2026-10-12): the valuation model's figures for the selected contract, what Pluto acts on, with Pluto's own Kelly and
-// stress caps for it and the old 63-day Edge underneath until it is retired.
+// stress caps for it.
 
 function Row({ label, value, tone, strong, title }: { label: string; value: ReactNode; tone?: string; strong?: boolean; title?: string }) {
   return (
@@ -125,12 +125,6 @@ export function ModelValuationCard({ candidate, model, signals, spotPrice }: { c
           }
         />
         <Row label="Pluto's caps: Kelly · stress" value={capsShown.value} title={capsShown.title} />
-        <div className="d-flex justify-content-between gap-3 pt-2 mt-1 text-secondary" style={{ fontSize: "0.85rem", borderTop: "1px dashed var(--tblr-border-color)" }}>
-          <TooltipSpan text={gradeExplanation}>Old Edge (63-day)</TooltipSpan>
-          <span className="font-mono text-end">
-            {gradeLabel[candidate.grade]} · {formatVolatilityPoints(candidate.netEdge)} · {formatSignedPnl(candidate.edgeDollars, 0)}
-          </span>
-        </div>
       </div>
     </div>
   );

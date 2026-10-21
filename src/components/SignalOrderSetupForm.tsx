@@ -1,12 +1,11 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { ApiError } from "../api/client";
 import { buildOpenOrder, type AdaptivePriority, type OrderRequest } from "../api/positions";
-import type { SignalCandidate, TickerSignals } from "../api/signals";
+import type { SignalCandidate, SignalGrade, TickerSignals } from "../api/signals";
 import { checkOrderLimits } from "../api/orderChecks";
-import { FLASH_DURATION_MS, flashClassName, useFlashOnChange } from "../hooks/useFlashOnChange";
 import { computeExposurePerShare, computePayoff } from "../lib/payoff";
-import { formatCurrency, formatDate, formatPercentage, formatSignedPercentageValue, formatSignedPnl, formatVolatilityPoints } from "../lib/formatters";
-import { describeCandidate, describeNonLiveQuoteBlock, describeSignalFlag, gradeBadgeClass, gradeLabel, signalFlagLetter } from "../lib/signalsPresentation";
+import { formatCurrency, formatDate, formatPercentage, formatPercentageValue, formatSignedPercentageValue, formatSignedPnl, formatVolatilityPoints } from "../lib/formatters";
+import { describeCandidate, describeNonLiveQuoteBlock, describeSignalFlag, gradeLabel, signalFlagLetter } from "../lib/signalsPresentation";
 import { Spinner } from "./Spinner";
 import { OrderCommissionRows } from "./OrderCommissionRows";
 import { toIbkrExpiry, useOrderCommissionPreview } from "../hooks/useOrderCommissionPreview";
@@ -17,12 +16,13 @@ import { ModelValuationCard } from "./signals/ModelValuationCard";
 // Signals order setup (stage 5, approved 2026-09-22). This is only the "form" half -- it builds the order
 // through the existing POST /positions/orders and hands the OrderRequest up;
 // the caller renders the shared OrderReviewPanel, which confirms and places
-// it exactly as every other order in the app. What is new: the Signal card
-// (net Edge with the Risk & Limits spread cost, the same figure as the list),
-// a decay meter against the score at selection, and the signal snapshot saved
-// with the order for Phase 2.
+// it exactly as every other order in the app. What is new: the valuation
+// model's box (the same figures as the list), a notice of how far the Edge
+// margin has moved since the contract was selected, and the signal snapshot
+// saved with the order.
 
-export const decayWarningVolatilityPoints = 1;
+/** How far the Edge margin may move from its value at selection (a fraction: 2 points) before the notice warns. */
+export const edgeMarginMoveWarning = 0.02;
 const orderLimitsDebounceMs = 400;
 const adaptivePriorities: AdaptivePriority[] = ["Patient", "Normal", "Urgent"];
 
@@ -32,8 +32,9 @@ interface SignalOrderSetupFormProps {
   /** The selected candidate as scored NOW (it re-renders with every live frame). */
   candidate: SignalCandidate;
   spotPrice: number | null;
-  /** The list's net Edge when the row was selected -- the decay meter's reference. */
-  netEdgeAtSelection: number;
+  /** The model's Edge margin and grade when the row was selected: the change notice's reference. */
+  edgeMarginAtSelection: number;
+  gradeAtSelection: SignalGrade;
   selectedAtIso: string;
   /** Why this viewer may not open or roll on the ticker (a trader, where Pluto trades it), or null: a blocking reason, checked before anything is built. */
   accessLevelRefusal: string | null;
@@ -73,7 +74,7 @@ function ReviewOrderButton({ disabled, blockedTooltip, building, onClick }: { di
   );
 }
 
-export function SignalOrderSetupForm({ symbol, signals, candidate, spotPrice, netEdgeAtSelection, selectedAtIso, accessLevelRefusal, onCancel, onSubmitted, notice }: SignalOrderSetupFormProps) {
+export function SignalOrderSetupForm({ symbol, signals, candidate, spotPrice, edgeMarginAtSelection, gradeAtSelection, selectedAtIso, accessLevelRefusal, onCancel, onSubmitted, notice }: SignalOrderSetupFormProps) {
   const isCall = candidate.strategyKey === "covered_call";
   const defaultQuantity = isCall && signals.freeShares >= 100 ? Math.floor(signals.freeShares / 100) : 1;
   const [contractQty, setContractQty] = useState(String(defaultQuantity));
@@ -86,14 +87,8 @@ export function SignalOrderSetupForm({ symbol, signals, candidate, spotPrice, ne
   // Fewer free shares than the contracts need: the order buys the rest with the call, as one combo.
   const isCoveredCallEntry = isCall && signals.freeShares < quantity * 100;
   // The order goes out as a limit at the mid; the expected fill gives up the Risk & Limits share of the half-spread,
-  // the same assumption the list's net Edge is scored with. The fill priority changes how fast it fills, not this.
-  const netEdgeExpected = candidate.netEdge;
-  const edgeDollarsExpected = candidate.edgeDollars;
+  // the same assumption the model's figures are valued with. The fill priority changes how fast it fills, not this.
   const premiumExpected = mid - (mid - candidate.bid) * signals.spreadShareCharged;
-  // EXP $ per contract at the expected premium (the server's dollarRisk at the mid until the spot is known).
-  const exposurePerShareExpected = computeExposurePerShare(candidate.strategyKey, { strike: candidate.strike, spotPrice: spotPrice ?? 0, premium: premiumExpected });
-  const dollarRiskExpected = exposurePerShareExpected === null ? candidate.dollarRisk : exposurePerShareExpected * 100;
-  const riskAdjustedRatioExpected = edgeDollarsExpected / dollarRiskExpected;
   // One IBKR what-if per form (re-asked only when the contracts change, never on a price tick); the expected premium follows the live quote.
   const limitPriceForPreview = Number(mid.toFixed(2));
   // The limit check reads the premium the order would go out at when it runs, without re-running on every price tick.
@@ -107,9 +102,8 @@ export function SignalOrderSetupForm({ symbol, signals, candidate, spotPrice, ne
         ]
       : null;
   const commissionPreview = useOrderCommissionPreview(commissionPreviewLegs);
-  const decay = candidate.netEdge - netEdgeAtSelection;
-  const decayed = Math.abs(decay) >= decayWarningVolatilityPoints / 100;
-  const netEdgeFlash = useFlashOnChange(candidate.netEdge, FLASH_DURATION_MS, 3);
+  const edgeMarginMove = candidate.model.edgeMargin - edgeMarginAtSelection;
+  const edgeMarginMoved = Math.abs(edgeMarginMove) >= edgeMarginMoveWarning || candidate.model.grade !== gradeAtSelection;
 
   // A covered call always sends both legs (buy the shares, sell the call) in one order, so having
   // no free shares yet is the normal case, not a blocker -- only a cash-secured put needs the cash upfront.
@@ -172,15 +166,14 @@ export function SignalOrderSetupForm({ symbol, signals, candidate, spotPrice, ne
             priceSource: signals.priceSource,
             snapshotDateIso: signals.snapshotDateIso,
             atmImpliedVolatility: signals.atmImpliedVolatility,
-            forecast: signals.forecast,
+            modelForecast: signals.modelForecast,
             momentum: signals.momentum,
             skew: signals.skew,
             elevatedVolatility: signals.elevatedVolatility,
             nextEarningsDateIso: signals.nextEarningsDateIso,
-            gradeCounts: signals.gradeCounts,
           },
-          order: { quantity, adaptivePriority: isCoveredCallEntry ? null : adaptivePriority, referencePremium: Number(mid.toFixed(2)), netEdgeExpected, edgeDollarsExpected, riskAdjustedRatioExpected },
-          timing: { selectedAtIso, builtAtIso, netEdgeAtSelection, netEdgeAtBuild: candidate.netEdge },
+          order: { quantity, adaptivePriority: isCoveredCallEntry ? null : adaptivePriority, referencePremium: Number(mid.toFixed(2)), premiumExpected, edgeMarginExpected: candidate.model.edgeMargin, edgeYieldExpected: candidate.model.expectedAnnualizedReturn, expectedPnlDollars: candidate.model.expectedPnlDollars },
+          timing: { selectedAtIso, builtAtIso, edgeMarginAtSelection, edgeMarginAtBuild: candidate.model.edgeMargin },
         },
       });
       onSubmitted(order, adaptivePriority);
@@ -219,45 +212,16 @@ export function SignalOrderSetupForm({ symbol, signals, candidate, spotPrice, ne
         </div>
       )}
 
-      {candidate.model ? (
-        <ModelValuationCard candidate={candidate} model={candidate.model} signals={signals} spotPrice={spotPrice} />
-      ) : (
-        <div className="alert alert-secondary mb-0 py-2" style={{ fontSize: "0.85rem" }}>
-          The valuation model could not value this contract, so Pluto would not act on it. The old Edge is below.
-        </div>
-      )}
+      <ModelValuationCard candidate={candidate} model={candidate.model} signals={signals} spotPrice={spotPrice} />
 
-      <div className="border rounded p-3">
-        {!candidate.model && (
-          <>
-            <div className="d-flex justify-content-between align-items-center gap-2">
-              <div>
-                <div className="text-secondary text-uppercase" style={{ fontSize: "0.68rem", fontWeight: 700, letterSpacing: "0.06em" }}>
-                  Old Edge (63-day)
-                </div>
-                <span className={`h3 mb-0 font-mono ${candidate.netEdge > 0 ? "text-success" : "text-danger"} ${flashClassName(netEdgeFlash)}`}>{formatVolatilityPoints(candidate.netEdge)}</span>{" "}
-                <span className="text-secondary" style={{ fontSize: "0.8rem" }}>
-                  net Edge ({formatSignedPnl(edgeDollarsExpected, 0)})
-                </span>
-              </div>
-              <span className={`badge ${gradeBadgeClass[candidate.grade]}`} style={{ fontSize: "0.72rem" }}>
-                {gradeLabel[candidate.grade]}
-              </span>
-            </div>
-            <div className="mt-2">
-              <Row label="Surface IV at this strike (10:00 snapshot, live spot)" value={formatPercentage(candidate.surfaceImpliedVolatility, 1)} />
-              <Row label={`Forecast volatility (${signals.forecast?.windowDays ?? 63}-day Yang-Zhang)`} value={formatPercentage(candidate.forecastVolatility, 1)} />
-              <Row label={`Friction (${formatPercentage(signals.spreadShareCharged, 0)} of the half-spread + commission)`} value={formatVolatilityPoints(candidate.frictionVolatility).replace("+", "")} />
-            </div>
-          </>
-        )}
-        <div className={`d-flex align-items-center gap-2 ${candidate.model ? "" : "mt-2"} rounded px-2 py-1 ${decayed ? "bg-warning-lt" : "bg-secondary-lt"}`} style={{ fontSize: "0.78rem" }}>
-          {decayed ? `Old net Edge has moved ${formatVolatilityPoints(decay)} since you selected this contract at ${formatDate(selectedAtIso)}.` : `Old net Edge is steady since you selected this contract (${formatVolatilityPoints(netEdgeAtSelection)}).`}
-          <span className="ms-auto d-inline-flex align-items-center gap-1 text-secondary">
-            <span className="iorio-pulse-dot" />
-            live
-          </span>
-        </div>
+      <div className={`d-flex align-items-center gap-2 rounded px-2 py-1 ${edgeMarginMoved ? "bg-warning-lt" : "bg-secondary-lt"}`} style={{ fontSize: "0.78rem" }}>
+        {edgeMarginMoved
+          ? `Edge margin was ${formatPercentageValue(edgeMarginAtSelection * 100)}, now ${formatPercentageValue(candidate.model.edgeMargin * 100)}${candidate.model.grade !== gradeAtSelection ? ` (${gradeLabel[gradeAtSelection]} → ${gradeLabel[candidate.model.grade]})` : ""} since you selected this contract at ${formatDate(selectedAtIso)}.`
+          : `Edge margin is steady since you selected this contract (${formatPercentageValue(edgeMarginAtSelection * 100)}).`}
+        <span className="ms-auto d-inline-flex align-items-center gap-1 text-secondary">
+          <span className="iorio-pulse-dot" />
+          live
+        </span>
       </div>
 
       <div className="border rounded p-3">
