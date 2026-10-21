@@ -13,7 +13,7 @@ import {
   type BacktestStockOnlyStretch,
 } from "../../api/backtest";
 import { useCollapsibleCard } from "../../hooks/useCollapsibleCard";
-import { formatCurrency, formatNumber, formatSignedPercentage, formatSignedPnl, pluralizeCount, pnlTextClass } from "../../lib/formatters";
+import { formatCurrency, formatNumber, formatPercentage, formatSignedPercentage, formatSignedPnl, pluralizeCount, pnlTextClass } from "../../lib/formatters";
 import {
   accountReturnOver,
   backtestCycleLabel,
@@ -102,6 +102,7 @@ function SignedPercent({ fraction, plain = false }: { fraction: number | null; p
 }
 
 const priceText = (price: number | null) => (price === null ? dash : formatCurrency(price));
+const cashText = (share: number | null | undefined) => (share == null ? dash : formatPercentage(share, 0));
 
 /** A stretch's cells (an Idle row between cycles, a Stock only row in a cycle's trades). */
 function stretchCell(key: string, stretch: BacktestIdleStretch, own: { label: ReactNode; sessions: string; reason: string; rules: string; accountReturn: ReactNode; price: number | null; shares: number | null }): ReactNode {
@@ -128,6 +129,8 @@ function stretchCell(key: string, stretch: BacktestIdleStretch, own: { label: Re
       return priceText(own.price);
     case "shares":
       return own.shares === null ? dash : formatNumber(own.shares);
+    case "cash":
+      return cashText(stretch.freeCashShareAtStart);
     case "strategies":
       return (
         <TooltipSpan text={own.rules} multiline className="dotted-underline-label backtest-cycle-row-detail">
@@ -169,7 +172,12 @@ function tradeCell(key: string, cycle: BacktestCycle, row: BacktestCycleTimeline
   const event = describeCycleTimelineEvent(row);
   switch (key) {
     case "cycle":
-      return <span className="backtest-cycle-event-name">{event.name}</span>;
+      // The strategy that owns the trade stands for it; what happened is the row's description.
+      return (
+        <span className="backtest-cycle-event-name">
+          <CycleBucketBadge bucket={row.bucket} />
+        </span>
+      );
     case "pnl":
       return tradeDollars(row.premiumDollars + row.stockDollars);
     case "opened":
@@ -184,6 +192,8 @@ function tradeCell(key: string, cycle: BacktestCycle, row: BacktestCycleTimeline
       return row.breakEvenAtSale == null ? null : formatCurrency(row.breakEvenAtSale);
     case "shares":
       return row.sharesHeld == null ? null : formatNumber(row.sharesHeld);
+    case "cash":
+      return cashText(row.freeCashShare);
     case "premium":
       return tradeDollars(row.premiumDollars);
     case "stock":
@@ -191,7 +201,6 @@ function tradeCell(key: string, cycle: BacktestCycle, row: BacktestCycleTimeline
     case "strategies":
       return (
         <span className="backtest-cycle-row-detail">
-          <CycleBucketBadge bucket={row.bucket} />
           {row.ladderRung ? (
             <TooltipSpan text={describeLadderRung(row.ladderRung, row.strike)} multiline className="dotted-underline-label">
               {event.detail}
@@ -242,6 +251,8 @@ function cycleCell(key: string, cycle: BacktestCycle, context: CellContext): Rea
       return cycle.status === "open" && cycle.cashBreakEvenPerShare != null ? describeBreakEven(cycle.cashBreakEvenPerShare) : dash;
     case "shares":
       return cycle.status === "open" && cycle.sharesHeldNow != null ? formatNumber(cycle.sharesHeldNow) : dash;
+    case "cash":
+      return cashText(cycle.freeCashShareAtEnd);
     case "premium":
       return <SignedDollars value={cycle.netPremiumDollars} />;
     case "stock":
@@ -313,6 +324,14 @@ const columnDefinitions: Omit<DataTableColumn<CyclesTableRow>, "render">[] = [
     key: "shares",
     header: "Shares",
     headerTitle: "Shares held, as traded on the row's day. An open cycle: at the last marks. A trade: once everything done at that look is done (a look's rows show the same number). A stock-only stretch: the shares it held.",
+    align: "right",
+    cellClassName: "text-nowrap",
+  },
+  {
+    key: "cash",
+    header: "Cash",
+    headerTitle:
+      "Free cash ÷ the account value: the cash not locked in open Cash-Secured Puts (strike × 100 × contracts), as the engine counts what it may still spend, over the account's value at that day's 10:00 marks (so a flat account after a day's gains can read a hair over 100%); the whole account's in a session of several symbols. A trade: once everything done at that look is done. A cycle: at its end (an open cycle: the session's last day). Idle and stock-only stretches: at their first day's 10:00 marks.",
     align: "right",
     cellClassName: "text-nowrap",
   },

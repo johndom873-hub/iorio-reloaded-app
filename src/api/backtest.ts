@@ -903,6 +903,8 @@ export interface BacktestCycle {
   cashBreakEvenPerShare?: number | null;
   /** An open cycle's shares at the last marks, as traded on the session's last day; null otherwise. */
   sharesHeldNow?: number | null;
+  /** Free cash ÷ the account value at the cycle's end (closed: once its closing moment was done; open: the session's last day's end). */
+  freeCashShareAtEnd?: number | null;
   buckets: { csp: BacktestCycleBucket; unstructured: BacktestCycleBucket; cc: BacktestCycleBucket; hedge: BacktestCycleBucket };
   dataFlags: string[];
 }
@@ -940,6 +942,8 @@ export interface BacktestCycleTimelineRow {
   sharesHeld?: number;
   /** A put sold as a rung of the ladder: the figures its sale recorded (null for any other put); absent on other rows. */
   ladderRung?: BacktestLadderRungRecord | null;
+  /** Free cash ÷ the account value once the row's moment was done (the whole account's); null for a day not recorded. */
+  freeCashShare?: number | null;
 }
 
 /** A ladder put's rung as its sale recorded it, prices as traded that day: K_max = A − (A − F) × (U + Q) ÷ R0. */
@@ -977,6 +981,8 @@ export interface BacktestNoSaleDays {
 
 /** Whole sessions with nothing sold where something was due. Stock move: C(last idle day) ÷ C(the session before the first) − 1, split-adjusted; null when a close is missing. */
 export interface BacktestIdleStretch {
+  /** Free cash ÷ the account value at its first day's 10:00 marks. */
+  freeCashShareAtStart?: number | null;
   firstIdleDay: string;
   lastIdleDay: string;
   idleSessions: number;

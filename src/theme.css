@@ -1187,13 +1187,14 @@
 .table > tbody > tr.backtest-cycle-idle-row > td {
   color: var(--tblr-secondary-color);
 }
-/* A put or call assigned in a cycle's trades: an amber tint over the row, laid as the Signals table tints its rows (an
-   inset shadow, which takes the place of the hover shade on those rows). */
+/* A put or call assigned in a cycle's trades: a yellow tint over the row, laid as the Signals table tints its rows (an
+   inset shadow, which takes the place of the hover shade on those rows). Yellow (#fcc419) rather than amber, which reads
+   brown on the dark rows; a stronger fill takes the row's green and red under 4.5:1 (lowest now 4.57:1 light, 4.73:1 dark). */
 :root {
-  --backtest-assigned-row-tint: rgba(245, 159, 0, 0.1);
+  --backtest-assigned-row-tint: rgba(252, 196, 25, 0.18);
 }
 :root[data-bs-theme="dark"] {
-  --backtest-assigned-row-tint: rgba(245, 159, 0, 0.14);
+  --backtest-assigned-row-tint: rgba(252, 196, 25, 0.14);
 }
 .table > tbody > tr.backtest-cycle-assigned-row > td {
   box-shadow: inset 0 0 0 9999px var(--backtest-assigned-row-tint);

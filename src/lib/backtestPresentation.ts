@@ -826,7 +826,7 @@ export function describeBreakEven(breakEvenPerShare: number | null): string {
 /** A span of the session's trading days by number (1 = its first): "7", or "2 → 16"; "—" when a day is not one of them. */
 export function describeSessionSpan(first: number | null, last: number | null = first): string {
   if (first === null || last === null) return "—";
-  return first === last ? formatNumber(first) : `${formatNumber(first)} → ${formatNumber(last)}`;
+  return first === last ? formatNumber(first) : `${formatNumber(first)}→${formatNumber(last)}`;
 }
 
 /** The baseline's contract checks in short, for the days each left contracts out ("spread too wide 3 · too little volume 2"). */
