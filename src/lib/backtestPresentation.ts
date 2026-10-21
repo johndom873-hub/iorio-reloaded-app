@@ -53,6 +53,7 @@ import {
   formatInputNumber,
   formatNumber,
   formatOptionContractLabel,
+  formatOrdinal,
   formatOrderSize,
   formatPercentage,
   formatQuotePrice,
@@ -916,18 +917,50 @@ export function closeToCloseReturn(closes: readonly [string, number | null][], f
 }
 
 /**
- * A ladder put's rung and how its strike cap came out, for the Wheel cycles' tooltip (approved by Marcelo 2026-10-21):
- * "Ladder rung 2 of 3 (reaches 2.00 slices of the reserve)", K_max = A − (A − F) × (U + Q) ÷ R0 with its figures, each
- * term's source, and the strike sold against the cap.
+ * A ladder put's rung for the Wheel cycles' tooltip (approved by Marcelo 2026-10-21): the decision first (why a rung was
+ * sold at that look, the strike limit that bound, the cap or the rung's collateral, which put and why, the stock price),
+ * then how the cap K_max = A − (A − F) × (U + Q) ÷ R0 came out, with each term's source.
  */
-export function describeLadderRung(rung: BacktestLadderRungRecord, strike: number | null): string {
+export function describeLadderRung(rung: BacktestLadderRungRecord, sale: { strike: number | null; contracts: number; stockPrice: number | null }): string {
   const price = (value: number | null) => (value === null ? "—" : value.toFixed(2));
   const dollars = (value: number) => formatCurrency(value, 0);
+  const yearly = (yieldFraction: number) => `${formatPercentage(yieldFraction, 1)} a year`;
   const topIsBreakEven = rung.top !== null && rung.breakEven !== null && Math.abs(rung.top - rung.breakEven) < 0.005;
   const fullSlice = Math.abs(rung.rungCollateral - rung.reserve / rung.rungs) < 0.5;
-  const lines = [
-    `Ladder rung ${rung.rungNumber} of ${rung.rungs} (reaches ${rung.slices.toFixed(2)} slices of the reserve)`,
-    "Strike cap K_max = A − (A − F) × (U + Q) ÷ R0",
+  const strikeText = sale.strike === null ? "the put" : formatCurrencyTrimmed(sale.strike);
+
+  const decision = [`Rung ${rung.rungNumber} of ${rung.rungs} · ${sale.strike === null ? "a put" : `${strikeText} Put`} sold${sale.contracts > 1 ? ` (${formatNumber(sale.contracts)} contracts)` : ""}${rung.saleYield != null ? `, ${yearly(rung.saleYield)}` : ""}`];
+  if (rung.callComparison !== undefined)
+    decision.push(
+      rung.callComparison === null
+        ? "• Why a rung now: no call qualified on the free shares."
+        : `• Why a rung now: its ${yearly(rung.callComparison.putYield)} beat the best call's ${formatPercentage(rung.callComparison.callYield, 1)}${rung.callComparison.marginPct > 0 ? ` by more than ${rung.callComparison.marginPct}%` : ""}.`,
+    );
+  if (rung.collateralLeft !== undefined && rung.cap !== null) {
+    const byCollateral = rung.collateralLeft / 100;
+    const collateralText = rung.collateralLeft < rung.rungCollateral - 0.5 ? `the ${dollars(rung.collateralLeft)} of the rung's collateral its earlier puts left` : `the rung's ${dollars(rung.collateralLeft)} collateral`;
+    decision.push(
+      byCollateral < rung.cap
+        ? `• Strike limit ${formatCurrency(byCollateral)}, set by ${collateralText}: it fits one contract up to that strike. The ladder cap, ${formatCurrency(rung.cap)}, was higher, so it didn't bind.`
+        : `• Strike limit ${formatCurrency(rung.cap)}, the ladder cap. ${collateralText.charAt(0).toUpperCase()}${collateralText.slice(1)} would allow up to ${formatCurrency(byCollateral)}.`,
+    );
+  }
+  if (rung.rank != null && rung.eligibleCount != null) {
+    const place = `${formatOrdinal(rung.rank)} of the ${formatNumber(rung.eligibleCount)} within the rules`;
+    const best = rung.bestStrike != null && rung.bestYield != null ? `the best, the ${formatCurrencyTrimmed(rung.bestStrike)} at ${yearly(rung.bestYield)}` : null;
+    if (rung.afterVolumeLimit) decision.push(`• Why ${strikeText}: the next best after the volume limit of the puts above it (${place}).`);
+    else if (rung.rank === 1) decision.push(`• Why ${strikeText}: the highest-yielding put within the rules (1st of ${formatNumber(rung.eligibleCount)}).`);
+    else {
+      const bestNeeded = best && rung.collateralLeft !== undefined && rung.bestStrike! * 100 > rung.collateralLeft + 0.5 ? `; ${best}, needed ${dollars(rung.bestStrike! * 100)}` : best ? `; ${best}, could not be sold (already held, or the cash or its volume)` : "";
+      decision.push(`• Why ${strikeText}: the highest-yielding put that fit. It was ${place}${bestNeeded}.`);
+    }
+  }
+  if (sale.stockPrice !== null && sale.strike !== null && sale.stockPrice > 0)
+    decision.push(`• Stock at ${formatCurrency(sale.stockPrice)} (10:00): the strike is ${formatPercentage(1 - sale.strike / sale.stockPrice, 0)} below it.`);
+
+  const formula = [
+    "How the cap was set",
+    "K_max = A − (A − F) × (U + Q) ÷ R0",
     `= ${price(rung.top)} − (${price(rung.top)} − ${price(rung.floor)}) × (${dollars(rung.committed)} + ${dollars(rung.rungCollateral)}) ÷ ${dollars(rung.reserve)} = ${rung.cap === null ? "no cap" : formatCurrency(rung.cap)}`,
     rung.top === null
       ? "• A: no break-even known"
@@ -937,10 +970,9 @@ export function describeLadderRung(rung: BacktestLadderRungRecord, strike: numbe
     `• F, the floor: the shares' average cost ${formatCurrency(rung.averageCost)} × (1 − shock ${formatPercentage(rung.shock, 1)}) = ${formatCurrency(rung.floor)}`,
     `• U, the reserve committed before it: ${dollars(rung.committed)}`,
     `• Q, this rung's collateral: ${dollars(rung.rungCollateral)} (${fullSlice ? `R0 ÷ ${rung.rungs}` : "what was left of the reserve"})`,
-    `• R0, the reserve: ${dollars(rung.reserve)} (${rung.base > 0 ? `${Math.round((rung.reserve / rung.base) * 100)}% of the ${dollars(rung.base)} base` : "no base"})`,
+    `• R0, the reserve: ${dollars(rung.reserve)} (${rung.base > 0 ? `${Math.round((rung.reserve / rung.base) * 100)}% of the ${dollars(rung.base)} base` : "no base"}); the rung reaches ${rung.slices.toFixed(2)} of its ${rung.rungs} slices`,
   ];
-  if (strike !== null) lines.push(`Sold at ${formatCurrencyTrimmed(strike)}, at or below the cap.`);
-  return lines.join("\n");
+  return [...decision, "───", ...formula].join("\n");
 }
 
 /**

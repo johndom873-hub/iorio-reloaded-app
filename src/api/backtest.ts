@@ -970,6 +970,18 @@ export interface BacktestLadderRungRecord {
   rungCollateral: number;
   reserve: number;
   base: number;
+  /** The call this rung was preferred to (null: no call qualified). */
+  callComparison?: { putYield: number; callYield: number; marginPct: number } | null;
+  /** Sold after the volume limit of the rung's puts before it. */
+  afterVolumeLimit?: boolean;
+  /** The rung's collateral left before this put (one contract fits a strike up to a hundredth of it). */
+  collateralLeft?: number;
+  saleYield?: number | null;
+  /** Its rank of the puts within the rules, how many there were, and the best one's strike and yield. */
+  rank?: number | null;
+  eligibleCount?: number | null;
+  bestStrike?: number | null;
+  bestYield?: number | null;
 }
 
 /** The days of a stretch on which each reason stopped a sale: a day counts under every reason seen on it, and as unrecorded when none was. */

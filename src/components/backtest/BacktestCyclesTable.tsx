@@ -202,7 +202,7 @@ function tradeCell(key: string, cycle: BacktestCycle, row: BacktestCycleTimeline
       return (
         <span className="backtest-cycle-row-detail">
           {row.ladderRung ? (
-            <TooltipSpan text={describeLadderRung(row.ladderRung, row.strike)} multiline className="dotted-underline-label">
+            <TooltipSpan text={describeLadderRung(row.ladderRung, { strike: row.strike, contracts: row.quantity / 100, stockPrice: context.priceOn(cycle.symbol, row.tradingDate, "tenOclock") })} multiline className="dotted-underline-label">
               {event.detail}
             </TooltipSpan>
           ) : (
