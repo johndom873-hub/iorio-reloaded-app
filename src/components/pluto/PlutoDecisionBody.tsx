@@ -1,7 +1,7 @@
 import { Link } from "react-router-dom";
 import type { PlutoPass, PlutoState } from "../../api/pluto";
 import { formatCurrency } from "../../lib/formatters";
-import { checkLabel, checksAndGatesSummary, describeCandidateId, describeDecisionModelFigures, describeTopPickFigure, formatModelCost, orderedChecks, sentenceCase, describeChosenAction, describeTopPickComparison, formatExposure, gateLabel, passVerdict, topPickRankingYield, verdictKind } from "../../lib/plutoPresentation";
+import { checkLabel, checksAndGatesSummary, describeCandidateId, describeDecisionModelFigures, describeTopPickFigure, formatModelCost, orderedChecks, sentenceCase, describeChosenAction, describeSizingLimit, describeTopPickComparison, formatExposure, gateLabel, passVerdict, topPickRankingYield, verdictKind } from "../../lib/plutoPresentation";
 import { CheckIcon, CrossIcon, ExternalIcon, GradeBadge, StrategyBadge } from "./plutoBits";
 import { PlutoModelInputsToggle } from "./PlutoModelInputs";
 
@@ -18,11 +18,7 @@ function candidateFigures(pass: PlutoPass): { edgeDollars: number | null; grade:
 
 function sizingNote(pass: PlutoPass): string | null {
   const { action } = passVerdict(pass);
-  const sizing = action?.gateResults.find((gate) => gate.gate === "sizing");
-  if (!sizing) return null;
-  if (/volume share allows/.test(sizing.detail)) return "limited by how many contracts traded today";
-  if (/budget left/.test(sizing.detail) && /→ 0 contract/.test(sizing.detail)) return "no room left in the budget";
-  return null;
+  return describeSizingLimit(action?.gateResults.find((gate) => gate.gate === "sizing")?.limit);
 }
 
 export function VerdictTag({ pass, size }: { pass: PlutoPass; size?: "sm" | "xs" }) {

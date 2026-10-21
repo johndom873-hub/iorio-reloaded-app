@@ -245,6 +245,7 @@ function EdgeMarginExplanation({ values }: { values: PlutoHowItWorks }) {
     { name: "Model fit", value: "tight", meaning: "The model must fit the day's prices closely; otherwise its fair price cannot be trusted." },
     { name: "Earnings", value: "avoided", meaning: "No expiry that runs across a known earnings date." },
     { name: "Big move", value: `≤ ${edgeMargin.maxDayMoveMultiple}× a normal day`, meaning: `A ticker moving more than ${edgeMargin.maxDayMoveMultiple} normal days today is skipped.` },
+    { name: "Room for an order", value: "≥ 1 contract", meaning: "The size limits below, counting the positions and orders already on the ticker, must allow at least one contract. A contract they allow none of is never shown to the AI." },
   ];
   const sizeLimits = [
     { name: "Capital budget", value: pct(shared.capitalBudgetPct), meaning: `Everything on the tickers Pluto trades, human positions there included (hedges aside), stays under ${pct(shared.capitalBudgetPct)} of the account.` },

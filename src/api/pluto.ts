@@ -219,6 +219,8 @@ export interface PlutoGateResult {
   gate: string;
   ok: boolean;
   detail: string;
+  /** The sizing gate of a live open: the limit that set its size; absent on rows before 2026-10-21. */
+  limit?: string;
 }
 
 /** close_position: a whole covered call (call bought back, shares sold) closed by code before earnings, never by the model. */

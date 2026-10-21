@@ -582,6 +582,22 @@ export function gateLabel(name: string): string {
   return gateLabels[name] ?? humanizeKey(name);
 }
 
+// What held an order below the standard order size, by the limit the sizing gate says set it (API SizingLimit). The order
+// size itself, or a limit this list doesn't know, says nothing.
+const sizingLimitNotes: Record<string, string> = {
+  budget_left: "limited by the capital budget left",
+  ticker_room: "limited by the per-ticker limit",
+  sector_room: "limited by the per-sector limit",
+  cash_room: "limited by the cash reserve",
+  volume: "limited by how many contracts traded today",
+  stress: "limited by the stress cap",
+  kelly: "limited by the Kelly cap",
+};
+
+export function describeSizingLimit(limit: string | undefined): string | null {
+  return limit ? sizingLimitNotes[limit] ?? null : null;
+}
+
 export function checksAndGatesSummary(pass: PlutoPass): { checks: { passed: number; total: number }; gates: { passed: number; total: number } } {
   const { action } = passVerdict(pass);
   const gates = action?.gateResults ?? [];
