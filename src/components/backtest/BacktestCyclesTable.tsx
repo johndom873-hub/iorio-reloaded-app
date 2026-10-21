@@ -103,7 +103,7 @@ function SignedPercent({ fraction, plain = false }: { fraction: number | null; p
 const priceText = (price: number | null) => (price === null ? dash : formatCurrency(price));
 
 /** A stretch's cells (an Idle row between cycles, a Stock only row in a cycle's trades). */
-function stretchCell(key: string, stretch: BacktestIdleStretch, own: { label: ReactNode; sessions: string; reason: string; rules: string; accountReturn: ReactNode; price: number | null }): ReactNode {
+function stretchCell(key: string, stretch: BacktestIdleStretch, own: { label: ReactNode; sessions: string; reason: string; rules: string; accountReturn: ReactNode; price: number | null; shares: number | null }): ReactNode {
   switch (key) {
     case "cycle":
       return own.label;
@@ -125,6 +125,8 @@ function stretchCell(key: string, stretch: BacktestIdleStretch, own: { label: Re
       return own.sessions;
     case "price":
       return priceText(own.price);
+    case "shares":
+      return own.shares === null ? dash : formatNumber(own.shares);
     case "strategies":
       return (
         <TooltipSpan text={own.rules} multiline className="dotted-underline-label backtest-cycle-row-detail">
@@ -144,6 +146,7 @@ function gapCell(key: string, gap: BacktestCycleGap, context: CellContext): Reac
     rules: describeIdleStretchRules(gap, "No entry", gap.entryFilterLimits),
     accountReturn: <SignedPercent fraction={context.accountReturn(gap.firstIdleDay, gap.lastIdleDay)} plain />,
     price: context.priceOn(gap.symbol, gap.firstIdleDay, "tenOclock"),
+    shares: null,
   });
 }
 
@@ -157,6 +160,7 @@ function stockOnlyCell(key: string, cycle: BacktestCycle, stretch: BacktestStock
     rules: describeIdleStretchRules(stretch, "No call"),
     accountReturn: null,
     price: context.priceOn(cycle.symbol, stretch.firstIdleDay, "tenOclock"),
+    shares: stretch.sharesHeld,
   });
 }
 
@@ -177,6 +181,8 @@ function tradeCell(key: string, cycle: BacktestCycle, row: BacktestCycleTimeline
       return priceText(context.priceOn(cycle.symbol, row.tradingDate, event.priceAt));
     case "breakEven":
       return row.breakEvenAtSale == null ? null : formatCurrency(row.breakEvenAtSale);
+    case "shares":
+      return row.sharesHeld == null ? null : formatNumber(row.sharesHeld);
     case "premium":
       return tradeDollars(row.premiumDollars);
     case "stock":
@@ -227,6 +233,8 @@ function cycleCell(key: string, cycle: BacktestCycle, context: CellContext): Rea
       return priceText(context.priceOn(cycle.symbol, cycle.openedOn, "tenOclock"));
     case "breakEven":
       return cycle.status === "open" && cycle.cashBreakEvenPerShare != null ? describeBreakEven(cycle.cashBreakEvenPerShare) : dash;
+    case "shares":
+      return cycle.status === "open" && cycle.sharesHeldNow != null ? formatNumber(cycle.sharesHeldNow) : dash;
     case "premium":
       return <SignedDollars value={cycle.netPremiumDollars} />;
     case "stock":
@@ -291,6 +299,13 @@ const columnDefinitions: Omit<DataTableColumn<CyclesTableRow>, "render">[] = [
     header: "B-E",
     headerTitle:
       "Break-even, in cash: (cost of every share bought in the cycle − what shares that left it brought in − net premium) ÷ shares held; selling the shares held at it leaves the cycle flat (Free once below zero). An open cycle: now. An option sold while the cycle held shares: the break-even just before the sale (a call on held shares under a break-even rule: the floor its strike was held to).",
+    align: "right",
+    cellClassName: "text-nowrap",
+  },
+  {
+    key: "shares",
+    header: "Shares",
+    headerTitle: "Shares held, as traded on the row's day. An open cycle: at the last marks. A trade: once everything done at that look is done (a look's rows show the same number). A stock-only stretch: the shares it held.",
     align: "right",
     cellClassName: "text-nowrap",
   },
