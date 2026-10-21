@@ -1187,21 +1187,35 @@
 .table > tbody > tr.backtest-cycle-idle-row > td {
   color: var(--tblr-secondary-color);
 }
-/* A put or call assigned in a cycle's trades: a yellow tint over the row, laid as the Signals table tints its rows (an
-   inset shadow, which takes the place of the hover shade on those rows). Yellow (#fcc419) rather than amber, which reads
-   brown on the dark rows; a stronger fill takes the row's green and red under 4.5:1 (lowest now 4.57:1 light, 4.73:1 dark). */
+/* A put or call assigned in a cycle's trades (Marcelo 2026-10-21): a solid yellow row, a lighter one in the light theme.
+   A see-through yellow or amber reads brown on the dark rows, and one strong enough to look yellow takes the row's green
+   and red under 4.5:1, so the row is opaque and its text dark in both themes: the body ink, a dark green and a dark red
+   for the P&L (Tabler's and the theme's .text-success/.text-danger are !important, hence these selectors). */
 :root {
-  --backtest-assigned-row-tint: rgba(252, 196, 25, 0.18);
+  --backtest-assigned-row-bg: #ffe066;
 }
 :root[data-bs-theme="dark"] {
-  --backtest-assigned-row-tint: rgba(252, 196, 25, 0.14);
+  --backtest-assigned-row-bg: #fcc419;
+}
+:root {
+  --backtest-assigned-row-ink: #1d273b;
+  --backtest-assigned-row-green: #1b5e20;
+  --backtest-assigned-row-red: #8f1d1d;
 }
 .table > tbody > tr.backtest-cycle-assigned-row > td {
-  box-shadow: inset 0 0 0 9999px var(--backtest-assigned-row-tint);
+  background-color: var(--backtest-assigned-row-bg);
+  box-shadow: none;
+  color: var(--backtest-assigned-row-ink);
 }
-/* On the tint the secondary grey falls under 4.5:1 in the light theme: the row's grey text (the "—" placeholders) takes the body colour. */
-.table > tbody > tr.backtest-cycle-assigned-row .text-secondary {
-  color: var(--tblr-body-color) !important;
+.table > tbody > tr.backtest-cycle-assigned-row td .text-secondary,
+.table > tbody > tr.backtest-cycle-assigned-row td .text-body {
+  color: var(--backtest-assigned-row-ink) !important;
+}
+.table > tbody > tr.backtest-cycle-assigned-row td .text-success {
+  color: var(--backtest-assigned-row-green) !important;
+}
+.table > tbody > tr.backtest-cycle-assigned-row td .text-danger {
+  color: var(--backtest-assigned-row-red) !important;
 }
 .backtest-cycle-event-name {
   display: inline-block;

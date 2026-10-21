@@ -903,8 +903,12 @@ export interface BacktestCycle {
   cashBreakEvenPerShare?: number | null;
   /** An open cycle's shares at the last marks, as traded on the session's last day; null otherwise. */
   sharesHeldNow?: number | null;
-  /** Free cash ÷ the account value at the cycle's end (closed: once its closing moment was done; open: the session's last day's end). */
-  freeCashShareAtEnd?: number | null;
+  /** An open cycle's free cash ÷ the account value at the session's last day's end; null otherwise. */
+  freeCashShareNow?: number | null;
+  /** A closed cycle's most shares held, as traded on the day it reached them; null otherwise. */
+  sharesHeldMost?: { shares: number; on: string } | null;
+  /** A closed cycle's lowest free cash ÷ the account value, at each day's marks and after each of its looks; null otherwise. */
+  freeCashShareLowest?: { share: number; on: string } | null;
   buckets: { csp: BacktestCycleBucket; unstructured: BacktestCycleBucket; cc: BacktestCycleBucket; hedge: BacktestCycleBucket };
   dataFlags: string[];
 }

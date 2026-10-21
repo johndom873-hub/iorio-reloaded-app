@@ -13,7 +13,7 @@ import {
   type BacktestStockOnlyStretch,
 } from "../../api/backtest";
 import { useCollapsibleCard } from "../../hooks/useCollapsibleCard";
-import { formatCurrency, formatNumber, formatPercentage, formatSignedPercentage, formatSignedPnl, pluralizeCount, pnlTextClass } from "../../lib/formatters";
+import { formatCurrency, formatDayMonthYear, formatNumber, formatPercentage, formatSignedPercentage, formatSignedPnl, pluralizeCount, pnlTextClass } from "../../lib/formatters";
 import {
   accountReturnOver,
   backtestCycleLabel,
@@ -249,10 +249,25 @@ function cycleCell(key: string, cycle: BacktestCycle, context: CellContext): Rea
       return priceText(context.priceOn(cycle.symbol, cycle.openedOn, "tenOclock"));
     case "breakEven":
       return cycle.status === "open" && cycle.cashBreakEvenPerShare != null ? describeBreakEven(cycle.cashBreakEvenPerShare) : dash;
+    // An open cycle: the latest; a closed one: the most shares it held and its lowest Cash, the day on hover.
     case "shares":
-      return cycle.status === "open" && cycle.sharesHeldNow != null ? formatNumber(cycle.sharesHeldNow) : dash;
+      if (cycle.status === "open") return cycle.sharesHeldNow != null ? formatNumber(cycle.sharesHeldNow) : dash;
+      return cycle.sharesHeldMost ? (
+        <TooltipSpan text={`The most shares the cycle held: ${formatNumber(cycle.sharesHeldMost.shares)} on ${formatDayMonthYear(cycle.sharesHeldMost.on)}`} className="dotted-underline-label">
+          {formatNumber(cycle.sharesHeldMost.shares)}
+        </TooltipSpan>
+      ) : (
+        dash
+      );
     case "cash":
-      return cashText(cycle.freeCashShareAtEnd);
+      if (cycle.status === "open") return cashText(cycle.freeCashShareNow);
+      return cycle.freeCashShareLowest ? (
+        <TooltipSpan text={`The cycle's lowest Cash: ${formatPercentage(cycle.freeCashShareLowest.share, 0)} on ${formatDayMonthYear(cycle.freeCashShareLowest.on)}`} className="dotted-underline-label">
+          {cashText(cycle.freeCashShareLowest.share)}
+        </TooltipSpan>
+      ) : (
+        dash
+      );
     case "premium":
       return <SignedDollars value={cycle.netPremiumDollars} />;
     case "stock":
@@ -323,7 +338,7 @@ const columnDefinitions: Omit<DataTableColumn<CyclesTableRow>, "render">[] = [
   {
     key: "shares",
     header: "Shares",
-    headerTitle: "Shares held, as traded on the row's day. An open cycle: at the last marks. A trade: once everything done at that look is done (a look's rows show the same number). A stock-only stretch: the shares it held.",
+    headerTitle: "Shares held, as traded on the row's day. A closed cycle: the most it held (the day on hover); an open cycle: at the last marks. A trade: once everything done at that look is done (a look's rows show the same number). A stock-only stretch: the shares it held.",
     align: "right",
     cellClassName: "text-nowrap",
   },
@@ -331,7 +346,7 @@ const columnDefinitions: Omit<DataTableColumn<CyclesTableRow>, "render">[] = [
     key: "cash",
     header: "Cash",
     headerTitle:
-      "Free cash ÷ the account value: the cash not locked in open Cash-Secured Puts (strike × 100 × contracts), as the engine counts what it may still spend, over the account's value at that day's 10:00 marks (so a flat account after a day's gains can read a hair over 100%); the whole account's in a session of several symbols. A trade: once everything done at that look is done. A cycle: at its end (an open cycle: the session's last day). Idle and stock-only stretches: at their first day's 10:00 marks.",
+      "Free cash ÷ the account value: the cash not locked in open Cash-Secured Puts (strike × 100 × contracts), as the engine counts what it may still spend, over the account's value at that day's 10:00 marks (so a flat account after a day's gains can read a hair over 100%); the whole account's in a session of several symbols. A trade: once everything done at that look is done. A closed cycle: its lowest, at each day's 10:00 marks and after each of its looks (the day on hover); an open cycle: at the session's last day. Idle and stock-only stretches: at their first day's 10:00 marks.",
     align: "right",
     cellClassName: "text-nowrap",
   },
