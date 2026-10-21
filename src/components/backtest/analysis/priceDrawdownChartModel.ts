@@ -50,8 +50,6 @@ export interface PriceWindow {
   drawdown: AnalysisMaxDrawdown | null;
   /** True when the range is shorter than the bars: the window can be dragged. */
   canMove: boolean;
-  atLatest: boolean;
-  toLatest: () => void;
   /** Moves the window to end at a bar (kept within the bars). */
   moveTo: (end: number) => void;
   /** Spread on the element the window is dragged on. */
@@ -128,7 +126,7 @@ export function usePriceWindow(allBars: AnalysisFigures["bars"], range: Analysis
       moveTo(to + (event.key === "ArrowLeft" ? -step : step));
     },
   };
-  return { from, to, bars, drawdown, canMove, atLatest: to === last, toLatest: () => setChosenEnd(null), moveTo, dragProps };
+  return { from, to, bars, drawdown, canMove, moveTo, dragProps };
 }
 
 

@@ -6,7 +6,7 @@ import { formatDayMonthYear, formatNumber, formatPercentage, formatVolatilityPoi
 import { useTheme } from "../../../hooks/useTheme";
 import { ApexChart } from "../../charts/ApexChart";
 import { AnalysisCard, AnalysisNote, AnalysisSeriesKey } from "./analysisBits";
-import { LadderLegendItems, PriceChartActions, PriceDrawdownCaption, PriceDrawdownCharts, PriceWindowNavigator, PriceWindowNote } from "./priceDrawdownChart";
+import { LadderLegendItems, PriceChartActions, PriceDrawdownCaption, PriceDrawdownCharts, PriceWindowNavigator } from "./priceDrawdownChart";
 import { buildPriceDrawdownChart, historyYearsOf, medianOf, timeOfDate, useLogScalePreference, usePriceWindow, yearsBefore } from "./priceDrawdownChartModel";
 
 // Price and Max drawdown (daily candles, the drawdown band, the days the pot was too small and the days an order needed
@@ -117,10 +117,11 @@ export function AnalysisPriceCards({ symbol, figures, shown, showingTrial, stale
               <PriceDrawdownCharts chart={priceChart} />
             </div>
           )}
-          <div className="price-navigator-row">
-            <PriceWindowNavigator allBars={figures.bars} priceWindow={priceWindow} />
-          </div>
-          <PriceWindowNote priceWindow={priceWindow} />
+          {priceWindow.canMove && (
+            <div className="price-navigator-row">
+              <PriceWindowNavigator allBars={figures.bars} priceWindow={priceWindow} />
+            </div>
+          )}
           <PriceDrawdownCaption chart={priceChart} drawdown={drawdown} />
           {priceChart && (
             <div className="analysis-chart-legend">

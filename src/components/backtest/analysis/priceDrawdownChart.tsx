@@ -9,24 +9,6 @@ import { priceRanges, type PriceDrawdownChart, type PriceWindow } from "./priceD
 // sold, a log scale to switch on, under the candles the account's cash available, and under both a navigator to move the
 // window across the session.
 
-/** Under a movable chart: the days on screen, and a way back to the latest. */
-export function PriceWindowNote({ priceWindow }: { priceWindow: PriceWindow }) {
-  if (!priceWindow.canMove || priceWindow.bars.length === 0) return null;
-  return (
-    <div className="analysis-chart-caption d-flex flex-wrap align-items-center gap-2">
-      <span>
-        Showing {formatDayMonthYear(priceWindow.bars[0]![0])} to {formatDayMonthYear(priceWindow.bars.at(-1)![0])}. Drag the chart or the strip under it, or use the arrow keys on either, to move across the timeline.
-      </span>
-      {!priceWindow.atLatest && (
-        <button type="button" className="btn btn-outline-secondary" onClick={priceWindow.toLatest}>
-          Back to the latest
-        </button>
-      )}
-    </div>
-  );
-}
-
-
 /** The Log scale switch and the range buttons (a range longer than the bars is disabled). */
 export function PriceChartActions({ symbol, range, onRangeChange, historyYears, logScale, onToggleLogScale }: { symbol: string; range: AnalysisPriceRange; onRangeChange: (range: AnalysisPriceRange) => void; historyYears: number; logScale: boolean; onToggleLogScale: () => void }) {
   return (

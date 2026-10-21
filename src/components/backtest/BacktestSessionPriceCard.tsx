@@ -6,7 +6,7 @@ import { dateRuns } from "../../lib/analysisPresentation";
 import { formatNumber } from "../../lib/formatters";
 import { Spinner } from "../Spinner";
 import { BacktestCard } from "./backtestBits";
-import { LadderLegendItems, PriceChartActions, PriceDrawdownCaption, PriceDrawdownCharts, PriceWindowNavigator, PriceWindowNote } from "./analysis/priceDrawdownChart";
+import { LadderLegendItems, PriceChartActions, PriceDrawdownCaption, PriceDrawdownCharts, PriceWindowNavigator } from "./analysis/priceDrawdownChart";
 import { buildPriceDrawdownChart, historyYearsOf, useLogScalePreference, usePriceWindow } from "./analysis/priceDrawdownChartModel";
 
 // The Analyse window's "Price and Max drawdown" chart on a session's results (Marcelo 2026-10-20): over the session's
@@ -44,10 +44,11 @@ function PriceChartBody({ chart, range, logScale, severalSymbols }: { chart: Bac
           <PriceDrawdownCharts chart={drawn} />
         </div>
       )}
-      <div className="price-navigator-row">
-        <PriceWindowNavigator allBars={chart.bars} priceWindow={priceWindow} />
-      </div>
-      <PriceWindowNote priceWindow={priceWindow} />
+      {priceWindow.canMove && (
+        <div className="price-navigator-row">
+          <PriceWindowNavigator allBars={chart.bars} priceWindow={priceWindow} />
+        </div>
+      )}
       <PriceDrawdownCaption chart={drawn} drawdown={drawdown} />
       {drawn && (
         <div className="analysis-chart-legend">
