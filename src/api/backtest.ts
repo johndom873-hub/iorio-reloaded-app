@@ -65,6 +65,17 @@ export interface BacktestBaselineSettings {
   ranking: "premium_yield" | "edge_yield" | "time_value" | "premium_dollars" | "premium_per_day";
   expiryChoice: "any_in_range" | "nearest_qualifying";
   coverage: "best_contract" | "fill_down_ranking";
+  /** The ladder's falling-knife guard and Kelly sizing (the API's engine/ladderSizing.ts): off / disabled keep today's sizes. */
+  knifeGuard: "off" | "market_share" | "market_share_and_iv";
+  knifeGuardMinScale: number;
+  kellySizing: "disabled" | "dynamic";
+  kellyMultiplierRule: "extension" | "constant";
+  kellyTopFromZ: number;
+  kellyTopToZ: number;
+  kellyMaxMultiplier: number;
+  kellySpyMove: "off" | "on";
+  kellyAtTops: "wait_in_cash" | "deeper_puts";
+  kellyConstantMultiplier: number;
 }
 
 /** "shared_account": one book for every ticker (the rules, the AI model); "pots": each ticker its pot of one shared account (the baseline). */
@@ -409,7 +420,7 @@ export interface BacktestSettingChoice {
   unavailableReason?: string;
 }
 
-export type BacktestSettingGroup = "How the session runs" | "Put ladder" | "Calls and Covered Calls" | "Contract choice" | "Entry filters" | "Exits" | "Capital and sizing" | "Candidate quality" | "Model" | "System checks" | "Rules' choices";
+export type BacktestSettingGroup = "How the session runs" | "Put ladder" | "Calls and Covered Calls" | "Contract choice" | "Entry filters" | "Falling-knife guard" | "Kelly sizing" | "Exits" | "Capital and sizing" | "Candidate quality" | "Model" | "System checks" | "Rules' choices";
 
 /** "baseline_wheel": rows the Baseline wheel (the CC + Put Ladder) reads, some shared with the rules and the AI model; "pluto_rules": rows only the rules and the AI model read. */
 export type BacktestSettingSection = "baseline_wheel" | "pluto_rules";

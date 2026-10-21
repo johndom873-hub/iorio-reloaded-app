@@ -121,6 +121,16 @@ export function backtestSettingGroupSummary(group: BacktestSettingGroup, text: (
       const filters = [text("baseline.entryExtensionFilter") === "on" ? `extension z ≥ ${text("baseline.entryMaxExtensionZ")}` : null, text("baseline.entryIvRankFilter") === "on" ? `IV Rank ≥ ${text("baseline.entryMaxIvRank")}` : null].filter((filter) => filter !== null);
       return filters.length === 0 ? "off" : `no new entry at ${filters.join(" or ")}`;
     }
+    case "Falling-knife guard": {
+      const guard = text("baseline.knifeGuard");
+      if (guard === "off") return "off";
+      return `new buying by the market's share of a fall · ${text("baseline.knifeGuardMinScale")} when the stock falls alone${guard === "market_share_and_iv" ? " · halved at an IV peak" : ""}`;
+    }
+    case "Kelly sizing": {
+      if (text("baseline.kellySizing") !== "dynamic") return "disabled";
+      if (text("baseline.kellyMultiplierRule") === "constant") return `dynamic · constant ×${text("baseline.kellyConstantMultiplier")}`;
+      return [`dynamic · z ${text("baseline.kellyTopFromZ")}–${text("baseline.kellyTopToZ")} cut`, `up to ×${text("baseline.kellyMaxMultiplier")} at bottoms`, text("baseline.kellySpyMove") === "on" ? "SPY's month" : null, text("baseline.kellyAtTops") === "deeper_puts" ? "deeper Puts at tops" : null].filter((part) => part !== null).join(" · ");
+    }
     case "Exits":
       return [Number(text("baseline.takeProfitPct")) > 0 ? `take profit at ${shown("baseline.takeProfitPct")}` : "hold to expiry", Number(text("baseline.shareStopLossPct")) > 0 ? `share stop ${shown("baseline.shareStopLossPct")}` : "no share stop"].join(" · ");
     case "Capital and sizing":
