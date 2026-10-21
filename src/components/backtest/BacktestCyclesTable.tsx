@@ -364,7 +364,11 @@ function breakdownRows(cycle: BacktestCycle, detail: BacktestCycleDetail): Cycle
   const pending = [...detail.stockOnlyStretches].sort((a, b) => a.firstIdleDay.localeCompare(b.firstIdleDay));
   const rows: CyclesTableRow[] = [];
   const stockOnlyRow = (stretch: BacktestStockOnlyStretch): CyclesTableRow => ({ kind: "stockOnly", key: `stock-only-${cycleKeyOf(cycle)}-${stretch.firstIdleDay}`, cycle, stretch });
-  detail.timeline.forEach((row, index) => {
+  // Within one look, shares handed to CC come before the call sold on them (Marcelo 2026-10-21); the rest keep the
+  // derivation's order. A look's rows share their Shares, B-E and Cash, so the order changes no figure.
+  const handedToCc = (row: BacktestCycleTimelineRow) => row.at !== null && row.label.startsWith("Shares handed to CC");
+  const ordered = detail.timeline.map((row, index) => ({ row, index })).sort((a, b) => (a.row.at !== null && a.row.at === b.row.at ? Number(handedToCc(b.row)) - Number(handedToCc(a.row)) : 0) || a.index - b.index);
+  ordered.forEach(({ row, index }) => {
     while (pending.length > 0 && pending[0]!.firstIdleDay <= row.tradingDate) rows.push(stockOnlyRow(pending.shift()!));
     rows.push({ kind: "trade", key: `trade-${cycleKeyOf(cycle)}-${index}`, cycle, row });
   });
