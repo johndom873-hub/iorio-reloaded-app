@@ -74,6 +74,9 @@ export function PriceDrawdownCharts({ chart }: { chart: Pick<NonNullable<PriceDr
 
 /** Bars a step of the arrow keys moves the navigator's window: about a month of trading days. */
 const navigatorKeyStep = 21;
+/** The navigator draws its bars between these x (of 1,000), so a grip at either end stays whole. */
+const navigatorLeft = 3;
+const navigatorWidth = 994;
 
 /**
  * Under a movable chart (approved 2026-10-21, mockup "A · Navigator"): the whole period's closes in miniature with the
@@ -86,14 +89,14 @@ export function PriceWindowNavigator({ allBars, priceWindow }: { allBars: Analys
     const closes = allBars.map((bar) => bar[4]);
     const lowest = Math.min(...closes);
     const span = Math.max(...closes) - lowest || 1;
-    return closes.map((close, index) => `${index ? "L" : "M"}${((index / Math.max(1, closes.length - 1)) * 1000).toFixed(1)},${(40 - ((close - lowest) / span) * 34).toFixed(1)}`).join("");
+    return closes.map((close, index) => `${index ? "L" : "M"}${(navigatorLeft + (index / Math.max(1, closes.length - 1)) * navigatorWidth).toFixed(1)},${(40 - ((close - lowest) / span) * 34).toFixed(1)}`).join("");
   }, [allBars]);
   if (!priceWindow.canMove || allBars.length < 2 || priceWindow.bars.length === 0) return null;
   const last = allBars.length - 1;
-  const xOf = (index: number) => (index / last) * 1000;
+  const xOf = (index: number) => navigatorLeft + (index / last) * navigatorWidth;
   const indexAt = (clientX: number) => {
     const box = svgRef.current?.getBoundingClientRect();
-    return box && box.width > 0 ? Math.round(((clientX - box.left) / box.width) * last) : priceWindow.to;
+    return box && box.width > 0 ? Math.round(((((clientX - box.left) / box.width) * 1000 - navigatorLeft) / navigatorWidth) * last) : priceWindow.to;
   };
   const halfWindow = Math.round((priceWindow.to - priceWindow.from) / 2);
   const onPointerDown = (event: PointerEvent<SVGSVGElement>) => {
