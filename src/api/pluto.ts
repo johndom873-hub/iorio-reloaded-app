@@ -189,6 +189,8 @@ export interface PlutoSettings {
   ladderMaxWorkingOrdersPerTicker: number;
   ladderMaxOpenPositionsPerTicker: number;
   ladderMaxOrdersPerTickerPerDay: number;
+  ladderMaxOpenPositions: number;
+  ladderMaxOrdersPerDay: number;
   ladderSpyStressBreakerPct: number;
   ladderTickerCooldownMinutes: number;
   updatedAt: string;
@@ -681,9 +683,13 @@ export interface PlutoHowItWorks {
     shockNoHistoryPct: number;
     shockLookbackYears: number;
     putOverCallYieldMarginPct: number;
+    minEntryYieldPct: number;
+    maxQuoteAgeMinutes: number;
     maxWorkingOrdersPerTicker: number;
     maxOrdersPerTickerPerDay: number;
     maxOpenPositionsPerTicker: number;
+    maxOpenPositions: number;
+    maxOrdersPerDay: number;
     spyStressBreakerPct: number;
     tickerCooldownMinutes: number;
     example: {

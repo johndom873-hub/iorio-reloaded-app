@@ -101,7 +101,10 @@ function LadderExplanation({ values }: { values: PlutoHowItWorks }) {
   const putOverCall = ladder.putOverCallYieldMarginPct > 0 ? `whenever the Put's yield is more than ${pct(ladder.putOverCallYieldMarginPct)} above the Call's` : "whenever the Put pays a higher yield";
   const contractRules = [
     { name: "Delta of Calls", value: deltaRange, meaning: `Roughly a ${pct(ladder.minAbsDelta * 100)} to ${pct(ladder.maxAbsDelta * 100)} chance of ending in the money. Further out is safer but pays less.` },
-    { name: "Delta of Puts", value: "any", meaning: "No delta limit: a Put's strike must be at or below its rung's cap, which already keeps it well below the price." },
+    { name: "Delta of a Put that opens a cycle", value: deltaRange, meaning: "The same range as the Calls." },
+    { name: "Delta of ladder Puts", value: "any", meaning: "No delta limit: a ladder Put's strike must be at or below its rung's cap, which already keeps it well below the price." },
+    { name: "Yield to open a cycle", value: `> ${pct(ladder.minEntryYieldPct)} a year`, meaning: `The Put or Covered Call that opens a cycle must pay more than ${pct(ladder.minEntryYieldPct)} a year on the money it ties up. Calls on shares already held and ladder Puts have no minimum.` },
+    { name: "Fresh price", value: `≤ ${ladder.maxQuoteAgeMinutes} min`, meaning: `Prices older than ${ladder.maxQuoteAgeMinutes} minutes are not used; if all of a ticker's latest prices are older, nothing is planned on it until fresh ones come in.` },
     { name: "Days to expiry", value: `${ladder.minDte}–${ladder.maxDte}`, meaning: `Contracts expiring ${ladder.minDte} to ${ladder.maxDte} days from today.` },
     { name: "Spread", value: `≤ ${pct(ladder.maxSpreadPctOfMid)} of the mid`, meaning: `The gap between bid and ask must be at most ${pct(ladder.maxSpreadPctOfMid)} of the middle price, so the price is fair.` },
     { name: "Bid", value: `≥ ${formatCurrencyTrimmed(ladder.minimumBid)}`, meaning: `Contracts bid below ${formatCurrencyTrimmed(ladder.minimumBid)} are skipped.` },
@@ -120,8 +123,8 @@ function LadderExplanation({ values }: { values: PlutoHowItWorks }) {
 
       <Card title="One cycle, step by step">
         <div className="pm-how-steps">
-          <Step number={1} tone="call" title="Buy shares, sell a Call">
-            The cycle opens with a Covered Call: Pluto buys shares in lots of 100 and sells a Call on every lot in the same order. Up to <Value>{pct(ladder.sharesPct)}</Value> of the ticker's pot goes into shares.
+          <Step number={1} tone="call" title="Open: sell a Put, or buy shares and sell a Call">
+            The cycle opens with whichever pays the higher premium yield: a <b>Put</b> that may buy the shares, or a <b>Covered Call</b>, where Pluto buys shares in lots of 100 and sells a Call on every lot in the same order. Either must pay more than <Value>{pct(ladder.minEntryYieldPct)}</Value> a year. Up to <Value>{pct(ladder.sharesPct)}</Value> of the ticker's pot goes into shares. When the opening Put is assigned, Pluto holds the shares and the ladder starts.
           </Step>
           <Step number={2} tone="call" title="Keep selling Calls, never at a loss">
             Each time a Call expires, Pluto sells a new one, with a strike at or above the <b>break-even</b>: what the shares cost, less every premium collected in the cycle. If the shares are called away, they are sold at a profit.
@@ -188,11 +191,13 @@ function LadderExplanation({ values }: { values: PlutoHowItWorks }) {
       <div className="pm-how-pair">
         <Card title="Before every order">
           <ul className="pm-how-list">
-            <li>Pluto asks IBKR for a fresh price of the contract. For a Call it checks again that its delta is inside <Value>{deltaRange}</Value>; outside it, nothing is sent.</li>
-            <li>The order's price is the middle of the bid and the ask.</li>
+            <li>Pluto asks IBKR for a fresh price of the contract and checks the contract rules again on it: the bid, the spread, the days to expiry, the opening yield, and the delta for a Call or a Put that opens a cycle. If one fails, nothing is sent and the sale is planned again at a later look; a price without a time is not used.</li>
+            <li>The order's price is the middle of the bid and the ask, rounded to the cent: up for a sale, so it is never below the middle.</li>
             <li>An order not filled within <Value>{shared.unfilledOrderCancelMinutes}</Value> minutes is cancelled; Pluto plans afresh at its next look.</li>
             <li>Per ticker: at most <Value>{ladder.maxWorkingOrdersPerTicker}</Value> orders working at once, <Value>{ladder.maxOrdersPerTickerPerDay}</Value> orders a day and <Value>{ladder.maxOpenPositionsPerTicker}</Value> open positions.</li>
-            <li>The order route checks the ticker's pot and the cash reserve one last time.</li>
+            <li>All tickers together: at most <Value>{ladder.maxOpenPositions}</Value> open positions and working orders, <Value>{ladder.maxOrdersPerDay}</Value> orders a day, and never more money committed than the capital budget, <Value>{pct(shared.capitalBudgetPct)}</Value> of the account. Sales beyond a limit wait for a later look.</li>
+            <li>The order route checks the ticker's pot, the capital budget across all tickers and the cash reserve one last time.</li>
+            <li>A routine order problem (the price moved, no fresh price, or IBKR refusing the price or the margin) only skips that order: it is planned again at the next look. Any other order error pauses Pluto until someone looks.</li>
           </ul>
         </Card>
         <Card title="When Pluto holds back">
@@ -203,6 +208,7 @@ function LadderExplanation({ values }: { values: PlutoHowItWorks }) {
             <li>Any of Pluto's usual checks fails: outside trading hours, IBKR not connected, the books not matching IBKR.</li>
             <li>Before 10:00 ET: the day's first orders wait for Pluto's morning price snapshot.</li>
             <li>A stock split: the ticker is frozen, its orders cancelled, and a Telegram alert asks for the records to be updated.</li>
+            <li>A ticker that cannot trade (no option volume from the previous session, no shock, prices too old) or whose sales are held by a limit: a Telegram message at most once a day for each reason.</li>
           </ul>
         </Card>
       </div>
@@ -274,7 +280,7 @@ function EdgeMarginExplanation({ values }: { values: PlutoHowItWorks }) {
             The AI sees the top <Value>{edgeMargin.candidatesPerTickerPerStrategy}</Value> per ticker, ranked by Edge Yield, plus any rolls and buybacks on offer. It picks one with a confidence; below <Value>{edgeMargin.confidenceFloor}</Value> the pick is refused.
           </Step>
           <Step number={4} tone="call" title="The code checks, sizes and sends">
-            The pick is re-valued on a fresh price; if its edge margin moved more than <Value>{edgeMargin.maxEdgeMarginDriftPts}</Value> points, it is dropped. The code then sizes it (below) and sends it at the middle of the bid and the ask.
+            The pick is re-valued on a fresh price; if its edge margin moved more than <Value>{edgeMargin.maxEdgeMarginDriftPts}</Value> points, it is dropped. The code then sizes it (below) and sends it at the middle of the bid and the ask, rounded to the cent: up for a sale, down for a buyback, so neither gives up anything past the middle.
           </Step>
         </div>
       </Card>
@@ -335,6 +341,7 @@ function EdgeMarginExplanation({ values }: { values: PlutoHowItWorks }) {
           <li>It never buys an option back at a loss, and never closes a Covered Call's Call on its own.</li>
           <li>It never sells an option that runs across a known earnings date, except the Calls on shares already held.</li>
           <li>It never changes the price of a working order: an order not filled within <Value>{shared.unfilledOrderCancelMinutes}</Value> minutes is cancelled, and a new round decides again.</li>
+          <li>It does not stop for a routine order problem (the price moved, no fresh price, or IBKR refusing the price or the margin): that order is skipped and a later round decides again. Any other order error pauses Pluto until someone looks.</li>
         </ul>
       </Card>
     </>
