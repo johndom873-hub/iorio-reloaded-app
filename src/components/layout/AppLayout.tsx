@@ -296,7 +296,7 @@ export function AppLayout() {
           className="iorio-sidebar-pin-toggle d-none d-lg-flex"
           onClick={toggleSidebarMode}
         >
-          {sidebarMode === "fixed" ? <IconChevronRight size={14} /> : <IconChevronLeft size={14} />}
+          {sidebarMode === "fixed" ? <IconChevronLeft size={14} /> : <IconChevronRight size={14} />}
         </button>
       </aside>
 
