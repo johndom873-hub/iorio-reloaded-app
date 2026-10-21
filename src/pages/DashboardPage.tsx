@@ -42,7 +42,7 @@ import {
   formatUtcClockTimeInBrowserTime,
   pnlTextClass,
 } from "../lib/formatters";
-import { portfolioFromExposure } from "../lib/portfolioFromExposure";
+import { allocationBarPercents, portfolioFromExposure } from "../lib/portfolioFromExposure";
 import { describeShareHandOverPositions, positionCloseReasonLabel } from "../lib/positionPnl";
 import { useRefreshAfterSignalsTickerModal, useSignalsTickerModal } from "../hooks/useSignalsTickerModal";
 import { TooltipSpan } from "../components/TooltipSpan";
@@ -660,26 +660,15 @@ export function DashboardPage() {
   const totalUnrealizedPnlPercent =
     totalUnrealizedPnl !== null && accountValueBeforeUnrealizedPnl ? (totalUnrealizedPnl / accountValueBeforeUnrealizedPnl) * 100 : null;
 
-  // Same basis as Pulse's Allocation bar: each strategy's notional over the
-  // live account value, else the stream's open-time one.
-  const allocationDenominator = liveNetLiquidationValue ?? exposure?.totalAccountValue;
-  const allocationPercentFor = (strategyKey: string) => {
-    if (!exposure || !allocationDenominator) return 0;
-    const row = exposure.strategyAllocation.find((candidate) => candidate.strategyKey === strategyKey);
-    return ((row ? Number(row.notionalValue) : 0) / allocationDenominator) * 100;
-  };
-  const strategyAllocationSegments = [
-    { label: "Covered Calls", percent: allocationPercentFor("covered_call"), color: ALLOCATION_COLORS.coveredCalls },
-    { label: "Cash-Secured Puts", percent: allocationPercentFor("cash_secured_put"), color: ALLOCATION_COLORS.cashSecuredPuts },
-    { label: "No strategy", percent: allocationPercentFor("unstructured"), color: ALLOCATION_COLORS.unstructured },
-    { label: "Hedges", percent: allocationPercentFor("hedge"), color: ALLOCATION_COLORS.hedge },
+  // Same basis as Pulse's Allocation bar: the five tiles below over their total (allocationBarPercents).
+  const allocationPercents = portfolio ? allocationBarPercents(portfolio) : null;
+  const allocationSegments = [
+    { label: "Covered Calls", percent: allocationPercents?.coveredCalls ?? 0, color: ALLOCATION_COLORS.coveredCalls },
+    { label: "Cash-Secured Puts", percent: allocationPercents?.cashSecuredPuts ?? 0, color: ALLOCATION_COLORS.cashSecuredPuts },
+    { label: "No strategy", percent: allocationPercents?.unstructured ?? 0, color: ALLOCATION_COLORS.unstructured },
+    { label: "Hedges", percent: allocationPercents?.hedge ?? 0, color: ALLOCATION_COLORS.hedge },
+    { label: "Cash", percent: allocationPercents?.availableCash ?? 0, color: ALLOCATION_COLORS.cash },
   ];
-  // Remainder rather than the server's "unallocated" row, which is computed
-  // against the account value at stream open and would not sum to 100%
-  // against the live denominator above.
-  const cashAllocationPercent =
-    exposure && allocationDenominator ? Math.max(0, 100 - strategyAllocationSegments.reduce((sum, segment) => sum + segment.percent, 0)) : 0;
-  const allocationSegments = [...strategyAllocationSegments, { label: "Cash", percent: cashAllocationPercent, color: ALLOCATION_COLORS.cash }];
 
   const sectorRows = (exposure?.concentrationBySector ?? []).filter((row: ConcentrationRow) => row.sector !== "Unallocated");
 

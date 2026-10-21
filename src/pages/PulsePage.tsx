@@ -58,6 +58,7 @@ import { EnvironmentBadges } from "../components/layout/EnvironmentBadges";
 import { useEnvironmentStatus } from "../hooks/useEnvironmentStatus";
 import { describeAssignmentRisk, describeSignalUpgradeCompact, describeUnscoredReason } from "../lib/signalsPresentation";
 import { openPositionsSignature } from "../lib/positionsSignature";
+import { allocationBarPercents, portfolioFromExposure } from "../lib/portfolioFromExposure";
 import { usePollWhileVisible } from "../hooks/usePollWhileVisible";
 import { useMarketStatus } from "../hooks/useMarketStatus";
 import { useKeepLiveInBackground } from "../hooks/useKeepLiveInBackground";
@@ -442,25 +443,13 @@ export function PulsePage() {
   // own entry. Don't "fix" them to agree.
   const yesterdaysPnl = summary?.periods.day !== null && summary?.periods.day !== undefined ? Number(summary.periods.day) : null;
 
-  const strategyPct = useCallback(
-    (key: string) => {
-      // Denominator: the polled live value, else the stream's open-time one.
-      const denominator = liveNetLiquidationValue ?? exposure?.totalAccountValue;
-      if (!exposure || !denominator) return 0;
-      const row = exposure.strategyAllocation.find((r) => r.strategyKey === key);
-      const value = row ? Number(row.notionalValue) : 0;
-      return (value / denominator) * 100;
-    },
-    [exposure, liveNetLiquidationValue],
-  );
-  const ccPct = strategyPct("covered_call");
-  const cspPct = strategyPct("cash_secured_put");
-  const unstructuredPct = strategyPct("unstructured");
-  const hedgePct = strategyPct("hedge");
-  // Remainder rather than the server's "unallocated" row, which is computed
-  // against the account value at stream open and would drift from the live
-  // denominator used above.
-  const cashPct = Math.max(0, 100 - ccPct - cspPct - unstructuredPct - hedgePct);
+  // Same basis as the Dashboard's Allocation bar and tiles: the four strategies and Available Cash over their total.
+  const allocationPercents = exposure ? allocationBarPercents(portfolioFromExposure(exposure)) : null;
+  const ccPct = allocationPercents?.coveredCalls ?? 0;
+  const cspPct = allocationPercents?.cashSecuredPuts ?? 0;
+  const unstructuredPct = allocationPercents?.unstructured ?? 0;
+  const hedgePct = allocationPercents?.hedge ?? 0;
+  const cashPct = allocationPercents?.availableCash ?? 0;
 
   // --- Positions: same fetch + live SSE idiom as PositionsPage.tsx. ---
   const [positions, setPositions] = useState<Position[]>([]);
