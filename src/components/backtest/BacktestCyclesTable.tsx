@@ -25,6 +25,7 @@ import {
   describeCycleTimelineEvent,
   describeIdleStretchReason,
   describeIdleStretchRules,
+  describeLadderRung,
   describeOpenCycles,
   describeSessionSpan,
   summarizeCycleTotals,
@@ -191,7 +192,13 @@ function tradeCell(key: string, cycle: BacktestCycle, row: BacktestCycleTimeline
       return (
         <span className="backtest-cycle-row-detail">
           <CycleBucketBadge bucket={row.bucket} />
-          <span>{event.detail}</span>
+          {row.ladderRung ? (
+            <TooltipSpan text={describeLadderRung(row.ladderRung, row.strike)} multiline className="dotted-underline-label">
+              {event.detail}
+            </TooltipSpan>
+          ) : (
+            <span>{event.detail}</span>
+          )}
         </span>
       );
     default:

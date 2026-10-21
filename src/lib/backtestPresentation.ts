@@ -9,6 +9,7 @@ import {
   type BacktestCycle,
   type BacktestCycleGap,
   type BacktestCycleTimelineRow,
+  type BacktestLadderRungRecord,
   type BacktestDataFilePart,
   type BacktestDataFileSummary,
   type BacktestDecisionMaker,
@@ -912,6 +913,34 @@ export function closeToCloseReturn(closes: readonly [string, number | null][], f
   const before = first > 0 ? closes[first - 1]![1] : null;
   const last = closes.find(([date]) => date === lastDate)?.[1] ?? null;
   return before === null || last === null || before <= 0 ? null : last / before - 1;
+}
+
+/**
+ * A ladder put's rung and how its strike cap came out, for the Wheel cycles' tooltip (approved by Marcelo 2026-10-21):
+ * "Ladder rung 2 of 3 (reaches 2.00 slices of the reserve)", K_max = A − (A − F) × (U + Q) ÷ R0 with its figures, each
+ * term's source, and the strike sold against the cap.
+ */
+export function describeLadderRung(rung: BacktestLadderRungRecord, strike: number | null): string {
+  const price = (value: number | null) => (value === null ? "—" : value.toFixed(2));
+  const dollars = (value: number) => formatCurrency(value, 0);
+  const topIsBreakEven = rung.top !== null && rung.breakEven !== null && Math.abs(rung.top - rung.breakEven) < 0.005;
+  const fullSlice = Math.abs(rung.rungCollateral - rung.reserve / rung.rungs) < 0.5;
+  const lines = [
+    `Ladder rung ${rung.rungNumber} of ${rung.rungs} (reaches ${rung.slices.toFixed(2)} slices of the reserve)`,
+    "Strike cap K_max = A − (A − F) × (U + Q) ÷ R0",
+    `= ${price(rung.top)} − (${price(rung.top)} − ${price(rung.floor)}) × (${dollars(rung.committed)} + ${dollars(rung.rungCollateral)}) ÷ ${dollars(rung.reserve)} = ${rung.cap === null ? "no cap" : formatCurrency(rung.cap)}`,
+    rung.top === null
+      ? "• A: no break-even known"
+      : topIsBreakEven
+        ? `• A, the break-even: ${formatCurrency(rung.top)}`
+        : `• A, the top: the lower of the break-even ${formatCurrency(rung.breakEven)} and the price ${formatCurrency(rung.top)}`,
+    `• F, the floor: the shares' average cost ${formatCurrency(rung.averageCost)} × (1 − shock ${formatPercentage(rung.shock, 1)}) = ${formatCurrency(rung.floor)}`,
+    `• U, the reserve committed before it: ${dollars(rung.committed)}`,
+    `• Q, this rung's collateral: ${dollars(rung.rungCollateral)} (${fullSlice ? `R0 ÷ ${rung.rungs}` : "what was left of the reserve"})`,
+    `• R0, the reserve: ${dollars(rung.reserve)} (${rung.base > 0 ? `${Math.round((rung.reserve / rung.base) * 100)}% of the ${dollars(rung.base)} base` : "no base"})`,
+  ];
+  if (strike !== null) lines.push(`Sold at ${formatCurrencyTrimmed(strike)}, at or below the cap.`);
+  return lines.join("\n");
 }
 
 /**

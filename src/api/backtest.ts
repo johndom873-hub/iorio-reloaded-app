@@ -938,6 +938,30 @@ export interface BacktestCycleTimelineRow {
   breakEvenAtSale?: number | null;
   /** The shares the cycle held once the row's moment (its look's orders, or the end's marks) was done, as traded on the row's day. */
   sharesHeld?: number;
+  /** A put sold as a rung of the ladder: the figures its sale recorded (null for any other put); absent on other rows. */
+  ladderRung?: BacktestLadderRungRecord | null;
+}
+
+/** A ladder put's rung as its sale recorded it, prices as traded that day: K_max = A − (A − F) × (U + Q) ÷ R0. */
+export interface BacktestLadderRungRecord {
+  rungNumber: number;
+  rungs: number;
+  /** (U + Q) ÷ (R0 ÷ rungs). */
+  slices: number;
+  /** K_max. */
+  cap: number | null;
+  /** A: the break-even, or with the top rule "price" the lower of it and the price. */
+  top: number | null;
+  breakEven: number | null;
+  /** F = the shares' average cost × (1 − S). */
+  floor: number | null;
+  averageCost: number | null;
+  shock: number;
+  /** U, Q, R0 and the base R0 is taken from, in dollars. */
+  committed: number;
+  rungCollateral: number;
+  reserve: number;
+  base: number;
 }
 
 /** The days of a stretch on which each reason stopped a sale: a day counts under every reason seen on it, and as unrecorded when none was. */
