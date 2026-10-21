@@ -1,5 +1,5 @@
 import { apiRequest } from "./client";
-import type { BacktestMetrics, BacktestSettingsTemplate, BacktestTickerProfile, BacktestTickerSuitability } from "./backtest";
+import type { BacktestDetectedSplit, BacktestMetrics, BacktestSettingsTemplate, BacktestTickerProfile, BacktestTickerSuitability } from "./backtest";
 
 // The Analyse window (Backtesting → Data files) and the lab settings it reads. Mirrors the API's src/backtest/analysis/
 // (analysisFigures.ts, analysisStore.ts, analysisBacktest.ts, analysisSummary.ts, analysisSessions.ts) and
@@ -251,6 +251,8 @@ export interface BacktestSessionPriceChart {
   tooLargeDays: AnalysisBacktestFigures["tooLargeDays"];
   /** The whole account's free cash each day at its 10:00 marks (every symbol's in a session of several). */
   cashAvailable: NonNullable<AnalysisBacktestFigures["cashAvailable"]>;
+  /** The symbol's splits in the session's period: the bars before one are its traded prices ÷ the ratio. */
+  splits: BacktestDetectedSplit[];
 }
 
 /** Why no ladder Put could be sold at a day's first look. */
@@ -373,6 +375,8 @@ export interface TickerAnalysisView {
   profile: BacktestTickerProfile | null;
   /** As on the Data files table; null: Pending. */
   suitability: BacktestTickerSuitability | null;
+  /** The symbol's splits over its daily bars, for the price chart's split lines; null before its file was analysed. */
+  detectedSplits: BacktestDetectedSplit[] | null;
 }
 
 export interface AnalysisSessionRow {

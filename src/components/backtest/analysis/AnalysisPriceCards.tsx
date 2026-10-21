@@ -6,7 +6,7 @@ import { formatDayMonthYear, formatNumber, formatPercentage, formatVolatilityPoi
 import { useTheme } from "../../../hooks/useTheme";
 import { ApexChart } from "../../charts/ApexChart";
 import { AnalysisCard, AnalysisNote, AnalysisSeriesKey } from "./analysisBits";
-import { LadderLegendItems, PriceChartActions, PriceDrawdownCaption, PriceDrawdownCharts, PriceWindowNavigator } from "./priceDrawdownChart";
+import { LadderLegendItems, PriceChartActions, PriceDrawdownCaption, PriceDrawdownCharts, PriceWindowNavigator, SplitLegendItem } from "./priceDrawdownChart";
 import { buildPriceDrawdownChart, historyYearsOf, medianOf, timeOfDate, useLogScalePreference, usePriceWindow, yearsBefore } from "./priceDrawdownChartModel";
 
 // Price and Max drawdown (daily candles, the drawdown band, the days the pot was too small and the days an order needed
@@ -22,11 +22,13 @@ interface AnalysisPriceCardsProps {
   shown: AnalysisPanelValues;
   showingTrial: boolean;
   stale: boolean;
+  /** The symbol's splits over its bars (the price chart's split lines); null before its file was analysed. */
+  splits: readonly { firstDayAfter: string; ratio: number }[] | null;
   /** No daily bars: why, and what can fetch them (null: nothing can). */
   missingBars: { message: string; action: React.ReactNode | null } | null;
 }
 
-export function AnalysisPriceCards({ symbol, figures, shown, showingTrial, stale, missingBars }: AnalysisPriceCardsProps) {
+export function AnalysisPriceCards({ symbol, figures, shown, showingTrial, stale, splits, missingBars }: AnalysisPriceCardsProps) {
   const { theme } = useTheme();
   const colors = analysisChartColors[theme];
   const [range, setRange] = useState<AnalysisPriceRange>("All");
@@ -53,12 +55,13 @@ export function AnalysisPriceCards({ symbol, figures, shown, showingTrial, stale
       ladderLevels: backtest?.ladderLevels ?? [],
       ladderRungsSold: backtest?.ladderRungsSold ?? [],
       cashAvailable: backtest?.cashAvailable ?? null,
+      splits: splits ?? [],
     });
     if (!chart) return null;
     // Why the ladder lines are missing: no backtest, or one from before the levels were recorded.
     const ladderMissing = !backtest ? "no analysis backtest" : backtest.ladderLevels === undefined || figures.formulasVersion < analysisLadderLevelsFormulasVersion ? "computed with an older version of the formulas; Update Analysis to see them" : null;
     return { ...chart, smallDays: potOnDay ? chart.smallDays : null, hasBacktest: backtest !== null, ladderMissing };
-  }, [bars, shown, figures, theme, drawdown, symbol, logScale]);
+  }, [bars, shown, figures, theme, drawdown, symbol, logScale, splits]);
 
   const volatilityChart = useMemo(() => {
     const offset = priceWindow.from;
@@ -142,6 +145,7 @@ export function AnalysisPriceCards({ symbol, figures, shown, showingTrial, stale
                   <span className="analysis-legend-item">{priceChart.lastLevel ? "Levels from the analysis's backtest, each day a cycle held shares" : "No cycle held shares in this range (the analysis's backtest)"}</span>
                 </>
               )}
+              <SplitLegendItem splits={priceChart.splitsInRange} />
               {priceChart.cashPanel && (
                 <span className="analysis-legend-item">
                   <span className="analysis-ladder-line is-cash-available" />

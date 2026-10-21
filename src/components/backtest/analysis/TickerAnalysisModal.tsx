@@ -486,7 +486,7 @@ export function TickerAnalysisModal({ symbol, onClose, onSuitabilitySaved }: Tic
                 ?.scrollIntoView({ behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth", block: "start" }),
             );
           }} onBacktest={(values) => setConfirm({ values })} />
-        <AnalysisPriceCards symbol={symbol} figures={shownFigures} shown={shown} showingTrial={trial !== null} stale={stale} missingBars={missingBars} />
+        <AnalysisPriceCards symbol={symbol} figures={shownFigures} shown={shown} showingTrial={trial !== null} stale={stale} splits={view?.detectedSplits ?? null} missingBars={missingBars} />
         <AnalysisLiquidityCards symbol={symbol} figures={shownFigures} computedWith={shown} putsCapped={putsCapped} onPutsCappedChange={setPutsCapped} stale={stale} />
         <AnalysisChainMapCard figures={shownFigures} computedWith={shown} putsCapped={putsCapped} onPutsCappedChange={setPutsCapped} stale={stale} />
         <div className="analysis-two-col">

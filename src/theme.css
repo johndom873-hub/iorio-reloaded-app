@@ -2513,6 +2513,7 @@
 .analysis-ladder-line { display: inline-block; width: 1.2rem; height: 0; border-top: 2px solid var(--analysis-ladder); }
 .analysis-ladder-line.is-dashed { border-top-style: dashed; }
 .analysis-ladder-line.is-cash-available { border-top-color: var(--analysis-cash-available); }
+.analysis-split-line { display: inline-block; width: 0; height: 0.9rem; border-left: 2px dashed var(--tblr-secondary-color); }
 .analysis-panel-label { margin: 0.25rem 0 0 3.25rem; font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--tblr-secondary-color); }
 /* A price chart whose window a drag moves (priceDrawdownChart.tsx): horizontal drags move it, vertical swipes still scroll
    the page on a phone. */

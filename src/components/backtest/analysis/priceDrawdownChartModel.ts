@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState, type HTMLAttributes, type RefObje
 import type { ApexAxisChartSeries, ApexOptions } from "apexcharts";
 import type { AnalysisBacktestFigures, AnalysisFigures, AnalysisMaxDrawdown, AnalysisPriceRange } from "../../../api/backtestAnalysis";
 import { analysisChartColors, analysisLadderPutBlockText, maxDrawdownOfBars } from "../../../lib/analysisPresentation";
+import { describeSplitRatio } from "../../../lib/backtestPresentation";
 import { daysToExpiry, formatAxisDollars, formatCurrency, formatDayMonthYear, formatOptionContractLabel, formatOrderSize, formatPercentage } from "../../../lib/formatters";
 
 // The "Price and Max drawdown" chart, shared by the Analyse window (its analysis backtest) and a session's results (that
@@ -173,6 +174,8 @@ export interface PriceDrawdownChartInput {
   strikeRuns: [string, string][];
   ladderLevels: NonNullable<AnalysisBacktestFigures["ladderLevels"]>;
   ladderRungsSold: NonNullable<AnalysisBacktestFigures["ladderRungsSold"]>;
+  /** The symbol's splits: a dashed line on the first day after each (the bars before it are the traded prices ÷ its ratio). */
+  splits: readonly { firstDayAfter: string; ratio: number }[];
   /** The account's cash available each day at its 10:00 marks: [date, free cash, cash locked in open puts, account value]; null: no panel. */
   cashAvailable: NonNullable<AnalysisBacktestFigures["cashAvailable"]> | null;
 }
@@ -196,6 +199,7 @@ export function buildPriceDrawdownChart(input: PriceDrawdownChartInput) {
   const last = bars.at(-1)![0];
   const inRange = ([from, to]: [string, string]) => to >= first && from <= last;
   const smallRuns = input.smallRuns.filter(inRange);
+  const splitsInRange = input.splits.filter((split) => split.firstDayAfter > first && split.firstDayAfter <= last);
   const strikeRuns = input.strikeRuns.filter(inRange);
   // The ladder (approved 2026-10-20): each day's next Put's cap (dashed) and floor (solid), and a dot per rung sold.
   const levelByDate = new Map(input.ladderLevels.map((level) => [level[0], level]));
@@ -250,6 +254,8 @@ export function buildPriceDrawdownChart(input: PriceDrawdownChartInput) {
         ...(drawdown
           ? [{ x: timeOfDate(drawdown.peakDate), x2: timeOfDate(drawdown.troughDate), fillColor: colors.drawdown, opacity: dark ? 0.16 : 0.1, borderColor: colors.border, label: { text: `Max drawdown ${formatPercentage(-drawdown.depth)}`, orientation: "horizontal", position: "top", textAnchor: "start", offsetX: 4, offsetY: -2, borderColor: colors.border, style: labelStyle } }]
           : []),
+        // A split (approved 2026-10-21): the prices before it are split-adjusted, the traded ones ÷ its ratio.
+        ...splitsInRange.map((split) => ({ x: timeOfDate(split.firstDayAfter) - dayMilliseconds / 2, borderColor: colors.secondary, strokeDashArray: 4, label: { text: `${describeSplitRatio(split.ratio)} split`, orientation: "horizontal", position: "bottom", textAnchor: "start", offsetX: 4, offsetY: -4, borderColor: colors.border, style: labelStyle } })),
         ...smallRuns.map(band(colors.shadeSmall, dark ? 0.35 : 0.3)),
         ...strikeRuns.map(band(colors.shadeStrike, dark ? 0.55 : 0.45)),
       ],
@@ -309,5 +315,5 @@ export function buildPriceDrawdownChart(input: PriceDrawdownChartInput) {
     : null;
   const lowestDay = cashInRange.reduce<(typeof cashInRange)[number] | null>((lowest, day) => (lowest === null || day.share < lowest.share ? day : lowest), null);
   const cashSummary = lowestDay ? { median: medianOf(cashInRange.map((day) => day.share))!, lowest: lowestDay.share, lowestDate: lowestDay.date } : null;
-  return { options, series, smallDays: daysIn(smallRuns), strikeDays: daysIn(strikeRuns), lastLevel, cashPanel, cashSummary };
+  return { options, series, smallDays: daysIn(smallRuns), strikeDays: daysIn(strikeRuns), lastLevel, cashPanel, cashSummary, splitsInRange };
 }

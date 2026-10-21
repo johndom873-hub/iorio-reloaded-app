@@ -1,6 +1,7 @@
 import { useMemo, useRef, type KeyboardEvent, type PointerEvent } from "react";
 import type { AnalysisFigures, AnalysisMaxDrawdown, AnalysisPriceRange } from "../../../api/backtestAnalysis";
-import { formatCurrency, formatDayMonthYear, formatPercentage } from "../../../lib/formatters";
+import { formatCurrency, formatDayMonthYear, formatNumber, formatPercentage } from "../../../lib/formatters";
+import { describeSplitRatio } from "../../../lib/backtestPresentation";
 import { ApexChart } from "../../charts/ApexChart";
 import { priceRanges, type PriceDrawdownChart, type PriceWindow } from "./priceDrawdownChartModel";
 
@@ -147,6 +148,18 @@ export function PriceDrawdownCaption({ chart, drawdown }: { chart: Pick<NonNulla
       {chart?.cashSummary && ` Cash available in this range: median ${formatPercentage(chart.cashSummary.median, 0)}, lowest ${formatPercentage(chart.cashSummary.lowest, 0)} on ${formatDayMonthYear(chart.cashSummary.lowestDate)}.`}
       {chart?.lastLevel && ` Ladder on ${formatDayMonthYear(chart.lastLevel[0])}: cap ${chart.lastLevel[1] === null ? "none" : formatCurrency(chart.lastLevel[1])}, floor ${chart.lastLevel[2] === null ? "none" : formatCurrency(chart.lastLevel[2])}.`}
     </div>
+  );
+}
+
+/** The legend item for the splits in the range: the bars before each are the traded prices divided by its ratio. */
+export function SplitLegendItem({ splits }: { splits: readonly { firstDayAfter: string; ratio: number }[] }) {
+  if (splits.length === 0) return null;
+  const text = splits.map((split) => `${describeSplitRatio(split.ratio)} on ${formatDayMonthYear(split.firstDayAfter)}`).join(", ");
+  return (
+    <span className="analysis-legend-item">
+      <span className="analysis-split-line" />
+      Split ({text}): the prices before it are split-adjusted, the traded prices ÷ {splits.length === 1 ? formatNumber(splits[0]!.ratio, 3) : "the ratios of the splits after them"}
+    </span>
   );
 }
 

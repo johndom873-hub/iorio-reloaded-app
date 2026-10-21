@@ -6,7 +6,7 @@ import { dateRuns } from "../../lib/analysisPresentation";
 import { formatNumber } from "../../lib/formatters";
 import { Spinner } from "../Spinner";
 import { BacktestCard } from "./backtestBits";
-import { LadderLegendItems, PriceChartActions, PriceDrawdownCaption, PriceDrawdownCharts, PriceWindowNavigator } from "./analysis/priceDrawdownChart";
+import { LadderLegendItems, PriceChartActions, PriceDrawdownCaption, PriceDrawdownCharts, PriceWindowNavigator, SplitLegendItem } from "./analysis/priceDrawdownChart";
 import { buildPriceDrawdownChart, historyYearsOf, useLogScalePreference, usePriceWindow } from "./analysis/priceDrawdownChartModel";
 
 // The Analyse window's "Price and Max drawdown" chart on a session's results (Marcelo 2026-10-20): over the session's
@@ -32,6 +32,7 @@ function PriceChartBody({ chart, range, logScale, severalSymbols }: { chart: Bac
       ladderLevels: chart.ladderLevels,
       ladderRungsSold: chart.ladderRungsSold,
       cashAvailable: chart.cashAvailable,
+      splits: chart.splits ?? [],
     });
   }, [chart, bars, drawdown, theme, logScale]);
 
@@ -64,6 +65,7 @@ function PriceChartBody({ chart, range, logScale, severalSymbols }: { chart: Bac
           ) : (
             <span className="analysis-legend-item">Ladder cap and floor: none recorded (no ladder in this session, or it ran before the levels were kept)</span>
           )}
+          <SplitLegendItem splits={drawn.splitsInRange} />
           {drawn.cashPanel && (
             <span className="analysis-legend-item">
               <span className="analysis-ladder-line is-cash-available" />

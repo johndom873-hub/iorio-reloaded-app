@@ -93,6 +93,8 @@ interface CellContext {
   buyAndHold: (symbol: string, firstDate: string, lastDate: string) => number | null;
   /** A symbol's price on a day, as traded: the 10:00 price or the close; null when not known. */
   priceOn: (symbol: string, date: string, at: "tenOclock" | "close") => number | null;
+  /** The traded price ÷ the split-adjusted one on a day: 1 with no split after it in the period, 10 before a 10-for-1. */
+  splitFactorOn: (symbol: string, date: string) => number;
 }
 
 /** A signed percentage in green or red; a grey one on an Idle or Stock only row. */
@@ -101,11 +103,23 @@ function SignedPercent({ fraction, plain = false }: { fraction: number | null; p
   return <span className={plain ? undefined : pnlTextClass(fraction)}>{formatSignedPercentage(fraction, 1)}</span>;
 }
 
-const priceText = (price: number | null) => (price === null ? dash : formatCurrency(price));
+/**
+ * A price as traded; on a day before a split, the price chart's split-adjusted figure in a tooltip (Marcelo 2026-10-21:
+ * the chart's $133.91 and the table's $1,333.50 were the same NFLX day either side of its 10-for-1).
+ */
+function priceText(price: number | null, splitFactor = 1): ReactNode {
+  if (price === null) return dash;
+  if (Math.abs(splitFactor - 1) < 0.001) return formatCurrency(price);
+  return (
+    <TooltipSpan text={`As traded. On the price chart's split-adjusted scale: ${formatCurrency(price / splitFactor)} (÷ ${formatNumber(splitFactor, 3)}, for the splits after this day)`} className="dotted-underline-label">
+      {formatCurrency(price)}
+    </TooltipSpan>
+  );
+}
 const cashText = (share: number | null | undefined) => (share == null ? dash : formatPercentage(share, 0));
 
 /** A stretch's cells (an Idle row between cycles, a Stock only row in a cycle's trades). */
-function stretchCell(key: string, stretch: BacktestIdleStretch, own: { label: ReactNode; sessions: string; reason: string; rules: string; accountReturn: ReactNode; price: number | null; shares: number | null }): ReactNode {
+function stretchCell(key: string, stretch: BacktestIdleStretch, own: { label: ReactNode; sessions: string; reason: string; rules: string; accountReturn: ReactNode; price: number | null; splitFactor: number; shares: number | null }): ReactNode {
   switch (key) {
     case "cycle":
       return own.label;
@@ -126,7 +140,7 @@ function stretchCell(key: string, stretch: BacktestIdleStretch, own: { label: Re
     case "sessions":
       return own.sessions;
     case "price":
-      return priceText(own.price);
+      return priceText(own.price, own.splitFactor);
     case "shares":
       return own.shares === null ? dash : formatNumber(own.shares);
     case "cash":
@@ -150,6 +164,7 @@ function gapCell(key: string, gap: BacktestCycleGap, context: CellContext): Reac
     rules: describeIdleStretchRules(gap, "No entry", gap.entryFilterLimits),
     accountReturn: <SignedPercent fraction={context.accountReturn(gap.firstIdleDay, gap.lastIdleDay)} plain />,
     price: context.priceOn(gap.symbol, gap.firstIdleDay, "tenOclock"),
+    splitFactor: context.splitFactorOn(gap.symbol, gap.firstIdleDay),
     shares: null,
   });
 }
@@ -164,6 +179,7 @@ function stockOnlyCell(key: string, cycle: BacktestCycle, stretch: BacktestStock
     rules: describeIdleStretchRules(stretch, "No call"),
     accountReturn: null,
     price: context.priceOn(cycle.symbol, stretch.firstIdleDay, "tenOclock"),
+    splitFactor: context.splitFactorOn(cycle.symbol, stretch.firstIdleDay),
     shares: stretch.sharesHeld,
   });
 }
@@ -187,7 +203,7 @@ function tradeCell(key: string, cycle: BacktestCycle, row: BacktestCycleTimeline
     case "sessions":
       return describeSessionSpan(context.sessionNumberOf(row.tradingDate));
     case "price":
-      return priceText(context.priceOn(cycle.symbol, row.tradingDate, event.priceAt));
+      return priceText(context.priceOn(cycle.symbol, row.tradingDate, event.priceAt), context.splitFactorOn(cycle.symbol, row.tradingDate));
     case "breakEven":
       return row.breakEvenAtSale == null ? null : formatCurrency(row.breakEvenAtSale);
     case "shares":
@@ -246,7 +262,7 @@ function cycleCell(key: string, cycle: BacktestCycle, context: CellContext): Rea
     case "sessions":
       return describeSessionSpan(context.sessionNumberOf(cycle.openedOn), cycle.closedOn === null ? context.lastSessionNumber : context.sessionNumberOf(cycle.closedOn));
     case "price":
-      return priceText(context.priceOn(cycle.symbol, cycle.openedOn, "tenOclock"));
+      return priceText(context.priceOn(cycle.symbol, cycle.openedOn, "tenOclock"), context.splitFactorOn(cycle.symbol, cycle.openedOn));
     case "breakEven":
       return cycle.status === "open" && cycle.cashBreakEvenPerShare != null ? describeBreakEven(cycle.cashBreakEvenPerShare) : dash;
     // An open cycle: the latest; a closed one: the most shares it held and its lowest Cash, the day on hover.
@@ -448,6 +464,10 @@ export function BacktestCyclesTable({
       accountReturn: (firstDate, lastDate) => (symbols.length === 1 ? accountReturnOver(sessionDays, firstDate, lastDate) : null),
       buyAndHold: (symbol, firstDate, lastDate) => closeToCloseReturn(adjustedCloses.get(symbol) ?? [], firstDate, lastDate),
       priceOn: (symbol, date, at) => pricesByDate.get(symbol)?.get(date)?.[at === "tenOclock" ? 1 : 2] ?? null,
+      splitFactorOn: (symbol, date) => {
+        const day = pricesByDate.get(symbol)?.get(date);
+        return day && day[2] !== null && day[3] !== null && day[3] > 0 ? Math.round((day[2] / day[3]) * 1000) / 1000 : 1;
+      },
     };
   }, [sessionDays, openCycleKeys, stockPrices, symbols.length]);
   const columns = useMemo<DataTableColumn<CyclesTableRow>[]>(() => columnDefinitions.map((column) => ({ ...column, render: (row: CyclesTableRow) => cellOf(row, column.key, context) })), [context]);
