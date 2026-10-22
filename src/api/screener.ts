@@ -9,10 +9,8 @@ export interface ScreenerScanRow {
   matchedScanCodes: string[];
   lastPrice: string | null;
   avgShareVolume: string | null;
-  avgOptionVolume: string | null;
   callOpenInterest: string | null;
   putOpenInterest: string | null;
-  bidAskSpreadPct: string | null;
   impliedVolatility: string | null;
   firstSeenAt: string;
   lastMatchedAt: string | null;

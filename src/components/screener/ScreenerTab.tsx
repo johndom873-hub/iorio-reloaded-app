@@ -239,13 +239,6 @@ export function ScreenerTab({ onOpenTickerModal }: ScreenerTabProps) {
       align: "right",
       render: (row) => formatCompactNumber(row.putOpenInterest === null ? null : Number(row.putOpenInterest)),
     },
-    {
-      key: "bidAskSpreadPct",
-      header: "Spread %",
-      headerTitle: "Bid/Ask Spread",
-      align: "right",
-      render: (row) => formatPercentage(row.bidAskSpreadPct === null ? null : Number(row.bidAskSpreadPct)),
-    },
     { key: "firstSeenAt", header: "First Seen", render: (row) => formatRelativeDate(row.firstSeenAt) },
     { key: "lastMatchedAt", header: "Matched", render: (row) => formatRelativeDate(row.lastMatchedAt) },
     { key: "lastRefreshedAt", header: "Refreshed", render: (row) => formatRelativeDate(row.lastRefreshedAt) },
