@@ -299,6 +299,9 @@
 .iorio-topbar {
   background-color: #0f141d;
   box-shadow: none;
+  /* The logo already fills the bar's content height: Tabler's brand padding on top of it made the row
+     taller than the bar, pushing every item below the bar's vertical centre. */
+  --tblr-navbar-brand-padding-y: 0;
 }
 
 /* Iorio Pulse's topbar nav link (2026-09-13, re-centered 2026-09-14) —
