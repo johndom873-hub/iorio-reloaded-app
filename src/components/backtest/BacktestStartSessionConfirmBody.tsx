@@ -123,7 +123,7 @@ export function BacktestStartSessionConfirmBody(props: BacktestStartSessionConfi
           <h4 className="subheader mb-2">Each ticker</h4>
           {resolution ? (
             <div className="table-responsive mb-3">
-              <table className="table table-sm table-vcenter mb-0 backtest-confirm-table">
+              <table className="table table-sm table-vcenter mb-0 backtest-confirm-table table-freeze-first-column-on-phone">
                 <thead className="table-light">
                   <tr>
                     <th>Ticker</th>

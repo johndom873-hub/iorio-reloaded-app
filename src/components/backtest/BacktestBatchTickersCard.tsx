@@ -13,7 +13,7 @@ export function BacktestBatchTickersCard({ runs }: { runs: BacktestBatchRun[] })
   return (
     <BacktestCard title="Per ticker in each run" description="cycle P&L and options sold, from each run's Per symbol table" className="mb-3">
       <div className="table-responsive">
-        <table className="table table-sm table-vcenter card-table mb-0">
+        <table className="table table-sm table-vcenter card-table mb-0 table-freeze-first-column-on-phone">
           <thead className="table-light">
             <tr>
               <th>Ticker</th>

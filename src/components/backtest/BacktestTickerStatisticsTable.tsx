@@ -16,7 +16,7 @@ function openCyclesDollars(statistics: BacktestTickerStatistics): number {
 const recoveryGroup = { label: "Recovery sessions", title: "Closed cycles that had a put assigned: trading sessions from the assignment to the cycle's close." };
 
 const columns: DataTableColumn<BacktestTickerStatistics>[] = [
-  { key: "symbol", header: "Symbol", cellClassName: "fw-semibold", render: (row) => row.symbol },
+  { key: "symbol", header: "Symbol", cellClassName: "fw-semibold", freezeOnPhone: true, render: (row) => row.symbol },
   { key: "cyclePnl", header: "Cycle P&L", headerTitle: `${backtestCycleMetricExplanation.cyclePnl} Per symbol: the sum of its cycles' totals.`, align: "right", render: (row) => <SignedDollars value={row.totalPnlDollars} /> },
   {
     key: "realized",

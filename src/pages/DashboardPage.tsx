@@ -758,7 +758,7 @@ export function DashboardPage() {
           {!needsAttentionError && needsAttentionLoading && <Spinner size="sm" label="Loading positions needing attention" />}
           {!needsAttentionError && !needsAttentionLoading && (
             <div className="table-responsive table-flush">
-              <table className="table table-sm table-vcenter card-table mb-0">
+              <table className={`table table-sm table-vcenter card-table mb-0${isNeedsAttentionColumnVisible("ticker") ? " table-freeze-first-column-on-phone" : ""}`}>
                 <thead className="table-light">
                   <tr>
                     {isNeedsAttentionColumnVisible("ticker") && <th>Ticker</th>}

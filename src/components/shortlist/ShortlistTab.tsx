@@ -236,6 +236,7 @@ export function ShortlistTab({ onOpenTickerModal }: ShortlistTabProps) {
     {
       key: "symbol",
       header: "Ticker",
+      freezeOnPhone: true,
       render: (row) => (
         <span className="d-inline-flex align-items-center text-nowrap">
           <button

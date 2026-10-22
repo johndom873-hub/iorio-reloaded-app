@@ -23,6 +23,8 @@ export interface DataTableColumn<TRow> {
   headerClassName?: string;
   /** Opt-in sorting: the header becomes a button ordering the rows by this value (nulls last either way). */
   sortValue?: (row: TRow) => number | string | null;
+  /** On phones, keep this column at the left edge while the others scroll sideways (applies only while it is the first visible column). */
+  freezeOnPhone?: boolean;
 }
 
 /** A full-width row drawn before or after a data row: a gap between rows, a row's opened detail. */
@@ -188,8 +190,12 @@ export function DataTable<TRow>({
       )}
       {beforeTable}
       <div className="table-responsive" style={maxBodyHeight ? { maxHeight: maxBodyHeight, overflowY: "auto" } : undefined}>
-        <table className="table table-sm table-hover table-vcenter card-table" style={dense ? { fontSize: "0.8rem" } : undefined}>
-          <thead className="table-light" style={maxBodyHeight ? { position: "sticky", top: 0, zIndex: 1 } : undefined}>
+        <table
+          className={["table table-sm table-hover table-vcenter card-table", visibleColumns[0]?.freezeOnPhone ? "table-freeze-first-column-on-phone" : undefined].filter(Boolean).join(" ")}
+          style={dense ? { fontSize: "0.8rem" } : undefined}
+        >
+          {/* zIndex 2: above a frozen first column's body cells (z-index 1) when the body scrolls under the header. */}
+          <thead className="table-light" style={maxBodyHeight ? { position: "sticky", top: 0, zIndex: 2 } : undefined}>
             {visibleColumns.some((column) => column.group) && (
               <tr className="data-table-group-row">
                 {groupHeaderCells(visibleColumns).map((cell) => (

@@ -285,7 +285,7 @@ export function AnalysisCorrelationCard({ symbol, figures }: { symbol: string; f
         </div>
       </div>
       <div className="table-responsive">
-        <table className="table table-sm card-table mb-0">
+        <table className={`table table-sm card-table mb-0${isColumnVisible("ticker") ? " table-freeze-first-column-on-phone" : ""}`}>
           <thead className="table-light">
             <tr>
               {correlationColumns

@@ -283,6 +283,7 @@ export function PositionsPage() {
     {
       key: "symbol",
       header: "Symbol",
+      freezeOnPhone: true,
       sortValue: (row) => row.symbol,
       render: (row) => (
         <span className="d-inline-flex align-items-center text-nowrap">

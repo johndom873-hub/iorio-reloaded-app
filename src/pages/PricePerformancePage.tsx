@@ -205,6 +205,7 @@ export function PricePerformancePage() {
     {
       key: "symbol",
       header: "Symbol",
+      freezeOnPhone: true,
       render: (row) => (
         <button
           type="button"

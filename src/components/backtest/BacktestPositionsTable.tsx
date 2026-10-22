@@ -42,7 +42,7 @@ function PositionLegs({ position }: { position: BacktestPosition }) {
 }
 
 const columns: DataTableColumn<BacktestPosition>[] = [
-  { key: "symbol", header: "Symbol", cellClassName: "fw-semibold", render: (position) => position.symbol },
+  { key: "symbol", header: "Symbol", cellClassName: "fw-semibold", freezeOnPhone: true, render: (position) => position.symbol },
   { key: "strategy", header: "Strategy", render: (position) => <StrategyBadge strategyKey={position.strategyKey} /> },
   {
     key: "pnl",

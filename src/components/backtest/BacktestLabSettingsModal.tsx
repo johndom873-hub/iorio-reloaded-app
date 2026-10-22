@@ -361,7 +361,7 @@ export function BacktestLabSettingsModal({ onClose, stacked = false }: { onClose
   const sections: BacktestSettingSection[] = ["baseline_wheel", "pluto_rules"];
 
   const overrideColumns: DataTableColumn<BacktestLabTickerOverrides>[] = [
-    { key: "ticker", header: "Ticker", render: (row) => <span className="fw-bold">{row.symbol}</span> },
+    { key: "ticker", header: "Ticker", freezeOnPhone: true, render: (row) => <span className="fw-bold">{row.symbol}</span> },
     { key: "pot", header: "Pot", align: "right", render: (row) => (row.potDollars === null ? <span className="text-secondary">lab</span> : formatCurrency(row.potDollars, 0)) },
     { key: "shares", header: "Shares", align: "right", render: (row) => (row.ladderSharesPct === null ? <span className="text-secondary">lab</span> : `${formatNumber(row.ladderSharesPct)}%`) },
     { key: "rungs", header: "Rungs", align: "right", render: (row) => (row.ladderRungs === null ? <span className="text-secondary">lab</span> : formatNumber(row.ladderRungs)) },

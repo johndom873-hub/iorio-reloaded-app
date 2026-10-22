@@ -1178,6 +1178,37 @@
   box-sizing: border-box;
 }
 
+/* Phones: the ticker column stays at the left edge while the figures scroll sideways under it (DataTable's freezeOnPhone, or
+   this class on a hand-built table whose first column is the ticker). Header and totals cells are already opaque; body cells
+   get the card's surface. A sticky cell loses the table's collapsed borders while scrolled, so its right edge is drawn by
+   ::after. Group-heading cells (spanning several columns) and full-width extra rows stay in place. */
+@media (max-width: 767.98px) {
+  .table-freeze-first-column-on-phone > thead > tr:not(.data-table-group-row) > th:first-child,
+  .table-freeze-first-column-on-phone > tbody > tr:not(.data-table-extra-row) > td:first-child,
+  .table-freeze-first-column-on-phone > tfoot > tr > td:first-child {
+    position: sticky;
+    left: 0;
+    z-index: 1;
+    /* table-sm's 4px leaves the header label touching the divider. */
+    padding-right: 0.5rem;
+  }
+  .table-freeze-first-column-on-phone > tbody > tr:not(.data-table-extra-row) > td:first-child {
+    --tblr-table-bg: var(--tblr-bg-surface);
+    background-color: var(--tblr-bg-surface);
+  }
+  .table-freeze-first-column-on-phone > thead > tr:not(.data-table-group-row) > th:first-child::after,
+  .table-freeze-first-column-on-phone > tbody > tr:not(.data-table-extra-row) > td:first-child::after,
+  .table-freeze-first-column-on-phone > tfoot > tr > td:first-child::after {
+    content: "";
+    position: absolute;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    width: 1px;
+    background-color: var(--tblr-border-color);
+  }
+}
+
 /* Wheel cycles table (BacktestCyclesTable): the Idle rows and an opened cycle's trades sit on the page's own background, a
    step below the card in both themes; Idle and Stock only rows read in the secondary grey. A trade's event name (and a
    Stock only row's label) is indented under its cycle. */
