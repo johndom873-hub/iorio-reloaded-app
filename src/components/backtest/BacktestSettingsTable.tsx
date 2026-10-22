@@ -1,7 +1,7 @@
 import type { BacktestSettingRow } from "../../api/backtest";
 import { useMediaQuery } from "../../hooks/useMediaQuery";
 import { describeUnavailableChoices, formatSettingRowValue, gradeOptions, isSettingChanged, settingInputText, settingUnitSuffix, settingValueProblem, tradeGradeLabel } from "../../lib/backtestPresentation";
-import { backtestSettingSectionTitles, groupBacktestSettingRows, plutoRulesSectionNote, settingAppliesNow } from "../../lib/backtestSettingGroups";
+import { backtestSettingSectionNotes, backtestSettingSectionTitles, groupBacktestSettingRows, settingAppliesNow } from "../../lib/backtestSettingGroups";
 
 interface BacktestSettingsTableProps {
   rows: BacktestSettingRow[];
@@ -124,19 +124,23 @@ export function BacktestSettingsTable({ rows, valueByPath, onValueChange, onRese
   const nowByPath = new Map(rows.map((row) => [row.path, settingInputText(row.now)]));
   const valueOf = (path: string) => valueByPath[path] ?? nowByPath.get(path);
   const perTickerGroup = groups.find((entry) => entry.rows.some((row) => row.perTicker))?.group;
-  /** The Pluto section starts at its first group, under its title and note. */
-  const firstPlutoGroup = groups.find((entry) => entry.section === "pluto_rules")?.group;
+  /** The Steady Stake's and Pluto's sections each start at their first group, under the section's title and note. */
+  const sectionStartingAt = (group: string) => {
+    const entry = groups.find((candidate) => candidate.group === group);
+    if (!entry || entry.section === "baseline_wheel" || groups.find((candidate) => candidate.section === entry.section)?.group !== group) return null;
+    return entry.section;
+  };
 
   if (isPhone) {
     return (
       <div>
         {groups.map(({ group, rows: groupRows }) => (
           <section key={group}>
-            {group === firstPlutoGroup && (
+            {sectionStartingAt(group) && (
               <div className="px-3 py-2 border-bottom backtest-settings-section-band">
-                <div className="subheader">{backtestSettingSectionTitles.pluto_rules}</div>
+                <div className="subheader">{backtestSettingSectionTitles[sectionStartingAt(group)!]}</div>
                 <div className="text-secondary" style={{ fontSize: "0.78rem" }}>
-                  {plutoRulesSectionNote}
+                  {backtestSettingSectionNotes[sectionStartingAt(group)!]}
                 </div>
               </div>
             )}
@@ -221,12 +225,12 @@ export function BacktestSettingsTable({ rows, valueByPath, onValueChange, onRese
         </thead>
         <tbody>
           {groups.map(({ group, rows: groupRows }) => [
-            group === firstPlutoGroup && (
-              <tr key="section-pluto-rules" className="backtest-settings-section-row">
+            sectionStartingAt(group) && (
+              <tr key={`section-${sectionStartingAt(group)}`} className="backtest-settings-section-row">
                 <td colSpan={5} style={{ whiteSpace: "normal" }}>
-                  <div className="subheader">{backtestSettingSectionTitles.pluto_rules}</div>
+                  <div className="subheader">{backtestSettingSectionTitles[sectionStartingAt(group)!]}</div>
                   <div className="text-secondary" style={{ fontSize: "0.78rem" }}>
-                    {plutoRulesSectionNote}
+                    {backtestSettingSectionNotes[sectionStartingAt(group)!]}
                   </div>
                 </td>
               </tr>

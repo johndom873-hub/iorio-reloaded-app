@@ -14,7 +14,7 @@ import {
 } from "../../api/backtestAnalysis";
 import { buildBacktestOverrides, formatSettingRowValue, gradeOptions, isSettingChanged, settingInputText, settingValueProblem, tradeGradeLabel } from "../../lib/backtestPresentation";
 import { ApiError } from "../../api/client";
-import { backtestSettingGroupSummary, backtestSettingLines, backtestSettingSectionTitles, groupBacktestSettingRows, labelSettingPaths, labTickersKeepingTheirOwn, plutoRulesSectionNote, settingAppliesNow, settingPathsInMessage, type BacktestSettingLine } from "../../lib/backtestSettingGroups";
+import { backtestSettingGroupSummary, backtestSettingLines, backtestSettingSectionTitles, groupBacktestSettingRows, labelSettingPaths, labTickersKeepingTheirOwn, backtestSettingSectionNotes, settingAppliesNow, settingPathsInMessage, type BacktestSettingLine } from "../../lib/backtestSettingGroups";
 import { formatBrowserClockTime, formatBrowserDayMonth, formatCurrency, formatDayMonthYear, formatNumber, pluralizeCount } from "../../lib/formatters";
 import { ConfirmModal } from "../ConfirmModal";
 import { DataTable, type DataTableColumn } from "../DataTable/DataTable";
@@ -358,7 +358,7 @@ export function BacktestLabSettingsModal({ onClose, stacked = false }: { onClose
     );
   };
 
-  const sections: BacktestSettingSection[] = ["baseline_wheel", "pluto_rules"];
+  const sections: BacktestSettingSection[] = ["baseline_wheel", "steady_stake", "pluto_rules"];
 
   const overrideColumns: DataTableColumn<BacktestLabTickerOverrides>[] = [
     { key: "ticker", header: "Ticker", freezeOnPhone: true, render: (row) => <span className="fw-bold">{row.symbol}</span> },
@@ -452,13 +452,13 @@ export function BacktestLabSettingsModal({ onClose, stacked = false }: { onClose
             {!hasChanges && actionError && <div className="alert alert-danger mb-0">{actionError}</div>}
             {sections.map((section) => (
               <div key={section} className="pm-stack tight">
-                {section === "pluto_rules" && (
+                {backtestSettingSectionNotes[section] && (
                   <>
                     <h3 className="lab-settings-section-title">{backtestSettingSectionTitles[section]}</h3>
                     <div className="pm-alert info">
                       <InfoIcon />
                       <div className="pm-alert-body">
-                        <div className="pm-alert-text">{plutoRulesSectionNote}</div>
+                        <div className="pm-alert-text">{backtestSettingSectionNotes[section]}</div>
                       </div>
                     </div>
                   </>

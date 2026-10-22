@@ -8,10 +8,16 @@ import { decisionMakerLabel } from "./backtestPresentation";
 
 export const backtestSettingSectionTitles: Record<BacktestSettingSection, string> = {
   baseline_wheel: "Used by the CC + Put Ladder",
+  steady_stake: "Used by the Steady Stake",
   pluto_rules: "Pluto's rules and the AI model",
 };
 
-export const plutoRulesSectionNote = "Used only when the decision maker is the rules or the AI model. None of these change a CC + Put Ladder session.";
+export const steadyStakeSectionNote = "Used only when the decision maker is the Steady Stake. None of these change a CC + Put Ladder session or Pluto's rules; the ladder's values and Pluto's rules don't change a Steady Stake session.";
+
+export const plutoRulesSectionNote = "Used only when the decision maker is the rules or the AI model. None of these change a CC + Put Ladder or Steady Stake session.";
+
+/** The note under a section's title; the CC + Put Ladder's section opens the table and has none. */
+export const backtestSettingSectionNotes: Record<BacktestSettingSection, string | null> = { baseline_wheel: null, steady_stake: steadyStakeSectionNote, pluto_rules: plutoRulesSectionNote };
 
 export interface BacktestSettingRowGroup {
   group: BacktestSettingGroup;
@@ -123,6 +129,13 @@ export function backtestSettingGroupSummary(group: BacktestSettingGroup, text: (
     }
     case "Exits":
       return [Number(text("baseline.takeProfitPct")) > 0 ? `take profit at ${shown("baseline.takeProfitPct")}` : "hold to expiry", Number(text("baseline.shareStopLossPct")) > 0 ? `share stop ${shown("baseline.shareStopLossPct")}` : "no share stop"].join(" · ");
+    case "Steady Stake":
+      return [
+        `stake ${shown("steadyStake.stakePct")} ± ${text("steadyStake.rebalanceBandPct")}`,
+        Number(text("steadyStake.callCoveragePct")) > 0 ? `Calls on ${shown("steadyStake.callCoveragePct")} of free lots at ${text("steadyStake.callAbsDelta")}` : "no Calls",
+        Number(text("steadyStake.putCashPct")) > 0 ? `Puts on ${shown("steadyStake.putCashPct")} of free cash at ${text("steadyStake.putAbsDelta")}` : "no Puts",
+        "expiry days only",
+      ].join(" · ");
     case "Capital and sizing":
       return `budget ${shown("pluto.capitalBudgetPct")} · order ${shown("pluto.orderSizePctOfBudget")} · Kelly ${text("kellyFraction")}`;
     case "Candidate quality":

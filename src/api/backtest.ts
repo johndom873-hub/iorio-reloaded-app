@@ -13,7 +13,7 @@ export type BacktestJobDisplayStatus = BacktestJobStatus | "stopped";
 export type BacktestTablesMode = "walk_forward" | "current";
 
 /** Who makes the choices the AI model makes live: the stand-in rules (BacktestPolicySettings), or the model itself (Claude through the subscription, src/backtest/llm/). */
-export type BacktestDecisionMaker = "rules" | "llm" | "baseline";
+export type BacktestDecisionMaker = "rules" | "llm" | "baseline" | "steady_stake";
 
 /** The baseline wheel (decision maker "baseline"): no Pluto rules and no Signals, everything held to expiry. */
 export interface BacktestBaselineSettings {
@@ -154,6 +154,20 @@ export interface BacktestSettings {
   decisionMaker?: BacktestDecisionMaker;
   /** Absent on sessions created before the baseline wheel existed. */
   baseline?: BacktestBaselineSettings;
+  /** Absent on sessions created before the Steady Stake existed. */
+  steadyStake?: BacktestSteadyStakeSettings;
+}
+
+/** The Steady Stake's values (the API's BacktestSteadyStakeSettings). */
+export interface BacktestSteadyStakeSettings {
+  stakePct: number;
+  rebalanceBandPct: number;
+  callCoveragePct: number;
+  callAbsDelta: number;
+  putCashPct: number;
+  putAbsDelta: number;
+  deltaTolerance: number;
+  maxSpreadPctOfMid: number;
 }
 
 export interface BacktestSettingsOverrides {
@@ -163,6 +177,7 @@ export interface BacktestSettingsOverrides {
   policy?: Partial<BacktestPolicySettings>;
   decisionMaker?: BacktestDecisionMaker;
   baseline?: Partial<BacktestBaselineSettings>;
+  steadyStake?: Partial<BacktestSteadyStakeSettings>;
 }
 
 /** A session's settings with its overrides applied and every default filled in: what the engine runs on. */
@@ -409,10 +424,10 @@ export interface BacktestSettingChoice {
   unavailableReason?: string;
 }
 
-export type BacktestSettingGroup = "How the session runs" | "Put ladder" | "Calls and Covered Calls" | "Contract choice" | "Entry filters" | "Exits" | "Capital and sizing" | "Candidate quality" | "Model" | "System checks" | "Rules' choices";
+export type BacktestSettingGroup = "How the session runs" | "Put ladder" | "Calls and Covered Calls" | "Contract choice" | "Entry filters" | "Exits" | "Steady Stake" | "Capital and sizing" | "Candidate quality" | "Model" | "System checks" | "Rules' choices";
 
-/** "baseline_wheel": rows the Baseline wheel (the CC + Put Ladder) reads, some shared with the rules and the AI model; "pluto_rules": rows only the rules and the AI model read. */
-export type BacktestSettingSection = "baseline_wheel" | "pluto_rules";
+/** "baseline_wheel": rows the Baseline wheel (the CC + Put Ladder) reads, some shared with the rules and the AI model; "steady_stake": rows only the Steady Stake reads; "pluto_rules": rows only the rules and the AI model read. */
+export type BacktestSettingSection = "baseline_wheel" | "steady_stake" | "pluto_rules";
 
 /** A row's value against another row's: `oneOf` / `noneOf` its choice values, or a number `above`. */
 export interface BacktestSettingCondition {
@@ -836,7 +851,7 @@ export interface BacktestFillsPage {
 /** The time of the capture's own look, "HH:MM" Eastern: the day's account mark and surface fit are taken then. */
 export const backtestCaptureLookTimeEt = "10:00";
 
-export type BacktestActionKind = "open_cash_secured_put" | "open_covered_call" | "roll" | "close_shares" | "close_leg" | "close_position";
+export type BacktestActionKind = "open_cash_secured_put" | "open_covered_call" | "buy_shares" | "roll" | "close_shares" | "close_leg" | "close_position";
 
 /** One thing Pluto did or tried in a pass: filled, or blocked with the gate that refused it. */
 export interface BacktestAction {

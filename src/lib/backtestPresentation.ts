@@ -1072,6 +1072,7 @@ export function formatBookInstant(isoInstant: string): string {
 export const actionKindLabel: Record<BacktestActionKind, string> = {
   open_cash_secured_put: "Open put",
   open_covered_call: "Open covered call",
+  buy_shares: "Buy shares",
   roll: "Roll",
   close_shares: "Sell shares",
   close_leg: "Buy back",
@@ -1149,10 +1150,10 @@ export function roundValueAxis(low: number, high: number, maxTicks: number): { m
 
 // ---- Decision maker (the stand-in rules, or the AI model through the Claude subscription) ----
 
-export const decisionMakerLabel: Record<BacktestDecisionMaker, string> = { rules: "Rules", llm: "The AI model", baseline: "Baseline wheel" };
+export const decisionMakerLabel: Record<BacktestDecisionMaker, string> = { rules: "Rules", llm: "The AI model", baseline: "Baseline wheel", steady_stake: "Steady Stake" };
 
 /** "decided by the rules", in a session's subtitle. */
-export const decidedByPhrase: Record<BacktestDecisionMaker, string> = { rules: "the rules", llm: "the AI model", baseline: "the baseline wheel" };
+export const decidedByPhrase: Record<BacktestDecisionMaker, string> = { rules: "the rules", llm: "the AI model", baseline: "the baseline wheel", steady_stake: "the Steady Stake" };
 
 /** Who decided a session's choices: its override, else its frozen settings; "rules" on sessions saved before the choice existed. */
 export function sessionDecisionMaker(session: { overrides: BacktestSettingsOverrides; settingsSnapshot: BacktestSettings }): BacktestDecisionMaker {
@@ -1261,6 +1262,7 @@ export const decisionMakerHint: Record<BacktestDecisionMaker, string> = {
   rules: "each pass looks at closes, then rolls, then opens",
   llm: "Claude through the subscription, asked as live Pluto asks it; the estimate shows below the Settings",
   baseline: "each ticker gets its own pot and ladder values (Tickers, below)",
+  steady_stake: "a steady share of each ticker's pot in its shares, Calls and Puts sold on expiry days; the starting value is split equally across the tickers",
 };
 
 /** Where a ticker's value came from, as its badge reads (lowest layer first: the order a reset walks back down). */
