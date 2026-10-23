@@ -65,6 +65,30 @@ export interface BacktestBaselineSettings {
   ranking: "premium_yield" | "edge_yield" | "time_value" | "premium_dollars" | "premium_per_day";
   expiryChoice: "any_in_range" | "nearest_qualifying";
   coverage: "best_contract" | "fill_down_ranking";
+  /** The hedge's long Puts (the API's backtestBaselineHedge.ts): their target days to expiry; 0 = no hedge. */
+  hedgePutTenorDays: number;
+  hedgePutExpiry: "nearest" | "first_at_or_after";
+  hedgePutStrikeFrom: "stock_price" | "price_paid";
+  hedgePutBelowPricePct: number;
+  hedgePutSize: "share_level" | "rung_level";
+  hedgePutCoveragePct: number;
+  hedgePutRollDaysLeft: number;
+  /** What the Puts cover: the shares each entry brings in, or the whole position (shares held plus the shares the open short Puts would bring), kept until their roll. */
+  hedgePutCovers: "entries" | "position";
+  /** With the whole position covered: how many expiries the Puts are spread over. */
+  hedgePutStaggeredExpiries: number;
+  /** The strike set by a share below a price, or by the Put's own |delta| (hedgePutAbsDelta). */
+  hedgePutStrikeBy: "price" | "delta";
+  hedgePutAbsDelta: number;
+  /** No purchase while the Put is too dear: its yearly cost against the stock's typical yearly fall, or its IV against the stock's median IV or the realized volatility. */
+  hedgePutPriceGate: "off" | "cost_vs_typical_fall" | "iv_vs_history" | "iv_vs_realized";
+  hedgePutCostFallShare: number;
+  hedgePutIvMultiple: number;
+  hedgeInBreakEven: "excluded" | "included";
+  /** How the hedge holds down its purchases: sell when the shares leave, keep for the next entry (unless struck far below), or wait between purchases. */
+  hedgePutTurnover: "sell_when_shares_leave" | "keep_for_next_entry" | "keep_unless_far_below" | "wait_between_purchases";
+  hedgePutTurnoverDays: number;
+  hedgePutFarBelowPct: number;
 }
 
 /** "shared_account": one book for every ticker (the rules, the AI model); "pots": each ticker its pot of one shared account (the baseline). */
@@ -424,7 +448,7 @@ export interface BacktestSettingChoice {
   unavailableReason?: string;
 }
 
-export type BacktestSettingGroup = "How the session runs" | "Put ladder" | "Calls and Covered Calls" | "Contract choice" | "Entry filters" | "Exits" | "Steady Stake" | "Capital and sizing" | "Candidate quality" | "Model" | "System checks" | "Rules' choices";
+export type BacktestSettingGroup = "How the session runs" | "Put ladder" | "Calls and Covered Calls" | "Contract choice" | "Entry filters" | "Exits" | "Hedge" | "Steady Stake" | "Capital and sizing" | "Candidate quality" | "Model" | "System checks" | "Rules' choices";
 
 /** "baseline_wheel": rows the Baseline wheel (the CC + Put Ladder) reads, some shared with the rules and the AI model; "steady_stake": rows only the Steady Stake reads; "pluto_rules": rows only the rules and the AI model read. */
 export type BacktestSettingSection = "baseline_wheel" | "steady_stake" | "pluto_rules";
@@ -651,6 +675,31 @@ export interface BacktestRunStatistics {
   daysWithoutMarketStressBars: number;
   /** LLM mode only: the decisions asked of the model, and how many the cache answered. */
   llmCalls?: { asked: number; fromCache: number };
+  /** The baseline wheel's hedge, when it is on: its long Puts over the session. */
+  hedge?: BacktestHedgeTotals;
+}
+
+/** The hedge's long Puts over a session (the API's summarizeHedge). */
+export interface BacktestHedgeTotals {
+  purchases: number;
+  contractsBought: number;
+  /** Fills × shares + commissions. */
+  costDollars: number;
+  sales: number;
+  contractsSold: number;
+  /** Fills × shares − commissions. */
+  proceedsDollars: number;
+  realizedPnlDollars: number;
+  openContracts: number;
+  openCostDollars: number;
+  openMarkDollars: number;
+  /** Half the quoted spread of every purchase and sale. */
+  halfSpreadDollars: number;
+  /** Puts kept between cycles: contracts kept, taken by a later entry, sold while kept, and those sales' P&L (in no cycle). */
+  keptContracts?: number;
+  keptContractsTaken?: number;
+  keptContractsSold?: number;
+  keptRealizedPnlDollars?: number;
 }
 
 /**
@@ -769,7 +818,7 @@ export interface BacktestPositionLeg {
 export interface BacktestPosition {
   positionId: string;
   symbol: string;
-  strategyKey: "cash_secured_put" | "covered_call" | "unstructured";
+  strategyKey: "cash_secured_put" | "covered_call" | "unstructured" | "hedge";
   status: "open" | "closed";
   openedAt: string;
   closedAt: string | null;
@@ -851,7 +900,7 @@ export interface BacktestFillsPage {
 /** The time of the capture's own look, "HH:MM" Eastern: the day's account mark and surface fit are taken then. */
 export const backtestCaptureLookTimeEt = "10:00";
 
-export type BacktestActionKind = "open_cash_secured_put" | "open_covered_call" | "buy_shares" | "roll" | "close_shares" | "close_leg" | "close_position";
+export type BacktestActionKind = "open_cash_secured_put" | "open_covered_call" | "buy_shares" | "roll" | "close_shares" | "close_leg" | "close_position" | "buy_hedge" | "sell_hedge";
 
 /** One thing Pluto did or tried in a pass: filled, or blocked with the gate that refused it. */
 export interface BacktestAction {

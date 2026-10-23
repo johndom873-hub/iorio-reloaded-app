@@ -990,10 +990,17 @@ export function describeCycleTimelineEvent(row: BacktestCycleTimelineRow): { nam
   const contracts = Math.round(row.quantity / 100);
   const opened = /^(Sold|Bought) (put|call) @ (\S+)(.*)$/.exec(row.label);
   if (opened) {
-    const saleDelta = opened[1] === "Sold" && row.delta != null ? ` · Δ ${formatDelta(row.delta)}` : "";
-    const saleYield = opened[1] === "Sold" ? saleDelta + (row.premiumYield == null ? "" : ` · ${formatPercentage(row.premiumYield, 1)} a year`) : "";
-    return { name: `${opened[1]} ${opened[2]}`, detail: `${contractOf(opened[2]!)}${formatOrderSize(contracts, Number(opened[3]))}${opened[4]}${saleYield}`, opensOption: true, priceAt: "tenOclock" };
+    // A hedge's Put is bought to open and sold to close: it has no delta or yield recorded, and only its purchase opens an option.
+    const hedge = row.bucket === "hedge";
+    const saleDelta = !hedge && opened[1] === "Sold" && row.delta != null ? ` · Δ ${formatDelta(row.delta)}` : "";
+    const saleYield = !hedge && opened[1] === "Sold" ? saleDelta + (row.premiumYield == null ? "" : ` · ${formatPercentage(row.premiumYield, 1)} a year`) : "";
+    return { name: `${opened[1]} ${opened[2]}`, detail: `${contractOf(opened[2]!)}${formatOrderSize(contracts, Number(opened[3]))}${opened[4]}${saleYield}`, opensOption: !hedge || opened[1] === "Bought", priceAt: "tenOclock" };
   }
+  // The hedge's fewer-purchases rule moves Puts between cycles without a trade: out at their mark, in at the price kept at.
+  const kept = /^Put kept for the next entry @ (\S+)$/.exec(row.label);
+  if (kept) return { name: "Put kept", detail: `${contractOf("put")}${formatOrderSize(contracts, Number(kept[1]))} kept for the next entry, at its mark`, opensOption: false, priceAt: "tenOclock" };
+  const taken = /^Put from the kept ones @ (\S+)$/.exec(row.label);
+  if (taken) return { name: "Put taken", detail: `${contractOf("put")}${formatOrderSize(contracts, Number(taken[1]))} from the kept ones, at the price kept at`, opensOption: true, priceAt: "tenOclock" };
   const boughtBack = /^Bought back (put|call) @ (\S+)$/.exec(row.label);
   if (boughtBack) return { name: "Bought back", detail: `${contractOf(boughtBack[1]!)}${formatOrderSize(contracts, Number(boughtBack[2]))}`, opensOption: false, priceAt: "tenOclock" };
   if (row.label.startsWith("Put assigned")) {
@@ -1077,6 +1084,8 @@ export const actionKindLabel: Record<BacktestActionKind, string> = {
   close_shares: "Sell shares",
   close_leg: "Buy back",
   close_position: "Close position",
+  buy_hedge: "Buy hedge",
+  sell_hedge: "Sell hedge",
 };
 
 export function failedGateOf(action: Pick<BacktestAction, "gateResults">): BacktestAction["gateResults"][number] | null {

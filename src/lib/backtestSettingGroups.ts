@@ -105,6 +105,13 @@ const rollSummaries: Record<string, string> = { flagged_legs: "roll flagged legs
  * A closed group's one-line summary. `text` is a row's value as typed; `shown` is how its row prints it (a choice's label,
  * a percent with its sign).
  */
+/** The Hedge group's fewer-purchases rule, when one is on: "kept 30 days for the next entry". */
+const fewerPurchasesSummary: Record<string, (text: (path: string) => string, shown: (path: string) => string) => string[]> = {
+  keep_for_next_entry: (text) => [`kept ${text("baseline.hedgePutTurnoverDays")} days for the next entry`],
+  keep_unless_far_below: (text, shown) => [`kept ${text("baseline.hedgePutTurnoverDays")} days unless ${shown("baseline.hedgePutFarBelowPct")} below`],
+  wait_between_purchases: (text) => [`${text("baseline.hedgePutTurnoverDays")} days between purchases`],
+};
+
 export function backtestSettingGroupSummary(group: BacktestSettingGroup, text: (path: string) => string, shown: (path: string) => string): string {
   switch (group) {
     case "How the session runs":
@@ -129,6 +136,36 @@ export function backtestSettingGroupSummary(group: BacktestSettingGroup, text: (
     }
     case "Exits":
       return [Number(text("baseline.takeProfitPct")) > 0 ? `take profit at ${shown("baseline.takeProfitPct")}` : "hold to expiry", Number(text("baseline.shareStopLossPct")) > 0 ? `share stop ${shown("baseline.shareStopLossPct")}` : "no share stop"].join(" · ");
+    case "Hedge": {
+      if (!(Number(text("baseline.hedgePutTenorDays")) > 0)) return "no hedge";
+      const byDelta = text("baseline.hedgePutStrikeBy") === "delta";
+      const strike = byDelta ? `|delta| ${text("baseline.hedgePutAbsDelta")}` : Number(text("baseline.hedgePutBelowPricePct")) > 0 ? `${shown("baseline.hedgePutBelowPricePct")} below` : "at the money";
+      const share = Number(text("baseline.hedgePutCoveragePct")) < 100 ? ` × ${shown("baseline.hedgePutCoveragePct")}` : "";
+      const gate = (
+        {
+          cost_vs_typical_fall: [`none while the yearly cost is above ${text("baseline.hedgePutCostFallShare")} × the typical yearly fall`],
+          iv_vs_history: [`none while IV is above ${text("baseline.hedgePutIvMultiple")} × the median IV`],
+          iv_vs_realized: [`none while IV is above ${text("baseline.hedgePutIvMultiple")} × realized volatility`],
+        } as Record<string, string[]>
+      )[text("baseline.hedgePutPriceGate")] ?? [];
+      if (text("baseline.hedgePutCovers") === "position")
+        return [
+          `Puts ${text("baseline.hedgePutTenorDays")} days (${text("baseline.hedgePutExpiry") === "nearest" ? "nearest" : "first at or after"}) over ${text("baseline.hedgePutStaggeredExpiries")} expiries`,
+          byDelta ? strike : `${strike} from the stock price`,
+          ...gate,
+          `the whole position${share}`,
+          `rolled at ${text("baseline.hedgePutRollDaysLeft")} days left`,
+          text("baseline.hedgeInBreakEven") === "included" ? "P&L in the break-even" : "P&L out of the break-even",
+        ].join(" · ");
+      return [
+        `Puts ${text("baseline.hedgePutTenorDays")} days (${text("baseline.hedgePutExpiry") === "nearest" ? "nearest" : "first at or after"})`,
+        byDelta ? strike : `${strike} from ${text("baseline.hedgePutStrikeFrom") === "price_paid" ? "the price paid" : "the stock price"}`,
+        ...gate,
+        `${text("baseline.hedgePutSize") === "rung_level" ? "rung level" : "share level"}${share}`,
+        text("baseline.hedgeInBreakEven") === "included" ? "P&L in the break-even" : "P&L out of the break-even",
+        ...(fewerPurchasesSummary[text("baseline.hedgePutTurnover")]?.(text, shown) ?? []),
+      ].join(" · ");
+    }
     case "Steady Stake":
       return [
         `stake ${shown("steadyStake.stakePct")} ± ${text("steadyStake.rebalanceBandPct")}`,
