@@ -977,12 +977,14 @@ export function describeLadderRung(rung: BacktestLadderRungRecord, sale: { strik
 
 /**
  * A cycle timeline row as the Wheel cycles table lists it: a short event name ("Sold put", "Put assigned", "Call assigned",
- * "To CC"), what happened ("$59 Put · 10 Jan (7DTE) · 7× @ 0.30 · Δ -0.21 · 61.4% a year": a sale shows the delta and the
- * annualised yield the engine recorded for it; no row shows its commission, which the cycle's P&L already counts), whether it
- * opened an option (its expiry then shows as the row's close), and the stock price that goes with it: the 10:00 price
- * the day's looks saw for a trade, the day's close for an assignment, a hand-over or a mark.
+ * "To CC"), the order's side when the row is an order (Buy, Sell or Buy back, shown as a badge before the detail; Marcelo
+ * 2026-10-24), what happened ("$59 Put · 10 Jan (7DTE) · 7× @ 0.30 · Δ -0.21 · 61.4% a year"; a hand-over, assignment or
+ * mark has no side; a sale shows the delta and the annualised yield the engine recorded for it; no row shows its
+ * commission, which the cycle's P&L already counts), whether it opened an option (its expiry then shows as the row's
+ * close), and the stock price that goes with it: the 10:00 price the day's looks saw for a trade, the day's close for an
+ * assignment, a hand-over or a mark.
  */
-export function describeCycleTimelineEvent(row: BacktestCycleTimelineRow): { name: string; detail: string; opensOption: boolean; priceAt: "tenOclock" | "close" } {
+export function describeCycleTimelineEvent(row: BacktestCycleTimelineRow): { name: string; order: CycleOrderSide | null; detail: string; opensOption: boolean; priceAt: "tenOclock" | "close" } {
   const shares = pluralizeCount(row.quantity, "share");
   const contractOf = (right: string) => (row.strike !== null && row.expiryDate !== null ? formatOptionContractLabel({ strike: row.strike, right: right === "put" ? "P" : "C", expiry: row.expiryDate, dte: daysToExpiry(row.expiryDate, row.tradingDate) }) : `${right}s`);
   const strike = row.strike === null ? "" : ` the ${formatCurrency(row.strike)} strike`;
@@ -994,32 +996,42 @@ export function describeCycleTimelineEvent(row: BacktestCycleTimelineRow): { nam
     const hedge = row.bucket === "hedge";
     const saleDelta = !hedge && opened[1] === "Sold" && row.delta != null ? ` · Δ ${formatDelta(row.delta)}` : "";
     const saleYield = !hedge && opened[1] === "Sold" ? saleDelta + (row.premiumYield == null ? "" : ` · ${formatPercentage(row.premiumYield, 1)} a year`) : "";
-    return { name: `${opened[1]} ${opened[2]}`, detail: `${contractOf(opened[2]!)}${formatOrderSize(contracts, Number(opened[3]))}${opened[4]}${saleYield}`, opensOption: !hedge || opened[1] === "Bought", priceAt: "tenOclock" };
+    return { name: `${opened[1]} ${opened[2]}`, order: opened[1] === "Sold" ? "Sell" : "Buy", detail: `${contractOf(opened[2]!)}${formatOrderSize(contracts, Number(opened[3]))}${opened[4]}${saleYield}`, opensOption: !hedge || opened[1] === "Bought", priceAt: "tenOclock" };
   }
+  // The Vol Farmer's hedge, marked at a hand-over of the shares (the API's cycleHedgeHandOvers.ts): what it made since its last mark.
+  const hedgeHanded = /^Put handed to (CC|Unstructured) @ (\S+)$/.exec(row.label);
+  if (hedgeHanded) {
+    const to = hedgeHanded[1] === "CC" ? "CC" : "N/S";
+    return { name: `Put to ${to}`, order: null, detail: `${contractOf("put")}${formatOrderSize(contracts, null)} handed to ${to}, marked at its ${formatCurrency(Number(hedgeHanded[2]))} close`, opensOption: false, priceAt: "close" };
+  }
+  if (row.label === "Put expired worthless") return { name: "Put expired", order: null, detail: `${contractOf("put")}${formatOrderSize(contracts, null)} expired worthless`, opensOption: false, priceAt: "close" };
   // The hedge's fewer-purchases rule moves Puts between cycles without a trade: out at their mark, in at the price kept at.
   const kept = /^Put kept for the next entry @ (\S+)$/.exec(row.label);
-  if (kept) return { name: "Put kept", detail: `${contractOf("put")}${formatOrderSize(contracts, Number(kept[1]))} kept for the next entry, at its mark`, opensOption: false, priceAt: "tenOclock" };
+  if (kept) return { name: "Put kept", order: null, detail: `${contractOf("put")}${formatOrderSize(contracts, Number(kept[1]))} kept for the next entry, at its mark`, opensOption: false, priceAt: "tenOclock" };
   const taken = /^Put from the kept ones @ (\S+)$/.exec(row.label);
-  if (taken) return { name: "Put taken", detail: `${contractOf("put")}${formatOrderSize(contracts, Number(taken[1]))} from the kept ones, at the price kept at`, opensOption: true, priceAt: "tenOclock" };
+  if (taken) return { name: "Put taken", order: null, detail: `${contractOf("put")}${formatOrderSize(contracts, Number(taken[1]))} from the kept ones, at the price kept at`, opensOption: true, priceAt: "tenOclock" };
   const boughtBack = /^Bought back (put|call) @ (\S+)$/.exec(row.label);
-  if (boughtBack) return { name: "Bought back", detail: `${contractOf(boughtBack[1]!)}${formatOrderSize(contracts, Number(boughtBack[2]))}`, opensOption: false, priceAt: "tenOclock" };
+  if (boughtBack) return { name: "Bought back", order: "Buy back", detail: `${contractOf(boughtBack[1]!)}${formatOrderSize(contracts, Number(boughtBack[2]))}`, opensOption: false, priceAt: "tenOclock" };
   if (row.label.startsWith("Put assigned")) {
     const close = row.strike !== null && row.quantity > 0 && row.stockDollars !== 0 ? `, worth ${formatCurrency(row.strike + row.stockDollars / row.quantity)} at the close` : "";
-    return { name: "Put assigned", detail: `${shares} bought at${strike}${close}`, opensOption: false, priceAt: "close" };
+    return { name: "Put assigned", order: null, detail: `${shares} bought at${strike}${close}`, opensOption: false, priceAt: "close" };
   }
-  if (row.label.startsWith("Call assigned")) return { name: "Call assigned", detail: `${shares} sold at${strike}`, opensOption: false, priceAt: "close" };
+  if (row.label.startsWith("Call assigned")) return { name: "Call assigned", order: null, detail: `${shares} sold at${strike}`, opensOption: false, priceAt: "close" };
   const handed = /^Shares handed to (CC|Unstructured)$/.exec(row.label);
   if (handed) {
     const to = handed[1] === "CC" ? "CC" : "N/S";
-    return { name: `To ${to}`, detail: `${shares} handed to ${to} ${row.stockPriceSource === "close" ? `at the ${price} close` : `at their ${price} cost`}`, opensOption: false, priceAt: "close" };
+    return { name: `To ${to}`, order: null, detail: `${shares} handed to ${to} ${row.stockPriceSource === "close" ? `at the ${price} close` : `at their ${price} cost`}`, opensOption: false, priceAt: "close" };
   }
-  if (row.label === "Bought shares" || row.label === "Sold shares") return { name: row.label, detail: `${shares} @ ${price}`, opensOption: false, priceAt: "tenOclock" };
+  if (row.label === "Bought shares" || row.label === "Sold shares") return { name: row.label, order: row.label === "Bought shares" ? "Buy" : "Sell", detail: `${shares} @ ${price}`, opensOption: false, priceAt: "tenOclock" };
   const marked = /^Marked to the (\S+) close$/.exec(row.label);
-  if (marked) return { name: "Marked", detail: `${shares} still held, at the ${price} close of ${marked[1]}`, opensOption: false, priceAt: "close" };
+  if (marked) return { name: "Marked", order: null, detail: `${shares} still held, at the ${price} close of ${marked[1]}`, opensOption: false, priceAt: "close" };
   const openMarked = /^Open (put|call) marked to market$/.exec(row.label);
-  if (openMarked) return { name: "Marked", detail: `${contractOf(openMarked[1]!)}${formatOrderSize(contracts, null)} still open, marked to market`, opensOption: false, priceAt: "close" };
-  return { name: row.label, detail: "", opensOption: false, priceAt: "close" };
+  if (openMarked) return { name: "Marked", order: null, detail: `${contractOf(openMarked[1]!)}${formatOrderSize(contracts, null)} still open, marked to market`, opensOption: false, priceAt: "close" };
+  return { name: row.label, order: null, detail: "", opensOption: false, priceAt: "close" };
 }
+
+/** An order's side in Wheel cycles: green for Buy and Buy back, red for Sell. */
+export type CycleOrderSide = "Buy" | "Sell" | "Buy back";
 
 // ---- Positions (the simulated book, as the platform's position rows would read) ----
 
@@ -1159,10 +1171,10 @@ export function roundValueAxis(low: number, high: number, maxTicks: number): { m
 
 // ---- Decision maker (the stand-in rules, or the AI model through the Claude subscription) ----
 
-export const decisionMakerLabel: Record<BacktestDecisionMaker, string> = { rules: "Rules", llm: "The AI model", baseline: "Baseline wheel", steady_stake: "Steady Stake" };
+export const decisionMakerLabel: Record<BacktestDecisionMaker, string> = { rules: "Rules", llm: "The AI model", baseline: "Baseline wheel", steady_stake: "Steady Stake", vol_farmer: "Vol Farmer" };
 
 /** "decided by the rules", in a session's subtitle. */
-export const decidedByPhrase: Record<BacktestDecisionMaker, string> = { rules: "the rules", llm: "the AI model", baseline: "the baseline wheel", steady_stake: "the Steady Stake" };
+export const decidedByPhrase: Record<BacktestDecisionMaker, string> = { rules: "the rules", llm: "the AI model", baseline: "the baseline wheel", steady_stake: "the Steady Stake", vol_farmer: "the Vol Farmer" };
 
 /** Who decided a session's choices: its override, else its frozen settings; "rules" on sessions saved before the choice existed. */
 export function sessionDecisionMaker(session: { overrides: BacktestSettingsOverrides; settingsSnapshot: BacktestSettings }): BacktestDecisionMaker {
@@ -1272,6 +1284,7 @@ export const decisionMakerHint: Record<BacktestDecisionMaker, string> = {
   llm: "Claude through the subscription, asked as live Pluto asks it; the estimate shows below the Settings",
   baseline: "each ticker gets its own pot and ladder values (Tickers, below)",
   steady_stake: "a steady share of each ticker's pot in its shares, Calls and Puts sold on expiry days; the starting value is split equally across the tickers",
+  vol_farmer: "shares, a Covered Call and a long Put that hedges them, all unwound when the stock reaches the Call's strike",
 };
 
 /** Where a ticker's value came from, as its badge reads (lowest layer first: the order a reset walks back down). */

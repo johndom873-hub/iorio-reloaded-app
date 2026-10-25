@@ -11,6 +11,15 @@ import { daysToExpiry, formatAxisDollars, formatCurrency, formatDayMonthYear, fo
 // This module: its ranges, the window a drag moves, the log scale preference and the chart's options (the components are in
 // priceDrawdownChart.tsx).
 
+/** A range button: one of the year ranges, or the option data's period (the Analyse window only). */
+export type PriceChartRange = AnalysisPriceRange | "Options data";
+
+/** The option data's first and last day. */
+export interface OptionDataPeriod {
+  from: string;
+  to: string;
+}
+
 export const priceRanges: { key: AnalysisPriceRange; years: number | null }[] = [
   { key: "All", years: null },
   { key: "10Y", years: 10 },
@@ -63,11 +72,21 @@ const plotSideWidth = 58;
 /**
  * The window of bars a price chart shows (approved 2026-10-20): the range's years ending at the last bar, which a drag
  * (mouse or one finger) or the arrow keys move across the timeline by whole days; the Max drawdown band and caption follow
- * the bars on screen. A new range or new bars go back to the latest.
+ * the bars on screen. A new range or new bars go back to the latest. "Options data" (approved 2026-10-25) is fixed: the
+ * bars from the option data's first day to its last.
  */
-export function usePriceWindow(allBars: AnalysisFigures["bars"], range: AnalysisPriceRange): PriceWindow {
-  const years = priceRanges.find((entry) => entry.key === range)!.years;
+export function usePriceWindow(allBars: AnalysisFigures["bars"], range: PriceChartRange, optionData: OptionDataPeriod | null = null): PriceWindow {
+  const years = range === "Options data" ? null : priceRanges.find((entry) => entry.key === range)!.years;
   const last = allBars.length - 1;
+  const optionDataFrom = range === "Options data" ? (optionData?.from ?? null) : null;
+  const optionDataTo = range === "Options data" ? (optionData?.to ?? null) : null;
+  const optionDataBars = useMemo(() => {
+    if (optionDataFrom === null || optionDataTo === null) return null;
+    const first = allBars.findIndex((bar) => bar[0] >= optionDataFrom);
+    let end = allBars.length - 1;
+    while (end >= 0 && allBars[end]![0] > optionDataTo) end -= 1;
+    return first === -1 || end < first ? null : { from: first, to: end };
+  }, [allBars, optionDataFrom, optionDataTo]);
   // The earliest end: the first bar a whole range after the first bar (the window then starts at the first bar).
   const earliestEnd = useMemo(() => {
     if (years === null || allBars.length === 0) return last;
@@ -76,11 +95,11 @@ export function usePriceWindow(allBars: AnalysisFigures["bars"], range: Analysis
   }, [allBars, years, last]);
   const [chosenEnd, setChosenEnd] = useState<number | null>(null);
   useEffect(() => setChosenEnd(null), [allBars, range]);
-  const to = chosenEnd === null ? last : Math.min(last, Math.max(earliestEnd, chosenEnd));
-  const from = last < 0 ? 0 : windowStartIndex(allBars, to, years);
+  const to = optionDataBars ? optionDataBars.to : chosenEnd === null ? last : Math.min(last, Math.max(earliestEnd, chosenEnd));
+  const from = optionDataBars ? optionDataBars.from : last < 0 ? 0 : windowStartIndex(allBars, to, years);
   const bars = useMemo(() => allBars.slice(from, to + 1), [allBars, from, to]);
   const drawdown = useMemo(() => maxDrawdownOfBars(bars, allBars), [bars, allBars]);
-  const canMove = earliestEnd < last;
+  const canMove = optionDataBars === null && earliestEnd < last;
   const moveTo = (end: number) => setChosenEnd(Math.min(last, Math.max(earliestEnd, end)));
 
   const ref = useRef<HTMLDivElement | null>(null);

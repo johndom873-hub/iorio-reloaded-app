@@ -1,13 +1,13 @@
 import { useMemo, useState } from "react";
 import type { ApexOptions } from "apexcharts";
-import { analysisLadderLevelsFormulasVersion, type AnalysisFigures, type AnalysisPriceRange } from "../../../api/backtestAnalysis";
+import { analysisLadderLevelsFormulasVersion, type AnalysisFigures, type AnalysisFileFigures } from "../../../api/backtestAnalysis";
 import { analysisChartColors, dateRuns, potOnDayFrom, tooSmallDates, type AnalysisPanelValues } from "../../../lib/analysisPresentation";
 import { formatDayMonthYear, formatNumber, formatPercentage, formatVolatilityPoints } from "../../../lib/formatters";
 import { useTheme } from "../../../hooks/useTheme";
 import { ApexChart } from "../../charts/ApexChart";
 import { AnalysisCard, AnalysisNote, AnalysisSeriesKey } from "./analysisBits";
 import { LadderLegendItems, PriceChartActions, PriceDrawdownCaption, PriceDrawdownCharts, PriceWindowNavigator, SplitLegendItem } from "./priceDrawdownChart";
-import { buildPriceDrawdownChart, historyYearsOf, medianOf, timeOfDate, useLogScalePreference, usePriceWindow, yearsBefore } from "./priceDrawdownChartModel";
+import { buildPriceDrawdownChart, historyYearsOf, medianOf, timeOfDate, useLogScalePreference, usePriceWindow, yearsBefore, type PriceChartRange } from "./priceDrawdownChartModel";
 
 // Price and Max drawdown (daily candles, the drawdown band, the days the pot was too small and the days an order needed
 // more than one strike, and the analysis backtest's ladder: its next Put's cap, its floor and the rungs sold; a log scale
@@ -18,8 +18,10 @@ import { buildPriceDrawdownChart, historyYearsOf, medianOf, timeOfDate, useLogSc
 
 interface AnalysisPriceCardsProps {
   symbol: string;
-  figures: AnalysisFigures;
-  shown: AnalysisPanelValues;
+  /** Before the first analysis, the data file's figures alone: no chain scan, no analysis backtest, none of their legend rows. */
+  figures: AnalysisFileFigures & Partial<Pick<AnalysisFigures, "fitDays" | "analysisBacktest">>;
+  /** The values the figures were computed with; null before the first analysis. */
+  shown: AnalysisPanelValues | null;
   showingTrial: boolean;
   stale: boolean;
   /** The symbol's splits over its bars (the price chart's split lines); null before its file was analysed. */
@@ -31,14 +33,17 @@ interface AnalysisPriceCardsProps {
 export function AnalysisPriceCards({ symbol, figures, shown, showingTrial, stale, splits, missingBars }: AnalysisPriceCardsProps) {
   const { theme } = useTheme();
   const colors = analysisChartColors[theme];
-  const [range, setRange] = useState<AnalysisPriceRange>("All");
+  // The chart opens on the option data's period (Marcelo 2026-10-25), where the file has one.
+  const optionData = useMemo(() => (figures.dataQuality.firstDate && figures.dataQuality.lastDate ? { from: figures.dataQuality.firstDate, to: figures.dataQuality.lastDate } : null), [figures.dataQuality.firstDate, figures.dataQuality.lastDate]);
+  const [range, setRange] = useState<PriceChartRange>(optionData ? "Options data" : "All");
   const [logScale, toggleLogScale] = useLogScalePreference();
   const lastDate = figures.bars.at(-1)?.[0] ?? null;
-  const priceWindow = usePriceWindow(figures.bars, range);
+  const priceWindow = usePriceWindow(figures.bars, range, optionData);
+  const analysed = figures.fitDays !== undefined;
   const { bars, drawdown } = priceWindow;
 
   const priceChart = useMemo(() => {
-    const allDates = figures.fitDays.map(([date]) => date);
+    const allDates = (figures.fitDays ?? []).map(([date]) => date);
     const backtest = figures.analysisBacktest && "sessionId" in figures.analysisBacktest ? figures.analysisBacktest : null;
     // Each day against the pot the analysis backtest's ladder sized from that day (an Analyse Only run has its own backtest).
     const potOnDay = potOnDayFrom(backtest?.potPath);
@@ -50,7 +55,7 @@ export function AnalysisPriceCards({ symbol, figures, shown, showingTrial, stale
       theme,
       logScale,
       countedDates: allDates,
-      smallRuns: potOnDay ? dateRuns(tooSmallDates(figures.fitDays, shown, potOnDay), allDates) : [],
+      smallRuns: potOnDay && shown && figures.fitDays ? dateRuns(tooSmallDates(figures.fitDays, shown, potOnDay), allDates) : [],
       strikeRuns: dateRuns(strikeDates, allDates),
       ladderLevels: backtest?.ladderLevels ?? [],
       ladderRungsSold: backtest?.ladderRungsSold ?? [],
@@ -109,7 +114,7 @@ export function AnalysisPriceCards({ symbol, figures, shown, showingTrial, stale
   const impliedMedian = medianOf(lastYear.flatMap((row) => (row.implied === null ? [] : [row.implied])));
   const realisedMedian = medianOf(lastYear.flatMap((row) => (row.realised === null ? [] : [row.realised])));
   const premium = figures.volatility.impliedVersusRealised;
-  const priceActions = <PriceChartActions symbol={symbol} range={range} onRangeChange={setRange} historyYears={historyYearsOf(figures.bars)} logScale={logScale} onToggleLogScale={toggleLogScale} />;
+  const priceActions = <PriceChartActions symbol={symbol} range={range} onRangeChange={setRange} historyYears={historyYearsOf(figures.bars)} logScale={logScale} onToggleLogScale={toggleLogScale} optionData={optionData} />;
 
   return (
     <>
@@ -126,7 +131,12 @@ export function AnalysisPriceCards({ symbol, figures, shown, showingTrial, stale
             </div>
           )}
           <PriceDrawdownCaption chart={priceChart} drawdown={drawdown} />
-          {priceChart && (
+          {priceChart && !analysed && priceChart.splitsInRange.length > 0 && (
+            <div className="analysis-chart-legend">
+              <SplitLegendItem splits={priceChart.splitsInRange} />
+            </div>
+          )}
+          {priceChart && analysed && (
             <div className="analysis-chart-legend">
               <span className="analysis-legend-item">
                 <span className="analysis-shade-swatch is-small" />

@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import { IconAlertTriangle, IconCheck, IconSparkles, IconX } from "@tabler/icons-react";
-import type { AnalysisFigures, AnalysisRecommendationKey, AnalysisSummary, StoredAnalysis } from "../../../api/backtestAnalysis";
+import type { AnalysisFigures, AnalysisFileFigures, AnalysisRecommendationKey, AnalysisSummary, StoredAnalysis } from "../../../api/backtestAnalysis";
 import { analysisConfiguredPotFitsShare, analysisSignedClass, firstRungCap, fitSharesLastTwelveMonths, impliedVolatilityPercentile, lotPriceCeiling, rungPriceCeiling, shockFor, singleContractPutSales, singleContractPutWindowDays, type AnalysisPanelValues } from "../../../lib/analysisPresentation";
 import { formatBrowserClockTime, formatCompactNumber, formatCurrency, formatDayMonth, formatDayMonthYear, formatNumber, formatOrdinal, formatPercentage, formatSignedPercentage } from "../../../lib/formatters";
 import { AnalysisCard, AnalysisNote } from "./analysisBits";
@@ -204,7 +204,7 @@ function AnalysisTileGrid({ tiles, className }: { tiles: AnalysisTile[]; classNa
 }
 
 /** The figures above the Settings card: price, volatility and the options market. */
-export function AnalysisKpiTiles({ figures }: { figures: AnalysisFigures }) {
+export function AnalysisKpiTiles({ figures }: { figures: AnalysisFileFigures }) {
   const lastBar = figures.bars.at(-1);
   const yearAgo = figures.bars.length > 252 ? figures.bars[figures.bars.length - 253] : null;
   const oneYear = lastBar && yearAgo ? lastBar[4] / yearAgo[4] - 1 : null;

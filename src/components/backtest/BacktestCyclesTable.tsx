@@ -205,6 +205,8 @@ function tradeCell(key: string, cycle: BacktestCycle, row: BacktestCycleTimeline
     case "price":
       return priceText(context.priceOn(cycle.symbol, row.tradingDate, event.priceAt), context.splitFactorOn(cycle.symbol, row.tradingDate));
     case "breakEven":
+      // A share purchase shows its price (Marcelo 2026-10-23); an option sold while shares were held, the break-even before it.
+      if (event.name === "Bought shares") return row.stockPrice === null ? null : formatCurrency(row.stockPrice);
       return row.breakEvenAtSale == null ? null : formatCurrency(row.breakEvenAtSale);
     case "shares":
       return row.sharesHeld == null ? null : formatNumber(row.sharesHeld);
@@ -217,6 +219,7 @@ function tradeCell(key: string, cycle: BacktestCycle, row: BacktestCycleTimeline
     case "strategies":
       return (
         <span className="backtest-cycle-row-detail">
+          {event.order && <span className={`badge ${event.order === "Sell" ? "bg-danger" : "bg-success"}`}>{event.order}</span>}
           {row.ladderRung ? (
             <TooltipSpan text={describeLadderRung(row.ladderRung, { strike: row.strike, contracts: row.quantity / 100, stockPrice: context.priceOn(cycle.symbol, row.tradingDate, "tenOclock") })} multiline className="dotted-underline-label">
               {event.detail}
@@ -347,7 +350,7 @@ const columnDefinitions: Omit<DataTableColumn<CyclesTableRow>, "render">[] = [
     key: "breakEven",
     header: "B-E",
     headerTitle:
-      "Break-even, in cash: (cost of every share bought in the cycle − what shares that left it brought in − net premium) ÷ shares held; selling the shares held at it leaves the cycle flat (Free once below zero). An open cycle: now. An option sold while the cycle held shares: the break-even just before the sale (a call on held shares under a break-even rule: the floor its strike was held to).",
+      "Break-even, in cash: (cost of every share bought in the cycle − what shares that left it brought in − net premium) ÷ shares held; selling the shares held at it leaves the cycle flat (Free once below zero). An open cycle: now. An option sold while the cycle held shares: the break-even just before the sale (a call on held shares under a break-even rule: the floor its strike was held to). A share purchase: its price.",
     align: "right",
     cellClassName: "text-nowrap",
   },
@@ -380,10 +383,11 @@ function breakdownRows(cycle: BacktestCycle, detail: BacktestCycleDetail): Cycle
   const pending = [...detail.stockOnlyStretches].sort((a, b) => a.firstIdleDay.localeCompare(b.firstIdleDay));
   const rows: CyclesTableRow[] = [];
   const stockOnlyRow = (stretch: BacktestStockOnlyStretch): CyclesTableRow => ({ kind: "stockOnly", key: `stock-only-${cycleKeyOf(cycle)}-${stretch.firstIdleDay}`, cycle, stretch });
-  // Within one look, shares handed to CC come before the call sold on them (Marcelo 2026-10-21); the rest keep the
-  // derivation's order. A look's rows share their Shares, B-E and Cash, so the order changes no figure.
-  const handedToCc = (row: BacktestCycleTimelineRow) => row.at !== null && row.label.startsWith("Shares handed to CC");
-  const ordered = detail.timeline.map((row, index) => ({ row, index })).sort((a, b) => (a.row.at !== null && a.row.at === b.row.at ? Number(handedToCc(b.row)) - Number(handedToCc(a.row)) : 0) || a.index - b.index);
+  // Within one moment: the shares first, then the Calls and other options, then the hedge's Puts (Marcelo 2026-10-21 and
+  // 2026-10-23); rows of a kind keep the derivation's order. A moment's rows share their Shares, B-E and Cash, so the
+  // order changes no figure.
+  const rankWithinMoment = (row: BacktestCycleTimelineRow) => (row.instrument === "stock" ? 0 : row.bucket === "hedge" ? 2 : 1);
+  const ordered = detail.timeline.map((row, index) => ({ row, index })).sort((a, b) => (a.row.at !== null && a.row.at === b.row.at ? rankWithinMoment(a.row) - rankWithinMoment(b.row) : 0) || a.index - b.index);
   ordered.forEach(({ row, index }) => {
     while (pending.length > 0 && pending[0]!.firstIdleDay <= row.tradingDate) rows.push(stockOnlyRow(pending.shift()!));
     rows.push({ kind: "trade", key: `trade-${cycleKeyOf(cycle)}-${index}`, cycle, row });
@@ -535,7 +539,8 @@ export function BacktestCyclesTable({
   };
   const rowClassName = (row: CyclesTableRow) => {
     if (row.kind === "cycle") return openCycleKeys.has(row.key) ? "table-active" : undefined;
-    if (row.kind === "trade") return /^(Put|Call) assigned/.test(row.row.label) ? "backtest-cycle-trade-row backtest-cycle-assigned-row" : "backtest-cycle-trade-row";
+    // An assignment's row and a Vol Farmer crossing's rows are framed (theme.css).
+    if (row.kind === "trade") return /^(Put|Call) assigned/.test(row.row.label) || row.row.crossing === true ? "backtest-cycle-trade-row backtest-cycle-highlighted-row" : "backtest-cycle-trade-row";
     return row.kind === "stockOnly" ? "backtest-cycle-trade-row backtest-cycle-idle-row" : "backtest-cycle-idle-row";
   };
 

@@ -9,15 +9,18 @@ import { decisionMakerLabel } from "./backtestPresentation";
 export const backtestSettingSectionTitles: Record<BacktestSettingSection, string> = {
   baseline_wheel: "Used by the CC + Put Ladder",
   steady_stake: "Used by the Steady Stake",
+  vol_farmer: "Used by the Vol Farmer",
   pluto_rules: "Pluto's rules and the AI model",
 };
 
 export const steadyStakeSectionNote = "Used only when the decision maker is the Steady Stake. None of these change a CC + Put Ladder session or Pluto's rules; the ladder's values and Pluto's rules don't change a Steady Stake session.";
 
-export const plutoRulesSectionNote = "Used only when the decision maker is the rules or the AI model. None of these change a CC + Put Ladder or Steady Stake session.";
+export const volFarmerSectionNote = "Used only when the decision maker is the Vol Farmer. None of these change a CC + Put Ladder, Steady Stake or Pluto's rules session.";
+
+export const plutoRulesSectionNote = "Used only when the decision maker is the rules or the AI model. None of these change a CC + Put Ladder, Steady Stake or Vol Farmer session.";
 
 /** The note under a section's title; the CC + Put Ladder's section opens the table and has none. */
-export const backtestSettingSectionNotes: Record<BacktestSettingSection, string | null> = { baseline_wheel: null, steady_stake: steadyStakeSectionNote, pluto_rules: plutoRulesSectionNote };
+export const backtestSettingSectionNotes: Record<BacktestSettingSection, string | null> = { baseline_wheel: null, steady_stake: steadyStakeSectionNote, vol_farmer: volFarmerSectionNote, pluto_rules: plutoRulesSectionNote };
 
 export interface BacktestSettingRowGroup {
   group: BacktestSettingGroup;
@@ -63,6 +66,9 @@ const pairedSettingRows: Record<string, { secondPath: string; label: string }> =
   "baseline.minDte": { secondPath: "baseline.maxDte", label: "Days to expiry from / to" },
   "trading.deltaTargetMin": { secondPath: "trading.deltaTargetMax", label: "Delta band from / to" },
   "pluto.minDte": { secondPath: "pluto.maxDte", label: "Days to expiry from / to" },
+  "volFarmer.callMinAbsDelta": { secondPath: "volFarmer.callMaxAbsDelta", label: "Calls' |delta| from / to" },
+  "volFarmer.callMinDte": { secondPath: "volFarmer.callMaxDte", label: "Calls' days to expiry from / to" },
+  "volFarmer.putMinDte": { secondPath: "volFarmer.putMaxDte", label: "Puts' days to expiry from / to" },
 };
 
 /** A line of the editor: one row, or a pair under one label. */
@@ -172,6 +178,13 @@ export function backtestSettingGroupSummary(group: BacktestSettingGroup, text: (
         Number(text("steadyStake.callCoveragePct")) > 0 ? `Calls on ${shown("steadyStake.callCoveragePct")} of free lots at ${text("steadyStake.callAbsDelta")}` : "no Calls",
         Number(text("steadyStake.putCashPct")) > 0 ? `Puts on ${shown("steadyStake.putCashPct")} of free cash at ${text("steadyStake.putAbsDelta")}` : "no Puts",
         "expiry days only",
+      ].join(" · ");
+    case "Vol Farmer":
+      return [
+        `Calls |delta| ${text("volFarmer.callMinAbsDelta")}–${text("volFarmer.callMaxAbsDelta")}, ${text("volFarmer.callMinDte")}–${text("volFarmer.callMaxDte")} DTE`,
+        `Puts ${Number(text("volFarmer.putMinDte")) > 0 ? `${text("volFarmer.putMinDte")}–${text("volFarmer.putMaxDte")} DTE` : `to ${text("volFarmer.putMaxDte")} DTE`}, strike ${Number(text("volFarmer.putMaxStrikeAbovePricePct")) > 0 ? `up to ${shown("volFarmer.putMaxStrikeAbovePricePct")} above the price` : Number(text("volFarmer.putMaxStrikeAbovePricePct")) < 0 ? `at least ${Math.abs(Number(text("volFarmer.putMaxStrikeAbovePricePct")))}% below the price` : "at or below the price"}`,
+        `protection on a ${shown("volFarmer.protectionFallPct")} fall`,
+        `${shown("volFarmer.putCashReservePct")} cash kept`,
       ].join(" · ");
     case "Capital and sizing":
       return `budget ${shown("pluto.capitalBudgetPct")} · order ${shown("pluto.orderSizePctOfBudget")} · Kelly ${text("kellyFraction")}`;

@@ -1,9 +1,9 @@
 import { useMemo, useRef, type KeyboardEvent, type PointerEvent } from "react";
-import type { AnalysisFigures, AnalysisMaxDrawdown, AnalysisPriceRange } from "../../../api/backtestAnalysis";
+import type { AnalysisFigures, AnalysisMaxDrawdown } from "../../../api/backtestAnalysis";
 import { formatCurrency, formatDayMonthYear, formatNumber, formatPercentage } from "../../../lib/formatters";
 import { describeSplitRatio } from "../../../lib/backtestPresentation";
 import { ApexChart } from "../../charts/ApexChart";
-import { priceRanges, type PriceDrawdownChart, type PriceWindow } from "./priceDrawdownChartModel";
+import { priceRanges, type OptionDataPeriod, type PriceChartRange, type PriceDrawdownChart, type PriceWindow } from "./priceDrawdownChartModel";
 
 // The "Price and Max drawdown" chart, shared by the Analyse window (its analysis backtest) and a session's results (that
 // session): daily candles, the drawdown band, shaded runs of days, the ladder's next Put's cap and floor and the rungs
@@ -11,15 +11,18 @@ import { priceRanges, type PriceDrawdownChart, type PriceWindow } from "./priceD
 // window across the session.
 
 /** The Log scale switch and the range buttons (a range longer than the bars is disabled). */
-export function PriceChartActions({ symbol, range, onRangeChange, historyYears, logScale, onToggleLogScale }: { symbol: string; range: AnalysisPriceRange; onRangeChange: (range: AnalysisPriceRange) => void; historyYears: number; logScale: boolean; onToggleLogScale: () => void }) {
+/** The Log scale switch and the range buttons; with `optionData`, an "Options data" button after All (the Analyse window). */
+export function PriceChartActions({ symbol, range, onRangeChange, historyYears, logScale, onToggleLogScale, optionData = null }: { symbol: string; range: PriceChartRange; onRangeChange: (range: PriceChartRange) => void; historyYears: number; logScale: boolean; onToggleLogScale: () => void; optionData?: OptionDataPeriod | null }) {
+  const ranges: { key: PriceChartRange; years: number | null }[] = optionData ? [priceRanges[0]!, { key: "Options data", years: null }, ...priceRanges.slice(1)] : priceRanges;
   return (
     <div className="d-flex flex-wrap align-items-center gap-2">
       <button type="button" className={`btn ${logScale ? "btn-primary" : "btn-outline-secondary"}`} aria-pressed={logScale} onClick={onToggleLogScale}>
         Log scale
       </button>
-      <div className="btn-group" role="group" aria-label="Range">
-        {priceRanges.map((entry) => {
+      <div className={`btn-group${optionData ? " price-range-group" : ""}`} role="group" aria-label="Range">
+        {ranges.map((entry) => {
           const tooShort = entry.years !== null && entry.years > historyYears;
+          const title = tooShort ? `${symbol} has ${historyYears.toFixed(1)} years of daily bars` : entry.key === "Options data" && optionData ? `${symbol}'s option data: ${formatDayMonthYear(optionData.from)} to ${formatDayMonthYear(optionData.to)}` : undefined;
           return (
             <button
               key={entry.key}
@@ -27,7 +30,7 @@ export function PriceChartActions({ symbol, range, onRangeChange, historyYears, 
               className={`btn ${range === entry.key ? "btn-primary" : "btn-outline-secondary"}`}
               aria-pressed={range === entry.key}
               disabled={tooShort}
-              title={tooShort ? `${symbol} has ${historyYears.toFixed(1)} years of daily bars` : undefined}
+              title={title}
               onClick={() => onRangeChange(entry.key)}
             >
               {entry.key}

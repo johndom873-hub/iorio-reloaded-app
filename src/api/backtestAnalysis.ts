@@ -347,6 +347,9 @@ export interface AnalysisFigures {
   analysisBacktest: AnalysisBacktestFigures | { error: string } | null;
 }
 
+/** The figures the data file gives on its own, without the chain scan or the analysis backtest: the window before a ticker's first analysis. */
+export type AnalysisFileFigures = Omit<AnalysisFigures, "chains" | "fitDays" | "largestPotWithoutModel" | "analysisBacktest" | "dataQuality"> & { dataQuality: Omit<AnalysisFigures["dataQuality"], "scannedDays" | "daysWithoutPrice" | "daysWithNothingPassing"> };
+
 export type AnalysisRecommendationKey = "potDollars" | "ladderSharesPct" | "ladderRungs" | "ladderShockPct" | "minAbsDelta" | "maxAbsDelta" | "minDte" | "maxDte" | "maxSpreadPctOfMid";
 
 export interface AnalysisSummary {
@@ -444,6 +447,10 @@ const encoded = (symbol: string) => encodeURIComponent(symbol);
 
 export function fetchTickerAnalysis(symbol: string): Promise<TickerAnalysisView> {
   return apiRequest<TickerAnalysisView>(`/backtest/analyses/${encoded(symbol)}`);
+}
+
+export function fetchAnalysisFileFigures(symbol: string): Promise<AnalysisFileFigures> {
+  return apiRequest<AnalysisFileFigures>(`/backtest/analyses/${encoded(symbol)}/file-figures`);
 }
 
 export function fetchAnalysisFileStatuses(): Promise<Record<string, AnalysisFileStatus>> {

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { fetchBacktestSessionPriceChart, type AnalysisPriceRange, type BacktestSessionPriceChart } from "../../api/backtestAnalysis";
+import { fetchBacktestSessionPriceChart, type BacktestSessionPriceChart } from "../../api/backtestAnalysis";
 import { errorMessage } from "../../api/client";
 import { useTheme } from "../../hooks/useTheme";
 import { dateRuns } from "../../lib/analysisPresentation";
@@ -7,13 +7,13 @@ import { formatNumber } from "../../lib/formatters";
 import { Spinner } from "../Spinner";
 import { BacktestCard } from "./backtestBits";
 import { LadderLegendItems, PriceChartActions, PriceDrawdownCaption, PriceDrawdownCharts, PriceWindowNavigator, SplitLegendItem } from "./analysis/priceDrawdownChart";
-import { buildPriceDrawdownChart, historyYearsOf, useLogScalePreference, usePriceWindow } from "./analysis/priceDrawdownChartModel";
+import { buildPriceDrawdownChart, historyYearsOf, useLogScalePreference, usePriceWindow, type PriceChartRange } from "./analysis/priceDrawdownChartModel";
 
 // The Analyse window's "Price and Max drawdown" chart on a session's results (Marcelo 2026-10-20): over the session's
 // period, with this session's ladder levels, rungs sold and orders over one strike (no "Pot too small": that is the
 // Analyse window's fit); one symbol at a time.
 
-function PriceChartBody({ chart, range, logScale, severalSymbols }: { chart: BacktestSessionPriceChart; range: AnalysisPriceRange; logScale: boolean; severalSymbols: boolean }) {
+function PriceChartBody({ chart, range, logScale, severalSymbols }: { chart: BacktestSessionPriceChart; range: PriceChartRange; logScale: boolean; severalSymbols: boolean }) {
   const { theme } = useTheme();
   const priceWindow = usePriceWindow(chart.bars, range);
   const { bars, drawdown } = priceWindow;
@@ -81,7 +81,7 @@ function PriceChartBody({ chart, range, logScale, severalSymbols }: { chart: Bac
 /** "Price and Max drawdown" for a session: read for the symbol chosen, again when the run's status changes. */
 export function BacktestSessionPriceCard({ sessionId, symbols, status }: { sessionId: string; symbols: string[]; status: string }) {
   const [symbol, setSymbol] = useState(symbols[0]!);
-  const [range, setRange] = useState<AnalysisPriceRange>("All");
+  const [range, setRange] = useState<PriceChartRange>("All");
   const [logScale, toggleLogScale] = useLogScalePreference();
   const [state, setState] = useState<{ status: "loading" } | { status: "loaded"; chart: BacktestSessionPriceChart } | { status: "failed"; error: string }>({ status: "loading" });
   useEffect(() => {

@@ -8,6 +8,7 @@ import {
   analysisSteps,
   cancelTickerAnalysis,
   fetchAnalysisEarnings,
+  fetchAnalysisFileFigures,
   fetchAnalysisSessions,
   fetchBacktestLabSettings,
   fetchLabTickerOverrides,
@@ -15,6 +16,7 @@ import {
   saveLabTickerOverrides,
   startTickerAnalysis,
   type AnalysisBaselineValues,
+  type AnalysisFileFigures,
   type AnalysisRunView,
   type AnalysisSessionRow,
   type BacktestLabSettingsView,
@@ -163,6 +165,30 @@ export function TickerAnalysisModal({ symbol, onClose, onSuitabilitySaved }: Tic
       cancelled = true;
     };
   }, [symbol, storedId]);
+
+  // Before the first analysis, the figures the data file gives on its own (mockup approved 2026-10-25): read while nothing
+  // is stored, then the view again, for the split lines the read caches.
+  const [fileFigures, setFileFigures] = useState<AnalysisFileFigures | null>(null);
+  const [fileFiguresError, setFileFiguresError] = useState<string | null>(null);
+  const nothingStored = view ? view.stored === null : false;
+  useEffect(() => {
+    if (!nothingStored) return;
+    let cancelled = false;
+    fetchAnalysisFileFigures(symbol).then(
+      (figures) => {
+        if (cancelled) return;
+        setFileFigures(figures);
+        setFileFiguresError(null);
+        void reload();
+      },
+      (err: unknown) => {
+        if (!cancelled) setFileFiguresError(errorMessage(err, `Could not read ${symbol}'s data file.`));
+      },
+    );
+    return () => {
+      cancelled = true;
+    };
+  }, [symbol, nothingStored, reload]);
 
   // A trial that finished is shown as soon as it lands.
   useEffect(() => {
@@ -384,6 +410,34 @@ export function TickerAnalysisModal({ symbol, onClose, onSuitabilitySaved }: Tic
     );
   }
 
+  // No daily bars: why, and the download that fetches them.
+  const missingBarsOf = (figures: AnalysisFileFigures) =>
+    figures.bars.length === 0
+      ? { message: `${symbol} has no IBKR daily bars yet. The data file's download writes them at its end; updating the file fetches them.`, action: <button type="button" className="btn btn-outline-primary" onClick={() => void startBacktestDownload({ symbol, startDate: figures.dataQuality.firstDate ?? undefined }).then(() => setActionError(null)).catch((err: unknown) => setActionError(errorMessage(err, "Could not start the download.")))}>Update the data file</button> }
+      : null;
+  // Before the first analysis and while it runs: the cards the data file gives on its own.
+  const fileCards = fileFiguresError ? (
+    <div className="alert alert-danger mb-0">{fileFiguresError}</div>
+  ) : !fileFigures ? (
+    <div className="d-flex justify-content-center py-4">
+      <Spinner label={`Reading ${symbol}'s data file`} />
+    </div>
+  ) : (
+    <>
+      <AnalysisKpiTiles figures={fileFigures} />
+      <AnalysisPriceCards symbol={symbol} figures={fileFigures} shown={null} showingTrial={false} stale={false} splits={view?.detectedSplits ?? null} missingBars={missingBarsOf(fileFigures)} />
+      <AnalysisSessionsCard symbol={symbol} sessions={sessions} loadError={sessionsError} analysisSessionId={null} />
+      <div className="analysis-two-col">
+        <AnalysisEarningsCard symbol={symbol} figures={fileFigures} onFetchEarnings={() => void fetchEarnings()} fetching={busy === "earnings"} fetchMessage={earningsMessage} />
+        <AnalysisCorrelationCard symbol={symbol} figures={fileFigures} />
+      </div>
+      <div className="analysis-two-col">
+        <AnalysisProfileCard figures={fileFigures} />
+        <AnalysisDataQualityCard figures={fileFigures} />
+      </div>
+    </>
+  );
+
   let body;
   if (loadError) body = <div className="alert alert-danger mb-0">{loadError}</div>;
   else if (!view) {
@@ -396,6 +450,7 @@ export function TickerAnalysisModal({ symbol, onClose, onSuitabilitySaved }: Tic
     if (savedRun) {
       const currentIndex = savedRun.step ? analysisSteps.indexOf(savedRun.step) : 0;
       body = (
+        <>
         <AnalysisCard title={`Analysing ${symbol}`} description="First analysis of this ticker. It runs as a background job, so closing this window does not stop it.">
           <div className="card-body">
             <ol className="analysis-steps">
@@ -420,30 +475,35 @@ export function TickerAnalysisModal({ symbol, onClose, onSuitabilitySaved }: Tic
             </button>
           </div>
         </AnalysisCard>
+        {fileCards}
+        </>
       );
     } else {
       body = (
         <>
           {notices}
           {actionError && <div className="alert alert-danger mb-0">{actionError}</div>}
-          <div className="card">
-            <div className="analysis-empty-state">
-              <IconChartCandle size={32} className="text-secondary" aria-hidden="true" />
-              <h3>{symbol} hasn't been analysed yet</h3>
-              <p>The analysis reads the data file with {symbol}'s backtesting values, runs a backtest of them over the whole file and stores the result, with Claude's summary. It runs as a background job, so you can close this window.</p>
+          <AnalysisNote
+            tone="info"
+            actions={
               <button type="button" className="btn btn-primary d-inline-flex align-items-center gap-1" disabled={busy !== null} onClick={() => void updateAnalysis()}>
                 {busy === "update" ? <Spinner size="sm" /> : <IconChartCandle size={16} aria-hidden="true" />}
                 Analyse now
               </button>
-            </div>
-          </div>
+            }
+          >
+            <p>
+              <b>{symbol} hasn't been analysed yet.</b> The cards below come straight from the data file. The analysis adds the rest: the fits and the pot size at {symbol}'s backtesting values, the option liquidity, the chain map, a backtest over the whole file and Claude's summary. It runs as a background job, so you can close this window.
+            </p>
+          </AnalysisNote>
+          {fileCards}
         </>
       );
     }
   } else if (!shownFigures || !shown || !storedValues) {
     body = <div className="alert alert-danger mb-0">The stored analysis has no figures.</div>;
   } else {
-    const missingBars = shownFigures.bars.length === 0 ? { message: `${symbol} has no IBKR daily bars yet. The data file's download writes them at its end; updating the file fetches them.`, action: <button type="button" className="btn btn-outline-primary" onClick={() => void startBacktestDownload({ symbol, startDate: shownFigures.dataQuality.firstDate ?? undefined }).then(() => setActionError(null)).catch((err: unknown) => setActionError(errorMessage(err, "Could not start the download.")))}>Update the data file</button> } : null;
+    const missingBars = missingBarsOf(shownFigures);
     body = (
       <>
         {notices}

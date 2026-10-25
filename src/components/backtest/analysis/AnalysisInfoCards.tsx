@@ -1,6 +1,6 @@
 import { useState, type ReactNode } from "react";
 import { IconAlertTriangle, IconX } from "@tabler/icons-react";
-import type { AnalysisCorrelationRow, AnalysisFigures, AnalysisProfile } from "../../../api/backtestAnalysis";
+import type { AnalysisCorrelationRow, AnalysisFigures, AnalysisFileFigures, AnalysisProfile } from "../../../api/backtestAnalysis";
 import { analysisSignedClass } from "../../../lib/analysisPresentation";
 import { formatCurrency, formatDayMonth, formatDayMonthYear, formatExpiryDayMonthWithDte, formatFileSize, formatNumber, formatPercentage, formatSignedPercentage, formatStrike } from "../../../lib/formatters";
 import { useSignalsTickerModal } from "../../../hooks/useSignalsTickerModal";
@@ -25,7 +25,8 @@ const earningsColumns = [
 
 interface AnalysisEarningsCardProps {
   symbol: string;
-  figures: AnalysisFigures;
+  /** Before the first analysis there is no chain map: the first expiry after the next report is left out. */
+  figures: AnalysisFileFigures & Partial<Pick<AnalysisFigures, "chains">>;
   /** Fetching the earnings history (API Ninjas) then updating the analysis; null when there is nothing to fetch with. */
   onFetchEarnings: (() => void) | null;
   fetching: boolean;
@@ -90,7 +91,7 @@ export function AnalysisEarningsCard({ symbol, figures, onFetchEarnings, fetchin
   const reports = [...earnings.reports].reverse();
   const shown = showAll ? reports : reports.slice(0, 8);
   const next = earnings.next;
-  const firstExpiryAfterNext = next ? ([...new Set(figures.chains.chainMap.map((contract) => contract.expiry))].sort().find((expiry) => expiry > next.date) ?? null) : null;
+  const firstExpiryAfterNext = next && figures.chains ? ([...new Set(figures.chains.chainMap.map((contract) => contract.expiry))].sort().find((expiry) => expiry > next.date) ?? null) : null;
   const worked = earnings.reports.filter((report) => report.straddle !== null && report.impliedMove !== null).at(-1) ?? null;
   return (
     <AnalysisCard
@@ -213,7 +214,7 @@ const correlationColumns = [
   { key: "betaTwoYears", header: "Beta, 2 years" },
 ];
 
-export function AnalysisCorrelationCard({ symbol, figures }: { symbol: string; figures: AnalysisFigures }) {
+export function AnalysisCorrelationCard({ symbol, figures }: { symbol: string; figures: AnalysisFileFigures }) {
   const { isColumnVisible, toggleColumn } = useColumnVisibility("analysis-correlation", correlationColumns.map((column) => column.key));
   const { open: openTicker } = useSignalsTickerModal();
   const rows = figures.correlation.rows;
@@ -335,7 +336,7 @@ const profileColumns = [
   { key: "twoYear", header: "Last 2 years" },
 ];
 
-export function AnalysisProfileCard({ figures }: { figures: AnalysisFigures }) {
+export function AnalysisProfileCard({ figures }: { figures: AnalysisFileFigures }) {
   const { isColumnVisible, toggleColumn } = useColumnVisibility("analysis-profile", profileColumns.map((column) => column.key));
   const { all, twoYear } = figures.profile;
   const label = (value: AnalysisProfile["label"]) => (value === null ? "—" : value.charAt(0).toUpperCase() + value.slice(1));
@@ -414,7 +415,7 @@ export function AnalysisProfileCard({ figures }: { figures: AnalysisFigures }) {
   );
 }
 
-export function AnalysisDataQualityCard({ figures }: { figures: AnalysisFigures }) {
+export function AnalysisDataQualityCard({ figures }: { figures: AnalysisFileFigures | AnalysisFigures }) {
   const quality = figures.dataQuality;
   const optionYears = quality.firstDate && quality.lastDate ? daysBetween(quality.firstDate, quality.lastDate) / 365.25 : 0;
   const historyYears = quality.bars.firstDate && quality.bars.lastDate ? daysBetween(quality.bars.firstDate, quality.bars.lastDate) / 365.25 : 0;
@@ -491,14 +492,18 @@ export function AnalysisDataQualityCard({ figures }: { figures: AnalysisFigures 
             {formatNumber(figures.shock.closes)}
             <span className="analysis-sub">250 needed</span>
           </dd>
-          <dt>Chain scan</dt>
-          <dd>
-            {formatNumber(quality.scannedDays)} days
-            <span className="analysis-sub">
-              {quality.daysWithoutPrice > 0 ? `${quality.daysWithoutPrice} without a 10:00 price · ` : ""}
-              {quality.daysWithNothingPassing.length} with nothing passing{quality.daysWithNothingPassing.length > 0 && quality.daysWithNothingPassing.length <= 3 ? `: ${quality.daysWithNothingPassing.map(formatDayMonthYear).join(", ")}` : ""}
-            </span>
-          </dd>
+          {"scannedDays" in quality && (
+            <>
+              <dt>Chain scan</dt>
+              <dd>
+                {formatNumber(quality.scannedDays)} days
+                <span className="analysis-sub">
+                  {quality.daysWithoutPrice > 0 ? `${quality.daysWithoutPrice} without a 10:00 price · ` : ""}
+                  {quality.daysWithNothingPassing.length} with nothing passing{quality.daysWithNothingPassing.length > 0 && quality.daysWithNothingPassing.length <= 3 ? `: ${quality.daysWithNothingPassing.map(formatDayMonthYear).join(", ")}` : ""}
+                </span>
+              </dd>
+            </>
+          )}
         </dl>
         {historyYears > 0 && historyYears < 10 && (
           <div className="mt-3">

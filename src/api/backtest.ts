@@ -13,7 +13,7 @@ export type BacktestJobDisplayStatus = BacktestJobStatus | "stopped";
 export type BacktestTablesMode = "walk_forward" | "current";
 
 /** Who makes the choices the AI model makes live: the stand-in rules (BacktestPolicySettings), or the model itself (Claude through the subscription, src/backtest/llm/). */
-export type BacktestDecisionMaker = "rules" | "llm" | "baseline" | "steady_stake";
+export type BacktestDecisionMaker = "rules" | "llm" | "baseline" | "steady_stake" | "vol_farmer";
 
 /** The baseline wheel (decision maker "baseline"): no Pluto rules and no Signals, everything held to expiry. */
 export interface BacktestBaselineSettings {
@@ -180,6 +180,29 @@ export interface BacktestSettings {
   baseline?: BacktestBaselineSettings;
   /** Absent on sessions created before the Steady Stake existed. */
   steadyStake?: BacktestSteadyStakeSettings;
+  /** Absent on sessions created before the Vol Farmer existed. */
+  volFarmer?: BacktestVolFarmerSettings;
+}
+
+/** The Vol Farmer's values (the API's BacktestVolFarmerSettings). */
+export interface BacktestVolFarmerSettings {
+  callMinAbsDelta: number;
+  callMaxAbsDelta: number;
+  callMinDte: number;
+  callMaxDte: number;
+  putMinDte: number;
+  putMaxDte: number;
+  putMaxStrikeAbovePricePct: number;
+  protectionFallPct: number;
+  maxSpreadPctOfMid: number;
+  putCashReservePct: number;
+  crossing: "unwind" | "hold_to_expiry";
+  putExpiry: "in_range" | "with_the_call";
+  hedgeRuleCallPremiums: "excluded" | "included";
+  minPutProtectionPct: number;
+  hedgeWithoutCall: "none" | "put";
+  maxPutCostPctOfCallPremium: number;
+  putRoll: "none" | "when_no_call";
 }
 
 /** The Steady Stake's values (the API's BacktestSteadyStakeSettings). */
@@ -202,6 +225,7 @@ export interface BacktestSettingsOverrides {
   decisionMaker?: BacktestDecisionMaker;
   baseline?: Partial<BacktestBaselineSettings>;
   steadyStake?: Partial<BacktestSteadyStakeSettings>;
+  volFarmer?: Partial<BacktestVolFarmerSettings>;
 }
 
 /** A session's settings with its overrides applied and every default filled in: what the engine runs on. */
@@ -448,10 +472,10 @@ export interface BacktestSettingChoice {
   unavailableReason?: string;
 }
 
-export type BacktestSettingGroup = "How the session runs" | "Put ladder" | "Calls and Covered Calls" | "Contract choice" | "Entry filters" | "Exits" | "Hedge" | "Steady Stake" | "Capital and sizing" | "Candidate quality" | "Model" | "System checks" | "Rules' choices";
+export type BacktestSettingGroup = "How the session runs" | "Put ladder" | "Calls and Covered Calls" | "Contract choice" | "Entry filters" | "Exits" | "Hedge" | "Steady Stake" | "Vol Farmer" | "Capital and sizing" | "Candidate quality" | "Model" | "System checks" | "Rules' choices";
 
 /** "baseline_wheel": rows the Baseline wheel (the CC + Put Ladder) reads, some shared with the rules and the AI model; "steady_stake": rows only the Steady Stake reads; "pluto_rules": rows only the rules and the AI model read. */
-export type BacktestSettingSection = "baseline_wheel" | "steady_stake" | "pluto_rules";
+export type BacktestSettingSection = "baseline_wheel" | "steady_stake" | "vol_farmer" | "pluto_rules";
 
 /** A row's value against another row's: `oneOf` / `noneOf` its choice values, or a number `above`. */
 export interface BacktestSettingCondition {
@@ -1012,6 +1036,8 @@ export interface BacktestCycleTimelineRow {
   ladderRung?: BacktestLadderRungRecord | null;
   /** Free cash ÷ the account value once the row's moment was done (the whole account's); null for a day not recorded. */
   freeCashShare?: number | null;
+  /** True on a row written at a Vol Farmer crossing (the position unwound when the stock reached the Call's strike); absent otherwise. */
+  crossing?: boolean;
 }
 
 /** A ladder put's rung as its sale recorded it, prices as traded that day: K_max = A − (A − F) × (U + Q) ÷ R0. */
