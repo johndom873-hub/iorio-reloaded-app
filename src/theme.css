@@ -539,6 +539,13 @@
   --iorio-symbol-link-color: #38bdf8;
 }
 
+/* .table-responsive's overflow-x: auto turns overflow-y to auto too, so a last row's tap area poking a few px below the
+   table made the wrapper a tiny vertical scroller that swallowed the page's wheel scroll. Tables meant to scroll
+   vertically set overflow-y inline (DataTable's maxVisibleRows). */
+.table-responsive {
+  overflow-y: hidden;
+}
+
 .table-responsive .btn-link.p-0,
 .list-group .btn-link.p-0 {
   min-height: auto;
