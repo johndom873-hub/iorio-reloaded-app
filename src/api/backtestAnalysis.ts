@@ -246,6 +246,8 @@ export interface BacktestSessionPriceChart {
   symbol: string;
   bars: AnalysisFigures["bars"];
   maxDrawdown: AnalysisFigures["maxDrawdown"];
+  /** One per bar, worked out over the whole data file, so the session's first day has its look-back. */
+  barIndicators: AnalysisBarIndicators;
   ladderLevels: NonNullable<AnalysisBacktestFigures["ladderLevels"]>;
   ladderRungsSold: NonNullable<AnalysisBacktestFigures["ladderRungsSold"]>;
   tooLargeDays: AnalysisBacktestFigures["tooLargeDays"];
@@ -253,6 +255,15 @@ export interface BacktestSessionPriceChart {
   cashAvailable: NonNullable<AnalysisBacktestFigures["cashAvailable"]>;
   /** The symbol's splits in the session's period: the bars before one are its traded prices ÷ the ratio. */
   splits: BacktestDetectedSplit[];
+}
+
+/** The price chart's indicators for each bar (approved 2026-10-26), aligned with the bars. */
+export interface AnalysisBarIndicators {
+  /** [share, bars at or below, bars with an IV]: of the last 252 bars, those whose IV was at or below the bar's ÷ those with one; null without an IV or under 20 in the window. */
+  ivPercentile: ([number, number, number] | null)[];
+  /** The average of the last 50 / 200 closes, the bar's own included; null until that many closes. */
+  movingAverage50: (number | null)[];
+  movingAverage200: (number | null)[];
 }
 
 /** Why no ladder Put could be sold at a day's first look. */
@@ -275,6 +286,8 @@ export interface AnalysisFigures {
   /** [date, open, high, low, close, implied volatility]. */
   bars: [string, number, number, number, number, number | null][];
   yangZhang21: (number | null)[];
+  /** Added when the figures are read; absent from an API older than 2026-10-26. */
+  barIndicators?: AnalysisBarIndicators;
   volatility: {
     impliedNow: number | null;
     yangZhang21Now: number | null;

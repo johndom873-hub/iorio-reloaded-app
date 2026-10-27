@@ -350,7 +350,7 @@ const columnDefinitions: Omit<DataTableColumn<CyclesTableRow>, "render">[] = [
     key: "breakEven",
     header: "B-E",
     headerTitle:
-      "Break-even, in cash: (cost of every share bought in the cycle − what shares that left it brought in − net premium) ÷ shares held; selling the shares held at it leaves the cycle flat (Free once below zero). An open cycle: now. An option sold while the cycle held shares: the break-even just before the sale (a call on held shares under a break-even rule: the floor its strike was held to). A share purchase: its price.",
+      "Break-even, in cash: (cost of every share bought in the cycle − what shares that left it brought in − net premium) ÷ shares held; selling the shares held at it leaves the cycle flat (Free once below zero). In a Vol Farmer session it is the hedge rule's: the hedge Puts' realized P&L in place of the net premium (the Calls' premium too where the session's hedge rule counts it). An open cycle: now. An option sold while the cycle held shares: the break-even just before the sale (a call on held shares under a break-even rule: the floor its strike was held to). A share purchase: its price.",
     align: "right",
     cellClassName: "text-nowrap",
   },

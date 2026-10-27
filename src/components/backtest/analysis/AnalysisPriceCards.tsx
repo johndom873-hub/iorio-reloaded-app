@@ -6,15 +6,16 @@ import { formatDayMonthYear, formatNumber, formatPercentage, formatVolatilityPoi
 import { useTheme } from "../../../hooks/useTheme";
 import { ApexChart } from "../../charts/ApexChart";
 import { AnalysisCard, AnalysisNote, AnalysisSeriesKey } from "./analysisBits";
-import { LadderLegendItems, PriceChartActions, PriceDrawdownCaption, PriceDrawdownCharts, PriceWindowNavigator, SplitLegendItem } from "./priceDrawdownChart";
-import { buildPriceDrawdownChart, historyYearsOf, medianOf, timeOfDate, useLogScalePreference, usePriceWindow, yearsBefore, type PriceChartRange } from "./priceDrawdownChartModel";
+import { IvPercentileLegendItem, LadderLegendItems, MovingAverageLegendItems, PriceChartActions, PriceDrawdownCaption, PriceDrawdownCharts, PriceWindowNavigator, SplitLegendItem } from "./priceDrawdownChart";
+import { buildPriceDrawdownChart, historyYearsOf, indicatorsInWindow, medianOf, timeOfDate, useLogScalePreference, usePriceWindow, yearsBefore, type PriceChartRange } from "./priceDrawdownChartModel";
 
-// Price and Max drawdown (daily candles, the drawdown band, the days the pot was too small and the days an order needed
-// more than one strike, and the analysis backtest's ladder: its next Put's cap, its floor and the rungs sold; a log scale
-// to switch on; under the candles, the backtest account's cash available, and under both a navigator for the window), and
-// volatility (21-day Yang-Zhang and IBKR's implied, implied minus what followed). Mockups approved 2026-10-15, 2026-10-20
-// (the ladder, the log scale) and 2026-10-21 (cash available, the navigator); the volatility chart follows the price
-// chart's window, which a drag or the navigator moves.
+// Price and Max drawdown (daily candles with their 50- and 200-day averages, the drawdown band, the days the pot was too
+// small and the days an order needed more than one strike, and the analysis backtest's ladder: its next Put's cap, its
+// floor and the rungs sold; a log scale to switch on; under the candles, the backtest account's cash available and the IV
+// Percentile, and under them a navigator for the window), and volatility (21-day Yang-Zhang and IBKR's implied, implied
+// minus what followed). Mockups approved 2026-10-15, 2026-10-20 (the ladder, the log scale), 2026-10-21 (cash available,
+// the navigator) and 2026-10-26 (the averages, IV Percentile); the volatility chart follows the price chart's window,
+// which a drag or the navigator moves.
 
 interface AnalysisPriceCardsProps {
   symbol: string;
@@ -61,12 +62,13 @@ export function AnalysisPriceCards({ symbol, figures, shown, showingTrial, stale
       ladderRungsSold: backtest?.ladderRungsSold ?? [],
       cashAvailable: backtest?.cashAvailable ?? null,
       splits: splits ?? [],
+      indicators: indicatorsInWindow(figures.barIndicators, priceWindow.from, priceWindow.to),
     });
     if (!chart) return null;
     // Why the ladder lines are missing: no backtest, or one from before the levels were recorded.
     const ladderMissing = !backtest ? "no analysis backtest" : backtest.ladderLevels === undefined || figures.formulasVersion < analysisLadderLevelsFormulasVersion ? "computed with an older version of the formulas; Update Analysis to see them" : null;
     return { ...chart, smallDays: potOnDay ? chart.smallDays : null, hasBacktest: backtest !== null, ladderMissing };
-  }, [bars, shown, figures, theme, drawdown, symbol, logScale, splits]);
+  }, [bars, shown, figures, theme, drawdown, symbol, logScale, splits, priceWindow.from, priceWindow.to]);
 
   const volatilityChart = useMemo(() => {
     const offset = priceWindow.from;
@@ -131,9 +133,11 @@ export function AnalysisPriceCards({ symbol, figures, shown, showingTrial, stale
             </div>
           )}
           <PriceDrawdownCaption chart={priceChart} drawdown={drawdown} />
-          {priceChart && !analysed && priceChart.splitsInRange.length > 0 && (
+          {priceChart && !analysed && (priceChart.splitsInRange.length > 0 || priceChart.hasAverage50 || priceChart.hasAverage200 || priceChart.ivPercentilePanel) && (
             <div className="analysis-chart-legend">
               <SplitLegendItem splits={priceChart.splitsInRange} />
+              <MovingAverageLegendItems chart={priceChart} />
+              <IvPercentileLegendItem chart={priceChart} />
             </div>
           )}
           {priceChart && analysed && (
@@ -156,12 +160,14 @@ export function AnalysisPriceCards({ symbol, figures, shown, showingTrial, stale
                 </>
               )}
               <SplitLegendItem splits={priceChart.splitsInRange} />
+              <MovingAverageLegendItems chart={priceChart} />
               {priceChart.cashPanel && (
                 <span className="analysis-legend-item">
                   <span className="analysis-ladder-line is-cash-available" />
                   Cash available: the cash not locked in open Cash-Secured Puts (strike × 100 × contracts) ÷ the account value, at the day's 10:00 marks before its orders (the analysis's backtest)
                 </span>
               )}
+              <IvPercentileLegendItem chart={priceChart} />
             </div>
           )}
         </div>

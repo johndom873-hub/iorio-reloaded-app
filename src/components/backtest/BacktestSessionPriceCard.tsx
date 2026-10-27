@@ -6,12 +6,12 @@ import { dateRuns } from "../../lib/analysisPresentation";
 import { formatNumber } from "../../lib/formatters";
 import { Spinner } from "../Spinner";
 import { BacktestCard } from "./backtestBits";
-import { LadderLegendItems, PriceChartActions, PriceDrawdownCaption, PriceDrawdownCharts, PriceWindowNavigator, SplitLegendItem } from "./analysis/priceDrawdownChart";
-import { buildPriceDrawdownChart, historyYearsOf, useLogScalePreference, usePriceWindow, type PriceChartRange } from "./analysis/priceDrawdownChartModel";
+import { IvPercentileLegendItem, LadderLegendItems, MovingAverageLegendItems, PriceChartActions, PriceDrawdownCaption, PriceDrawdownCharts, PriceWindowNavigator, SplitLegendItem } from "./analysis/priceDrawdownChart";
+import { buildPriceDrawdownChart, historyYearsOf, indicatorsInWindow, useLogScalePreference, usePriceWindow, type PriceChartRange } from "./analysis/priceDrawdownChartModel";
 
 // The Analyse window's "Price and Max drawdown" chart on a session's results (Marcelo 2026-10-20): over the session's
 // period, with this session's ladder levels, rungs sold and orders over one strike (no "Pot too small": that is the
-// Analyse window's fit); one symbol at a time.
+// Analyse window's fit), the 50- and 200-day averages and the IV Percentile (2026-10-26); one symbol at a time.
 
 function PriceChartBody({ chart, range, logScale, severalSymbols }: { chart: BacktestSessionPriceChart; range: PriceChartRange; logScale: boolean; severalSymbols: boolean }) {
   const { theme } = useTheme();
@@ -33,8 +33,9 @@ function PriceChartBody({ chart, range, logScale, severalSymbols }: { chart: Bac
       ladderRungsSold: chart.ladderRungsSold,
       cashAvailable: chart.cashAvailable,
       splits: chart.splits ?? [],
+      indicators: indicatorsInWindow(chart.barIndicators, priceWindow.from, priceWindow.to),
     });
-  }, [chart, bars, drawdown, theme, logScale]);
+  }, [chart, bars, drawdown, theme, logScale, priceWindow.from, priceWindow.to]);
 
   if (chart.bars.length === 0) return <div className="card-body text-secondary">No IBKR daily bars for {chart.symbol} in the session's period.</div>;
   const ladderRecorded = chart.ladderLevels.length > 0 || chart.ladderRungsSold.length > 0;
@@ -66,12 +67,14 @@ function PriceChartBody({ chart, range, logScale, severalSymbols }: { chart: Bac
             <span className="analysis-legend-item">Ladder cap and floor: none recorded (no ladder in this session, or it ran before the levels were kept)</span>
           )}
           <SplitLegendItem splits={drawn.splitsInRange} />
+          <MovingAverageLegendItems chart={drawn} />
           {drawn.cashPanel && (
             <span className="analysis-legend-item">
               <span className="analysis-ladder-line is-cash-available" />
               Cash available: the cash not locked in open Cash-Secured Puts (strike × 100 × contracts) ÷ the account value, at the day's 10:00 marks before its orders{severalSymbols && " (the whole account, every symbol's)"}
             </span>
           )}
+          <IvPercentileLegendItem chart={drawn} />
         </div>
       )}
     </div>

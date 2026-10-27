@@ -6,9 +6,9 @@ import { ApexChart } from "../../charts/ApexChart";
 import { priceRanges, type OptionDataPeriod, type PriceChartRange, type PriceDrawdownChart, type PriceWindow } from "./priceDrawdownChartModel";
 
 // The "Price and Max drawdown" chart, shared by the Analyse window (its analysis backtest) and a session's results (that
-// session): daily candles, the drawdown band, shaded runs of days, the ladder's next Put's cap and floor and the rungs
-// sold, a log scale to switch on, under the candles the account's cash available, and under both a navigator to move the
-// window across the session.
+// session): daily candles with their 50- and 200-day averages, the drawdown band, shaded runs of days, the ladder's next
+// Put's cap and floor and the rungs sold, a log scale to switch on, under the candles the account's cash available and
+// the IV Percentile, and under them a navigator to move the window across the session.
 
 /** The Log scale switch and the range buttons (a range longer than the bars is disabled). */
 /** The Log scale switch and the range buttons; with `optionData`, an "Options data" button after All (the Analyse window). */
@@ -43,15 +43,25 @@ export function PriceChartActions({ symbol, range, onRangeChange, historyYears, 
 }
 
 
-/** The candles and, when recorded, the cash-available panel under them. */
-export function PriceDrawdownCharts({ chart }: { chart: Pick<NonNullable<PriceDrawdownChart>, "options" | "series" | "cashPanel"> }) {
+/** A panel with the dates under it; without them (another panel below carries them), the axis's height less. */
+const panelHeight = 112;
+const panelHeightWithoutDates = 90;
+
+/** The candles and, when recorded, the cash-available and IV Percentile panels under them; the bottom one carries the dates. */
+export function PriceDrawdownCharts({ chart }: { chart: Pick<NonNullable<PriceDrawdownChart>, "options" | "series" | "cashPanel" | "ivPercentilePanel"> }) {
   return (
     <>
-      <ApexChart type="line" series={chart.series} options={chart.options} height={chart.cashPanel ? 320 : 340} />
+      <ApexChart type="line" series={chart.series} options={chart.options} height={chart.cashPanel || chart.ivPercentilePanel ? 320 : 340} />
       {chart.cashPanel && (
         <>
           <div className="analysis-panel-label">Cash available</div>
-          <ApexChart type="area" series={chart.cashPanel.series} options={chart.cashPanel.options} height={112} />
+          <ApexChart type="area" series={chart.cashPanel.series} options={chart.cashPanel.options} height={chart.ivPercentilePanel ? panelHeightWithoutDates : panelHeight} />
+        </>
+      )}
+      {chart.ivPercentilePanel && (
+        <>
+          <div className="analysis-panel-label">IV Percentile</div>
+          <ApexChart type="area" series={chart.ivPercentilePanel.series} options={chart.ivPercentilePanel.options} height={panelHeight} />
         </>
       )}
     </>
@@ -162,6 +172,37 @@ export function SplitLegendItem({ splits }: { splits: readonly { firstDayAfter: 
     <span className="analysis-legend-item">
       <span className="analysis-split-line" />
       Split ({text}): the prices before it are split-adjusted, the traded prices ÷ {splits.length === 1 ? formatNumber(splits[0]!.ratio, 3) : "the ratios of the splits after them"}
+    </span>
+  );
+}
+
+/** The legend items of the averages drawn in the range. */
+export function MovingAverageLegendItems({ chart }: { chart: Pick<NonNullable<PriceDrawdownChart>, "hasAverage50" | "hasAverage200"> }) {
+  return (
+    <>
+      {chart.hasAverage50 && (
+        <span className="analysis-legend-item">
+          <span className="analysis-ladder-line is-average-50" />
+          50-day average: the average of the last 50 daily closes
+        </span>
+      )}
+      {chart.hasAverage200 && (
+        <span className="analysis-legend-item">
+          <span className="analysis-ladder-line is-average-200" />
+          200-day average: the average of the last 200 daily closes
+        </span>
+      )}
+    </>
+  );
+}
+
+/** The IV Percentile panel's legend item, when the range has one. */
+export function IvPercentileLegendItem({ chart }: { chart: Pick<NonNullable<PriceDrawdownChart>, "ivPercentilePanel"> }) {
+  if (!chart.ivPercentilePanel) return null;
+  return (
+    <span className="analysis-legend-item">
+      <span className="analysis-ladder-line is-iv-percentile" />
+      IV Percentile: the share of the last 252 trading days with an implied volatility (IBKR) whose IV was at or below the day's; from the 20th day with an IV
     </span>
   );
 }

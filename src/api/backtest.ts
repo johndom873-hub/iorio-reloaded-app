@@ -190,19 +190,27 @@ export interface BacktestVolFarmerSettings {
   callMaxAbsDelta: number;
   callMinDte: number;
   callMaxDte: number;
+  callExpiry: "in_range" | "next";
   putMinDte: number;
   putMaxDte: number;
   putMaxStrikeAbovePricePct: number;
   protectionFallPct: number;
   maxSpreadPctOfMid: number;
   putCashReservePct: number;
-  crossing: "unwind" | "hold_to_expiry";
+  crossing: "unwind" | "hold_to_expiry" | "unwind_if_net_positive";
   putExpiry: "in_range" | "with_the_call";
   hedgeRuleCallPremiums: "excluded" | "included";
   minPutProtectionPct: number;
-  hedgeWithoutCall: "none" | "put";
+  hedgeWithoutCall: "none" | "put" | "cheapest_per_year";
+  putChoice: "most_protection" | "cheapest_per_year";
   maxPutCostPctOfCallPremium: number;
   putRoll: "none" | "when_no_call";
+  hedgeAfterExpiry: "keep" | "sell_if_in_profit";
+  afterAssignment: "end" | "continue_if_under_water";
+  hedgeRuleStockPnl: "excluded" | "included";
+  putCashIn: "none" | "when_no_call";
+  cashInPutMinProtectionPct: number;
+  hedge: "put" | "none";
 }
 
 /** The Steady Stake's values (the API's BacktestSteadyStakeSettings). */
@@ -1028,6 +1036,8 @@ export interface BacktestCycleTimelineRow {
   premiumYield?: number | null;
   /** A sold option's delta as the engine recorded it at the sale (a put's negative), contract-weighted; null when none was kept. */
   delta?: number | null;
+  /** A hedge Put bought: its yearly cost as a fraction of the stock price (the API's hedgePutCostYield), contract-weighted; null when its purchase kept no stock price or days to expiry. */
+  hedgeCostYield?: number | null;
   /** An option sold while the cycle held shares: the cycle's cash break-even just before the sale (a call on held shares under a break-even rule: the floor it was held to). Null while none were held. */
   breakEvenAtSale?: number | null;
   /** The shares the cycle held once the row's moment (its look's orders, or the end's marks) was done, as traded on the row's day. */
@@ -1199,8 +1209,28 @@ export interface BacktestSessionDetail {
   tickerStatistics: BacktestTickerStatistics[];
   /** The same figures over every symbol together (symbol "All symbols"); null when the session has no book. */
   allSymbolsStatistics: BacktestTickerStatistics | null;
+  /** What the shares, the Covered Calls and the hedge each made, the whole account's; absent from an API older than 2026-10-26. */
+  pnlSources?: BacktestPnlSources | null;
   /** How many actions and fills the session stored; they are read page by page (BacktestActionsPage, BacktestFillsPage). */
   bookCounts: { filledActions: number; blockedActions: number; fills: number };
+}
+
+/** One source of the account's P&L (approved 2026-10-26). */
+export interface BacktestPnlSource {
+  pnlDollars: number;
+  /** CAGR × pnlDollars ÷ the account's P&L; null when the account made nothing. */
+  cagrPart: number | null;
+  /** The session's trading days on which it was held at any time ÷ all of them. */
+  daysHeldShare: number;
+}
+
+/** The session tiles' Shares, Covered Calls and Hedge; each null when the session never held it. */
+export interface BacktestPnlSources {
+  shares: BacktestPnlSource | null;
+  /** With the median yearly yield recorded at each Call sale. */
+  coveredCalls: (BacktestPnlSource & { quotedYieldMedian: number | null; quotedCount: number }) | null;
+  /** With the median yearly cost of each hedge Put bought, a positive fraction. */
+  hedge: (BacktestPnlSource & { quotedCostMedian: number | null; quotedCount: number }) | null;
 }
 
 export interface BacktestCompareResponse {

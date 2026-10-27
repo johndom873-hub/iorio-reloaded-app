@@ -1,13 +1,14 @@
 import { useEffect, useMemo, useRef, useState, type HTMLAttributes, type RefObject } from "react";
 import type { ApexAxisChartSeries, ApexOptions } from "apexcharts";
-import type { AnalysisBacktestFigures, AnalysisFigures, AnalysisMaxDrawdown, AnalysisPriceRange } from "../../../api/backtestAnalysis";
+import type { AnalysisBacktestFigures, AnalysisBarIndicators, AnalysisFigures, AnalysisMaxDrawdown, AnalysisPriceRange } from "../../../api/backtestAnalysis";
 import { analysisChartColors, analysisLadderPutBlockText, maxDrawdownOfBars } from "../../../lib/analysisPresentation";
 import { describeSplitRatio } from "../../../lib/backtestPresentation";
-import { daysToExpiry, formatAxisDollars, formatCurrency, formatDayMonthYear, formatOptionContractLabel, formatOrderSize, formatPercentage } from "../../../lib/formatters";
+import { daysToExpiry, formatAxisDollars, formatCurrency, formatDayMonthYear, formatNumber, formatOptionContractLabel, formatOrderSize, formatPercentage } from "../../../lib/formatters";
 
 // The "Price and Max drawdown" chart, shared by the Analyse window (its analysis backtest) and a session's results (that
-// session): daily candles, the drawdown band, shaded runs of days, the ladder's next Put's cap and floor and the rungs
-// sold, a log scale to switch on, and under the candles the account's cash available.
+// session): daily candles with their 50- and 200-day averages, the drawdown band, shaded runs of days, the ladder's next
+// Put's cap and floor and the rungs sold, a log scale to switch on, and under the candles the account's cash available
+// and the IV Percentile.
 // This module: its ranges, the window a drag moves, the log scale preference and the chart's options (the components are in
 // priceDrawdownChart.tsx).
 
@@ -197,6 +198,19 @@ export interface PriceDrawdownChartInput {
   splits: readonly { firstDayAfter: string; ratio: number }[];
   /** The account's cash available each day at its 10:00 marks: [date, free cash, cash locked in open puts, account value]; null: no panel. */
   cashAvailable: NonNullable<AnalysisBacktestFigures["cashAvailable"]> | null;
+  /** IV Percentile and the 50- and 200-day averages, one per bar of `bars` (indicatorsInWindow); null: none. */
+  indicators: AnalysisBarIndicators | null;
+}
+
+/** The indicators of a window's bars, cut from those of every bar (the API works them out over the whole data file). */
+export function indicatorsInWindow(indicators: AnalysisBarIndicators | null | undefined, from: number, to: number): AnalysisBarIndicators | null {
+  if (!indicators) return null;
+  return { ivPercentile: indicators.ivPercentile.slice(from, to + 1), movingAverage50: indicators.movingAverage50.slice(from, to + 1), movingAverage200: indicators.movingAverage200.slice(from, to + 1) };
+}
+
+/** "IV Percentile 52%: IV 64.0%; 131 of the last 252 days were at or below it". */
+function describeIvPercentile([share, atOrBelow, windowDays]: [number, number, number], impliedVolatility: number | null): string {
+  return `IV Percentile <b>${formatPercentage(share, 0)}</b>: ${impliedVolatility === null ? "" : `IV ${formatPercentage(impliedVolatility, 1)}; `}${formatNumber(atOrBelow)} of the last ${formatNumber(windowDays)} days were at or below it`;
 }
 
 export type PriceDrawdownChart = ReturnType<typeof buildPriceDrawdownChart>;
@@ -236,6 +250,12 @@ export function buildPriceDrawdownChart(input: PriceDrawdownChartInput) {
     day ? `Cash available <b>${formatPercentage(day.share, 0)}</b>: ${formatCurrency(day.freeCash, 0)} of a ${formatCurrency(day.accountValue, 0)} account${day.locked > 0 ? `; ${formatCurrency(day.locked, 0)} locked in puts` : ""}` : "";
   const cashInRange = cashAvailable.flatMap((day) => (day ? [day] : []));
   const cashRecorded = input.cashAvailable !== null && input.cashAvailable.length > 0;
+  // The 50- and 200-day averages on the candles and the IV Percentile panel under them (approved 2026-10-26).
+  const average50 = bars.map((_, index) => input.indicators?.movingAverage50[index] ?? null);
+  const average200 = bars.map((_, index) => input.indicators?.movingAverage200[index] ?? null);
+  const ivPercentile = bars.map((_, index) => input.indicators?.ivPercentile[index] ?? null);
+  const ivRecorded = ivPercentile.some((day) => day !== null);
+  const panelBelow = cashRecorded || ivRecorded;
   // The log scale: each price plotted as log10 of itself on a plain axis, the axis labelled back in dollars (ApexCharts'
   // own logarithmic axis drops the candles and shifts the bands).
   const toAxis = (price: number) => (logScale ? Math.log10(price) : price);
@@ -245,12 +265,12 @@ export function buildPriceDrawdownChart(input: PriceDrawdownChartInput) {
   const dark = theme === "dark";
   const options: ApexOptions = {
     chart: { animations: { enabled: false }, zoom: { enabled: false }, background: "transparent", parentHeightOffset: 0 },
-    colors: [colors.text, colors.ladder, colors.ladder],
-    stroke: { width: [1, 2, 2], curve: ["straight", "stepline", "stepline"], dashArray: [0, 5, 0] },
+    colors: [colors.text, colors.ladder, colors.ladder, colors.movingAverage50, colors.movingAverage200],
+    stroke: { width: [1, 2, 2, 1.5, 1.5], curve: ["straight", "stepline", "stepline", "straight", "straight"], dashArray: [0, 5, 0, 5, 0] },
     markers: { size: 0, hover: { size: 0 } },
     legend: { show: false },
-    // With the cash available below, its panel carries the dates.
-    xaxis: { type: "datetime", labels: { show: !cashRecorded, datetimeUTC: true }, axisTicks: { show: !cashRecorded }, tooltip: { enabled: false } },
+    // With a panel below, the bottom one carries the dates.
+    xaxis: { type: "datetime", labels: { show: !panelBelow, datetimeUTC: true }, axisTicks: { show: !panelBelow }, tooltip: { enabled: false } },
     yaxis: { labels: { formatter: (value: number) => formatAxisDollars(fromAxis(value)), ...axisLabelWidth }, tooltip: { enabled: false } },
     plotOptions: { candlestick: { colors: { upward: colors.candleUp, downward: colors.candleDown }, wick: { useFillColor: true } } },
     grid: { padding: { left: 4, right: 8 } },
@@ -265,7 +285,9 @@ export function buildPriceDrawdownChart(input: PriceDrawdownChartInput) {
           : "";
         const rungLines = (rungsByDate.get(bar[0]) ?? []).map(([, , fills, reached]) => `<div>${reached ? describeRungReached(reached) : "Rung sold"}: ${fills.map(([strike, expiry, contracts]) => `${formatOptionContractLabel({ strike, right: "P", expiry, dte: daysToExpiry(expiry, bar[0]) })}${formatOrderSize(contracts, null)}`).join(", ")}</div>`).join("");
         const cashLine = cashAvailable[dataPointIndex] ? `<div>${cashAvailableText(cashAvailable[dataPointIndex])}</div>` : "";
-        return `<div style="padding:0.4rem 0.6rem;font-size:0.75rem"><b>${formatDayMonthYear(bar[0])}</b><div style="font-family:var(--tblr-font-monospace)">O ${bar[1].toFixed(2)} · H ${bar[2].toFixed(2)} · L ${bar[3].toFixed(2)} · C ${bar[4].toFixed(2)}</div>${ladderLine}${rungLines}${cashLine}</div>`;
+        const averages = [average50[dataPointIndex] == null ? null : `50-day average ${formatCurrency(average50[dataPointIndex]!)}`, average200[dataPointIndex] == null ? null : `200-day average ${formatCurrency(average200[dataPointIndex]!)}`].filter((text) => text !== null);
+        const averagesLine = averages.length > 0 ? `<div>${averages.join(" · ")}</div>` : "";
+        return `<div style="padding:0.4rem 0.6rem;font-size:0.75rem"><b>${formatDayMonthYear(bar[0])}</b><div style="font-family:var(--tblr-font-monospace)">O ${bar[1].toFixed(2)} · H ${bar[2].toFixed(2)} · L ${bar[3].toFixed(2)} · C ${bar[4].toFixed(2)}</div>${averagesLine}${ladderLine}${rungLines}${cashLine}</div>`;
       },
     },
     annotations: {
@@ -304,6 +326,8 @@ export function buildPriceDrawdownChart(input: PriceDrawdownChartInput) {
     { name: symbol, type: "candlestick", data: bars.map((bar) => ({ x: timeOfDate(bar[0]), y: [bar[1], bar[2], bar[3], bar[4]].map(toAxis) })) },
     { name: "Ladder cap", type: "line", data: bars.map((bar, index) => ({ x: timeOfDate(bar[0]), y: levels[index]?.[1] == null ? null : toAxis(levels[index]![1]!) })) },
     { name: "Ladder floor", type: "line", data: bars.map((bar, index) => ({ x: timeOfDate(bar[0]), y: levels[index]?.[2] == null ? null : toAxis(levels[index]![2]!) })) },
+    { name: "50-day average", type: "line", data: bars.map((bar, index) => ({ x: timeOfDate(bar[0]), y: average50[index] === null ? null : toAxis(average50[index]!) })) },
+    { name: "200-day average", type: "line", data: bars.map((bar, index) => ({ x: timeOfDate(bar[0]), y: average200[index] === null ? null : toAxis(average200[index]!) })) },
   ];
   const highestShare = cashInRange.length > 0 ? Math.max(...cashInRange.map((day) => day.share)) : 1;
   const cashPanel = cashRecorded
@@ -315,7 +339,8 @@ export function buildPriceDrawdownChart(input: PriceDrawdownChartInput) {
           fill: { type: "solid", opacity: 0.14 },
           markers: { size: 0, hover: { size: 0 } },
           legend: { show: false },
-          xaxis: { type: "datetime", labels: { datetimeUTC: true }, tooltip: { enabled: false } },
+          // With the IV Percentile under it, that panel carries the dates.
+          xaxis: { type: "datetime", labels: { show: !ivRecorded, datetimeUTC: true }, axisTicks: { show: !ivRecorded }, tooltip: { enabled: false } },
           yaxis: { min: 0, max: Math.max(100, Math.ceil(highestShare * 10) * 10), tickAmount: 2, labels: { formatter: (value: number) => `${Math.round(value)}%`, ...axisLabelWidth } },
           grid: { padding: { left: 4, right: 8, top: -8 } },
           dataLabels: { enabled: false },
@@ -332,7 +357,34 @@ export function buildPriceDrawdownChart(input: PriceDrawdownChartInput) {
         series: [{ name: "Cash available", type: "area", data: bars.map((bar, index) => ({ x: timeOfDate(bar[0]), y: cashAvailable[index] ? +(cashAvailable[index]!.share * 100).toFixed(1) : null })) }],
       }
     : null;
+  // In the Volatility chart's implied-volatility orange.
+  const ivPercentilePanel = ivRecorded
+    ? {
+        options: {
+          chart: { animations: { enabled: false }, zoom: { enabled: false }, background: "transparent", parentHeightOffset: 0 },
+          colors: [colors.series2],
+          stroke: { width: 1.75, curve: "straight" },
+          fill: { type: "solid", opacity: 0.14 },
+          markers: { size: 0, hover: { size: 0 } },
+          legend: { show: false },
+          xaxis: { type: "datetime", labels: { datetimeUTC: true }, tooltip: { enabled: false } },
+          yaxis: { min: 0, max: 100, tickAmount: 2, labels: { formatter: (value: number) => `${Math.round(value)}%`, ...axisLabelWidth } },
+          grid: { padding: { left: 4, right: 8, top: -8 } },
+          dataLabels: { enabled: false },
+          tooltip: {
+            shared: true,
+            intersect: false,
+            custom: ({ dataPointIndex }: { dataPointIndex: number }) => {
+              const bar = bars[dataPointIndex];
+              const day = ivPercentile[dataPointIndex];
+              return bar && day ? `<div style="padding:0.4rem 0.6rem;font-size:0.75rem"><b>${formatDayMonthYear(bar[0])}</b><div>${describeIvPercentile(day, bar[5])}</div></div>` : "";
+            },
+          },
+        } satisfies ApexOptions,
+        series: [{ name: "IV Percentile", type: "area", data: bars.map((bar, index) => ({ x: timeOfDate(bar[0]), y: ivPercentile[index] ? +(ivPercentile[index]![0] * 100).toFixed(1) : null })) }],
+      }
+    : null;
   const lowestDay = cashInRange.reduce<(typeof cashInRange)[number] | null>((lowest, day) => (lowest === null || day.share < lowest.share ? day : lowest), null);
   const cashSummary = lowestDay ? { median: medianOf(cashInRange.map((day) => day.share))!, lowest: lowestDay.share, lowestDate: lowestDay.date } : null;
-  return { options, series, smallDays: daysIn(smallRuns), strikeDays: daysIn(strikeRuns), lastLevel, cashPanel, cashSummary, splitsInRange };
+  return { options, series, smallDays: daysIn(smallRuns), strikeDays: daysIn(strikeRuns), lastLevel, cashPanel, cashSummary, splitsInRange, ivPercentilePanel, hasAverage50: average50.some((value) => value !== null), hasAverage200: average200.some((value) => value !== null) };
 }

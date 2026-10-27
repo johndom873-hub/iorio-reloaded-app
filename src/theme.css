@@ -2327,12 +2327,18 @@
   --analysis-link-hover: #075985;
   --analysis-ladder: #2a78d6;
   --analysis-cash-available: #0f7d6e;
+  --analysis-average-50: #49566c;
+  --analysis-average-200: #1d273b;
+  --analysis-implied-volatility: #eb6834;
   --price-navigator-window: rgba(42, 120, 214, 0.12);
   --price-navigator-dim: rgba(29, 39, 59, 0.08);
 }
 :root[data-bs-theme="dark"] {
   --analysis-ladder: #3987e5;
   --analysis-cash-available: #4fc9b8;
+  --analysis-average-50: #9ba9be;
+  --analysis-average-200: #f9fafb;
+  --analysis-implied-volatility: #d95926;
   --price-navigator-window: rgba(57, 135, 229, 0.18);
   --price-navigator-dim: rgba(0, 0, 0, 0.25);
   --analysis-good: #2b5247;
@@ -2549,6 +2555,9 @@
 .analysis-ladder-line { display: inline-block; width: 1.2rem; height: 0; border-top: 2px solid var(--analysis-ladder); }
 .analysis-ladder-line.is-dashed { border-top-style: dashed; }
 .analysis-ladder-line.is-cash-available { border-top-color: var(--analysis-cash-available); }
+.analysis-ladder-line.is-average-50 { border-top-style: dashed; border-top-color: var(--analysis-average-50); }
+.analysis-ladder-line.is-average-200 { border-top-color: var(--analysis-average-200); }
+.analysis-ladder-line.is-iv-percentile { border-top-color: var(--analysis-implied-volatility); }
 .analysis-split-line { display: inline-block; width: 0; height: 0.9rem; border-left: 2px dashed var(--tblr-secondary-color); }
 .analysis-panel-label { margin: 0.25rem 0 0 3.25rem; font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--tblr-secondary-color); }
 /* A price chart whose window a drag moves (priceDrawdownChart.tsx): horizontal drags move it, vertical swipes still scroll

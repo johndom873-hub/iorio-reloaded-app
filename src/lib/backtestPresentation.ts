@@ -314,6 +314,12 @@ export const backtestCycleMetricExplanation = {
   capitalInUse: "Capital in use = mean over days of (Σ EXP $ of open positions ÷ account value). EXP $ is net of premium: a put's (strike − premium) × 100 × contracts. Return on capital in use = Σ every cycle's total ÷ Σ over the session days of (EXP $ held that day × calendar days to the next session day) × 365.",
   optionsSold: "Options sold: opening puts and calls and the new leg of each roll.",
   inTheMoneyAtExpiry: "Contracts in the money at expiry = options sold that expired with the strike crossed ÷ options sold that expired. An option in the money by $0.01 or more at its expiry day's close is assigned.",
+  shares:
+    "The shares' part of the CAGR = CAGR × the shares' P&L ÷ the account's P&L. The shares' P&L is the account's P&L less its interest and every option's (the Covered Calls, the Puts sold and the hedge): what the shares made, sold and still held at the account's last marks, after commissions. With the Covered Calls, the hedge, the Puts sold and interest, the parts add up to the CAGR. Held on: the session's trading days with shares at any time of the day ÷ all of them.",
+  coveredCalls:
+    "The Calls' part of the CAGR = CAGR × the Calls' P&L ÷ the account's P&L. The Calls' P&L: the premiums less the buybacks and commissions, a Call still open at its last mark. Quoted at sale: the median of the yearly yield recorded at each sale, as the Wheel cycle rows show it. Open on: the session's trading days with a Call at any time of the day ÷ all of them.",
+  hedge:
+    "The hedge's part of the CAGR = CAGR × the hedge Puts' P&L ÷ the account's P&L. Their P&L: what they were sold or settled for, less their cost and commissions, a Put still open at its last mark. Quoted at purchase: the median of each purchase's yearly cost, (time value × 100 + commission) ÷ (stock price × 100) ÷ (days ÷ 365), as the Wheel cycle rows show it. Open on: the session's trading days with a hedge Put at any time of the day ÷ all of them.",
 } as const;
 
 /** Edge capture on a screen that lists sessions of either basis (Sessions, Compare). */
@@ -979,7 +985,8 @@ export function describeLadderRung(rung: BacktestLadderRungRecord, sale: { strik
  * A cycle timeline row as the Wheel cycles table lists it: a short event name ("Sold put", "Put assigned", "Call assigned",
  * "To CC"), the order's side when the row is an order (Buy, Sell or Buy back, shown as a badge before the detail; Marcelo
  * 2026-10-24), what happened ("$59 Put · 10 Jan (7DTE) · 7× @ 0.30 · Δ -0.21 · 61.4% a year"; a hand-over, assignment or
- * mark has no side; a sale shows the delta and the annualised yield the engine recorded for it; no row shows its
+ * mark has no side; a sale shows the delta and the annualised yield the engine recorded for it, a hedge Put's purchase
+ * its yearly cost as a negative yield ("$55 Put · 19 Nov (105DTE) · 12× @ 16.30 · -98.1% a year"); no row shows its
  * commission, which the cycle's P&L already counts), whether it opened an option (its expiry then shows as the row's
  * close), and the stock price that goes with it: the 10:00 price the day's looks saw for a trade, the day's close for an
  * assignment, a hand-over or a mark.
@@ -992,11 +999,13 @@ export function describeCycleTimelineEvent(row: BacktestCycleTimelineRow): { nam
   const contracts = Math.round(row.quantity / 100);
   const opened = /^(Sold|Bought) (put|call) @ (\S+)(.*)$/.exec(row.label);
   if (opened) {
-    // A hedge's Put is bought to open and sold to close: it has no delta or yield recorded, and only its purchase opens an option.
+    // A hedge's Put is bought to open and sold to close: it has no delta recorded, its purchase shows its yearly cost as a
+    // negative yield, and only its purchase opens an option.
     const hedge = row.bucket === "hedge";
     const saleDelta = !hedge && opened[1] === "Sold" && row.delta != null ? ` · Δ ${formatDelta(row.delta)}` : "";
     const saleYield = !hedge && opened[1] === "Sold" ? saleDelta + (row.premiumYield == null ? "" : ` · ${formatPercentage(row.premiumYield, 1)} a year`) : "";
-    return { name: `${opened[1]} ${opened[2]}`, order: opened[1] === "Sold" ? "Sell" : "Buy", detail: `${contractOf(opened[2]!)}${formatOrderSize(contracts, Number(opened[3]))}${opened[4]}${saleYield}`, opensOption: !hedge || opened[1] === "Bought", priceAt: "tenOclock" };
+    const hedgeCost = hedge && opened[1] === "Bought" && row.hedgeCostYield != null ? ` · ${formatPercentage(-row.hedgeCostYield, 1)} a year` : "";
+    return { name: `${opened[1]} ${opened[2]}`, order: opened[1] === "Sold" ? "Sell" : "Buy", detail: `${contractOf(opened[2]!)}${formatOrderSize(contracts, Number(opened[3]))}${opened[4]}${saleYield}${hedgeCost}`, opensOption: !hedge || opened[1] === "Bought", priceAt: "tenOclock" };
   }
   // The Vol Farmer's hedge, marked at a hand-over of the shares (the API's cycleHedgeHandOvers.ts): what it made since its last mark.
   const hedgeHanded = /^Put handed to (CC|Unstructured) @ (\S+)$/.exec(row.label);

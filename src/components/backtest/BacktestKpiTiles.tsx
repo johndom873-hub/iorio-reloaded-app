@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import type { BacktestAccuracyBand, BacktestCycle, BacktestMetrics, BacktestMonthlyReturn, BacktestPnlBasis, BacktestSessionDay, BacktestTickerStatistics, BacktestTrade } from "../../api/backtest";
+import type { BacktestAccuracyBand, BacktestCycle, BacktestMetrics, BacktestMonthlyReturn, BacktestPnlBasis, BacktestPnlSource, BacktestPnlSources, BacktestSessionDay, BacktestTickerStatistics, BacktestTrade } from "../../api/backtest";
 import { formatCompactDollarsTrimmed, formatNumber, formatPercentage, formatRatio, formatSignedPnl, pluralizeCount, pnlTextClass } from "../../lib/formatters";
 import {
   backtestCycleMetricExplanation,
@@ -54,6 +54,16 @@ function OpenCyclesLine({ openCount, openDollars }: { openCount: number; openDol
   );
 }
 
+/** "of the 11.3% CAGR: +$17,464 after buybacks and commissions", the dollars in green or red; no CAGR when it has no part of it. */
+function SourcePnlLine({ cagr, source, after }: { cagr: number | null | undefined; source: BacktestPnlSource; after: string }) {
+  return (
+    <>
+      {source.cagrPart !== null && cagr !== null && cagr !== undefined && `of the ${formatPercentage(cagr, 1)} CAGR: `}
+      <span className={pnlTextClass(source.pnlDollars)}>{formatSignedPnl(source.pnlDollars, 0)}</span> {after}
+    </>
+  );
+}
+
 interface BacktestKpiTilesProps {
   pnlBasis: BacktestPnlBasis;
   metrics: BacktestMetrics | null;
@@ -63,12 +73,14 @@ interface BacktestKpiTilesProps {
   accuracyBands: BacktestAccuracyBand[];
   cycles: BacktestCycle[];
   allSymbolsStatistics: BacktestTickerStatistics | null;
+  /** Shares, Covered Calls and Hedge (approved 2026-10-26): each tile when the session held it. */
+  pnlSources: BacktestPnlSources | null;
 }
 
 /** The headline figures, led by the wheel cycle P&L (whether the book made money, as the platform counts it). The win rate,
  *  averages and edge capture are measured on closed cycles, or per option on sessions run before cycles carried the P&L.
  *  Buy and hold sits in its own comparison table, not on the tiles. "—" until the run has finished. */
-export function BacktestKpiTiles({ pnlBasis, metrics, days, trades, monthlyReturns, accuracyBands, cycles, allSymbolsStatistics }: BacktestKpiTilesProps) {
+export function BacktestKpiTiles({ pnlBasis, metrics, days, trades, monthlyReturns, accuracyBands, cycles, allSymbolsStatistics, pnlSources }: BacktestKpiTilesProps) {
   const cycleBasis = isCycleBasis(pnlBasis);
   const cycleTotals = summarizeCycleTotals(cycles);
   const hasBook = allSymbolsStatistics !== null || cycles.length > 0;
@@ -175,6 +187,42 @@ export function BacktestKpiTiles({ pnlBasis, metrics, days, trades, monthlyRetur
       value: formatPercentage(metrics?.inTheMoneyAtExpiryShare, 0),
       lines: [cycleBasis ? "of options sold that expired, settled at the close" : "of expired contracts, settled at the close"],
     },
+    // Each source's part of the CAGR, then its P&L, what was quoted at the trades and the days it was held.
+    pnlSources?.shares
+      ? {
+          label: "Shares",
+          explanation: backtestCycleMetricExplanation.shares,
+          value: signedPercentDisplay(pnlSources.shares.cagrPart).text,
+          valueClassName: signedPercentDisplay(pnlSources.shares.cagrPart).className,
+          lines: [<SourcePnlLine key="source" cagr={metrics?.cagr} source={pnlSources.shares} after="after commissions" />, `shares held on ${formatPercentage(pnlSources.shares.daysHeldShare, 0)} of the session's days`],
+        }
+      : null,
+    pnlSources?.coveredCalls
+      ? {
+          label: "Covered Calls",
+          explanation: backtestCycleMetricExplanation.coveredCalls,
+          value: signedPercentDisplay(pnlSources.coveredCalls.cagrPart).text,
+          valueClassName: signedPercentDisplay(pnlSources.coveredCalls.cagrPart).className,
+          lines: [
+            <SourcePnlLine key="source" cagr={metrics?.cagr} source={pnlSources.coveredCalls} after="after buybacks and commissions" />,
+            pnlSources.coveredCalls.quotedYieldMedian === null ? null : `quoted at sale: median ${formatPercentage(pnlSources.coveredCalls.quotedYieldMedian, 1)} a year (${pluralizeCount(pnlSources.coveredCalls.quotedCount, "Call")})`,
+            `a Call open on ${formatPercentage(pnlSources.coveredCalls.daysHeldShare, 0)} of the session's days`,
+          ],
+        }
+      : null,
+    pnlSources?.hedge
+      ? {
+          label: "Hedge",
+          explanation: backtestCycleMetricExplanation.hedge,
+          value: signedPercentDisplay(pnlSources.hedge.cagrPart).text,
+          valueClassName: signedPercentDisplay(pnlSources.hedge.cagrPart).className,
+          lines: [
+            <SourcePnlLine key="source" cagr={metrics?.cagr} source={pnlSources.hedge} after="after what the Puts paid back" />,
+            pnlSources.hedge.quotedCostMedian === null ? null : `quoted at purchase: median ${formatPercentage(-pnlSources.hedge.quotedCostMedian, 1)} a year (${pluralizeCount(pnlSources.hedge.quotedCount, "Put")})`,
+            `a Put open on ${formatPercentage(pnlSources.hedge.daysHeldShare, 0)} of the session's days`,
+          ],
+        }
+      : null,
   ];
 
   return (

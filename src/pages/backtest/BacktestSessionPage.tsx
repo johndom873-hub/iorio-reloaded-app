@@ -207,6 +207,7 @@ export function BacktestSessionPage() {
         accuracyBands={detail.accuracyByMarginBand}
         cycles={detail.cycles}
         allSymbolsStatistics={detail.allSymbolsStatistics}
+        pnlSources={detail.pnlSources ?? null}
       />
 
       <BacktestCard

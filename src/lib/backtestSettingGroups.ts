@@ -181,9 +181,14 @@ export function backtestSettingGroupSummary(group: BacktestSettingGroup, text: (
       ].join(" · ");
     case "Vol Farmer":
       return [
-        `Calls |delta| ${text("volFarmer.callMinAbsDelta")}–${text("volFarmer.callMaxAbsDelta")}, ${text("volFarmer.callMinDte")}–${text("volFarmer.callMaxDte")} DTE`,
-        `Puts ${Number(text("volFarmer.putMinDte")) > 0 ? `${text("volFarmer.putMinDte")}–${text("volFarmer.putMaxDte")} DTE` : `to ${text("volFarmer.putMaxDte")} DTE`}, strike ${Number(text("volFarmer.putMaxStrikeAbovePricePct")) > 0 ? `up to ${shown("volFarmer.putMaxStrikeAbovePricePct")} above the price` : Number(text("volFarmer.putMaxStrikeAbovePricePct")) < 0 ? `at least ${Math.abs(Number(text("volFarmer.putMaxStrikeAbovePricePct")))}% below the price` : "at or below the price"}`,
-        `protection on a ${shown("volFarmer.protectionFallPct")} fall`,
+        `Calls |delta| ${text("volFarmer.callMinAbsDelta")}–${text("volFarmer.callMaxAbsDelta")}, ${text("volFarmer.callExpiry") === "next" ? "next expiry" : `${text("volFarmer.callMinDte")}–${text("volFarmer.callMaxDte")} DTE`}`,
+        // A session run without a hedge (research) reads none of the Put settings.
+        ...(text("volFarmer.hedge") === "none"
+          ? ["no hedge"]
+          : [
+              `Puts ${Number(text("volFarmer.putMinDte")) > 0 ? `${text("volFarmer.putMinDte")}–${text("volFarmer.putMaxDte")} DTE` : `to ${text("volFarmer.putMaxDte")} DTE`}, strike ${Number(text("volFarmer.putMaxStrikeAbovePricePct")) > 0 ? `up to ${shown("volFarmer.putMaxStrikeAbovePricePct")} above the price` : Number(text("volFarmer.putMaxStrikeAbovePricePct")) < 0 ? `at least ${Math.abs(Number(text("volFarmer.putMaxStrikeAbovePricePct")))}% below the price` : "at or below the price"}`,
+              `protection on a ${shown("volFarmer.protectionFallPct")} fall`,
+            ]),
         `${shown("volFarmer.putCashReservePct")} cash kept`,
       ].join(" · ");
     case "Capital and sizing":
