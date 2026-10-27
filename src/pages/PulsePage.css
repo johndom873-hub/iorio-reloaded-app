@@ -700,13 +700,18 @@
   color: var(--danger);
 }
 
-/* top signals by Edge $ */
+/* top premiums (best Call yields) */
 .iorio-pulse-page .yield-head,
 .iorio-pulse-page .yield-row {
   display: grid;
   grid-template-columns: 2.5rem 2.1rem 1fr 2.6rem 2.8rem;
   column-gap: 0.3rem;
   align-items: center;
+}
+/* Top premiums: Tkr, contract, Δ, yield. */
+.iorio-pulse-page .yield-head.premiums,
+.iorio-pulse-page .yield-row.premiums {
+  grid-template-columns: 2.5rem 1fr 2.4rem 3rem;
 }
 .iorio-pulse-page .yield-head {
   font-size: 0.58rem;
@@ -1522,6 +1527,10 @@
 .iorio-pulse-page.pulse-phone .yield-head,
 .iorio-pulse-page.pulse-phone .yield-row {
   grid-template-columns: 46px 34px 1fr 50px 52px;
+}
+.iorio-pulse-page.pulse-phone .yield-head.premiums,
+.iorio-pulse-page.pulse-phone .yield-row.premiums {
+  grid-template-columns: 46px 1fr 44px 52px;
 }
 .iorio-pulse-page.pulse-phone .pos-head,
 .iorio-pulse-page.pulse-phone .yield-head {

@@ -44,7 +44,7 @@ import {
 } from "../lib/formatters";
 import { allocationBarPercents, portfolioFromExposure } from "../lib/portfolioFromExposure";
 import { describeShareHandOverPositions, positionCloseReasonLabel } from "../lib/positionPnl";
-import { useRefreshAfterSignalsTickerModal, useSignalsTickerModal } from "../hooks/useSignalsTickerModal";
+import { useRefreshAfterTickerModal, useTickerModal } from "../hooks/useTickerModal";
 import { TooltipSpan } from "../components/TooltipSpan";
 import { PerformanceCard } from "../components/PerformanceCard";
 import { ColumnVisibilityPopover } from "../components/DataTable/ColumnVisibilityPopover";
@@ -523,7 +523,7 @@ export function DashboardPage() {
     "needs-attention",
     needsAttentionColumns.map((column) => column.key),
   );
-  const { open: openTickerModal } = useSignalsTickerModal();
+  const { open: openTickerModal } = useTickerModal();
   const [closePosition, setClosePosition] = useState<Position | null>(null);
   const openTickerModalAtPosition = useCallback(
     (ticker: { symbol: string; focusPositionId?: string }) => openTickerModal(ticker.symbol, { focusPositionId: ticker.focusPositionId }),
@@ -625,7 +625,7 @@ export function DashboardPage() {
   useEffect(() => {
     loadNeedsAttention();
   }, [loadNeedsAttention]);
-  useRefreshAfterSignalsTickerModal(loadNeedsAttention);
+  useRefreshAfterTickerModal(loadNeedsAttention);
 
   const needsAttentionSymbols = Array.from(new Set(needsAttention.map((position) => position.symbol))).sort().join(",");
 

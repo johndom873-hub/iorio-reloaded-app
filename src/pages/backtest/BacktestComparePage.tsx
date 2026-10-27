@@ -22,7 +22,7 @@ import { usePolledBacktestResource } from "../../components/backtest/useBacktest
 import { useTheme } from "../../hooks/useTheme";
 import { formatCurrency } from "../../lib/formatters";
 import { backtestMetricExplanation, backtestSeriesColorsByTheme, bestValueIndex, buyAndHoldColorByTheme, buyAndHoldLineStyle, compareMetricRows, describeOverrideChanges, spyBuyAndHoldColorByTheme } from "../../lib/backtestPresentation";
-import { escapeTooltipHtml } from "../../lib/signalsPresentation";
+import { escapeTooltipHtml } from "../../lib/formatters";
 
 const pageTitle = "Compare";
 

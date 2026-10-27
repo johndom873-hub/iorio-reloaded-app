@@ -12,7 +12,7 @@ import { ApiError, apiBaseUrl, apiRequest } from "./client";
 // new browser can briefly meet an old server) — see connect(). Both go away
 // once the legacy routes are deleted.
 
-export type MultiplexedStreamKind = "greeks" | "pnl" | "exposure" | "pricePerformancePrices" | "stockPrices" | "signalsScreen" | "signalsTicker" | "signalsQuotes" | "notifications" | "pulses";
+export type MultiplexedStreamKind = "greeks" | "pnl" | "exposure" | "pricePerformancePrices" | "stockPrices" | "signalsScreen" | "signalsTicker" | "signalsQuotes" | "optionQuotes" | "notifications" | "pulses";
 
 // IBKR market-data lines only for the tab being looked at (Marcelo 2026-09-29): every kind here holds live
 // price lines on the server, so while this tab is hidden (another tab in front, window minimised, screen
@@ -21,7 +21,7 @@ export type MultiplexedStreamKind = "greeks" | "pnl" | "exposure" | "pricePerfor
 // is a snapshot stream, so its first frame back is full current state. Notifications (which carry presence)
 // and the Pulse topology stream hold no lines and stay connected. With the server pool's own 2 s unsubscribe
 // grace, a switch back within ~4 s never touches IBKR.
-const lineHoldingKinds: ReadonlySet<MultiplexedStreamKind> = new Set(["greeks", "pnl", "exposure", "pricePerformancePrices", "stockPrices", "signalsScreen", "signalsTicker", "signalsQuotes"]);
+const lineHoldingKinds: ReadonlySet<MultiplexedStreamKind> = new Set(["greeks", "pnl", "exposure", "pricePerformancePrices", "stockPrices", "signalsScreen", "signalsTicker", "signalsQuotes", "optionQuotes"]);
 export const hiddenTabPauseGraceMs = 2_000;
 let areLineHoldingStreamsPaused = false;
 let hiddenTabPauseTimer: ReturnType<typeof setTimeout> | null = null;

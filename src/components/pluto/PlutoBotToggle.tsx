@@ -12,15 +12,13 @@ interface PlutoBotToggleProps {
   enabled: boolean;
   /** Switching Pluto off with open positions on the ticker asks first: Pluto stops managing them. */
   openPositionCount: number;
-  /** Pluto only trades Signals tickers: the switch is disabled while Signals is off (the API refuses too). */
-  disabledReason?: string | null;
   onChanged: (enabled: boolean) => void;
   onError?: (message: string) => void;
 }
 
 /** The per-ticker "Pluto may trade this" switch on the Shortlist tab. Saves on click; the cap error comes back from the API.
  *  Locked for a trader, with a lock beside it: only an admin may switch Pluto on or off for a ticker (the API refuses a trader too). */
-export function PlutoBotToggle({ entryId, symbol, enabled, openPositionCount, disabledReason, onChanged, onError }: PlutoBotToggleProps) {
+export function PlutoBotToggle({ entryId, symbol, enabled, openPositionCount, onChanged, onError }: PlutoBotToggleProps) {
   const [saving, setSaving] = useState(false);
   const [confirming, setConfirming] = useState(false);
   const isAdmin = useIsAdmin();
@@ -54,12 +52,10 @@ export function PlutoBotToggle({ entryId, symbol, enabled, openPositionCount, di
       <ToggleSwitch
         checked={enabled}
         saving={saving}
-        disabled={Boolean(disabledReason)}
-        disabledReason={disabledReason ?? undefined}
         ariaLabel={`Pluto ${enabled ? "enabled" : "disabled"} for ${symbol}`}
         onToggle={requestToggle}
       />
-      {confirming && <PlutoStopsManagingConfirm symbol={symbol} openPositionCount={openPositionCount} viaSignals={false} onConfirm={() => void toggle()} onCancel={() => setConfirming(false)} />}
+      {confirming && <PlutoStopsManagingConfirm symbol={symbol} openPositionCount={openPositionCount} onConfirm={() => void toggle()} onCancel={() => setConfirming(false)} />}
     </>
   );
 }

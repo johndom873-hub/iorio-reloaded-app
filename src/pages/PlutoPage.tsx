@@ -6,16 +6,12 @@ import {
   fetchPlutoActions,
   fetchPlutoEventsExcludingTypes,
   fetchPlutoEventsOfTypes,
-  fetchPlutoLatestModelPass,
   fetchPlutoScoreboard,
   fetchPlutoSettings,
   fetchPlutoSettingsAudit,
   fetchPlutoState,
-  fetchDaySignalsWatch,
-  type DaySignalsWatch,
   type PlutoAction,
   type PlutoEvent,
-  type PlutoPass,
   type PlutoScoreboard,
   type PlutoSettings,
   type PlutoSettingsAuditRow,
@@ -30,7 +26,7 @@ import { PlutoStatusCard } from "../components/pluto/PlutoStatusCard";
 import { PlutoTickersTab } from "../components/pluto/PlutoTickersTab";
 import { Spinner } from "../components/Spinner";
 import { useMediaQuery } from "../hooks/useMediaQuery";
-import { useSignalsTickerModal } from "../hooks/useSignalsTickerModal";
+import { useTickerModal } from "../hooks/useTickerModal";
 import { useTickingNow } from "../hooks/useTickingNow";
 import { activityFeedHiddenEventTypes, crashLoopRestartsFromEvents, derivePlutoStatus } from "../lib/plutoPresentation";
 import "../components/pluto/PlutoPage.css";
@@ -57,7 +53,7 @@ function tabFromParam(value: string | null): PlutoTab {
 }
 
 function historyViewFromParam(value: string | null): PlutoHistoryView {
-  return value === "decisions" || value === "events" ? value : "orders";
+  return value === "events" ? value : "orders";
 }
 
 export function PlutoPage() {
@@ -65,17 +61,14 @@ export function PlutoPage() {
   const tab = tabFromParam(searchParams.get("tab"));
   const historyView = historyViewFromParam(searchParams.get("view"));
   const isPhone = useMediaQuery("(max-width: 767px)");
-  const { open: openTickerModal } = useSignalsTickerModal();
+  const { open: openTickerModal } = useTickerModal();
 
   const [state, setState] = useState<PlutoState | null>(null);
   const [stateError, setStateError] = useState<string | null>(null);
   // Bumped on every new event so an open Event log reloads its first page; the log owns its own page and filters.
   const [eventLogRefreshToken, setEventLogRefreshToken] = useState(0);
-  // Bumped when an event can have changed an order or a decision; History's Orders and Model decisions own their pages.
+  // Bumped when an event can have changed an order; History's Orders view owns its pages.
   const [historyListsRefreshToken, setHistoryListsRefreshToken] = useState(0);
-  const [latestModelPass, setLatestModelPass] = useState<PlutoPass | null>(null);
-  const [latestModelPassLoading, setLatestModelPassLoading] = useState(true);
-  const [latestModelPassError, setLatestModelPassError] = useState<string | null>(null);
   const [feedEvents, setFeedEvents] = useState<PlutoEvent[]>([]);
   const [feedEventsLoading, setFeedEventsLoading] = useState(true);
   const [feedEventsError, setFeedEventsError] = useState<string | null>(null);
@@ -119,16 +112,6 @@ export function PlutoPage() {
   }, []);
   const refreshEventLog = useCallback(() => setEventLogRefreshToken((token) => token + 1), []);
   const refreshHistoryLists = useCallback(() => setHistoryListsRefreshToken((token) => token + 1), []);
-  const loadLatestModelPass = useCallback(async () => {
-    try {
-      setLatestModelPass((await fetchPlutoLatestModelPass())[0] ?? null);
-      setLatestModelPassError(null);
-    } catch (err) {
-      setLatestModelPassError(errorMessage(err, "Could not load the latest decision."));
-    } finally {
-      setLatestModelPassLoading(false);
-    }
-  }, []);
   const loadFeedEvents = useCallback(async () => {
     try {
       setFeedEvents(await fetchPlutoEventsExcludingTypes(activityFeedHiddenEventTypes, activityFeedLength));
@@ -157,19 +140,9 @@ export function PlutoPage() {
       setScoreboardError(errorMessage(err, "Could not load the track record."));
     }
   }, []);
-  const [daySignalsWatch, setDaySignalsWatch] = useState<DaySignalsWatch | null>(null);
-  const loadDaySignalsWatch = useCallback(async () => {
-    try {
-      setDaySignalsWatch(await fetchDaySignalsWatch());
-    } catch {
-      // The column then shows "—"; the rest of the tab does not depend on it.
-      setDaySignalsWatch(null);
-    }
-  }, []);
   const loadShortlist = useCallback(async () => {
     try {
-      // Pluto only trades Signals tickers: a Signals-off (price-only) ticker is not listed here at all.
-      setShortlist((await fetchShortlist()).filter((row) => row.signalsEnabled));
+      setShortlist(await fetchShortlist());
       setShortlistError(null);
     } catch (err) {
       setShortlistError(errorMessage(err, "Could not load the tickers."));
@@ -191,10 +164,9 @@ export function PlutoPage() {
   }, []);
 
   useEffect(() => {
-    void Promise.all([loadState(), loadLatestModelPass(), loadFeedEvents(), loadActions(), loadShortlist(), loadSettings(), loadScoreboard(), loadDaySignalsWatch()]);
+    void Promise.all([loadState(), loadFeedEvents(), loadActions(), loadShortlist(), loadSettings(), loadScoreboard()]);
     const timer = setInterval(() => {
       void loadState();
-      void loadDaySignalsWatch();
     }, stateRefreshIntervalMs);
     return () => clearInterval(timer);
     // Initial load only.
@@ -216,9 +188,8 @@ export function PlutoPage() {
         void loadState();
         refreshEventLog();
         void loadFeedEvents();
-        if ([...kinds].some((kind) => kind.startsWith("pass_") || kind.startsWith("model_") || kind.startsWith("action_") || kind.startsWith("order_") || kind.startsWith("breaker_"))) {
+        if ([...kinds].some((kind) => kind.startsWith("pass_") || kind.startsWith("action_") || kind.startsWith("order_") || kind.startsWith("breaker_"))) {
           refreshHistoryLists();
-          void loadLatestModelPass();
           void loadActions();
           void loadScoreboard();
         }
@@ -226,7 +197,7 @@ export function PlutoPage() {
         if (kinds.has("settings_changed")) void loadSettings();
       }, notificationRefreshDebounceMs);
     });
-  }, [loadState, refreshEventLog, loadFeedEvents, refreshHistoryLists, loadLatestModelPass, loadActions, loadShortlist, loadSettings, loadScoreboard]);
+  }, [loadState, refreshEventLog, loadFeedEvents, refreshHistoryLists, loadActions, loadShortlist, loadSettings, loadScoreboard]);
 
   // The paused headline's restart count lives in the pause event, which a busy log can push far past the loaded events.
   const [pauseEvents, setPauseEvents] = useState<PlutoEvent[]>([]);
@@ -311,7 +282,7 @@ export function PlutoPage() {
       </nav>
 
       {tab === "live" && (
-        <PlutoLiveTab state={state} actions={actions} actionsLoading={actionsLoading} actionsError={actionsError} latestModelPass={latestModelPass} latestModelPassLoading={latestModelPassLoading} latestModelPassError={latestModelPassError} feedEvents={feedEvents} feedEventsLoading={feedEventsLoading} feedEventsError={feedEventsError} now={now} isPhone={isPhone} onOpenTicker={openTickerModal} />
+        <PlutoLiveTab state={state} actions={actions} actionsLoading={actionsLoading} actionsError={actionsError} feedEvents={feedEvents} feedEventsLoading={feedEventsLoading} feedEventsError={feedEventsError} now={now} isPhone={isPhone} onOpenTicker={openTickerModal} />
       )}
       {tab === "history" && (
         <PlutoHistoryTab
@@ -334,7 +305,6 @@ export function PlutoPage() {
           loading={shortlistLoading}
           error={shortlistError}
           state={state}
-          daySignalsWatch={daySignalsWatch}
           maxEnabled={maxEnabled}
           isPhone={isPhone}
           onOpenTicker={openTickerModal}
@@ -342,7 +312,6 @@ export function PlutoPage() {
             setShortlist((previous) => previous.map((row) => (row.id === entryId ? { ...row, botEnabled: enabled } : row)));
             void loadShortlist();
             void loadState();
-            void loadDaySignalsWatch();
           }}
           onPrepRunChange={() => void loadShortlist()}
           settings={settings}

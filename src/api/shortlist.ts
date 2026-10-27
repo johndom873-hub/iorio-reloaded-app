@@ -3,8 +3,6 @@ import { apiRequest, apiBaseUrl, apiStreamedRequest } from "./client";
 export interface ShortlistRow {
   id: string;
   addedAt: string;
-  /** Off: price-only (Price Performance); left out of option-chain capture, Signals and Pluto. New tickers start off. */
-  signalsEnabled: boolean;
   tickerId: string;
   symbol: string;
   companyName: string | null;
@@ -29,17 +27,13 @@ export interface ShortlistRow {
   /** Open positions on this ticker. Remove is disabled (and the API refuses with 409) while above zero. */
   openPositionCount: number;
 
-  // Data-readiness columns (redesigned 2026-09-23) -- exactly what the Signals pipeline reads before it
-  // can score a candidate; see loadShortlistDataReadiness.ts in the API repo.
+  // Data-readiness columns (re-based on the Volatility screen 2026-10-27); see loadShortlistDataReadiness.ts in the API repo.
   dailyBarCount: number;
+  /** Days of implied-volatility history in the 252-day window IV Rank and IV %ile read. */
+  ivWindowDays: number;
   earningsCount: number;
   nextEarningsDateIso: string | null;
   isEtf: boolean;
-  dividendHistoryCount: number;
-  dividendCadenceUnknown: boolean;
-  chainSnapshotCount: number;
-  latestFittedSliceCount: number | null;
-  latestTotalSliceCount: number | null;
   /** One entry per expiry stored in option_chain_expiry_strikes, each with its strike count. */
   optionChainExpiries: OptionChainExpiryStrikeCount[];
 }
@@ -66,17 +60,6 @@ export function removeFromShortlist(entryId: string): Promise<void> {
   return apiRequest<void>(`/shortlist/${entryId}`, { method: "DELETE" });
 }
 
-export interface SignalsEnabledResult {
-  signalsEnabled: boolean;
-  /** Turning Signals off turns Pluto off too. */
-  botEnabled: boolean;
-  /** The option-chain setup started by turning Signals on, or null. */
-  backfillRun: TickerBackfillRun | null;
-}
-
-export function updateShortlistSignalsEnabled(entryId: string, enabled: boolean): Promise<SignalsEnabledResult> {
-  return apiRequest<SignalsEnabledResult>(`/shortlist/${entryId}/signals-enabled`, { method: "PATCH", body: JSON.stringify({ enabled }) });
-}
 
 export interface TickerSearchResult {
   symbol: string;
@@ -87,7 +70,7 @@ export function searchTickers(query: string): Promise<TickerSearchResult[]> {
   return apiRequest<TickerSearchResult[]>(`/shortlist/search?q=${encodeURIComponent(query)}`);
 }
 
-export type BackfillStepKey = "history" | "calendar" | "chain_warmup" | "first_snapshot";
+export type BackfillStepKey = "history" | "calendar" | "chain_warmup";
 export type BackfillStepStatus = "pending" | "running" | "done" | "skipped" | "failed";
 
 export interface BackfillStep {
@@ -145,7 +128,7 @@ export interface PopulateOptionChainResult {
   optionChainExpiries: OptionChainExpiryStrikeCount[];
 }
 
-/** Actions menu's "Populate Option Chain" — re-runs refreshStoredOptionChain for just this ticker (expiries + per-expiry strikes), same fetch the nightly capture does. */
+/** Actions menu's "Populate Option Chain" — re-runs refreshStoredOptionChain for just this ticker (expiries + per-expiry strikes), same fetch the morning structure refresh does. */
 export function populateTickerOptionChain(tickerId: string): Promise<PopulateOptionChainResult> {
   return apiStreamedRequest<PopulateOptionChainResult>(`/shortlist/${tickerId}/populate-option-chain`, { method: "POST" });
 }

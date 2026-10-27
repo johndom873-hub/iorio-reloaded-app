@@ -1,36 +1,36 @@
 import { createContext, useCallback, useContext, useEffect, useRef } from "react";
 import { useSearchParams } from "react-router-dom";
 
-const SYMBOL_PARAM = "signal";
+const SYMBOL_PARAM = "ticker";
 const ROLL_LEG_PARAM = "roll";
 const FOCUS_POSITION_PARAM = "position";
 const MODAL_PARAMS = [SYMBOL_PARAM, ROLL_LEG_PARAM, FOCUS_POSITION_PARAM] as const;
 
-export interface SignalsTickerModalOpenOptions {
-  /** Pre-selects the best Signals roll of this open short leg once the scores arrive. */
+export interface TickerModalOpenOptions {
+  /** Opens in roll mode on this open short leg. */
   rollLegId?: string;
   /** Scrolls this position's card into view (forcing the Positions card open). */
   focusPositionId?: string;
 }
 
-export interface SignalsTickerModalState {
+export interface TickerModalState {
   symbol: string | null;
   rollLegId: string | null;
   focusPositionId: string | null;
-  open: (symbol: string, options?: SignalsTickerModalOpenOptions) => void;
+  open: (symbol: string, options?: TickerModalOpenOptions) => void;
   close: () => void;
 }
 
 /**
- * The one ticker modal (mounted once in AppLayout), kept in the URL as `?signal=SYM` plus optional
+ * The one ticker modal (mounted once in AppLayout), kept in the URL as `?ticker=SYM` plus optional
  * `&roll=<legId>` / `&position=<positionId>` so a browser refresh reopens it where it was. Other query
  * params are preserved, and `replace: true` keeps opening/closing out of the browser history.
  */
-export function useSignalsTickerModal(): SignalsTickerModalState {
+export function useTickerModal(): TickerModalState {
   const [searchParams, setSearchParams] = useSearchParams();
 
   const open = useCallback(
-    (symbol: string, options: SignalsTickerModalOpenOptions = {}) => {
+    (symbol: string, options: TickerModalOpenOptions = {}) => {
       setSearchParams(
         (previous) => {
           const params = new URLSearchParams(previous);
@@ -68,16 +68,16 @@ export function useSignalsTickerModal(): SignalsTickerModalState {
 
 export type PositionsMayHaveChangedListener = () => void;
 
-export interface SignalsTickerModalContextValue {
+export interface TickerModalContextValue {
   subscribe: (listener: PositionsMayHaveChangedListener) => () => void;
 }
 
-/** Provided by SignalsTickerModalProvider (contexts/SignalsTickerModalContext.tsx). */
-export const SignalsTickerModalContext = createContext<SignalsTickerModalContextValue | null>(null);
+/** Provided by TickerModalProvider (contexts/TickerModalContext.tsx). */
+export const TickerModalContext = createContext<TickerModalContextValue | null>(null);
 
-/** Calls `refresh` when the Signals modal closes, and after a fill or a position change inside it. */
-export function useRefreshAfterSignalsTickerModal(refresh: () => void): void {
-  const context = useContext(SignalsTickerModalContext);
+/** Calls `refresh` when the Ticker modal closes, and after a fill or a position change inside it. */
+export function useRefreshAfterTickerModal(refresh: () => void): void {
+  const context = useContext(TickerModalContext);
   const refreshRef = useRef(refresh);
   useEffect(() => {
     refreshRef.current = refresh;

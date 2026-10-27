@@ -15,7 +15,7 @@ import {
   summarizeCycleTotals,
   worstMonthOf,
 } from "../../lib/backtestPresentation";
-import { escapeTooltipHtml } from "../../lib/signalsPresentation";
+import { escapeTooltipHtml } from "../../lib/formatters";
 import { DottedLabelTooltip } from "../HelpTooltip";
 
 interface KpiTileProps {

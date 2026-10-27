@@ -544,13 +544,6 @@ export interface PlutoHistoryFilters {
 }
 
 export type PlutoOrderOutcomeFilter = "all" | "filled" | "working" | "blocked" | "cancelled" | "rejected";
-export type PlutoDecisionVerdictFilter = "all" | "order" | "no_order" | "failed";
-
-export interface PlutoModelDecisionsPage {
-  passes: PlutoPass[];
-  /** Every pass matching the filters, not only this page. */
-  total: number;
-}
 
 export interface PlutoOrdersPage {
   actions: PlutoAction[];
@@ -575,57 +568,12 @@ export interface PlutoTicker {
   botEnabledChangedBy: string | null;
 }
 
-/** Whether Day Signals is watching a Pluto-enabled ticker today, and when it looks again (API daySignalsWatchStatus.ts). */
-export interface DaySignalsWatchStatus {
-  kind: "watched" | "not_watched" | "no_surface" | "waiting_for_capture" | "market_closed";
-  pooledExpiries: string[];
-  lastLookAt: string | null;
-  lastLookKind: "price" | "timed" | null;
-  nextTimedCheckAt: string | null;
-  triggerLowPrice: number | null;
-  triggerHighPrice: number | null;
-}
-
-export interface DaySignalsWatch {
-  tradingDateIso: string;
-  sessionOpen: boolean;
-  tickers: Record<string, DaySignalsWatchStatus>;
-}
-
-export function fetchDaySignalsWatch(): Promise<DaySignalsWatch> {
-  return apiRequest<DaySignalsWatch>("/pluto/day-signals-watch");
-}
-
 export function fetchPlutoState(): Promise<PlutoState> {
   return apiRequest<PlutoState>("/pluto/state");
 }
 
 export function updatePlutoMode(mode: PlutoMode): Promise<PlutoStateCore> {
   return apiRequest<PlutoStateCore>("/pluto/mode", { method: "PUT", body: JSON.stringify({ mode }) });
-}
-
-/** What Pluto's sizing gate would cap one contract at (display only; backend routes/pluto.ts POST /pluto/sizing-caps). */
-export interface PlutoSizingCaps {
-  kelly: { contracts: number; detail: string };
-  /** null: the stress cap is off or never binds for this contract. */
-  stress: { contracts: number | null; detail: string };
-  netLiquidationValue: number;
-  /** The date of the account value the caps were sized against (last night's). */
-  accountValueDateIso: string;
-}
-
-export interface PlutoSizingCapsRequest {
-  strategyKey: "covered_call" | "cash_secured_put";
-  strike: number;
-  bid: number;
-  ask: number;
-  spotPrice: number | null;
-  model: { expectedPnlDollars: number; pnlVarianceDollars: number; coveredPositionPnlVarianceDollars: number | null; varianceSessions: number };
-  ticker: { forecastVolatility: number | null; elevatedVolatility: boolean; dayChangePercent: number | null };
-}
-
-export function fetchPlutoSizingCaps(request: PlutoSizingCapsRequest): Promise<PlutoSizingCaps> {
-  return apiRequest<PlutoSizingCaps>("/pluto/sizing-caps", { method: "POST", body: JSON.stringify(request) });
 }
 
 export function pausePluto(cancelWorkingOrders: boolean): Promise<PlutoStateCore> {
@@ -668,8 +616,7 @@ export function fetchPlutoSettings(): Promise<PlutoSettings> {
 
 /** Every number the How it works tab quotes (API src/pluto/howItWorks.ts): percentages in percent, deltas as fractions, money in dollars. */
 export interface PlutoHowItWorks {
-  activeStrategy: PlutoExecutionStrategy;
-  shared: { capitalBudgetPct: number; dailyLossBreakerPct: number; unfilledOrderCancelMinutes: number };
+  shared: { windowStartEt: string; windowEndEt: string; windowEndMinutesBeforeCloseAtLeast: number; capitalBudgetPct: number; dailyLossBreakerPct: number; unfilledOrderCancelMinutes: number };
   ladder: {
     minAbsDelta: number;
     maxAbsDelta: number;
@@ -706,60 +653,6 @@ export interface PlutoHowItWorks {
       shockPct: number;
       floor: number;
       rungs: { rung: number; strikeCap: number }[];
-    };
-  };
-  edgeMargin: {
-    windowStartEt: string;
-    windowEndEt: string;
-    windowEndMinutesBeforeCloseAtLeast: number;
-    minGrade: "strong" | "good" | "weak";
-    gradeCutsPct: { strong: number; good: number; weak: number };
-    minEdgeYieldPct: number;
-    minAnnualizedYieldPct: number;
-    maxAbsDelta: number;
-    minDte: number;
-    maxDte: number;
-    maxSpreadPct: number;
-    minOpenInterest: number;
-    minSessionVolume: number;
-    maxQuoteAgeMinutes: number;
-    maxDayMoveMultiple: number;
-    burstLines: number;
-    candidatesPerTickerPerStrategy: number;
-    confidenceFloor: number;
-    maxEdgeMarginDriftPts: number;
-    orderSizePctOfBudget: number;
-    maxTickerPctOfBudget: number;
-    minCashReservePct: number;
-    maxContractsVolumeSharePct: number;
-    stressRiskBudgetPct: number;
-    stressSigmas: number;
-    kellyFraction: number;
-    maxOpenPositions: number;
-    spyStressBreakerPct: number;
-    maxActionsPerSession: number;
-    tickerCooldownMinutes: number;
-    consecutiveModelFailuresBreaker: number;
-    dailyCostCeilingUsd: number;
-    heldShareCallMinProfitPct: number;
-    heldShareCallMinProfitDollars: number;
-    buybackMinDte: number;
-    buybackUnscoredMinKeptPremiumPct: number;
-    earningsCloseWindowSessions: number;
-    eventCloseWindowSessions: number;
-    example: {
-      contractLabel: string;
-      strike: number;
-      daysToExpiry: number;
-      mid: number;
-      fair: number;
-      frictionDollars: number;
-      exposure: number;
-      edgeMarginPct: number;
-      grade: string;
-      edgeDollars: number;
-      edgeYieldPct: number;
-      passesMinEdgeYield: boolean;
     };
   };
 }
@@ -858,18 +751,8 @@ export function fetchPlutoTickerSettingsAudit(symbol: string, limit = 20): Promi
   return apiRequest<PlutoTickerSettingsAuditRow[]>(`/pluto/ticker-settings/audit?symbol=${encodeURIComponent(symbol)}&limit=${limit}`);
 }
 
-/** The newest pass that asked the model, however many skipped passes came after it (the Live tab's latest decision). */
-export function fetchPlutoLatestModelPass(): Promise<PlutoPass[]> {
-  return apiRequest<PlutoPass[]>("/pluto/passes?modelCalled=true&limit=1");
-}
-
 export function fetchPlutoActions(limit = 100): Promise<PlutoAction[]> {
   return apiRequest<PlutoAction[]>(`/pluto/actions?limit=${limit}`);
-}
-
-/** One pass with its model calls' full inputs ("What the model saw"). */
-export function fetchPlutoPass(passId: string): Promise<PlutoPass> {
-  return apiRequest<PlutoPass>(`/pluto/passes/${encodeURIComponent(passId)}`);
 }
 
 function historyQuery(filters: PlutoHistoryFilters, limit: number, offset: number): URLSearchParams {
@@ -877,13 +760,6 @@ function historyQuery(filters: PlutoHistoryFilters, limit: number, offset: numbe
   if (filters.since !== null) query.set("since", filters.since);
   if (filters.ticker.trim() !== "") query.set("ticker", filters.ticker.trim());
   return query;
-}
-
-/** One page of History's Model decisions (passes that asked the model), newest first, with the total matching the filters. */
-export function fetchPlutoModelDecisionsPage(filters: PlutoHistoryFilters, verdict: PlutoDecisionVerdictFilter, limit: number, offset: number): Promise<PlutoModelDecisionsPage> {
-  const query = historyQuery(filters, limit, offset);
-  if (verdict !== "all") query.set("verdict", verdict);
-  return apiRequest<PlutoModelDecisionsPage>(`/pluto/model-decisions?${query}`);
 }
 
 /** One page of History's Orders (every action but the no-order rows), newest first, with the total matching the filters. */

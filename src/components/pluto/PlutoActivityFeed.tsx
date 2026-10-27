@@ -2,7 +2,6 @@ import type { PlutoEvent } from "../../api/pluto";
 import { browserLocalIsoDate, browserUsesTwelveHourClock, formatBrowserClockTime, formatBrowserClockTimeWithSeconds, formatBrowserDateTimeWithZone, formatDayMonth, formatDayMonthYear } from "../../lib/formatters";
 import { describeEventPayloadFields, describeFeedEvent, plutoEventCategoryLabel, type PlutoFeedContext } from "../../lib/plutoPresentation";
 import { Spinner } from "../Spinner";
-import { PlutoModelInputsToggle } from "./PlutoModelInputs";
 
 interface PlutoActivityFeedProps {
   events: PlutoEvent[];
@@ -34,7 +33,6 @@ export function PlutoActivityFeed({ events, loading, error, emptyMessage, scroll
         const showDay = !showAllFields && day !== today && day !== currentDay;
         currentDay = day;
         const forAllTickers = showAllFields && tickerFilter.trim() !== "" && event.appliesToAllTickers === true;
-        const passId = typeof event.payload?.passId === "string" ? event.payload.passId : null;
         const time = <time dateTime={event.occurredAt} title={formatBrowserDateTimeWithZone(event.occurredAt)}>{showAllFields ? formatBrowserClockTimeWithSeconds(event.occurredAt) : formatBrowserClockTime(event.occurredAt)}</time>;
         return (
           <li key={event.id} className={forAllTickers ? "ev-all-tickers" : undefined}>
@@ -71,7 +69,6 @@ export function PlutoActivityFeed({ events, loading, error, emptyMessage, scroll
                   ))}
                 </dl>
               )}
-              {showAllFields && event.type === "model_called" && passId && <PlutoModelInputsToggle passId={passId} tickerFilter={tickerFilter} />}
             </div>
           </li>
         );

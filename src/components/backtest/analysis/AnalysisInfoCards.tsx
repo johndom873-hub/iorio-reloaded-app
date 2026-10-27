@@ -3,7 +3,7 @@ import { IconAlertTriangle, IconX } from "@tabler/icons-react";
 import type { AnalysisCorrelationRow, AnalysisFigures, AnalysisFileFigures, AnalysisProfile } from "../../../api/backtestAnalysis";
 import { analysisSignedClass } from "../../../lib/analysisPresentation";
 import { formatCurrency, formatDayMonth, formatDayMonthYear, formatExpiryDayMonthWithDte, formatFileSize, formatNumber, formatPercentage, formatSignedPercentage, formatStrike } from "../../../lib/formatters";
-import { useSignalsTickerModal } from "../../../hooks/useSignalsTickerModal";
+import { useTickerModal } from "../../../hooks/useTickerModal";
 import { ColumnVisibilityPopover } from "../../DataTable/ColumnVisibilityPopover";
 import { useColumnVisibility } from "../../DataTable/useColumnVisibility";
 import { TooltipSpan } from "../../TooltipSpan";
@@ -216,7 +216,7 @@ const correlationColumns = [
 
 export function AnalysisCorrelationCard({ symbol, figures }: { symbol: string; figures: AnalysisFileFigures }) {
   const { isColumnVisible, toggleColumn } = useColumnVisibility("analysis-correlation", correlationColumns.map((column) => column.key));
-  const { open: openTicker } = useSignalsTickerModal();
+  const { open: openTicker } = useTickerModal();
   const rows = figures.correlation.rows;
   const rowOf = (other: string, window: 252 | 504): AnalysisCorrelationRow | undefined => rows.find((row) => row.symbol === other && row.window === window);
   const candidates = [...new Set(rows.map((row) => row.symbol))].filter((other) => other !== "SPY");

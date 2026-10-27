@@ -4,7 +4,6 @@ import { DataTable, type DataTableColumn } from "../components/DataTable/DataTab
 import { Spinner } from "../components/Spinner";
 import { FlashingNumber } from "../components/FlashingNumber";
 import { ClosePositionModal } from "../components/ClosePositionModal";
-import { RollBadge } from "../components/signals/RollBadge";
 import { CycleScoreboard } from "../components/CycleScoreboard";
 import { TodaysOrdersCard } from "../components/TodaysOrdersCard";
 import { NewPositionTag } from "../components/NewPositionTag";
@@ -19,7 +18,6 @@ import {
   type Position,
   type UnrealizedPnlResult,
 } from "../api/positions";
-import { fetchSignalsScreen, type SignalsScreenRow } from "../api/signals";
 import { fetchCurrentAccountValue } from "../api/dashboard";
 import { openNotificationStream } from "../api/notifications";
 import {
@@ -35,7 +33,7 @@ import {
 } from "../lib/formatters";
 import { liveCyclePnl } from "../lib/cycleLivePnl";
 import { SUCCESS_PROBABILITY_HEADER, SUCCESS_PROBABILITY_HEADER_TITLE, formatSuccessProbability, successProbabilityFromDelta } from "../lib/successProbability";
-import { useRefreshAfterSignalsTickerModal, useSignalsTickerModal } from "../hooks/useSignalsTickerModal";
+import { useRefreshAfterTickerModal, useTickerModal } from "../hooks/useTickerModal";
 import {
   positionExpiryDate,
   positionHasStockLeg,
@@ -84,15 +82,13 @@ export function PositionsPage() {
   // Stored-mark cycle figures per open ticker (null until loaded); the row's live marks are applied on top in resolveCyclePnl.
   const [cycleMarksBySymbol, setCycleMarksBySymbol] = useState<Record<string, OpenCycleMarks> | null>(null);
   const [cycleMarksFetchFailed, setCycleMarksFetchFailed] = useState(false);
-  const { open: openTickerModal } = useSignalsTickerModal();
+  const { open: openTickerModal } = useTickerModal();
   const openTickerModalAtPosition = useCallback(
     (ticker: { symbol: string; focusPositionId?: string }) => openTickerModal(ticker.symbol, { focusPositionId: ticker.focusPositionId }),
     [openTickerModal],
   );
   const [closePosition, setClosePosition] = useState<Position | null>(null);
   const frozenTickers = useFrozenTickers();
-  // Signals screen rows by symbol: the Roll Signals badge of an open option position (its ticker's best roll).
-  const [signalsRowBySymbol, setSignalsRowBySymbol] = useState<Record<string, SignalsScreenRow>>({});
   const loadPositions = useCallback(async () => {
     try {
       setError(null);
@@ -103,27 +99,17 @@ export function PositionsPage() {
     }
   }, []);
 
-  const loadSignalsRows = useCallback(async () => {
-    try {
-      const rows = await fetchSignalsScreen();
-      setSignalsRowBySymbol(Object.fromEntries(rows.map((row) => [row.symbol, row])));
-    } catch {
-      // Non-critical — the roll badges just don't show if this fails.
-    }
-  }, []);
-
   useEffect(() => {
     setLoading(true);
-    Promise.all([loadPositions(), loadSignalsRows()]).finally(() => setLoading(false));
-  }, [loadPositions, loadSignalsRows]);
+    loadPositions().finally(() => setLoading(false));
+  }, [loadPositions]);
 
-  const reloadAfterSignalsTickerModal = useCallback(() => {
+  const reloadAfterTickerModal = useCallback(() => {
     void loadPositions();
-    void loadSignalsRows();
-  }, [loadPositions, loadSignalsRows]);
-  useRefreshAfterSignalsTickerModal(reloadAfterSignalsTickerModal);
+  }, [loadPositions]);
+  useRefreshAfterTickerModal(reloadAfterTickerModal);
 
-  // Same race as in the Signals modal's useTickerPositions: a fill flips
+  // Same race as in the Ticker modal's useTickerPositions: a fill flips
   // order_requests.status to "filled" well before reconcilePositionsFromIbkr
   // actually creates the position row, and nothing else here re-fetches once
   // it does. Refetch on the worker's "positions_changed" push, which also
@@ -570,10 +556,8 @@ export function PositionsPage() {
         }
 
         if (openOptionLeg) {
-          const signalsRow = signalsRowBySymbol[row.symbol];
           return (
             <div className="d-flex gap-1 justify-content-end align-items-center">
-              {signalsRow?.bestRoll?.positionId === row.id && <RollBadge row={signalsRow} onClick={(legId) => openTickerModal(row.symbol, { rollLegId: legId })} />}
               <button type="button" className="btn btn-sm btn-outline-secondary" onClick={() => setClosePosition(row)}>
                 Close
               </button>

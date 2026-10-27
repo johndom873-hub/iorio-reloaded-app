@@ -20,7 +20,7 @@ import {
 import { formatCurrency, formatDate, formatEasternTime, formatNumber, formatPercentage, formatPercentageValue, pnlBadgeClass, todayInEasternIso } from "../lib/formatters";
 import { useMarketStatus } from "../hooks/useMarketStatus";
 import { percentChange } from "../lib/priceChange";
-import { useSignalsTickerModal } from "../hooks/useSignalsTickerModal";
+import { useTickerModal } from "../hooks/useTickerModal";
 import { useTooltip } from "../hooks/useTooltip";
 import { TooltipSpan } from "../components/TooltipSpan";
 
@@ -88,15 +88,6 @@ function MaTrendBadge({ trend }: { trend: MaTrend | null }) {
   );
 }
 
-// A Signals-off ticker gets no nightly IV snapshot: the add-day value would be stale, so the server sends none.
-function SignalsOffDash() {
-  return (
-    <TooltipSpan className="text-secondary" text="Signals is off for this ticker: no daily implied-volatility snapshot is captured.">
-      —
-    </TooltipSpan>
-  );
-}
-
 // How long to wait for the first live price before saying so, instead of an
 // endless spinner (market closed, IBKR slow or unreachable).
 const LIVE_PRICE_WAIT_MS = 8_000;
@@ -119,7 +110,7 @@ export function PricePerformancePage() {
   const [data, setData] = useState<PricePerformanceData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const { open: openTickerModal } = useSignalsTickerModal();
+  const { open: openTickerModal } = useTickerModal();
   // Live prices arrive separately from the table (which renders at once from
   // stored daily bars), so the table never waits on IBKR.
   const [livePrices, setLivePrices] = useState<PricePerformanceLivePrices>({});
@@ -348,7 +339,7 @@ export function PricePerformancePage() {
       header: "IV %",
       headerTitle: "Implied Volatility",
       align: "right",
-      render: (row) => (row.signalsEnabled ? formatPercentage(row.impliedVolatility === null ? null : Number(row.impliedVolatility)) : <SignalsOffDash />),
+      render: (row) => formatPercentage(row.impliedVolatility === null ? null : Number(row.impliedVolatility)),
     },
     {
       key: "ivRank",
@@ -383,7 +374,7 @@ export function PricePerformancePage() {
       header: "Avg Vol",
       headerTitle: "Average Option Volume",
       align: "right",
-      render: (row) => (row.signalsEnabled ? formatNumber(row.avgOptionVolume) : <SignalsOffDash />),
+      render: (row) => formatNumber(row.avgOptionVolume),
     },
   ];
 

@@ -1,46 +1,43 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { ApiError } from "../api/client";
-import { buildOpenOrder, type AdaptivePriority, type OrderRequest } from "../api/positions";
-import type { SignalQuoteSource, SignalStrategyKey } from "../api/signals";
-import { checkOrderLimits } from "../api/orderChecks";
-import { computeAnnualizedYield, computeExposurePerShare, computeFrictionDollarsPerContract, computePayoff } from "../lib/payoff";
-import { formatCurrency, formatDateTime, formatPercentage, formatQuotePrice, formatSignedPnl } from "../lib/formatters";
-import { describeCandidate, describeNonLiveQuoteBlock, quoteSourceLabel } from "../lib/signalsPresentation";
-import { useTooltip } from "../hooks/useTooltip";
-import { FillPriorityPicker } from "./FillPriorityPicker";
-import { Spinner } from "./Spinner";
-import { OrderCommissionRows } from "./OrderCommissionRows";
-import { toIbkrExpiry, useOrderCommissionPreview } from "../hooks/useOrderCommissionPreview";
-import type { CommissionPreviewLeg, OrderLimitsResult } from "../api/orderChecks";
+import { ApiError } from "../../api/client";
+import { buildOpenOrder, type AdaptivePriority, type OrderRequest } from "../../api/positions";
+import type { OptionStrategyKey } from "../../api/tickerTrading";
+import { checkOrderLimits } from "../../api/orderChecks";
+import { computeAnnualizedYield, computeExposurePerShare, computeFrictionDollarsPerContract, computePayoff } from "../../lib/payoff";
+import { formatCurrency, formatOptionContractLabel, formatPercentage, formatQuotePrice, formatSignedPnl } from "../../lib/formatters";
+import { useTooltip } from "../../hooks/useTooltip";
+import { FillPriorityPicker } from "../FillPriorityPicker";
+import { Spinner } from "../Spinner";
+import { OrderCommissionRows } from "../OrderCommissionRows";
+import { toIbkrExpiry, useOrderCommissionPreview } from "../../hooks/useOrderCommissionPreview";
+import type { CommissionPreviewLeg, OrderLimitsResult } from "../../api/orderChecks";
 
-// Order setup for a chain contract Signals could not score (in the money, spans earnings, no surface for the
-// expiry, no two-sided quote, ...): the quote and the plain payoff, no Signals card. Builds through the same
-// POST /positions/orders as SignalOrderSetupForm, without a signal snapshot, and hands the OrderRequest up to
-// the shared OrderReviewPanel.
+// Order setup for a contract picked on the Ticker modal's chain (2026-10-27, the former chain-contract form without
+// Signals): the live quote and the plain payoff. Builds through POST /positions/orders and hands the OrderRequest
+// up to the shared OrderReviewPanel.
 
 const orderLimitsDebounceMs = 400;
 
-export interface ChainContractQuote {
-  strategyKey: SignalStrategyKey;
+export interface PickedContractQuote {
+  strategyKey: OptionStrategyKey;
   expiry: string;
   strike: number;
   dte: number;
+  /** Live, from the `optionQuotes` stream; null until the first quote arrives (or with the market shut). */
   bid: number | null;
   ask: number | null;
   delta: number | null;
-  quoteSource: SignalQuoteSource | null;
-  quotedAt: string | null;
 }
 
-interface ChainContractOrderSetupFormProps {
+interface OpenOrderSetupFormProps {
   symbol: string;
-  contract: ChainContractQuote;
-  /** Free shares to cover a call; null when unknown (ticker outside the Signals universe). */
+  contract: PickedContractQuote;
+  /** Free shares to cover a call; null while unknown. */
   freeShares: number | null;
   spotPrice: number | null;
-  /** λ (0..1), the Risk & Limits spread cost, from the chain: the yield is after the same costs as the chain's (Marcelo, 2026-10-12). */
+  /** λ (0..1), the Risk & Limits spread cost: the yield is after the same costs as the chain's (Marcelo, 2026-10-12). */
   spreadShareCharged: number | null;
-  /** Why this contract has no Signals score, shown above the quote. */
+  /** Shown above the quote (e.g. the earnings date falling before expiry). */
   notice: ReactNode;
   /** Why this viewer may not open or roll on the ticker (a trader, where Pluto trades it), or null: a blocking reason, checked before anything is built. */
   accessLevelRefusal: string | null;
@@ -57,7 +54,7 @@ function Row({ label, value, tone, strong }: { label: string; value: ReactNode; 
   );
 }
 
-// A disabled button fires no hover/focus events, so its tooltip lives on a wrapping span (same as SignalOrderSetupForm).
+// A disabled button fires no hover/focus events, so its tooltip lives on a wrapping span.
 function ReviewOrderButton({ disabled, blockedTooltip, building, onClick }: { disabled: boolean; blockedTooltip: string | undefined; building: boolean; onClick: () => void }) {
   const ref = useTooltip<HTMLSpanElement>(blockedTooltip);
   return (
@@ -70,19 +67,17 @@ function ReviewOrderButton({ disabled, blockedTooltip, building, onClick }: { di
   );
 }
 
-function describeQuoteSource(contract: ChainContractQuote): string {
-  if (contract.quoteSource === null) return "No quote";
-  const label = quoteSourceLabel[contract.quoteSource];
-  return contract.quotedAt && contract.quoteSource !== "snapshot" ? `${label} · ${formatDateTime(contract.quotedAt)}` : label;
-}
-
-export function ChainContractOrderSetupForm({ symbol, contract, freeShares, spotPrice, spreadShareCharged, notice, accessLevelRefusal, onCancel, onSubmitted }: ChainContractOrderSetupFormProps) {
+export function OpenOrderSetupForm({ symbol, contract, freeShares, spotPrice, spreadShareCharged, notice, accessLevelRefusal, onCancel, onSubmitted }: OpenOrderSetupFormProps) {
   const isCall = contract.strategyKey === "covered_call";
   const hasTwoSidedQuote = contract.bid !== null && contract.ask !== null;
   const mid = hasTwoSidedQuote ? (contract.bid! + contract.ask!) / 2 : null;
   const defaultQuantity = isCall && freeShares !== null && freeShares >= 100 ? Math.floor(freeShares / 100) : 1;
   const [contractQty, setContractQty] = useState(String(defaultQuantity));
   const [limitPriceInput, setLimitPriceInput] = useState(mid === null ? "" : mid.toFixed(2));
+  // The first live quote fills an empty limit price (a pick made before its quote arrived); a typed price is never overwritten.
+  useEffect(() => {
+    if (mid !== null) setLimitPriceInput((current) => (current === "" ? mid.toFixed(2) : current));
+  }, [mid]);
   const [adaptivePriority, setAdaptivePriority] = useState<AdaptivePriority>("Normal");
   const [building, setBuilding] = useState(false);
   const [buildError, setBuildError] = useState<string | null>(null);
@@ -93,11 +88,11 @@ export function ChainContractOrderSetupForm({ symbol, contract, freeShares, spot
   const premiumTotal = limitPriceValid ? limitPrice * 100 * quantity : null;
   // After costs, as the chain cell shows it: the spread cost share of the contract's half-spread plus the flat commission.
   const frictionDollarsPerContract = contract.bid !== null && contract.ask !== null && spreadShareCharged !== null ? computeFrictionDollarsPerContract({ bid: contract.bid, ask: contract.ask, spreadShareCharged }) : null;
-  const annualizedYield = limitPriceValid && spotPrice !== null && frictionDollarsPerContract !== null ? computeAnnualizedYield(contract.strategyKey, { premium: limitPrice, dte: contract.dte, strike: contract.strike, spotPrice, frictionDollarsPerContract }) : null;
+  const annualizedYield = limitPriceValid && spotPrice !== null && frictionDollarsPerContract !== null ? computeAnnualizedYield(contract.strategyKey, { premium: limitPrice, dte: Math.max(contract.dte, 1), strike: contract.strike, spotPrice, frictionDollarsPerContract }) : null;
   // EXP $ at the limit price, net of the premium: the same as Positions will show once it fills.
   const exposurePerShareAtLimit = limitPriceValid ? computeExposurePerShare(contract.strategyKey, { strike: contract.strike, spotPrice: spotPrice ?? 0, premium: limitPrice }) : null;
   const capitalAtRisk = exposurePerShareAtLimit === null ? null : exposurePerShareAtLimit * 100 * quantity;
-  // Expiration payoff at the limit price (same computePayoff as SignalOrderSetupForm): a covered call buys the shares at spot in the same order.
+  // Expiration payoff at the limit price: a covered call buys the shares at spot in the same order.
   const payoff =
     !limitPriceValid || (isCall && spotPrice === null)
       ? null
@@ -106,7 +101,7 @@ export function ChainContractOrderSetupForm({ symbol, contract, freeShares, spot
           { legType: "option", optionType: isCall ? "call" : "put", entryPrice: String(limitPrice), strikePrice: String(contract.strike), quantity, multiplier: 100 },
         ]);
 
-  // Same one-what-if-per-form commission preview as SignalOrderSetupForm; a covered call short of shares buys the rest in the same combo.
+  // One what-if per form for the commission preview; a covered call short of shares buys the rest in the same combo.
   const coveredCallEntryShares = isCall && freeShares !== null ? Math.max(0, quantity * 100 - freeShares) : 0;
   const limitPriceForPreview = limitPriceValid ? Number(limitPrice.toFixed(2)) : 0;
   const commissionPreviewLegs: CommissionPreviewLeg[] | null =
@@ -118,7 +113,7 @@ export function ChainContractOrderSetupForm({ symbol, contract, freeShares, spot
       : null;
   const commissionPreview = useOrderCommissionPreview(commissionPreviewLegs);
 
-  // Same debounced order-limits check as SignalOrderSetupForm (cosmetic: confirm re-checks server-side, so a failed check fails open).
+  // Debounced order-limits check (cosmetic: confirm re-checks server-side, so a failed check fails open).
   // It needs the limit price (the exposure is net of the premium); the price is typed, not live, so it re-checks on edits only.
   const [orderLimitsResult, setOrderLimitsResult] = useState<OrderLimitsResult | null>(null);
   const limitsDebounceRef = useRef<number | null>(null);
@@ -139,10 +134,9 @@ export function ChainContractOrderSetupForm({ symbol, contract, freeShares, spot
     };
   }, [symbol, contract.strategyKey, contract.strike, quantity, premiumForLimits, spotPrice, isCall]);
 
-  const nonLiveQuoteBlock = describeNonLiveQuoteBlock("This contract", contract.quoteSource);
-  const blockingReasons = [...(accessLevelRefusal ? [accessLevelRefusal] : []), ...(nonLiveQuoteBlock ? [nonLiveQuoteBlock] : []), ...(orderLimitsResult?.blocked ? orderLimitsResult.reasons : [])];
+  const blockingReasons = [...(accessLevelRefusal ? [accessLevelRefusal] : []), ...(orderLimitsResult?.blocked ? orderLimitsResult.reasons : [])];
   const reviewBlockedMessage = !hasTwoSidedQuote
-    ? "No bid and ask for this contract right now (market closed, or not in today's capture). An order needs a live quote — try again while the market is open."
+    ? "No live bid and ask for this contract right now (market closed, or no quote yet). An order needs a live quote — try again while the market is open."
     : !limitPriceValid
       ? "Enter a limit price above zero."
       : null;
@@ -171,12 +165,12 @@ export function ChainContractOrderSetupForm({ symbol, contract, freeShares, spot
     <div className="d-flex flex-column gap-3">
       <div>
         <div className="text-secondary text-uppercase" style={{ fontSize: "0.68rem", fontWeight: 700, letterSpacing: "0.06em" }}>
-          Order Setup · no Signals score
+          Order Setup
         </div>
         <h4 className="mb-0" style={{ fontSize: "1.05rem" }}>
           {isCall ? "Covered Call" : "Cash-Secured Put"} · {symbol}{" "}
           <span className="text-secondary fw-normal">
-            {describeCandidate(contract)} · {contract.dte}DTE
+            {formatOptionContractLabel({ strike: contract.strike, right: isCall ? "C" : "P", expiry: contract.expiry, dte: contract.dte })}
           </span>
         </h4>
       </div>
@@ -198,7 +192,6 @@ export function ChainContractOrderSetupForm({ symbol, contract, freeShares, spot
       <div className="border rounded p-3">
         <Row label="Bid / Ask" value={`${formatQuotePrice(contract.bid)} / ${formatQuotePrice(contract.ask)}`} />
         <Row label="Delta" value={contract.delta === null ? "—" : `${contract.delta > 0 ? "+" : ""}${contract.delta.toFixed(2)}`} />
-        <Row label="Quote" value={describeQuoteSource(contract)} />
       </div>
 
       <div className="border rounded p-3">

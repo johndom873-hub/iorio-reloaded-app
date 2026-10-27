@@ -6,7 +6,7 @@ import { ApiError } from "../api/client";
 import { openNotificationStream } from "../api/notifications";
 import { fetchTodaysOrders, type TodaysOrder } from "../api/positions";
 import { useOrderCancellation } from "../hooks/useOrderCancellation";
-import { useSignalsTickerModal } from "../hooks/useSignalsTickerModal";
+import { useTickerModal } from "../hooks/useTickerModal";
 import { useTickingNow } from "../hooks/useTickingNow";
 import {
   formatCurrency,
@@ -39,7 +39,7 @@ export function TodaysOrdersCard() {
   const [orders, setOrders] = useState<TodaysOrder[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const { open: openTickerModal } = useSignalsTickerModal();
+  const { open: openTickerModal } = useTickerModal();
   const now = useTickingNow(orders.reduce<string | null>((newest, order) => (newest === null || order.updatedAt > newest ? order.updatedAt : newest), null));
 
   const loadOrders = useCallback(async () => {

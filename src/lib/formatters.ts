@@ -767,3 +767,8 @@ export function formatOrdinal(value: number): string {
   const suffix = lastTwo >= 11 && lastTwo <= 13 ? "th" : ({ 1: "st", 2: "nd", 3: "rd" } as Record<number, string>)[lastTwo % 10] ?? "th";
   return `${value}${suffix}`;
 }
+
+/** Escapes text for a tooltip that renders HTML (Bootstrap's data-bs-html), so a label's own "<" or "&" shows as typed. */
+export function escapeTooltipHtml(text: string): string {
+  return text.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;");
+}

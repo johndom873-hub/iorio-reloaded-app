@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { fetchOrder, type OrderRequest } from "../api/positions";
 import { openNotificationStream } from "../api/notifications";
 import { orderRequestStatusLabel } from "../lib/formatters";
-import { describeAssignmentRisk, describeRollSignalUpgrade, describeSignalUpgrade } from "../lib/signalsPresentation";
+import { describeAssignmentRisk } from "../lib/notificationPresentation";
 import { useAuth } from "../hooks/useAuth";
 import { BackgroundJobsContext, type BackgroundJob, type BackgroundJobStatus } from "../hooks/useBackgroundJobs";
 
@@ -127,16 +127,6 @@ export function BackgroundJobsProvider({ children }: { children: ReactNode }) {
           message: notification.message,
           dismissed: false,
         });
-      } else if (notification.type === "roll_signal_upgraded") {
-        upsertJob({
-          id: `roll-signal-upgraded-${notification.legId}-${notification.expiry}-${notification.strike}-${Date.now()}`,
-          kind: "signal-upgraded",
-          label: `Roll signal upgraded — ${notification.symbol}`,
-          status: "done",
-          message: describeRollSignalUpgrade(notification).replace(`${notification.symbol} `, ""),
-          dismissed: false,
-          link: { to: `/signals?signal=${encodeURIComponent(notification.symbol)}&roll=${encodeURIComponent(notification.legId)}`, label: "Open in Signals" },
-        });
       } else if (notification.type === "assignment_risk") {
         upsertJob({
           id: `assignment-risk-${notification.legId}-${Date.now()}`,
@@ -145,7 +135,7 @@ export function BackgroundJobsProvider({ children }: { children: ReactNode }) {
           status: "done",
           message: describeAssignmentRisk(notification).replace(`${notification.symbol} `, ""),
           dismissed: false,
-          link: { to: `/signals?signal=${encodeURIComponent(notification.symbol)}&roll=${encodeURIComponent(notification.legId)}`, label: "Open in Signals" },
+          link: { to: `/positions?ticker=${encodeURIComponent(notification.symbol)}&roll=${encodeURIComponent(notification.legId)}`, label: "Open the roll" },
         });
       } else if (notification.type === "trading_halt_changed") {
         upsertJob({
@@ -156,16 +146,6 @@ export function BackgroundJobsProvider({ children }: { children: ReactNode }) {
           message: `${notification.byDisplayName ?? "An operator"}${notification.enabled ? " halted all trading" : " lifted the trading halt"}${notification.reason ? `: ${notification.reason}` : "."}`,
           dismissed: false,
           link: { to: "/risk-limits", label: "Open Risk & Limits" },
-        });
-      } else if (notification.type === "signal_upgraded") {
-        upsertJob({
-          id: `signal-upgraded-${notification.symbol}-${notification.expiry}-${notification.strike}-${Date.now()}`,
-          kind: "signal-upgraded",
-          label: `Signal upgraded — ${notification.symbol}`,
-          status: "done",
-          message: describeSignalUpgrade(notification).replace(`${notification.symbol} `, ""),
-          dismissed: false,
-          link: { to: `/signals?signal=${encodeURIComponent(notification.symbol)}`, label: "Open in Signals" },
         });
       }
     });

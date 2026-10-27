@@ -20,7 +20,7 @@ export function GradeBadge({ grade }: { grade: string }) {
 
 export function TickerButton({ symbol, onOpen }: { symbol: string; onOpen: (symbol: string) => void }) {
   return (
-    <button type="button" className="pm-tkr" onClick={() => onOpen(symbol)} title={`Open ${symbol} in Signals`}>
+    <button type="button" className="pm-tkr" onClick={() => onOpen(symbol)} title={`Open ${symbol}`}>
       {symbol}
     </button>
   );

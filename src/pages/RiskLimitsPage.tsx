@@ -30,7 +30,7 @@ import { ConfirmModal } from "../components/ConfirmModal";
 import { openNotificationStream } from "../api/notifications";
 import { formatCurrency, formatDateTime, formatDayCount, formatDelta, formatInputNumber, formatMinutesOrNever, formatPercentage, formatPercentageValueTrimmed, formatRelativeTime } from "../lib/formatters";
 import { useExposureStream } from "../hooks/useExposureStream";
-import { useSignalsTickerModal } from "../hooks/useSignalsTickerModal";
+import { useTickerModal } from "../hooks/useTickerModal";
 
 // Every field is kept as the text of its input; percentages and deltas keep up to two decimals
 // (rounding them to whole numbers on load used to turn a stored 2.5 into 3 on the next save).
@@ -541,7 +541,7 @@ export function RiskLimitsPage() {
   const [settingsError, setSettingsError] = useState<string | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
-  const { open: openTickerModal } = useSignalsTickerModal();
+  const { open: openTickerModal } = useTickerModal();
 
   const loadSettings = useCallback(async () => {
     try {

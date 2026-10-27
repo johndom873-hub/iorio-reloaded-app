@@ -1,15 +1,15 @@
 import { useCallback, useEffect, useMemo, useRef, type ReactNode } from "react";
-import { SignalsTickerModal } from "../components/SignalsTickerModal";
-import { SignalsTickerModalContext, useSignalsTickerModal, type PositionsMayHaveChangedListener, type SignalsTickerModalContextValue } from "../hooks/useSignalsTickerModal";
+import { TickerModal } from "../components/TickerModal";
+import { TickerModalContext, useTickerModal, type PositionsMayHaveChangedListener, type TickerModalContextValue } from "../hooks/useTickerModal";
 
 /**
  * Mounts the Signals ticker modal once for every page under AppLayout, driven by the URL params of
- * useSignalsTickerModal. Pages that show positions subscribe with useRefreshAfterSignalsTickerModal to
+ * useTickerModal. Pages that show positions subscribe with useRefreshAfterTickerModal to
  * reload when the modal closes (however it closes, including browser navigation) or when an order fills
  * or a position is closed/edited inside it.
  */
-export function SignalsTickerModalProvider({ children }: { children: ReactNode }) {
-  const { symbol, rollLegId, focusPositionId, close } = useSignalsTickerModal();
+export function TickerModalProvider({ children }: { children: ReactNode }) {
+  const { symbol, rollLegId, focusPositionId, close } = useTickerModal();
   const listenersRef = useRef(new Set<PositionsMayHaveChangedListener>());
 
   const notifyPositionsMayHaveChanged = useCallback(() => {
@@ -23,7 +23,7 @@ export function SignalsTickerModalProvider({ children }: { children: ReactNode }
     if (previousSymbol !== null && previousSymbol !== symbol) notifyPositionsMayHaveChanged();
   }, [symbol, notifyPositionsMayHaveChanged]);
 
-  const contextValue = useMemo<SignalsTickerModalContextValue>(
+  const contextValue = useMemo<TickerModalContextValue>(
     () => ({
       subscribe: (listener) => {
         listenersRef.current.add(listener);
@@ -36,10 +36,10 @@ export function SignalsTickerModalProvider({ children }: { children: ReactNode }
   );
 
   return (
-    <SignalsTickerModalContext.Provider value={contextValue}>
+    <TickerModalContext.Provider value={contextValue}>
       {children}
       {symbol && (
-        <SignalsTickerModal
+        <TickerModal
           key={`${symbol}|${rollLegId ?? ""}|${focusPositionId ?? ""}`}
           symbol={symbol}
           initialRollLegId={rollLegId}
@@ -48,6 +48,6 @@ export function SignalsTickerModalProvider({ children }: { children: ReactNode }
           onClose={close}
         />
       )}
-    </SignalsTickerModalContext.Provider>
+    </TickerModalContext.Provider>
   );
 }

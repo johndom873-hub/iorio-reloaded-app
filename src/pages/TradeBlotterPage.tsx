@@ -9,7 +9,7 @@ import { useOrderCancellation } from "../hooks/useOrderCancellation";
 import { fetchTradeBlotter, type PendingOrder, type Trade } from "../api/tradeBlotter";
 import { StrategyBadge } from "../components/StrategyBadge";
 import { TooltipSpan } from "../components/TooltipSpan";
-import { useSignalsTickerModal } from "../hooks/useSignalsTickerModal";
+import { useTickerModal } from "../hooks/useTickerModal";
 import {
   formatCurrency,
   formatCurrencyTrimmed,
@@ -56,7 +56,7 @@ export function TradeBlotterPage() {
   const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const { open: openTickerModal } = useSignalsTickerModal();
+  const { open: openTickerModal } = useTickerModal();
 
   const loadTrades = useCallback(async () => {
     try {

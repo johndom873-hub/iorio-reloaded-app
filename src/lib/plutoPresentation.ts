@@ -1,6 +1,6 @@
-import type { DaySignalsWatchStatus, PlutoSettings, PlutoAction, PlutoActionContract, PlutoActionKind, PlutoActionOutcome, PlutoEvent, PlutoEventCategory, PlutoPass, PlutoReadinessResult, PlutoState, PlutoSystemCheck, PlutoWorkingOrder } from "../api/pluto";
+import type { PlutoSettings, PlutoAction, PlutoActionContract, PlutoActionKind, PlutoActionOutcome, PlutoEvent, PlutoEventCategory, PlutoPass, PlutoReadinessResult, PlutoState, PlutoSystemCheck, PlutoWorkingOrder } from "../api/pluto";
 import { plutoParameterLabelByField } from "./plutoParameters";
-import { daysToExpiry, easternIsoDate, formatBrowserClockTime, formatCurrency, formatDayMonth, formatEasternTime, formatOptionContractLabel, formatOrderSize, formatPercentageValue, formatRelativeAge, formatSignedPercentageValue, formatSignedPnl, formatRelativeTime, formatDateTime, formatStrike, pluralize, todayInEasternIso } from "./formatters";
+import { daysToExpiry, easternIsoDate, formatBrowserClockTime, formatCurrency, formatDayMonth, formatEasternTime, formatOptionContractLabel, formatOrderSize, formatRelativeAge, formatSignedPercentageValue, formatRelativeTime, formatDateTime, formatStrike, pluralize, todayInEasternIso } from "./formatters";
 
 // Presentation rules for the Pluto screen (redesign approved 2026-10-06): one status at a time, plain-language
 // wording for orders, decisions and the activity feed. Pure functions so the components stay declarative.
@@ -65,7 +65,7 @@ export function derivePlutoStatus(state: PlutoState, now: Date, crashLoopRestart
       return { kind: "off", label: "Off", headline: `Pluto is off — ${working === 1 ? "1 order it placed is" : `${working} orders it placed are`} still working`, subline: `${describeWorkingOrderLine(first, state, now)}`, holdAlert: null };
     }
     const by = state.modeChangedBy ? ` by ${state.modeChangedBy}` : "";
-    return { kind: "off", label: "Off", headline: "Pluto is off — it isn't analysing signals or placing orders", subline: state.modeChangedAt ? `Turned off${by} · ${formatDateTime(state.modeChangedAt)}` : "Switch it on to let it analyse and trade the allowed tickers", holdAlert: null };
+    return { kind: "off", label: "Off", headline: "Pluto is off — it isn't analysing or placing orders", subline: state.modeChangedAt ? `Turned off${by} · ${formatDateTime(state.modeChangedAt)}` : "Switch it on to let it analyse and trade the allowed tickers", holdAlert: null };
   }
   if (Object.keys(state.breakers).length > 0) {
     return { kind: "stopped", label: "Stopped", headline: "A safety breaker tripped — Pluto is stopped until someone resets it", subline: workingOrdersPhrase(state), holdAlert: null };
@@ -112,8 +112,8 @@ export function derivePlutoStatus(state: PlutoState, now: Date, crashLoopRestart
   return {
     kind: "running",
     label: "Running",
-    headline: "Actively evaluating trading signals",
-    subline: `Analyses every Day Signals update on the ${tickers} allowed ${tickers === 1 ? "ticker" : "tickers"} · last analysis ${state.lastPassAt ? formatRelativeAge(state.lastPassAt, now) : "not yet today"}`,
+    headline: "Running the CC + Put Ladder",
+    subline: `Analyses every new ladder quote on the ${tickers} allowed ${tickers === 1 ? "ticker" : "tickers"} · last analysis ${state.lastPassAt ? formatRelativeAge(state.lastPassAt, now) : "not yet today"}`,
     holdAlert: null,
   };
 }
@@ -281,11 +281,6 @@ export interface PlutoOutcomePresentation {
   linksToOrder: boolean;
 }
 
-/** Model cost as the screen shows it: four decimals with trailing zeros dropped ("$0.0003", "$0.09"). */
-export function formatModelCost(costUsd: number | null | undefined): string {
-  return formatCurrency(costUsd ?? 0, 4).replace(/0+$/, "").replace(/\.$/, ".00").replace(/\.(\d)$/, ".$10");
-}
-
 export function describeOutcome(action: PlutoAction, now: Date, state: Pick<PlutoState, "unfilledCancelMinutes" | "session"> | null): PlutoOutcomePresentation {
   const outcome: PlutoActionOutcome = action.outcome;
   switch (outcome) {
@@ -417,41 +412,9 @@ export function describeCandidateId(candidateId: string | null | undefined, asOf
   return `${parsed.symbol} Close covered Call`;
 }
 
-/** Gates that mark an action code took on its own in the round (an automatic close, a call on held shares), not the model's. */
-const automaticActionGates = new Set(["automatic_close", "automatic_held_share_call"]);
-
-/** The model's verdict for a pass: the first schema-valid call's output (Pluto makes one call per decision). */
-export function passVerdict(pass: PlutoPass) {
-  const call = pass.decisions.find((decision) => decision.parsedOutput !== null) ?? pass.decisions[0] ?? null;
-  const output = call?.parsedOutput ?? null;
-  const action = pass.actions.find((entry) => entry.kind !== "no_trade" && !(entry.gateResults ?? []).some((gate) => automaticActionGates.has(gate.gate))) ?? null;
-  const topPick = pass.actions.find((entry) => entry.deterministicTopPick)?.deterministicTopPick ?? null;
-  const failed = call !== null && call.parsedOutput === null;
-  return { call, output, action, topPick, failed, error: call?.error ?? (failed ? "The model's answer could not be read" : null) };
-}
-
-export type PlutoVerdictKind = "order" | "no_order" | "failed";
-
-export function verdictKind(pass: PlutoPass): PlutoVerdictKind {
-  const { output, failed } = passVerdict(pass);
-  if (failed || !output) return "failed";
-  return output.decision === "trade" ? "order" : "no_order";
-}
-
 /** The model answers an abstention as "abstain_system_concern"; "abstain" is accepted too. */
 export function isAbstainVerdict(verdict: string | null | undefined): boolean {
   return verdict === "abstain" || verdict === "abstain_system_concern";
-}
-
-/** What the model chose, as an order line with the sized quantity once the gates set one: "SMCI Sell $46 Call · 9 Oct (2DTE) · 11×". */
-export function describeChosenAction(pass: PlutoPass): string {
-  const { output, action } = passVerdict(pass);
-  if (!output || output.decision !== "trade") return isAbstainVerdict(output?.decision) ? "Abstained — the data looked unreliable" : "Nothing worth trading";
-  if (action) return describeOrderLine(action, null);
-  // No action row (the chosen candidate was not among the offers): the candidate id is all there is.
-  const parsed = output.candidate_id ? parseCandidateId(output.candidate_id) : null;
-  const label = describeCandidateId(output.candidate_id, pass.startedAt);
-  return parsed?.kind === "open" ? label.replace(`${parsed.symbol} `, `${parsed.symbol} Sell `) : label;
 }
 
 /** The yield a ledger top pick (or its runner-up) was ranked by: Edge Yield on rows with rankedBy (2026-10-12 on), Hist Yield on earlier rows that carry it; null on the oldest rows (ranked by Edge $). */
@@ -466,48 +429,14 @@ export function describeTopPickFigure(topPick: { edgeDollars: number; calibrated
   return ranking ? `${ranking.label} ${formatSignedPercentageValue(ranking.value * 100, 0)}` : `$${Math.round(topPick.edgeDollars)} per contract`;
 }
 
-/** The valuation model's figures for the decided contract, from the stored candidate scores; null on rows that predate the model. */
-export function describeDecisionModelFigures(scores: Record<string, unknown> | null): { text: string; grade: string } | null {
-  const model = scores && typeof scores.model === "object" && scores.model !== null ? (scores.model as Record<string, unknown>) : null;
-  if (!model || typeof model.grade !== "string") return null;
-  const number = (key: string) => (typeof model[key] === "number" ? (model[key] as number) : null);
-  // A roll's model block: net roll $ across the held quantity and per contract, and the roll's margin.
-  const netRoll = number("netExpectedPnl");
-  if (netRoll !== null) {
-    const perContract = number("netExpectedPnlPerContract");
-    const margin = number("edgeMargin");
-    return { grade: model.grade, text: [`net roll ${formatSignedPnl(netRoll, 0)}${perContract !== null ? ` (${formatSignedPnl(perContract, 0)}/contract)` : ""}`, margin !== null ? `roll margin ${formatPercentageValue(margin * 100, 0)}` : null].filter(Boolean).join(" · ") };
-  }
-  const edge = number("expectedPnlDollars");
-  const exposure = number("capitalAtRiskDollars");
-  const margin = number("edgeMargin");
-  const edgeYield = number("expectedAnnualizedReturn");
-  const histYield = number("calibratedAnnualizedReturn");
-  const pieces = [
-    edge !== null && exposure !== null && exposure > 0 ? `Edge ${formatSignedPnl((edge * 10_000) / exposure, 0)} /10k` : edge !== null ? `Edge ${formatSignedPnl(edge, 0)} per contract` : null,
-    margin !== null ? `margin ${formatPercentageValue(margin * 100, 0)}` : null,
-    edgeYield !== null ? `Edge Yield ${formatSignedPercentageValue(edgeYield * 100, 0)}` : null,
-    histYield !== null ? `Hist Yield ${formatSignedPercentageValue(histYield * 100, 0)}` : null,
-  ].filter(Boolean);
-  return { grade: model.grade, text: pieces.join(" · ") };
-}
-
-/** How the model's pick compares with the deterministic top pick (highest Edge Yield since 2026-10-12, Hist Yield from prompt v4.0). */
-export function describeTopPickComparison(pass: PlutoPass): { tone: "ok" | "warn" | "muted"; text: string } {
-  const { output, topPick, action } = passVerdict(pass);
-  if (!output || output.decision !== "trade") return { tone: "muted", text: topPick ? `Top was ${describeCandidateId(topPick.id, pass.startedAt)}, ${describeTopPickFigure(topPick)}` : "No top pick" };
-  if (action && (action.kind === "roll" || action.kind === "close_leg" || action.kind === "close_shares")) return { tone: "muted", text: `No open top pick (${action.kind === "roll" ? "roll" : "close"})` };
-  if (!topPick) return { tone: "muted", text: "No top pick" };
-  if (topPick.id === output.candidate_id) return { tone: "ok", text: "Same pick" };
-  return { tone: "warn", text: `Differs · top was ${describeCandidateId(topPick.id, pass.startedAt).replace(/^[A-Z.]+ /, "")}` };
-}
-
-/** Why the analysis ran, as a short cell ("HOOD Day Signals update") or a clause ("after a Day Signals update on HOOD"). */
+/** Why the analysis ran, as a short cell ("Ladder quotes · HOOD") or a clause ("after new ladder quotes on HOOD"). Rounds from before Signals was retired may carry its triggers. */
 export function describeTrigger(pass: Pick<PlutoPass, "trigger" | "triggerDetail">, form: "short" | "clause"): string {
   const detail = pass.triggerDetail ?? {};
   const symbols = Array.isArray(detail.symbols) ? (detail.symbols as string[]) : [];
   const list = symbols.join(", ");
   switch (pass.trigger) {
+    case "band_quotes_update":
+      return form === "short" ? `Ladder quotes${list ? ` · ${list}` : ""}` : `after new ladder quotes${list ? ` on ${list}` : ""}`;
     case "day_signals_update":
       return form === "short" ? `Day Signals${list ? ` · ${list}` : " update"}` : `after a Day Signals update${list ? ` on ${list}` : ""}`;
     case "grade_crossing":
@@ -553,11 +482,6 @@ export function checkLabel(name: string): string {
   return checkLabels[name] ?? humanizeKey(name);
 }
 
-export function checksSummary(checks: Record<string, PlutoSystemCheck> | null): { passed: number; total: number } {
-  const entries = Object.values(checks ?? {});
-  return { passed: entries.filter((check) => check.ok).length, total: entries.length };
-}
-
 const gateLabels: Record<string, string> = {
   verdict: "Verdict",
   trade: "Verdict",
@@ -580,28 +504,6 @@ const gateLabels: Record<string, string> = {
 
 export function gateLabel(name: string): string {
   return gateLabels[name] ?? humanizeKey(name);
-}
-
-// What held an order below the standard order size, by the limit the sizing gate says set it (API SizingLimit). The order
-// size itself, or a limit this list doesn't know, says nothing.
-const sizingLimitNotes: Record<string, string> = {
-  budget_left: "limited by the capital budget left",
-  ticker_room: "limited by the per-ticker limit",
-  sector_room: "limited by the per-sector limit",
-  cash_room: "limited by the cash reserve",
-  volume: "limited by how many contracts traded today",
-  stress: "limited by the stress cap",
-  kelly: "limited by the Kelly cap",
-};
-
-export function describeSizingLimit(limit: string | undefined): string | null {
-  return limit ? sizingLimitNotes[limit] ?? null : null;
-}
-
-export function checksAndGatesSummary(pass: PlutoPass): { checks: { passed: number; total: number }; gates: { passed: number; total: number } } {
-  const { action } = passVerdict(pass);
-  const gates = action?.gateResults ?? [];
-  return { checks: checksSummary(pass.systemChecks), gates: { passed: gates.filter((gate) => gate.ok).length, total: gates.length } };
 }
 
 // ---------- Activity feed and event log ----------
@@ -778,7 +680,7 @@ export function describeFeedEvent(event: PlutoEvent, context?: PlutoFeedContext)
       return { dot: "ctl", title: "Trading window closed", detail: "stopped analysing new trades", sub: null };
     case "analysis_started": {
       const data = text(payload.data);
-      const detail = data === "incomplete" ? "Day Signals not ready by 10:30 ET, running on incomplete data" : data === "complete_after_early_start" ? "Day Signals ready now, after an early start on incomplete data" : "Day Signals ready";
+      const detail = data === "incomplete" ? "Ladder quotes not in by 10:30 ET, running on incomplete data" : data === "complete_after_early_start" ? "Ladder quotes in now, after an early start on incomplete data" : "Ladder quotes in";
       return { dot: "model", title: "Started analysing new trades", detail, sub: null };
     }
     case "connection_lost":
@@ -866,127 +768,5 @@ export function describeImpliedFill(reportedFillPrice: number, impliedFillPrice:
     `reporting this option at ${reportedFillPrice.toFixed(2)}. The Fill shown (${impliedFillPrice.toFixed(2)}) is the option's price implied by the total, ` +
     `with the other part counted at the price Pluto set. Both figures are stored.`
   );
-}
-
-/**
- * A buyback offer's description as its contract and size: the current "COIN Buy back $300 Put · 10 Oct (3DTE) · 2× @ 0.65 …"
- * or the older "Buy back 2× COIN $300P 2026-10-10 at ~0.65 …" (DTE then from `dte`); null for anything else.
- */
-export function parseBuybackDescription(description: string, dte: number | null): { quantity: number; right: "C" | "P"; contract: string } | null {
-  const current = description.match(/^\S+ Buy back (\$\S+ (Call|Put) · \d+ \w+(?: \(\d+DTE\))?) · (\d+)×/);
-  if (current) return { quantity: Number(current[3]), right: current[2] === "Call" ? "C" : "P", contract: current[1]! };
-  const older = description.match(/^Buy back (\d+)× \S+ \$(\S+?)([CP]) (\d{4}-\d{2}-\d{2})/);
-  if (!older) return null;
-  const right = older[3] === "C" ? "C" : "P";
-  return { quantity: Number(older[1]), right, contract: formatOptionContractLabel({ strike: Number(older[2]), right, expiry: older[4]!, dte }) };
-}
-
-/** "today", "1 session away", "4 sessions away": how far a macro release is, in open sessions (prompt v3.8). */
-function describeSessionsAway(sessions: number): string {
-  return sessions <= 0 ? "today" : `${pluralize(sessions, "session", "sessions")} away`;
-}
-
-/** v3.8, the release a contract's life runs into: "CPI 14 Oct (heavy): 4 sessions away, open 3 sessions after". */
-export function describeEventTiming(event: { title: string; date: string; weight: string; sessions_until: number; sessions_after: number }): string {
-  return `${event.title} ${formatDayMonth(event.date)} (${event.weight}): ${describeSessionsAway(event.sessions_until)}, open ${pluralize(event.sessions_after, "session", "sessions")} after`;
-}
-
-/** v3.8, an event close offer's reason: "before CPI 14 Oct (heavy, 4 sessions away)". */
-export function describeEventCloseReason(title: string, dateIso: string, weight: string, sessionsUntil: number): string {
-  return `before ${title} ${formatDayMonth(dateIso)} (${weight}, ${describeSessionsAway(sessionsUntil)})`;
-}
-
-/** The stress move in normal days, as a drop: "2-day", "1-day", "half-day". */
-export function describeStressMove(normalDays: number): string {
-  return normalDays === 0.5 ? "half-day" : `${normalDays}-day`;
-}
-
-/** v3.8, a held position's distance from its strike in the stock's normal days: "3.0 normal days away", or past the strike. */
-export function describeStrikeDistance(normalDays: number): { value: string; suffix: string } {
-  return { value: Math.abs(normalDays).toFixed(1), suffix: normalDays < 0 ? "in the money" : "away" };
-}
-
-/**
- * A whole covered-call close offer's description (closeActions.ts), "COIN Close $200 Call · 23 Oct (15DTE) + sell 100 shares · 1× …:
- * Call @ 0.66, shares @ 190.85; …", read back into its parts; null for any other wording.
- */
-export function parseCoveredCallCloseDescription(description: string): { contract: string; shares: number; quantity: number; callPrice: number; sharesPrice: number } | null {
-  const match = description.match(/^\S+ Close (\$\S+ Call · \d+ \w+(?: \(\d+DTE\))?) \+ sell (\d+) shares · (\d+)×.*Call @ ([\d.]+), shares @ ([\d.]+)/);
-  if (!match) return null;
-  return { contract: match[1]!, shares: Number(match[2]), quantity: Number(match[3]), callPrice: Number(match[4]), sharesPrice: Number(match[5]) };
-}
-
-/** A ticker's macro calendar by day, in date order: one entry per date with every release on it. */
-export function groupMacroEventsByDate(events: { date: string; title: string }[]): { date: string; titles: string[] }[] {
-  const byDate = new Map<string, string[]>();
-  for (const event of [...events].sort((a, b) => a.date.localeCompare(b.date))) byDate.set(event.date, [...(byDate.get(event.date) ?? []), event.title]);
-  return [...byDate.entries()].map(([date, titles]) => ({ date, titles }));
-}
-
-/** A recent decision's verdict as the model's input lists it, in words. */
-export function describeRecentDecisionVerdict(verdict: string): string {
-  if (verdict === "trade") return "Trade";
-  if (verdict === "no_trade") return "No order";
-  if (isAbstainVerdict(verdict)) return "Abstained";
-  if (verdict === "invalid") return "Unreadable answer";
-  return humanizeKey(verdict);
-}
-
-/** What became of a traded decision (the action's outcome, or "not_executed"), with the badge tone it reads in. */
-export function describeTradeOutcome(outcome: string): { label: string; tone: "ok" | "warn" | "bad" | "info" | "neutral" } {
-  switch (outcome) {
-    case "blocked":
-      return { label: "Blocked", tone: "warn" };
-    case "validated":
-    case "order_built":
-    case "confirmed":
-      return { label: "Order working", tone: "info" };
-    case "filled":
-      return { label: "Filled", tone: "ok" };
-    case "partially_filled":
-      return { label: "Partly filled", tone: "ok" };
-    case "cancelled":
-      return { label: "Cancelled", tone: "neutral" };
-    case "rejected":
-      return { label: "Rejected", tone: "bad" };
-    case "error":
-      return { label: "Order error", tone: "bad" };
-    case "not_executed":
-      return { label: "Not executed", tone: "neutral" };
-    default:
-      return { label: humanizeKey(outcome), tone: "neutral" };
-  }
-}
-
-/** A candidate flag in words: "macro_event_before_expiry" → "macro event before expiry". */
-export function describeCandidateFlag(flag: string): string {
-  return flag.replace(/_/g, " ");
-}
-
-/**
- * The Day Signals column (mockup approved 2026-10-07): whether Day Signals is quoting the ticker today and, when not, why and
- * when it looks again. `sessionOpen` false drops the "next re-check" promises, since nothing runs outside the session.
- */
-export function describeDaySignalsWatch(status: DaySignalsWatchStatus, sessionOpen: boolean): { tone: PlutoBadgeTone; label: string; detail: string | null; phoneNote: string | null } {
-  const lookedAt = status.lastLookAt ? formatBrowserClockTime(status.lastLookAt) : null;
-  const triggers = status.triggerLowPrice !== null && status.triggerHighPrice !== null ? `${formatCurrency(status.triggerLowPrice)} or ${formatCurrency(status.triggerHighPrice)}` : null;
-  switch (status.kind) {
-    case "watched": {
-      const expiries = status.pooledExpiries.map(formatDayMonth).join(", ");
-      const look = lookedAt ? ` · ${status.lastLookKind === "timed" ? `re-checked ${lookedAt}` : `re-ranked ${lookedAt} after a price move`}` : "";
-      return { tone: "ok", label: "Watched", detail: `${pluralize(status.pooledExpiries.length, "expiry", "expiries")} quoted (${expiries})${look}`, phoneNote: null };
-    }
-    case "not_watched": {
-      const why = lookedAt ? `Re-checked ${lookedAt}${status.lastLookKind === "timed" ? "" : " after a price move"}: still nothing worth selling.` : "No contract had positive edge at 10:00 ET.";
-      const next = !sessionOpen ? "" : status.nextTimedCheckAt ? ` Next re-check ${formatBrowserClockTime(status.nextTimedCheckAt)}${triggers ? `, or at once at ${triggers}` : ""}.` : triggers ? ` Re-checked hourly, or at once at ${triggers}.` : " Re-checked hourly.";
-      return { tone: "warn", label: "Not watched today", detail: `${why}${next}`, phoneNote: `Not watched today${sessionOpen && status.nextTimedCheckAt ? ` · next re-check ${formatBrowserClockTime(status.nextTimedCheckAt)}` : ""}` };
-    }
-    case "no_surface":
-      return { tone: "bad", label: "No surface today", detail: "Today's capture gave no usable surface, so Day Signals cannot quote it. Watched again after the next capture.", phoneNote: "No surface today: not watched until the next capture" };
-    case "waiting_for_capture":
-      return { tone: "neutral", label: "Waiting for today's capture", detail: "Day Signals starts once the 10:00 ET capture and its fits are done.", phoneNote: null };
-    case "market_closed":
-      return { tone: "neutral", label: "Market closed today", detail: null, phoneNote: null };
-  }
 }
 

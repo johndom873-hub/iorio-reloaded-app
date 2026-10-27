@@ -16,8 +16,6 @@ interface TickerPrepModalProps {
   /** Latest run state, pushed to the parent so the shortlist badge and rows stay current. */
   onRunChange: (run: TickerBackfillRun | null) => void;
   onClose: () => void;
-  /** Note shown once a full run finishes cleanly; defaults to the shortlist's nightly-scan wording. Callers whose screen re-scores live (e.g. Signals) should override it. */
-  completionNote?: string;
 }
 
 // Shown for the step that is running until the server sends its own message.
@@ -25,7 +23,6 @@ const runningStepMessage: Record<BackfillStepKey, string> = {
   history: "Fetching five years of daily prices…",
   calendar: "Looking up upcoming events…",
   chain_warmup: "Checking which strikes exist…",
-  first_snapshot: "Capturing option quotes…",
 };
 
 function StepIcon({ status }: { status: BackfillStep["status"] }) {
@@ -75,7 +72,7 @@ function isFinishedStep(step: BackfillStep): boolean {
 // Informational modal (progress display, no destructive action): closes on
 // backdrop click and Esc, per the app's convention. Closing never stops the
 // run — it lives on the server. Design approved via mockup 2026-09-21.
-export function TickerPrepModal({ tickerId, symbol, companyName, onRunChange, onClose, completionNote }: TickerPrepModalProps) {
+export function TickerPrepModal({ tickerId, symbol, companyName, onRunChange, onClose }: TickerPrepModalProps) {
   const [run, setRun] = useState<TickerBackfillRun | null>(null);
   const [streamKey, setStreamKey] = useState(0);
   const [retrying, setRetrying] = useState(false);
@@ -130,9 +127,9 @@ export function TickerPrepModal({ tickerId, symbol, companyName, onRunChange, on
   const currentStepNumber = Math.min(steps.filter(isFinishedStep).length + 1, Math.max(totalSteps, 1));
 
   const title = isRunning ? `Preparing ${symbol}` : isPartial ? `${symbol}: ${failedSteps.length === 1 ? "one step" : `${failedSteps.length} steps`} failed` : `${symbol} is ready`;
-  const progressLabel = isRunning ? `Step ${currentStepNumber} of ${totalSteps || 4}` : isPartial ? `${succeededCount} of ${totalSteps} steps succeeded` : "All steps finished";
+  const progressLabel = isRunning ? `Step ${currentStepNumber} of ${totalSteps || 3}` : isPartial ? `${succeededCount} of ${totalSteps} steps succeeded` : "All steps finished";
   const progressPercent = run?.progressPercent ?? 0;
-  const failedChainStep = failedSteps.some((step) => step.key === "chain_warmup" || step.key === "first_snapshot");
+  const failedChainStep = failedSteps.some((step) => step.key === "chain_warmup");
 
   return (
     <>
@@ -200,14 +197,14 @@ export function TickerPrepModal({ tickerId, symbol, companyName, onRunChange, on
                   )}
                   {!isRunning && !isPartial && (
                     <div className="prep-note is-ok">
-                      <p>{completionNote ?? `${symbol} is ready and will be picked up by the next scheduled jobs.`}</p>
+                      <p>{`${symbol} is ready and will be picked up by the next scheduled jobs.`}</p>
                     </div>
                   )}
                   {isPartial && (
                     <div className="prep-note is-warn">
                       <p>
                         The ticker is on the shortlist.{" "}
-                        {failedChainStep ? "Tonight's job will retry the chain capture on its own." : "Use Retry to run the failed step again."}
+                        {failedChainStep ? "Tomorrow morning's structure refresh (09:00 UTC) will retry the strikes on its own." : "Use Retry to run the failed step again."}
                       </p>
                     </div>
                   )}

@@ -5,13 +5,11 @@ import { DataTable, type DataTableColumn } from "../DataTable/DataTable";
 import { Spinner } from "../Spinner";
 import { ConfirmModal } from "../ConfirmModal";
 import { TickerPrepModal } from "./TickerPrepModal";
-import { DailyBarsCell, DividendCell, EarningsCell, OptionChainExpiriesCell, PreparingStatusBadge, SignalsOffCell, SnapshotsCell, SurfaceFitCell, quartersForEarningsAdjustment } from "./readinessCells";
-import { VolatilitySurfaceModal } from "../VolatilitySurfaceModal";
+import { DailyBarsCell, EarningsCell, ImpliedVolatilityDaysCell, OptionChainExpiriesCell, PreparingStatusBadge, quartersForEarningsAdjustment } from "./readinessCells";
 import { ActionsMenu, type ActionsMenuItem } from "./ActionsMenu";
 import { PlutoBotToggle } from "../pluto/PlutoBotToggle";
-import { SignalsToggle } from "./SignalsToggle";
 import { useIsAdmin } from "../../hooks/useAuth";
-import { adminOnlyShortlistRemoveReason, plutoTickerSignalsOffAdminOnlyReason } from "../../lib/accessLevelPresentation";
+import { adminOnlyShortlistRemoveReason } from "../../lib/accessLevelPresentation";
 import { ApiError } from "../../api/client";
 import {
   addToShortlist,
@@ -23,7 +21,6 @@ import {
   retryTickerBackfill,
   searchTickers,
   type ShortlistRow,
-  type SignalsEnabledResult,
   type TickerBackfillRun,
   type TickerSearchResult,
 } from "../../api/shortlist";
@@ -57,7 +54,6 @@ export function ShortlistTab({ onOpenTickerModal }: ShortlistTabProps) {
   const [confirmPopulateDailyBarsRow, setConfirmPopulateDailyBarsRow] = useState<ShortlistRow | null>(null);
   const [confirmPopulateOptionChainRow, setConfirmPopulateOptionChainRow] = useState<ShortlistRow | null>(null);
   const [prepTicker, setPrepTicker] = useState<{ tickerId: string; symbol: string; companyName: string | null } | null>(null);
-  const [surfaceModalSymbol, setSurfaceModalSymbol] = useState<string | null>(null);
 
   const loadRows = useCallback(async () => {
     try {
@@ -205,16 +201,6 @@ export function ShortlistTab({ onOpenTickerModal }: ShortlistTabProps) {
     }
   }
 
-  // Signals on starts the option-chain setup in the background: open its progress modal, like an add does.
-  function handleSignalsChanged(row: ShortlistRow, result: SignalsEnabledResult) {
-    setError(null);
-    setRows((prev) => prev.map((entry) => (entry.id === row.id ? { ...entry, signalsEnabled: result.signalsEnabled, botEnabled: result.botEnabled } : entry)));
-    if (result.backfillRun) {
-      setPrepTicker({ tickerId: row.tickerId, symbol: row.symbol, companyName: row.companyName });
-      void loadRows();
-    }
-  }
-
   async function handleRemove(entryId: string) {
     setRemovingId(entryId);
     try {
@@ -230,7 +216,7 @@ export function ShortlistTab({ onOpenTickerModal }: ShortlistTabProps) {
   }
 
   const frozenTickers = useFrozenTickers();
-  // A trader may not switch Pluto, turn Signals off where Pluto trades (that switches Pluto off) or remove a ticker: the API refuses all three.
+  // A trader may not switch Pluto or remove a ticker: the API refuses both.
   const isAdmin = useIsAdmin();
   const columns: DataTableColumn<ShortlistRow>[] = [
     {
@@ -255,50 +241,31 @@ export function ShortlistTab({ onOpenTickerModal }: ShortlistTabProps) {
     {
       key: "dailyBars",
       header: "Daily Bars",
-      headerTitle: "Daily price/IV history — momentum needs 253 bars, the own-volatility threshold needs 377; warns when the latest bar is behind the last completed session",
+      headerTitle: "Daily price history — FV63 needs 64 bars; warns when the latest bar is behind the last completed session",
       align: "right",
       render: (row) => (populatingDailyBarsTickerId === row.tickerId ? <Spinner size="sm" label={`Populating daily bars for ${row.symbol}`} /> : <DailyBarsCell row={row} />),
     },
     {
       key: "earnings",
       header: "Earnings",
-      headerTitle: "Earnings dates on record — the vol forecast can't correct for an earnings-spanning expiry until 4 quarters are on record",
+      headerTitle: "Earnings dates on record, with the next one — the 21-day forecast can't correct for earnings until 4 quarters are on record; warns when no next date is known",
       align: "right",
       render: (row) => (populatingEarningsTickerId === row.tickerId ? <Spinner size="sm" label={`Populating earnings for ${row.symbol}`} /> : <EarningsCell row={row} />),
     },
     {
-      key: "dividendCadence",
-      header: "Dividend",
-      headerTitle: "Whether a regular ex-dividend cadence could be inferred to project later dividends into the forward",
-      render: (row) => <DividendCell row={row} />,
-    },
-    {
-      key: "chainSnapshots",
-      header: "Snapshots",
-      headerTitle: "Nightly option-chain captures on record — the only source, nothing to manually backfill",
+      key: "ivDays",
+      header: "IV Days",
+      headerTitle: "Days of implied-volatility history in the 252-day window IV Rank and IV %ile read; warns under 252",
       align: "right",
-      render: (row) => (row.signalsEnabled ? <SnapshotsCell row={row} /> : <SignalsOffCell />),
+      render: (row) => <ImpliedVolatilityDaysCell row={row} />,
     },
     {
       key: "optionChainExpiries",
       header: "Chain Expiries",
-      headerTitle: "Expiries with strikes captured (option_chain_expiry_strikes) — hover for per-expiry strike counts",
+      headerTitle: "Expiries with strikes stored by the morning structure refresh — hover for per-expiry strike counts",
       align: "right",
       render: (row) =>
-        populatingOptionChainTickerId === row.tickerId ? (
-          <Spinner size="sm" label={`Populating option chain for ${row.symbol}`} />
-        ) : row.signalsEnabled ? (
-          <OptionChainExpiriesCell expiries={row.optionChainExpiries} />
-        ) : (
-          <SignalsOffCell />
-        ),
-    },
-    {
-      key: "latestSurfaceFit",
-      header: "Surface Fit",
-      headerTitle: "Fitted vs. total expiries on the most recent option-chain snapshot",
-      align: "right",
-      render: (row) => (row.signalsEnabled ? <SurfaceFitCell row={row} onOpenSurface={() => setSurfaceModalSymbol(row.symbol)} /> : <SignalsOffCell />),
+        populatingOptionChainTickerId === row.tickerId ? <Spinner size="sm" label={`Populating option chain for ${row.symbol}`} /> : <OptionChainExpiriesCell expiries={row.optionChainExpiries} />,
     },
     {
       key: "status",
@@ -314,27 +281,9 @@ export function ShortlistTab({ onOpenTickerModal }: ShortlistTabProps) {
         ),
     },
     {
-      key: "signals",
-      header: "Signals",
-      headerTitle: "Off (default for new tickers): price-only, shown on Price Performance. On: scored on Signals with a nightly option-chain capture; turning it on sets up the option chain.",
-      align: "center",
-      render: (row) => (
-        <SignalsToggle
-          entryId={row.id}
-          symbol={row.symbol}
-          enabled={row.signalsEnabled}
-          botEnabled={row.botEnabled}
-          openPositionCount={row.openPositionCount}
-          lockedReason={!isAdmin && row.signalsEnabled && row.botEnabled ? plutoTickerSignalsOffAdminOnlyReason(row.symbol) : null}
-          onChanged={(result) => handleSignalsChanged(row, result)}
-          onError={setError}
-        />
-      ),
-    },
-    {
       key: "pluto",
       header: "Pluto",
-      headerTitle: "Pluto may trade this ticker on its own (default off). Needs Signals on; turning Signals off turns Pluto off. The same toggle is on the Pluto screen.",
+      headerTitle: "Pluto may trade this ticker on its own (default off). The same toggle is on the Pluto screen.",
       align: "center",
       render: (row) => (
         <PlutoBotToggle
@@ -342,7 +291,6 @@ export function ShortlistTab({ onOpenTickerModal }: ShortlistTabProps) {
           symbol={row.symbol}
           enabled={row.botEnabled}
           openPositionCount={row.openPositionCount}
-          disabledReason={row.signalsEnabled ? null : "Turn Signals on first: Pluto only trades Signals tickers."}
           onChanged={(enabled) => setRows((prev) => prev.map((entry) => (entry.id === row.id ? { ...entry, botEnabled: enabled } : entry)))}
           onError={setError}
         />
@@ -381,10 +329,8 @@ export function ShortlistTab({ onOpenTickerModal }: ShortlistTabProps) {
             label: "Populate Option Chain",
             onClick: () => setConfirmPopulateOptionChainRow(row),
             loading: populatingOptionChainTickerId === row.tickerId,
-            disabled: !row.signalsEnabled || populatingOptionChainTickerId !== null,
-            disabledReason: !row.signalsEnabled
-              ? "Signals is off: turning Signals on sets up the option chain."
-              : "Another option-chain population is already running. One at a time.",
+            disabled: populatingOptionChainTickerId !== null,
+            disabledReason: "Another option-chain population is already running. One at a time.",
           },
           {
             key: "retry-full-setup",
@@ -395,7 +341,7 @@ export function ShortlistTab({ onOpenTickerModal }: ShortlistTabProps) {
             disabledReason:
               anyTickerPreparing || startingBackfillTickerId !== null
                 ? "Another ticker is being prepared. One at a time."
-                : "Nothing failed — the setup pipeline (history, calendar, chain strikes, first snapshot) completed cleanly",
+                : "Nothing failed — the setup pipeline (history, calendar, chain strikes) completed cleanly",
           },
           isAdmin
             ? {
@@ -506,7 +452,7 @@ export function ShortlistTab({ onOpenTickerModal }: ShortlistTabProps) {
       {removeConfirmRow && (
         <ConfirmModal
           title="Remove from Shortlist"
-          message={<>Remove <strong>{removeConfirmRow.symbol}</strong> from the shortlist? It will no longer be scored on the Signals screen unless it has an open short option.</>}
+          message={<>Remove <strong>{removeConfirmRow.symbol}</strong> from the shortlist? It leaves the Volatility screen unless it has an open position.</>}
           confirmLabel="Remove"
           confirming={removingId === removeConfirmRow.id}
           onConfirm={() => handleRemove(removeConfirmRow.id)}
@@ -565,7 +511,6 @@ export function ShortlistTab({ onOpenTickerModal }: ShortlistTabProps) {
         />
       )}
 
-      {surfaceModalSymbol && <VolatilitySurfaceModal symbol={surfaceModalSymbol} onClose={() => setSurfaceModalSymbol(null)} />}
     </>
   );
 }

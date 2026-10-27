@@ -13,7 +13,7 @@ import {
   signedPercentDisplay,
   type BacktestValueScale,
 } from "../../lib/backtestPresentation";
-import { useSignalsTickerModal } from "../../hooks/useSignalsTickerModal";
+import { useTickerModal } from "../../hooks/useTickerModal";
 import { TooltipSpan } from "../TooltipSpan";
 
 // Small pieces shared by the Backtesting screens.
@@ -58,7 +58,7 @@ export function SignedDollars({ value }: { value: number | null | undefined }) {
 
 /** A ticker symbol that opens the shared ticker modal, readable on a card in both themes. */
 export function BacktestSymbolLink({ symbol }: { symbol: string }) {
-  const { open } = useSignalsTickerModal();
+  const { open } = useTickerModal();
   return (
     <button type="button" className="btn btn-link p-0 text-decoration-none fw-bold iorio-symbol-link" onClick={() => open(symbol)}>
       {symbol}

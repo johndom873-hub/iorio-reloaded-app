@@ -4,7 +4,7 @@ import type { OrderRequest } from "../api/positions";
 // The context, its hook and the job types live apart from BackgroundJobsProvider so that file exports components only
 // (Vite hot-swaps it in place).
 
-export type BackgroundJobKind = "order" | "position-closed" | "signal-upgraded" | "assignment-risk";
+export type BackgroundJobKind = "order" | "position-closed" | "assignment-risk";
 export type BackgroundJobStatus = "running" | "done" | "error";
 
 interface BackgroundJobBase {
@@ -32,17 +32,12 @@ export interface PositionClosedJob extends BackgroundJobBase {
   kind: "position-closed";
 }
 
-// Fed by the Day Signals loop's "signal_upgraded" event: a pooled contract's grade went up. One-shot, like PositionClosedJob.
-export interface SignalUpgradedJob extends BackgroundJobBase {
-  kind: "signal-upgraded";
-}
-
-// Fed by the Day Signals loop's "assignment_risk" event: an open short leg's |delta| crossed the threshold. One-shot.
+// Fed by the market quote loop's "assignment_risk" event: an open short leg's |delta| crossed the threshold. One-shot.
 export interface AssignmentRiskJob extends BackgroundJobBase {
   kind: "assignment-risk";
 }
 
-export type BackgroundJob = OrderJob | PositionClosedJob | SignalUpgradedJob | AssignmentRiskJob;
+export type BackgroundJob = OrderJob | PositionClosedJob | AssignmentRiskJob;
 
 export interface BackgroundJobsContextValue {
   jobs: BackgroundJob[];

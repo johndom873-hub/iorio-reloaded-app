@@ -7,7 +7,7 @@ import { batchBuyAndHoldColor, batchBuyAndHoldLineStyles, batchRunColor, describ
 import { ColumnVisibilityPopover } from "../DataTable/ColumnVisibilityPopover";
 import { useColumnVisibility } from "../DataTable/useColumnVisibility";
 import { DottedLabelTooltip } from "../HelpTooltip";
-import { escapeTooltipHtml } from "../../lib/signalsPresentation";
+import { escapeTooltipHtml } from "../../lib/formatters";
 import { BacktestCard, BacktestJobProgressBar, BacktestJobStatusBadge, BacktestSeriesSwatch } from "./backtestBits";
 
 // The batch page's runs (mockup approved 2026-10-17, D9): one row per run beside buy and hold of its own tickers and pots, then

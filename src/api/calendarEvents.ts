@@ -1,5 +1,11 @@
 import { apiRequest } from "./client";
-import type { MacroEvent } from "./signals";
+
+/** A major US macro event (Fed rate decision, CPI, GDP, US federal election). */
+export interface MacroEvent {
+  dateIso: string; // Eastern date
+  eventAtIso: string; // the release instant (UTC ISO)
+  title: string;
+}
 
 export interface TickerCalendarEvent {
   id: string;

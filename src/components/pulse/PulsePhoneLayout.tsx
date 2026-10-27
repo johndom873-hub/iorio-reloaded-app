@@ -27,7 +27,7 @@ export interface PulsePhoneLayoutProps {
   allocation: { ccPct: number; cspPct: number; unstructuredPct: number; hedgePct: number; cashPct: number };
   charts: { pnlSeries: number[]; pnlChart: ReactNode; deltaChart: ReactNode };
   positions: { count: number; totalPnl: number | null; exposurePercent: number | null; head: ReactNode; rows: ReactNode; empty: ReactNode };
-  signals: { shownCount: number; scoredCount: number; bestRow: ReactNode; head: ReactNode; rows: ReactNode; empty: ReactNode };
+  topPremiums: { shownCount: number; tickerCount: number; bestRow: ReactNode; head: ReactNode; rows: ReactNode; empty: ReactNode };
   trades: { latestSummary: ReactNode; rows: ReactNode[]; empty: ReactNode };
   events: { latestTime: string | null; rows: ReactNode[]; empty: ReactNode };
   systems: { leds: PhoneSystemLed[]; activeNodeIds: Set<string>; cards: ReactNode };
@@ -59,7 +59,7 @@ export function PulsePhoneLayout({
   allocation,
   charts,
   positions,
-  signals,
+  topPremiums,
   trades,
   events,
   systems,
@@ -157,14 +157,14 @@ export function PulsePhoneLayout({
       </PulseCollapsiblePanel>
 
       <PulseCollapsiblePanel
-        storageKey="signals"
-        title="Top Signals"
-        count={`${signals.shownCount} of ${signals.scoredCount}`}
+        storageKey="top-premiums"
+        title="Top premiums"
+        count={`${topPremiums.shownCount} of ${topPremiums.tickerCount}`}
         defaultOpen={false}
-        summary={signals.bestRow}
+        summary={topPremiums.bestRow}
       >
-        {signals.head}
-        {signals.shownCount === 0 ? signals.empty : signals.rows}
+        {topPremiums.head}
+        {topPremiums.shownCount === 0 ? topPremiums.empty : topPremiums.rows}
       </PulseCollapsiblePanel>
 
       <PulseCollapsiblePanel storageKey="trades" title="Trades" defaultOpen={false} summary={trades.latestSummary}>

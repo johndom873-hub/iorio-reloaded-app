@@ -41,8 +41,6 @@ export interface PricePerformanceRow {
   /** As of the last completed daily close — computed on the server from stored daily bars. */
   macdTrend: MacdSignal | null;
   maTrend: MaTrend | null;
-  /** Off: no nightly IV snapshot, so impliedVolatility and avgOptionVolume are null. */
-  signalsEnabled: boolean;
   impliedVolatility: string | null;
   avgOptionVolume: string | null;
   ivRank: number | null;

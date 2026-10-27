@@ -35,13 +35,13 @@ import { BackgroundJobsToastStack } from "./BackgroundJobsToastStack";
 import { NewVersionToast } from "./NewVersionToast";
 import { StreamConnectionToast } from "./StreamConnectionToast";
 import { useTooltip } from "../../hooks/useTooltip";
-import { SignalsTickerModalProvider } from "../../contexts/SignalsTickerModalContext";
+import { TickerModalProvider } from "../../contexts/TickerModalContext";
 
 const navigationItems = [
   { to: "/", label: "Dashboard", icon: IconLayoutDashboard, end: true },
   { to: "/positions", label: "Positions", icon: IconChartCandle },
   { to: "/shortlist", label: "Shortlist", icon: IconBookmark },
-  { to: "/signals", label: "Signals", icon: IconActivity },
+  { to: "/volatility", label: "Volatility", icon: IconActivity },
   { to: "/price-performance", label: "Price Performance", icon: IconTrendingUp },
   { to: "/trade-blotter", label: "Trade Blotter", icon: IconReceipt2 },
   { to: "/calendar", label: "Calendar", icon: IconCalendarEvent },
@@ -76,35 +76,16 @@ function readStoredSidebarMode(): SidebarMode {
   return localStorage.getItem(SIDEBAR_MODE_STORAGE_KEY) === "fixed" ? "fixed" : "retractable";
 }
 
-/**
- * "Real-time data disabled" when IBKR_MARKET_DATA_LINES_ENABLED=false refuses every market-data
- * line reservation outright (typically dev), or "Live data restricted" while a scheduled scan
- * (the 10:00 ET chain capture) holds its priority lines instead (mockup
- * rev 2, 2026-09-24). The two states don't overlap in practice — a disabled environment never
- * has an active priority reservation to report — but disabled takes precedence if it ever does.
- */
-function MarketDataRestrictionPill({
-  restriction,
-  linesEnabled = true,
-  compact = false,
-}: {
-  restriction: { priorityLines: number } | null | undefined;
-  linesEnabled?: boolean;
-  compact?: boolean;
-}) {
-  const disabled = !linesEnabled;
+/** "Real-time data disabled" when IBKR_MARKET_DATA_LINES_ENABLED=false refuses every market-data line reservation outright (typically dev). */
+function MarketDataLinesDisabledPill({ linesEnabled = true, compact = false }: { linesEnabled?: boolean; compact?: boolean }) {
   const ref = useTooltip<HTMLSpanElement>(
-    disabled
-      ? "IBKR_MARKET_DATA_LINES_ENABLED=false in this environment — every market-data line reservation is refused, so screens show no live prices or quotes."
-      : restriction
-        ? `A scheduled scan (the 10:00 ET chain capture) holds ${restriction.priorityLines} of IBKR's market-data lines while it runs. Live prices and quotes are served with the ${90 - restriction.priorityLines} lines left, most recent requests first; anything that could not get a line shows its last received value and catches up on its own.`
-        : undefined,
+    linesEnabled ? undefined : "IBKR_MARKET_DATA_LINES_ENABLED=false in this environment — every market-data line reservation is refused, so screens show no live prices or quotes.",
   );
-  if (!disabled && !restriction) return null;
+  if (linesEnabled) return null;
   return (
     <span ref={ref} className={`iorio-topbar-status${compact ? " iorio-topbar-status-compact" : ""}`} tabIndex={0} role="status">
       <IconClock size={compact ? 14 : 16} aria-hidden="true" />
-      <span className="iorio-topbar-restriction-text">{disabled ? "Real-time data disabled" : "Live data restricted"}</span>
+      <span className="iorio-topbar-restriction-text">Real-time data disabled</span>
     </span>
   );
 }
@@ -249,11 +230,7 @@ export function AppLayout() {
               <MarketStatusBadge status={marketStatus} />
               <MarketDataFeedRefusalPill refusal={environmentStatus.details?.marketDataFeedRefusal} compact />
               <FrozenTickersPill frozenTickers={environmentStatus.details?.frozenTickers} compact />
-              <MarketDataRestrictionPill
-                restriction={environmentStatus.details?.marketDataRestriction}
-                linesEnabled={environmentStatus.details?.marketDataLinesEnabled ?? true}
-                compact
-              />
+              <MarketDataLinesDisabledPill linesEnabled={environmentStatus.details?.marketDataLinesEnabled ?? true} compact />
             </div>
           </div>
           <div className="collapse navbar-collapse" id="sidebar-menu">
@@ -312,10 +289,7 @@ export function AppLayout() {
             <MarketStatusBadge status={marketStatus} />
             <MarketDataFeedRefusalPill refusal={environmentStatus.details?.marketDataFeedRefusal} />
             <FrozenTickersPill frozenTickers={environmentStatus.details?.frozenTickers} />
-            <MarketDataRestrictionPill
-              restriction={environmentStatus.details?.marketDataRestriction}
-              linesEnabled={environmentStatus.details?.marketDataLinesEnabled ?? true}
-            />
+            <MarketDataLinesDisabledPill linesEnabled={environmentStatus.details?.marketDataLinesEnabled ?? true} />
           </div>
           <div className="iorio-topbar-right d-flex align-items-center gap-3">
             <a href="/pulse" target="_blank" rel="noopener noreferrer" className="iorio-pulse-nav-link">
@@ -341,9 +315,9 @@ export function AppLayout() {
         <div className="page-body">
           <div className="container-fluid">
             <EnvironmentStatusContext.Provider value={environmentStatus}>
-              <SignalsTickerModalProvider>
+              <TickerModalProvider>
                 <Outlet />
-              </SignalsTickerModalProvider>
+              </TickerModalProvider>
             </EnvironmentStatusContext.Provider>
           </div>
         </div>

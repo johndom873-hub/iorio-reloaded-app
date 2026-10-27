@@ -319,9 +319,8 @@
 .iorio-topbar .container-fluid {
   position: relative;
 }
-/* The top bar's centre slot (Day Signals, 2026-09-24): empty in normal operation, carries the
-   "Live data restricted" pill while the chain capture holds its priority market-data lines. The
-   IORIO Pulse link moved to the right-hand group to free it. */
+/* The top bar's centre slot (2026-09-24): the market badge and any status pills beside it. The IORIO Pulse link
+   moved to the right-hand group to free it. */
 /* Three-column grid: equal 1fr sides around an auto-width centre, so the centre group (market badge
    plus any status pills beside it) is centred on the screen however wide it gets. If a side is too
    wide for that, the grid pushes the centre over instead of overlapping it. */
@@ -917,8 +916,7 @@
   outline-offset: 1px;
 }
 
-/* Signals roadmap "Approved, building" badge — same -lt contrast bug.
-   #0f766e (dark teal) passes >4.5:1 with white text. */
+/* Teal badges — same -lt contrast bug. #0f766e (dark teal) passes >4.5:1 with white text. */
 .badge.bg-teal,
 .badge.bg-teal-lt {
   background-color: #0f766e !important;
@@ -949,7 +947,7 @@
   font-weight: 700;
 }
 
-/* Signals opportunities "Grade" badges — dedicated classes so this scale
+/* Valuation grade badges (a rules or llm backtest's trades) — dedicated classes so this scale
    never drifts if bg-success/bg-yellow/bg-secondary get restyled elsewhere.
    Strong/weak/avoid verified >4.5:1 with white text; good is intentionally
    lighter at ~3.6:1 (Marcelo's call 2026-09-24 — below the 4.5:1 text floor,
@@ -973,23 +971,6 @@
   background-color: #6c757d;
   color: #fff;
 }
-
-/* Signals opportunities table -- Ann. Yield heatmap: font color only, 5 discrete
-   tiers by percentile rank among the shown candidates (lowest yield = muted,
-   highest = vivid). Same hue in light/dark, but light/dark need separate lightness
-   bands to both clear 4.5:1 on their own body-bg (#f9fafb / #1f2937) -- verified,
-   see contrast comment above the badge overrides. */
-.heat-yield-1 { color: #395643; }
-.heat-yield-2 { color: #2e603f; }
-.heat-yield-3 { color: #246b3c; }
-.heat-yield-4 { color: #197638; }
-.heat-yield-5 { color: #0b8433; }
-
-:root[data-bs-theme="dark"] .heat-yield-1 { color: #6c9d7c; }
-:root[data-bs-theme="dark"] .heat-yield-2 { color: #5aaf76; }
-:root[data-bs-theme="dark"] .heat-yield-3 { color: #47c270; }
-:root[data-bs-theme="dark"] .heat-yield-4 { color: #35d46a; }
-:root[data-bs-theme="dark"] .heat-yield-5 { color: #1ded62; }
 
 /* Flash effect for live-ticking quote values (Order Review / Roll Position
    live quotes) — same green/red as the badge-change-* colors above, applied
@@ -1022,7 +1003,7 @@
   animation: flash-bg-changed 1500ms ease-out; /* keep equal to FLASH_DURATION_MS in useFlashOnChange.ts */
 }
 
-/* Signals modal: a small inset + rounded corners instead of true
+/* Inset modals (the Ticker modal and others): a small inset + rounded corners instead of true
    edge-to-edge full-bleed, so the backdrop stays visible and it reads as a
    modal rather than a full-page view (Marcelo, 2026-08-27). Combined-class
    selectors (rather than !important) beat Bootstrap's plain .modal-dialog
@@ -1059,75 +1040,40 @@
   padding-left: 1.5rem;
 }
 
-/* Signals: the valuation model's column group (mockup approved 2026-10-10), a faint blue band in both themes.
-   Header text #0b4f78 on #e8f2f9 is 8.4:1; #a5dcfb on #1e3a52 is 8.0:1. Body cells keep the table's text colour. */
-.data-table-group-row th.signals-model-group {
-  background-color: #e8f2f9;
-  color: #0b4f78;
+/* Volatility screen (mockup approved 2026-10-27): IV Rank's bar, in the link colour (≥3:1 on the card in both themes). */
+.volatility-rank-bar {
+  display: inline-block;
+  width: 3.25rem;
+  height: 0.375rem;
+  border-radius: 0.1875rem;
+  background: var(--tblr-border-color);
+  overflow: hidden;
 }
-:root[data-bs-theme="dark"] .data-table-group-row th.signals-model-group {
-  background-color: #1e3a52;
-  color: #a5dcfb;
+.volatility-rank-bar > span {
+  display: block;
+  height: 100%;
+  background: var(--tblr-link-color);
 }
-/* Table cells paint var(--tblr-table-bg), so the tint sets that variable on the cell (a plain background loses to the table rule).
-   #f9fbfd keeps text-secondary at 4.66:1 and text-danger at 4.50:1 (a deeper tint drops red below AA); the header band carries the group. */
-.signals-model-cell {
-  --tblr-table-bg: #f9fbfd;
-}
-:root[data-bs-theme="dark"] .signals-model-cell {
-  --tblr-table-bg: #22344a;
-}
-/* Signals order panel: the valuation box's faint ground (mockup approved 2026-10-10); text keeps the body colour.
-   #f9fbfd, not the mockup's #f3f7fa: that one put text-secondary at 4.49:1 and text-danger at 4.33:1, under AA. */
-.signals-valuation-box {
-  background-color: #f9fbfd;
-}
-:root[data-bs-theme="dark"] .signals-valuation-box {
-  background-color: #243041;
-}
-
-/* Signals phone cards: the model's six figures in a three-column grid (mockup approved 2026-10-10). */
-.signals-mobile-model-grid {
+/* Volatility phone cards: figures in a three-column grid. */
+.volatility-mobile-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 0.2rem 0.5rem;
   font-size: 0.76rem;
 }
-.signals-mobile-model-label {
-  font-family: var(--tblr-font-sans-serif);
-  color: var(--tblr-secondary);
-}
 
-/* The Day basis group heading: grey, apart from the valuation model's. */
-.data-table-group-row th.signals-day-basis-group {
-  color: var(--tblr-secondary);
-}
-
-/* Signals modal header: the live-status line sits between the title and the close button, and drops to its
+/* Ticker modal header: the live-status line sits between the title and the close button, and drops to its
    own full-width row under the title on phones so it doesn't squeeze the symbol/company name. */
-.signals-modal-live-status {
+.ticker-modal-live-status {
   order: 3;
   flex-basis: 100%;
   margin-top: 0.25rem;
 }
 @media (min-width: 576px) {
-  .signals-modal-live-status {
+  .ticker-modal-live-status {
     order: 0;
     flex-basis: auto;
     margin: 0 1rem 0 auto;
-  }
-}
-
-/* Volatility Surface modal: chart/table split at an exact 50/50 -- stacks to full width below lg like the
-   col-12/col-lg-N columns it replaces. */
-@media (min-width: 992px) {
-  .volatility-surface-chart-col {
-    flex: 0 0 45%;
-    max-width: 45%;
-  }
-  .volatility-surface-table-col {
-    flex: 0 0 55%;
-    max-width: 55%;
   }
 }
 
@@ -1489,16 +1435,16 @@
   color: #f5b458;
 }
 
-/* Signals modal full option chain (SignalsOptionChainCard). Each side of a strike row is one button laid out
+/* The Ticker modal's option chain (OptionChainCard). Each side of a strike row is one button laid out
    as a grid, so the header's column labels use the same grid to line up. Colours come from Tabler tokens. */
-.signals-chain-expiry-tabs {
+.option-chain-expiry-tabs {
   display: flex;
   flex-wrap: nowrap;
   overflow-x: auto;
   padding: 0 0.5rem;
   scrollbar-width: thin;
 }
-.signals-chain-expiry-tab {
+.option-chain-expiry-tab {
   position: relative;
   flex: none;
   padding: 0.6rem 0.85rem;
@@ -1511,49 +1457,40 @@
   white-space: nowrap;
 }
 /* Active tab: body text (AA in both themes; primary-blue text is too dark on the dark surface) over a primary underline. */
-.signals-chain-expiry-tab:hover {
+.option-chain-expiry-tab:hover {
   border-bottom-color: var(--tblr-border-color);
 }
-.signals-chain-expiry-tab.is-active {
+.option-chain-expiry-tab.is-active {
   border-bottom-color: var(--tblr-primary);
   font-weight: 700;
 }
-.signals-chain-candidate-dot {
-  position: absolute;
-  top: 0.45rem;
-  right: 0.3rem;
-  width: 0.4rem;
-  height: 0.4rem;
-  border-radius: 50%;
-  background: var(--tblr-success);
-}
 /* Ten strike rows plus the spot row (and the header): the chain only holds live lines for what is on screen,
    so its height sets how many it uses. Desktop (measured): header 2.8rem, row 2.0625rem, spot row 1.35rem. */
-.signals-chain-scroll {
+.option-chain-scroll {
   max-height: calc(2.8rem + 10 * 2.0625rem + 1.35rem);
   overflow-y: auto;
 }
-.signals-chain-scroll.is-phone {
+.option-chain-scroll.is-phone {
   /* Phone (measured): header 1.55rem, row 2.8125rem. */
   max-height: calc(1.55rem + 10 * 2.8125rem + 1.35rem);
 }
-.signals-chain-table {
+.option-chain-table {
   table-layout: fixed;
   font-size: 0.8rem;
 }
-.signals-chain-table thead th {
+.option-chain-table thead th {
   position: sticky;
   top: 0;
   z-index: 1;
   /* A sticky cell loses the table's collapsed bottom border while scrolled: draw it on the cell itself. */
   box-shadow: inset 0 -1px 0 var(--tblr-border-color);
 }
-.signals-chain-strike-column {
+.option-chain-strike-column {
   width: 5rem;
   background: var(--tblr-bg-surface-secondary);
 }
-.signals-chain-column-labels,
-.signals-chain-cell {
+.option-chain-column-labels,
+.option-chain-cell {
   display: grid;
   grid-template-columns: repeat(5, minmax(0, 1fr));
   gap: 0.25rem;
@@ -1561,11 +1498,11 @@
   padding: 0.25rem 0.5rem;
   text-align: right;
 }
-.signals-chain-column-labels.has-strike,
-.signals-chain-cell.has-strike {
+.option-chain-column-labels.has-strike,
+.option-chain-cell.has-strike {
   grid-template-columns: 4rem repeat(5, minmax(0, 1fr));
 }
-.signals-chain-cell {
+.option-chain-cell {
   width: 100%;
   min-height: 2rem;
   border: 0;
@@ -1574,54 +1511,44 @@
   font-size: 0.8rem;
   cursor: pointer;
 }
-.signals-chain-cell.has-strike {
+.option-chain-cell.has-strike {
   min-height: 2.75rem;
 }
-.signals-chain-yield {
+.option-chain-yield {
   color: #1e7a33;
 }
-:root[data-bs-theme="dark"] .signals-chain-yield {
+:root[data-bs-theme="dark"] .option-chain-yield {
   color: #47c270;
 }
-.signals-chain-cell.text-secondary {
+.option-chain-cell.text-secondary {
   color: var(--tblr-secondary-color) !important;
 }
-.signals-chain-cell:hover:not(:disabled) {
+.option-chain-cell:hover:not(:disabled) {
   background: var(--tblr-active-bg);
 }
-.signals-chain-cell:focus-visible {
+.option-chain-cell:focus-visible {
   outline: 2px solid var(--tblr-primary);
   outline-offset: -2px;
 }
 /* A ring drawn with box-shadow, not outline: Bootstrap's :focus:not(:focus-visible) reset would drop an outline right after the click. */
-.signals-chain-scroll .signals-chain-cell.is-selected {
+.option-chain-scroll .option-chain-cell.is-selected {
   background: var(--tblr-primary-lt);
   box-shadow: inset 0 0 0 2px var(--tblr-primary);
 }
-.signals-chain-cell:disabled,
-.signals-chain-cell.is-in-the-money {
+.option-chain-cell:disabled,
+.option-chain-cell.is-in-the-money {
   cursor: default;
 }
-.signals-chain-filtered-label {
-  font-size: 0.72rem;
-}
-.signals-chain-spot-marker {
+.option-chain-spot-marker {
   display: flex;
   align-items: center;
   gap: 0.5rem;
   padding: 0.1rem 0.75rem;
   font-size: 0.75rem;
 }
-.signals-chain-spot-line {
+.option-chain-spot-line {
   flex: 1 1 auto;
   border-top: 2px solid currentColor;
-}
-/* Order-pane notice for a chain contract that is not a Signals candidate: amber (.iorio-note-amber) when filtered, secondary text otherwise. */
-.signals-chain-notice {
-  border: 1px solid currentColor;
-  border-radius: var(--tblr-border-radius);
-  padding: 0.5rem 0.75rem;
-  font-size: 0.85rem;
 }
 
 /* Branded 404 (NotFoundPage): Tabler's .empty, centred in the page body's visible height. */
@@ -1725,27 +1652,6 @@
   border-left: 1px solid var(--tblr-border-color);
 }
 
-/* Signals screen: tickers with no top signal (approved mockup 2026-10-03). The row tint marks a pending snapshot (azure) or one that
-   could not be scored (red); the translucent inset shadow works on both themes, as Bootstrap's own row states do. */
-.table > tbody > tr.signals-row-analysing > td {
-  box-shadow: inset 0 0 0 9999px rgba(3, 105, 161, 0.08);
-}
-.table > tbody > tr.signals-row-unscored > td {
-  box-shadow: inset 0 0 0 9999px rgba(214, 57, 57, 0.07);
-}
-:root[data-bs-theme="dark"] .table > tbody > tr.signals-row-analysing > td {
-  box-shadow: inset 0 0 0 9999px rgba(14, 165, 233, 0.14);
-}
-:root[data-bs-theme="dark"] .table > tbody > tr.signals-row-unscored > td {
-  box-shadow: inset 0 0 0 9999px rgba(242, 109, 109, 0.12);
-}
-/* On the red-tinted unscored row, the secondary grey falls to 4.2-4.3:1: its secondary text (the "—" placeholders)
-   takes the body colour there. */
-.table > tbody > tr.signals-row-unscored .text-secondary {
-  color: var(--tblr-body-color) !important;
-}
-/* A no-signal badge whose reason is in its tooltip. */
-.signals-no-signal-badge { cursor: help; }
 /* The standard spinner, scaled to sit inside a 0.72rem badge. */
 .iorio-badge-spinner {
   width: 0.7rem;
@@ -1753,7 +1659,7 @@
   border-width: 0.12em;
 }
 
-/* Pluto marks (2026-10-07): the superscript "P" after a ticker Pluto may trade (Signals, Pulse), and the ticker modal's
+/* Pluto marks (2026-10-07): the superscript "P" after a ticker Pluto may trade (Volatility, Pulse), and the ticker modal's
    Pluto badge. The mark is indigo text, darker on light and lighter on dark so both pass contrast. */
 .pluto-managed-mark {
   margin-left: 0.1rem;
@@ -2286,24 +2192,6 @@
 }
 :root[data-bs-theme="dark"] .text-danger {
   color: #f78f8f !important;
-}
-/* Roll Signals badge (RollBadge): the button around the badge is the tap target. On a phone it reaches 44px tall while the
-   badge keeps its size; the negative margin keeps the row's height as it was. */
-.roll-badge-hit {
-  display: inline-flex;
-  align-items: center;
-  padding: 0;
-  border: 0;
-  background: none;
-  line-height: 1;
-  cursor: pointer;
-}
-@media (max-width: 767.98px) {
-  .roll-badge-hit {
-    min-height: 2.75rem;
-    padding: 0 0.25rem;
-    margin: -0.625rem -0.25rem;
-  }
 }
 
 /* ---------- Analyse window (Backtesting → Data files; mockup approved 2026-10-15) ----------
@@ -2870,18 +2758,8 @@
   }
 }
 
-/* Frozen ticker (a stock split until its records are rewritten): the Signals row and phone card get a red stripe on their
-   left edge, not a tint, so every colour in them reads as on any other row; the Frozen badge, the top-bar pill and a
-   disabled order button's tooltip wrapper get a 44px tap area on phones without changing their look. */
-.table > tbody > tr.signals-row-frozen > td:first-child,
-.signals-card-frozen {
-  box-shadow: inset 3px 0 0 var(--tblr-danger);
-}
-/* Tabler's danger red is 2.6:1 on the dark card; this lighter red is 4.2:1 (non-text needs 3:1). */
-:root[data-bs-theme="dark"] .table > tbody > tr.signals-row-frozen > td:first-child,
-:root[data-bs-theme="dark"] .signals-card-frozen {
-  box-shadow: inset 3px 0 0 #f26d6d;
-}
+/* Frozen ticker (a stock split until its records are rewritten): the Frozen badge, the top-bar pill and a disabled order
+   button's tooltip wrapper get a 44px tap area on phones without changing their look. */
 @media (max-width: 767.98px) {
   .frozen-tap-target {
     position: relative;

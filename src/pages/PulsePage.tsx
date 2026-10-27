@@ -25,7 +25,7 @@ import {
   type OrderCancellationReason,
   type OrderRequestStatus,
 } from "../api/positions";
-import { fetchSignalsScreen, type SignalCandidate, type SignalsScreenRow } from "../api/signals";
+import { fetchTopPremiums, type TopPremiums } from "../api/volatility";
 import { fetchTradeBlotter, type Trade } from "../api/tradeBlotter";
 import { openNotificationStream, fetchRecentNotifications, type AppNotification } from "../api/notifications";
 import type { JobRunStatus } from "../api/systemHealth";
@@ -56,7 +56,7 @@ import { TotalPnlChart } from "../components/pulse/TotalPnlChart";
 import { SuccessProbabilityChart, type SuccessProbabilitySeries } from "../components/pulse/SuccessProbabilityChart";
 import { EnvironmentBadges } from "../components/layout/EnvironmentBadges";
 import { useEnvironmentStatus } from "../hooks/useEnvironmentStatus";
-import { describeAssignmentRisk, describeSignalUpgradeCompact, describeUnscoredReason, dollarsPerTenThousandOfExposure } from "../lib/signalsPresentation";
+import { describeAssignmentRisk } from "../lib/notificationPresentation";
 import { openPositionsSignature } from "../lib/positionsSignature";
 import { allocationBarPercents, portfolioFromExposure } from "../lib/portfolioFromExposure";
 import { usePollWhileVisible } from "../hooks/usePollWhileVisible";
@@ -103,12 +103,8 @@ const GATEWAY_UNPLANNED_DROP_BANDS = [1, 5] as const;
 const GATEWAY_IN_FLIGHT_BANDS = [1, 5] as const;
 const GATEWAY_LIVE_CONNECTIONS_BANDS = [50, 80] as const;
 const GATEWAY_HEALTHY_UPTIME_MS = 30 * 60_000;
-const topSignalsRefreshIntervalMs = 60_000;
-
-// Alert notifications only ever carry the two structured strategies.
-function strategyAbbrev(strategyKey: string): "CC" | "CSP" {
-  return strategyKey === "covered_call" ? "CC" : "CSP";
-}
+// Each poll also keeps the market quote loop quoting the Calls behind it (a 2-minute lease on the server).
+const topPremiumsRefreshIntervalMs = 30_000;
 
 const strategyBadgeModifier: Record<string, string> = { covered_call: "cc", cash_secured_put: "csp", hedge: "hedge", unstructured: "ns" };
 
@@ -148,10 +144,6 @@ const ORDER_FILL_PRICE_RETRY_DELAYS_MS = [10_000, 60_000];
 function colorForIndex(index: number, total: number): string {
   const hue = Math.round((index * 360) / Math.max(total, 1));
   return `hsl(${hue}, 62%, 64%)`;
-}
-
-function signalStrikeLabel(candidate: SignalCandidate): string {
-  return formatOptionContractShort(candidate.strike, candidate.strategyKey === "covered_call" ? "C" : "P", candidate.dte);
 }
 
 function formatBytes(bytesText: string | null | undefined): string {
@@ -496,25 +488,14 @@ export function PulsePage() {
   const totalUnrealizedPnlPercent =
     totalUnrealizedPnl !== null && accountValueBeforeUnrealizedPnl ? (totalUnrealizedPnl / accountValueBeforeUnrealizedPnl) * 100 : null;
 
-  // --- Top Signals by Edge Yield ---
-  // REST snapshot pricing, re-fetched every minute while the tab is live: holds no IBKR market-data lines (the live
-  // signalsScreen stream would add a stock line per shortlist ticker plus a best-contract option line).
-  const [signalRows, setSignalRows] = useState<SignalsScreenRow[]>([]);
-  const refreshSignals = useCallback(() => {
-    fetchSignalsScreen().then(setSignalRows).catch(() => {});
+  // --- Top premiums (Marcelo 2026-10-27): the 10 tickers with the best 0-7 DTE Call yield inside the Risk & Limits delta band ---
+  const [topPremiums, setTopPremiums] = useState<TopPremiums | null>(null);
+  const refreshTopPremiums = useCallback(() => {
+    fetchTopPremiums().then(setTopPremiums).catch(() => {});
   }, []);
-  useEffect(() => refreshSignals(), [refreshSignals]);
-  usePollWhileVisible(refreshSignals, topSignalsRefreshIntervalMs);
-  // One signal per ticker (its best candidate), positive Edge Yield only, highest first, as Pluto ranks. No length cap —
-  // mirrors the Trades panel's "fetch generously, let overflow:hidden clip" design.
-  const topSignals = signalRows
-    .flatMap((row) => (row.best && row.best.model.expectedAnnualizedReturn > 0 ? [{ symbol: row.symbol, candidate: row.best }] : []))
-    .sort((a, b) => b.candidate.model.expectedAnnualizedReturn - a.candidate.model.expectedAnnualizedReturn);
-  const scoredTickerCount = signalRows.filter((row) => row.unscoredReason === null).length;
-  // Why the other tickers are not counted (Analysing / Unscored with the reason), for the panel's count tooltip.
-  const unscoredTickersTooltip = signalRows
-    .flatMap((row) => (row.unscoredReason ? [`${row.symbol}: ${describeUnscoredReason(row.unscoredReason, row.unscoredDetail)}`] : []))
-    .join(" · ");
+  useEffect(() => refreshTopPremiums(), [refreshTopPremiums]);
+  usePollWhileVisible(refreshTopPremiums, topPremiumsRefreshIntervalMs);
+  const topPremiumRows = topPremiums?.rows ?? [];
 
   // --- Trades: fetch generously and let the panel's own overflow:hidden
   // clip whatever doesn't fit — no scroll, per the panel design. ---
@@ -619,8 +600,6 @@ export function PulsePage() {
           }
           case "assignment_risk":
             return { occurredAt, text: `Assignment risk — ${describeAssignmentRisk(notification)}`, color: "var(--warning)" };
-          case "signal_upgraded":
-            return { occurredAt, text: `Signal — ${describeSignalUpgradeCompact(notification)}`, color: "var(--success)" };
           case "order_status": {
             // Resolved server-side in the same response — no per-order request.
             if (!order) return null;
@@ -707,11 +686,6 @@ export function PulsePage() {
         case "assignment_risk": {
           firePulse("heroku-db", "var(--warning)");
           appendEvent(`Assignment risk — ${describeAssignmentRisk(notification)}`, "var(--warning)");
-          break;
-        }
-        case "signal_upgraded": {
-          firePulse("heroku-db", "var(--success)");
-          appendEvent(`Signal — ${describeSignalUpgradeCompact(notification)}`, "var(--success)");
           break;
         }
         case "order_status": {
@@ -959,26 +933,26 @@ export function PulsePage() {
     );
   });
 
-  const signalsHead = (
-    <div className="yield-head">
+  const premiumsHead = (
+    <div className="yield-head premiums">
       <span>Tkr</span>
-      <span>Type</span>
-      <span>Strike / Expiry</span>
-      <span style={{ textAlign: "right" }}>Edge/10k</span>
-      <span style={{ textAlign: "right" }}>Edge Yield</span>
+      <span>Contract</span>
+      <span style={{ textAlign: "right" }}>Δ</span>
+      <span style={{ textAlign: "right" }}>Yield</span>
     </div>
   );
-  const signalsEmpty = <div className="panel-empty">No signals with a positive Edge Yield.</div>;
-  const signalRowsRendered = topSignals.map(({ symbol, candidate }) => (
-    <div className="yield-row" key={symbol}>
+  const premiumsEmpty = <div className="panel-empty">No live Call premiums right now (market closed, or quotes still coming in).</div>;
+  const premiumRowsRendered = topPremiumRows.map(({ symbol, best }) => (
+    <div className="yield-row premiums" key={symbol}>
       <span className="yield-sym">
         {symbol}
         <PlutoManagedMark symbol={symbol} managed={plutoEnabledSymbols.has(symbol)} />
       </span>
-      <span className={`strat-badge ${candidate.strategyKey === "covered_call" ? "cc" : "csp"}`}>{strategyAbbrev(candidate.strategyKey)}</span>
-      <span className="yield-strike">{signalStrikeLabel(candidate)}</span>
-      <span className="yield-edge">{formatCompactDollars(dollarsPerTenThousandOfExposure(candidate.model.expectedPnlDollars, candidate.model.capitalAtRiskDollars))}</span>
-      <span className="yield-pct">{formatPercentageValue(candidate.model.expectedAnnualizedReturn * 100, 1)}</span>
+      <span className="yield-strike">{formatOptionContractShort(best.strike, "C", best.daysToExpiry)}</span>
+      <span className="yield-edge" style={{ fontWeight: 500 }}>
+        {best.delta.toFixed(2)}
+      </span>
+      <span className="yield-pct">{formatPercentageValue(best.yield * 100, 0)}</span>
     </div>
   ));
 
@@ -1351,7 +1325,6 @@ export function PulsePage() {
     const nodes = renderNodeCards(true);
     const totalCapitalAtRisk = positions.reduce((sum, position) => sum + (position.capitalAtRisk !== null ? Number(position.capitalAtRisk) : 0), 0);
     const exposurePercent = netLiquidationValue ? (totalCapitalAtRisk / netLiquidationValue) * 100 : null;
-    const bestSignal = topSignals[0] ?? null;
     const latestTrade = trades[0] ?? null;
     const marketStyle = marketStatusStyle(marketStatus?.state);
     return (
@@ -1379,27 +1352,26 @@ export function PulsePage() {
             rows: positionRows,
             empty: positionsEmpty,
           }}
-          signals={{
-            shownCount: topSignals.length,
-            scoredCount: scoredTickerCount,
-            bestRow: bestSignal ? (
+          topPremiums={{
+            shownCount: topPremiumRows.length,
+            tickerCount: topPremiums?.tickerCount ?? 0,
+            bestRow: topPremiumRows[0] ? (
               <>
                 <span className="yield-sym">
-                  {bestSignal.symbol}
-                  <PlutoManagedMark symbol={bestSignal.symbol} managed={plutoEnabledSymbols.has(bestSignal.symbol)} />
+                  {topPremiumRows[0].symbol}
+                  <PlutoManagedMark symbol={topPremiumRows[0].symbol} managed={plutoEnabledSymbols.has(topPremiumRows[0].symbol)} />
                 </span>
-                <span className={`strat-badge ${bestSignal.candidate.strategyKey === "covered_call" ? "cc" : "csp"}`}>{strategyAbbrev(bestSignal.candidate.strategyKey)}</span>
-                <span>{signalStrikeLabel(bestSignal.candidate)}</span>
+                <span>{formatOptionContractShort(topPremiumRows[0].best.strike, "C", topPremiumRows[0].best.daysToExpiry)}</span>
                 <span className="up" style={{ fontWeight: 700 }}>
-                  {(bestSignal.candidate.annualizedYield * 100).toFixed(1)}%
+                  {formatPercentageValue(topPremiumRows[0].best.yield * 100, 0)}
                 </span>
               </>
             ) : (
               "—"
             ),
-            head: signalsHead,
-            rows: signalRowsRendered,
-            empty: signalsEmpty,
+            head: premiumsHead,
+            rows: premiumRowsRendered,
+            empty: premiumsEmpty,
           }}
           trades={{
             latestSummary: latestTrade ? (
@@ -1487,14 +1459,14 @@ export function PulsePage() {
           </div>
           <div className="panel">
             <div className="panel-title">
-              Top Signals <span className="panel-subtitle">by Edge Yield</span>
-              <TooltipSpan className="count" text={unscoredTickersTooltip ? `${scoredTickerCount} of ${signalRows.length} tickers scored. ${unscoredTickersTooltip}` : `All ${signalRows.length} tickers scored`}>
-                {topSignals.length} of {scoredTickerCount}
+              Top premiums <span className="panel-subtitle">best Call yield · 0–7 DTE</span>
+              <TooltipSpan className="count" text={`The ${topPremiumRows.length} best of ${topPremiums?.tickerCount ?? 0} tickers: the highest yield a year after costs among Calls inside the Risk & Limits delta band, 0–7 days to expiry.`}>
+                {topPremiumRows.length} of {topPremiums?.tickerCount ?? 0}
               </TooltipSpan>
             </div>
-            {signalsHead}
-            {topSignals.length === 0 && signalsEmpty}
-            {signalRowsRendered}
+            {premiumsHead}
+            {topPremiumRows.length === 0 && premiumsEmpty}
+            {premiumRowsRendered}
           </div>
         </ResizableRail>
 

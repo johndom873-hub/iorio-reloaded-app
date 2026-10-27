@@ -1,6 +1,6 @@
 import { useEffect } from "react";
 import { Link } from "react-router-dom";
-import { IconAlertTriangle, IconCircleCheck, IconTrendingUp } from "@tabler/icons-react";
+import { IconAlertTriangle, IconCircleCheck } from "@tabler/icons-react";
 import { Spinner } from "../Spinner";
 import { useBackgroundJobs, type BackgroundJob } from "../../hooks/useBackgroundJobs";
 
@@ -38,9 +38,8 @@ function BackgroundJobToast({ job, onDismiss }: { job: BackgroundJob; onDismiss:
     <div className="toast show mb-2" role="status" aria-live="polite">
       <div className="toast-header">
         {job.status === "running" && <Spinner size="sm" className="me-2" />}
-        {job.status === "done" && job.kind === "signal-upgraded" && <IconTrendingUp size={18} className="text-success me-2" />}
         {job.status === "done" && job.kind === "assignment-risk" && <IconAlertTriangle size={18} className="iorio-note-amber me-2" />}
-        {job.status === "done" && job.kind !== "signal-upgraded" && job.kind !== "assignment-risk" && <IconCircleCheck size={18} className="text-success me-2" />}
+        {job.status === "done" && job.kind !== "assignment-risk" && <IconCircleCheck size={18} className="text-success me-2" />}
         {job.status === "error" && <IconAlertTriangle size={18} className="text-danger me-2" />}
         <strong className="me-auto">{job.label}</strong>
         <button type="button" className="btn-close" aria-label="Close" onClick={onDismiss} />

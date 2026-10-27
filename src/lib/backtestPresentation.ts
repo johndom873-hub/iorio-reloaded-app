@@ -42,7 +42,6 @@ import {
   type EffectiveBacktestSettings,
   type LlmSessionEstimate,
 } from "../api/backtest";
-import type { SignalGrade } from "../api/signals";
 import {
   daysToExpiry,
   easternIsoDate,
@@ -74,7 +73,23 @@ import {
 import { plutoParameterLabelByField } from "./plutoParameters";
 import { positionCloseReasonLabel } from "./positionPnl";
 import { gateLabel, humanizeKey } from "./plutoPresentation";
-import { gradeBadgeClass, gradeLabel } from "./signalsPresentation";
+
+/** The valuation model's grade on a rules or llm session's sales (those backtests were retired with Signals, 2026-10-27; their sessions stay readable). */
+export type TradeGrade = "strong" | "good" | "weak" | "avoid";
+
+const tradeGradeLabels: Record<TradeGrade, string> = { strong: "Strong", good: "Good", weak: "Weak", avoid: "Avoid" };
+
+// Dedicated badge-grade-* classes (theme.css) rather than Tabler's bg-success/bg-cyan/bg-yellow/bg-secondary,
+// so this grade scale doesn't drift if those general-purpose semantic colors change elsewhere.
+const tradeGradeBadgeClasses: Record<TradeGrade, string> = { strong: "badge-grade-strong", good: "badge-grade-good", weak: "badge-grade-weak", avoid: "badge-grade-avoid" };
+
+/** The header tooltips of the valuation columns a rules or llm session's trades carry. */
+export const tradeValuationColumnExplanation = {
+  grade: "The valuation model's grade, from the edge margin (1 − fair value ÷ mid, before costs): Strong 20% or more, Good 10% to 20%, Weak 0% to 10%, Avoid below 0%.",
+  margin: "Edge margin: how far the price is above the model's fair value, as a share of the price (1 − fair ÷ mid), before costs. It sets the grade.",
+  edgeYield: "Edge Yield: the expected profit as a yearly rate on EXP $, over the calendar days to expiry (weekends count: the capital is tied up).",
+  histYield: "Hist Yield: the Edge Yield after history's correction, what at-the-money sales with the same margin and time left actually earned.",
+};
 
 // Labels, badge classes, explanations and small derivations for the Backtesting screens (mockup approved 2026-10-12,
 // figures defined in the API's docs/backtesting/FORMULAS.md). Every explanation uses the formula sheet's wording.
@@ -455,12 +470,12 @@ export function describeBacktestTradeContract(sessionSymbol: string, trade: Back
 /** "—" for a baseline wheel's sale, which has no grade. */
 export function tradeGradeLabel(grade: string | null): string {
   if (grade === null) return "—";
-  return gradeLabel[grade as SignalGrade] ?? grade;
+  return tradeGradeLabels[grade as TradeGrade] ?? grade;
 }
 
 export function tradeGradeBadgeClass(grade: string | null): string {
   if (grade === null) return "";
-  return gradeBadgeClass[grade as SignalGrade] ?? "bg-secondary";
+  return tradeGradeBadgeClasses[grade as TradeGrade] ?? "bg-secondary";
 }
 
 /** What the contract settled at: "open" while it runs, "expired" when it ended out of the money at expiry, the expiry close when
@@ -522,7 +537,7 @@ export function settingInputText(value: number | string): string {
 
 export const settingUnitSuffix: Partial<Record<BacktestSettingUnit, string>> = { percent: "%", days: "days" };
 
-export const gradeOptions: SignalGrade[] = ["strong", "good", "weak"];
+export const gradeOptions: TradeGrade[] = ["strong", "good", "weak"];
 
 function isNumericUnit(unit: BacktestSettingUnit): boolean {
   return unit !== "grade" && unit !== "choice" && unit !== "time";

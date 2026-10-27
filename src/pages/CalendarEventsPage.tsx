@@ -3,9 +3,9 @@ import { PageHeader } from "../components/layout/PageHeader";
 import { DataTable, type DataTableColumn } from "../components/DataTable/DataTable";
 import { ApiError } from "../api/client";
 import { fetchCalendarEvents, type TickerCalendarEvent } from "../api/calendarEvents";
-import type { MacroEvent } from "../api/signals";
+import type { MacroEvent } from "../api/calendarEvents";
 import { daysToExpiry, formatCurrency, formatDate, formatDaysToExpiry, formatEasternTime, todayInEasternIso } from "../lib/formatters";
-import { useSignalsTickerModal } from "../hooks/useSignalsTickerModal";
+import { useTickerModal } from "../hooks/useTickerModal";
 
 function DateWithCountdown({ isoDate }: { isoDate: string }) {
   return (
@@ -33,7 +33,7 @@ export function CalendarEventsPage() {
   const [macroEvents, setMacroEvents] = useState<MacroEvent[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const { open: openTickerModal } = useSignalsTickerModal();
+  const { open: openTickerModal } = useTickerModal();
 
   const loadEvents = useCallback(async () => {
     try {

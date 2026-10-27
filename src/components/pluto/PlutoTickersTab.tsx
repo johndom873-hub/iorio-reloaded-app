@@ -5,17 +5,15 @@ import { FrozenTickerBadge } from "../FrozenTickerBadge";
 import { useFrozenTickers } from "../../hooks/useFrozenTickers";
 import { useIsAdmin } from "../../hooks/useAuth";
 import { ApiError } from "../../api/client";
-import { fetchPlutoLadderSettings, updateShortlistBotEnabled, type DaySignalsWatch, type PlutoLadderTickerSettings, type PlutoSettings, type PlutoState } from "../../api/pluto";
+import { fetchPlutoLadderSettings, updateShortlistBotEnabled, type PlutoLadderTickerSettings, type PlutoSettings, type PlutoState } from "../../api/pluto";
 import type { ShortlistRow, TickerBackfillRun } from "../../api/shortlist";
 import { formatBrowserDayMonth, formatCurrency, formatInputNumber, pluralize } from "../../lib/formatters";
 import { effectiveAllocationPct, ladderFit, recommendedShockAt } from "../../lib/plutoLadderPresentation";
-import { describeDaySignalsWatch } from "../../lib/plutoPresentation";
 import { ColumnVisibilityPopover } from "../DataTable/ColumnVisibilityPopover";
 import { useColumnVisibility } from "../DataTable/useColumnVisibility";
 import { Spinner } from "../Spinner";
 import { TooltipSpan } from "../TooltipSpan";
-import { VolatilitySurfaceModal } from "../VolatilitySurfaceModal";
-import { DailyBarsCell, DividendCell, EarningsCell, OptionChainExpiriesCell, PreparingStatusBadge, SnapshotsCell, SurfaceFitCell } from "../shortlist/readinessCells";
+import { DailyBarsCell, EarningsCell, ImpliedVolatilityDaysCell, OptionChainExpiriesCell, PreparingStatusBadge } from "../shortlist/readinessCells";
 import { TickerPrepModal } from "../shortlist/TickerPrepModal";
 import { Meter, SearchIcon, TickerButton, ToneBadge } from "./plutoBits";
 import { PlutoStopsManagingConfirm, plutoStopsManagingPositions } from "./PlutoStopsManagingConfirm";
@@ -26,7 +24,6 @@ interface PlutoTickersTabProps {
   loading: boolean;
   error: string | null;
   state: PlutoState | null;
-  daySignalsWatch: DaySignalsWatch | null;
   maxEnabled: number;
   isPhone: boolean;
   onOpenTicker: (symbol: string) => void;
@@ -49,13 +46,10 @@ const columns = [
   { key: "pot", header: "Pot", title: "The allocation of Pluto's capital budget at last night's account value", align: "right" },
   { key: "ladder", header: "Ladder", title: "The CC + Put Ladder values this ticker overrides" },
   { key: "checks", header: "Checks", title: "Whether a lot and a ladder Put fit the pot at the last close" },
-  { key: "daySignals", header: "Day Signals today", title: "Pluto analyses only the tickers Day Signals quotes today (plus one opening look). A ticker with no positive-edge contract at 10:00 is not quoted until a re-check finds one." },
-  { key: "dailyBars", header: "Daily bars", title: "Daily price/IV history", align: "right" },
-  { key: "earnings", header: "Earnings", title: "Earnings dates on record", align: "right" },
-  { key: "dividend", header: "Dividend", title: "Regular ex-dividend cadence" },
-  { key: "snapshots", header: "Snapshots", title: "Nightly option-chain captures on record", align: "right" },
-  { key: "expiries", header: "Chain expiries", title: "Expiries with strikes captured", align: "right" },
-  { key: "surface", header: "Surface fit", title: "Fitted vs total expiries; click to open the surface", align: "right" },
+  { key: "dailyBars", header: "Daily bars", title: "Daily price history", align: "right" },
+  { key: "ivDays", header: "IV days", title: "Days of implied-volatility history in IV Rank and IV %ile's 252-day window", align: "right" },
+  { key: "earnings", header: "Earnings", title: "Earnings dates on record, with the next one", align: "right" },
+  { key: "expiries", header: "Chain expiries", title: "Expiries with strikes stored", align: "right" },
   { key: "status", header: "Status" },
   { key: "settings", header: "Settings" },
 ] as const;
@@ -124,7 +118,7 @@ function TickerSwitch({ row, onToggled, onError, withLabel, locked }: { row: Sho
         {locked && <IconLock size={12} aria-hidden="true" className="text-secondary flex-shrink-0" />}
         {withLabel && <span className={`pm-switch-state ${row.botEnabled ? "on" : "off"}`}>{saving ? <Spinner size="sm" /> : row.botEnabled ? "Allowed" : "Off"}</span>}
       </label>
-      {confirming && <PlutoStopsManagingConfirm symbol={row.symbol} openPositionCount={row.openPositionCount} viaSignals={false} onConfirm={() => void toggle()} onCancel={() => setConfirming(false)} />}
+      {confirming && <PlutoStopsManagingConfirm symbol={row.symbol} openPositionCount={row.openPositionCount} onConfirm={() => void toggle()} onCancel={() => setConfirming(false)} />}
     </>
   );
 }
@@ -144,30 +138,17 @@ function plutoNow(row: ShortlistRow, state: PlutoState | null): { tone: "neutral
   return null;
 }
 
-function DaySignalsCell({ row, watch }: { row: ShortlistRow; watch: DaySignalsWatch | null }) {
-  const status = row.botEnabled ? watch?.tickers[row.tickerId] : undefined;
-  if (!status || !watch) return <span className="muted">—</span>;
-  const described = describeDaySignalsWatch(status, watch.sessionOpen);
-  return (
-    <>
-      <ToneBadge tone={described.tone}>{described.label}</ToneBadge>
-      {described.detail && <span className="pm-cell-sub pm-ds-why">{described.detail}</span>}
-    </>
-  );
-}
-
 function changedBy(row: ShortlistRow): string | null {
   if (!row.botEnabledChangedAt) return null;
   return `${row.botEnabledChangedBy ?? "—"} · ${formatBrowserDayMonth(row.botEnabledChangedAt)}`;
 }
 
-export function PlutoTickersTab({ rows, loading, error, state, daySignalsWatch, maxEnabled, isPhone, onOpenTicker, onToggled, onPrepRunChange, settings, onOpenSettingsTab }: PlutoTickersTabProps) {
+export function PlutoTickersTab({ rows, loading, error, state, maxEnabled, isPhone, onOpenTicker, onToggled, onPrepRunChange, settings, onOpenSettingsTab }: PlutoTickersTabProps) {
   const frozenTickers = useFrozenTickers();
   const isAdmin = useIsAdmin();
   const [filter, setFilter] = useState<Filter>("all");
   const [search, setSearch] = useState("");
   const [toggleError, setToggleError] = useState<string | null>(null);
-  const [surfaceSymbol, setSurfaceSymbol] = useState<string | null>(null);
   const [prepTicker, setPrepTicker] = useState<{ tickerId: string; symbol: string; companyName: string | null } | null>(null);
   const { isColumnVisible, toggleColumn } = useColumnVisibility("pluto-tickers", columns.map((column) => column.key));
   const [ladderTickers, setLadderTickers] = useState<PlutoLadderTickerSettings[] | null>(null);
@@ -287,7 +268,7 @@ export function PlutoTickersTab({ rows, loading, error, state, daySignalsWatch, 
   let body: React.ReactNode;
   if (error) body = <div className="alert alert-danger pm-error mb-0">{error}</div>;
   else if (loading) body = <div className="pm-empty"><Spinner size="sm" label="Loading tickers" /></div>;
-  else if (visibleRows.length === 0) body = <div className="pm-empty">{rows.length === 0 ? "No Signals tickers yet — turn Signals on for a ticker on the Shortlist first." : "No tickers match."}</div>;
+  else if (visibleRows.length === 0) body = <div className="pm-empty">{rows.length === 0 ? "No tickers yet — add one on the Shortlist first." : "No tickers match."}</div>;
   else if (isPhone) {
     body = (
       <ul className="pm-mlist">
@@ -299,19 +280,9 @@ export function PlutoTickersTab({ rows, loading, error, state, daySignalsWatch, 
               <span className="pm-tk-name">
                 <span>
                   <TickerButton symbol={row.symbol} onOpen={onOpenTicker} />
-                  <FrozenTickerBadge frozen={frozenTickers.get(row.symbol)} />{" "}
-                  {row.latestTotalSliceCount !== null && (
-                    <button type="button" className="pm-link num surface" onClick={() => setSurfaceSymbol(row.symbol)} title={`Open the ${row.symbol} volatility surface`}>
-                      Surface {row.latestFittedSliceCount}/{row.latestTotalSliceCount}
-                    </button>
-                  )}
+                  <FrozenTickerBadge frozen={frozenTickers.get(row.symbol)} />
                 </span>
                 <span className="co">{row.companyName ?? "—"}</span>
-                {(() => {
-                  const status = row.botEnabled && daySignalsWatch ? daySignalsWatch.tickers[row.tickerId] : undefined;
-                  const note = status ? describeDaySignalsWatch(status, daySignalsWatch!.sessionOpen) : null;
-                  return note?.phoneNote ? <span className={`pm-ds-note ${note.tone}`}>{note.phoneNote}</span> : null;
-                })()}
               </span>
               <span className="right">
                 <span className={`pm-switch-state ${row.botEnabled ? "on" : "off"}`}>{row.botEnabled ? "Allowed" : "Off"}</span>
@@ -372,20 +343,17 @@ export function PlutoTickersTab({ rows, loading, error, state, daySignalsWatch, 
                 ),
                 sector: row.isEtf ? <span className="muted fst-italic">ETF</span> : row.sector ?? <span className="muted">—</span>,
                 now: now ? <ToneBadge tone={now.tone}>{now.label}</ToneBadge> : <span className="muted">—</span>,
-                daySignals: <DaySignalsCell row={row} watch={daySignalsWatch} />,
                 dailyBars: <DailyBarsCell row={row} />,
+                ivDays: <ImpliedVolatilityDaysCell row={row} />,
                 earnings: <EarningsCell row={row} />,
-                dividend: <DividendCell row={row} />,
-                snapshots: <SnapshotsCell row={row} />,
                 expiries: <OptionChainExpiriesCell expiries={row.optionChainExpiries} />,
-                surface: <SurfaceFitCell row={row} onOpenSurface={() => setSurfaceSymbol(row.symbol)} linkClassName="pm-link num" />,
                 status: row.backfillStatus === "preparing" ? <PreparingStatusBadge progressPercent={row.backfillProgressPercent ?? 0} onClick={() => setPrepTicker({ tickerId: row.tickerId, symbol: row.symbol, companyName: row.companyName })} /> : <span className="muted">—</span>,
                 ...ladderCells(row),
               };
               return (
                 <tr key={row.id} className={row.botEnabled ? "on" : undefined}>
                   {visibleColumns.map((column) => (
-                    <td key={column.key} className={[("align" in column && column.align === "right") ? "r num" : "", column.key === "switch" || column.key === "dailyBars" || column.key === "earnings" || column.key === "surface" ? "nw" : "", column.key === "daySignals" ? "pm-ds" : ""].filter(Boolean).join(" ") || undefined}>
+                    <td key={column.key} className={[("align" in column && column.align === "right") ? "r num" : "", column.key === "switch" || column.key === "dailyBars" || column.key === "earnings" ? "nw" : ""].filter(Boolean).join(" ") || undefined}>
                       {cells[column.key]}
                     </td>
                   ))}
@@ -439,7 +407,6 @@ export function PlutoTickersTab({ rows, loading, error, state, daySignalsWatch, 
           </div>
         )}
       </section>
-      {surfaceSymbol && <VolatilitySurfaceModal symbol={surfaceSymbol} onClose={() => setSurfaceSymbol(null)} />}
       {settingsSymbol && settings && ladderBySymbol.get(settingsSymbol) && (
         <PlutoLadderTickerWindow
           ticker={ladderBySymbol.get(settingsSymbol)!}

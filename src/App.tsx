@@ -1,5 +1,5 @@
 import { lazy, Suspense, type ReactNode } from "react";
-import { BrowserRouter, Route, Routes } from "react-router-dom";
+import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 import { AuthProvider } from "./contexts/AuthContext";
 import { ThemeProvider } from "./contexts/ThemeContext";
 import { BackgroundJobsProvider } from "./contexts/BackgroundJobsContext";
@@ -8,7 +8,7 @@ import { ProtectedRoute } from "./components/layout/ProtectedRoute";
 import { LoginPage } from "./pages/LoginPage";
 import { DashboardPage } from "./pages/DashboardPage";
 import { PositionsPage } from "./pages/PositionsPage";
-import { SignalsPage } from "./pages/SignalsPage";
+import { VolatilityPage } from "./pages/VolatilityPage";
 import { ShortlistPage } from "./pages/ShortlistPage";
 import { PricePerformancePage } from "./pages/PricePerformancePage";
 import { TradeBlotterPage } from "./pages/TradeBlotterPage";
@@ -61,7 +61,8 @@ function App() {
                 <Route element={<AppLayout />}>
                   <Route path="/" element={<DashboardPage />} />
                   <Route path="/positions" element={<PositionsPage />} />
-                  <Route path="/signals" element={<SignalsPage />} />
+                  <Route path="/volatility" element={<VolatilityPage />} />
+                  <Route path="/signals" element={<Navigate to="/volatility" replace />} />
                   <Route path="/shortlist" element={<ShortlistPage />} />
                   <Route path="/price-performance" element={<PricePerformancePage />} />
                   <Route path="/trade-blotter" element={<TradeBlotterPage />} />

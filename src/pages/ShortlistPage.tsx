@@ -2,7 +2,7 @@ import { useState } from "react";
 import { PageHeader } from "../components/layout/PageHeader";
 import { ShortlistTab } from "../components/shortlist/ShortlistTab";
 import { ScreenerTab } from "../components/screener/ScreenerTab";
-import { useSignalsTickerModal } from "../hooks/useSignalsTickerModal";
+import { useTickerModal } from "../hooks/useTickerModal";
 
 type ShortlistPageTab = "shortlist" | "screener";
 
@@ -13,7 +13,7 @@ const tabs: { key: ShortlistPageTab; label: string }[] = [
 
 export function ShortlistPage() {
   const [activeTab, setActiveTab] = useState<ShortlistPageTab>("shortlist");
-  const { open: openTickerModal } = useSignalsTickerModal();
+  const { open: openTickerModal } = useTickerModal();
 
   return (
     <>

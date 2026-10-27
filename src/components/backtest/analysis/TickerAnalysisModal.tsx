@@ -25,7 +25,7 @@ import {
 } from "../../../api/backtestAnalysis";
 import { analysisBacktestName, analysisTickerKeys, differingAnalysisKeys, type AnalysisPanelKey, type AnalysisPanelValues } from "../../../lib/analysisPresentation";
 import { formatBrowserClockTime, formatDayMonthYear, formatNumber } from "../../../lib/formatters";
-import { useSignalsTickerModal } from "../../../hooks/useSignalsTickerModal";
+import { useTickerModal } from "../../../hooks/useTickerModal";
 import { useIsAdmin } from "../../../hooks/useAuth";
 import { TickerSuitabilityModal } from "../TickerSuitabilityModal";
 import { AnalysisTickerIdentity } from "./AnalysisTickerHeader";
@@ -107,7 +107,7 @@ export function TickerAnalysisModal({ symbol, onClose, onSuitabilitySaved }: Tic
   const [suitabilityOpen, setSuitabilityOpen] = useState(false);
   // The global lab settings open over this window; closing them comes back here.
   const [labSettingsOpen, setLabSettingsOpen] = useState(false);
-  const signalsTicker = useSignalsTickerModal();
+  const signalsTicker = useTickerModal();
   const isActive = useCallback((view: { active: AnalysisRunView[] }) => view.active.length > 0, []);
   const fetchView = useCallback(() => fetchTickerAnalysis(symbol), [symbol]);
   const { data: view, loadError, reload } = usePolledBacktestResource(fetchView, isActive, `Could not load ${symbol}'s analysis.`);
