@@ -12,7 +12,7 @@ import { usePlutoEnabledSymbols } from "../hooks/usePlutoEnabledSymbols";
 import { useTickerPositions } from "../hooks/useTickerPositions";
 import { useVisibleLiveContracts } from "../hooks/useVisibleLiveContracts";
 import { plutoTickerOpenOrRollRefusal } from "../lib/accessLevelPresentation";
-import { formatCurrency, formatDate, formatNumber, formatOptionContractLabel, formatPercentage, formatPercentageValue, formatVolatilityPoints, daysToExpiry, pnlTextClass } from "../lib/formatters";
+import { formatCurrency, formatDate, formatNumber, formatOptionContractLabel, formatPercentage, formatPercentageValue, formatVolatilityPoints, daysToExpiry, pluralize, pnlTextClass } from "../lib/formatters";
 import { describeSupportResistanceLevel } from "../lib/tickerTechnicalsPresentation";
 import { IvHistoryChart } from "./charts/IvHistoryChart";
 import { TickerPriceChart } from "./charts/TickerPriceChart";
@@ -375,7 +375,7 @@ export function TickerModal({ symbol, initialRollLegId = null, focusPositionId =
               </div>
               <div className="ticker-modal-live-status d-inline-flex align-items-center gap-2 text-secondary" style={{ fontSize: "0.75rem" }}>
                 {liveSpotPrice !== null && <span className="iorio-pulse-dot" />}
-                {liveSpotPrice !== null ? `Live · ${Object.keys(liveQuotes).length} contracts on screen live` : "Connecting live price…"}
+                {liveSpotPrice !== null ? `Live · quoting ${pluralize(Object.keys(liveQuotes).length, "contract")} on screen` : "Connecting live price…"}
               </div>
               <button type="button" className="btn-close" aria-label="Close" onClick={requestClose} />
             </div>

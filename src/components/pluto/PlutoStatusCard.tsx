@@ -4,8 +4,7 @@ import { ApiError } from "../../api/client";
 import { cancelOrder } from "../../api/positions";
 import { useIsAdmin } from "../../hooks/useAuth";
 import { pausePluto, resetPlutoBreaker, resumePluto, updatePlutoMode, updatePlutoStressOverride, type PlutoSettings, type PlutoState, type PlutoStateCore } from "../../api/pluto";
-import { formatCompactDollarsTrimmed, formatCurrency, formatEasternTime, formatHoursMinutesUntil, pluralize, todayInEasternIso } from "../../lib/formatters";
-import { executionStrategyLabels } from "../../lib/plutoParameters";
+import { formatCompactDollarsTrimmed, formatEasternTime, formatHoursMinutesUntil, pluralize, todayInEasternIso } from "../../lib/formatters";
 import { checkLabel, describeOrderLine, formatAgeInWords, humanizeKey, orderedChecks, sentenceCase, spyStressFromState, spyStressLimitForStrategy, type PlutoStatus } from "../../lib/plutoPresentation";
 import { ConfirmModal } from "../ConfirmModal";
 import { Spinner } from "../Spinner";
@@ -285,7 +284,6 @@ export function PlutoStatusCard({ state, status, settings, now, isPhone, showKpi
   const budget = nlv === null ? null : (nlv * state.book.capitalBudgetPct) / 100;
   const orderSize = budget === null ? null : (budget * state.book.orderSizePctOfBudget) / 100;
   const ordersMax = state.counters.maxActionsPerSession;
-  const costMax = state.counters.dailyCostCeilingUsd;
   const windowStartMs = new Date(session.windowStartAt).getTime();
   const windowEndMs = new Date(session.windowEndAt).getTime();
   const windowSub = !session.isOpen ? "Market closed today" : now.getTime() < windowStartMs ? `Starts in ${formatHoursMinutesUntil(session.windowStartAt, now)} · market closes ${session.closeTimeEt}` : now.getTime() < windowEndMs ? `${formatHoursMinutesUntil(session.windowEndAt, now)} left · market closes ${session.closeTimeEt}` : `Closed for today · market closes ${session.closeTimeEt}`;
@@ -303,7 +301,7 @@ export function PlutoStatusCard({ state, status, settings, now, isPhone, showKpi
             {status.label}
           </span>
           <div className="pm-cmd-text">
-            <div className="pm-cmd-headline">{status.headline}{settings && ` · ${executionStrategyLabels[settings.executionStrategy]}`}</div>
+            <div className="pm-cmd-headline">{status.headline}</div>
             <div className="pm-cmd-sub">
               <span>{subline}</span>
             </div>
@@ -432,14 +430,6 @@ export function PlutoStatusCard({ state, status, settings, now, isPhone, showKpi
               <div className="pm-kpi-s spaced">{workingSub}</div>
             </div>
             <div className="pm-kpi">
-              <div className="pm-kpi-l">{isPhone ? "Model spend" : "Model spend today"}</div>
-              <div className="pm-kpi-v">
-                {formatCurrency(state.counters.costTodayUsd, 2)} <small>of {isPhone ? `$${costMax}` : formatCurrency(costMax, 2)}</small>
-              </div>
-              <Meter pct={(state.counters.costTodayUsd / Math.max(0.01, costMax)) * 100} warn={state.counters.costTodayUsd >= costMax} />
-              <div className="pm-kpi-s">{pluralize(state.counters.modelCallsToday, "call")}</div>
-            </div>
-            <div className={`pm-kpi${isPhone ? " wide" : ""}`}>
               <div className="pm-kpi-l">Trading window</div>
               <div className="pm-kpi-v">
                 {session.windowStartEt}–{session.windowEndEt} <small>ET{isPhone ? ` · ${windowSub.split(" · ")[0]}` : ""}</small>

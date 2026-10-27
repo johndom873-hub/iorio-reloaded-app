@@ -88,7 +88,7 @@ function ChainCellButton({ contract, quote, dte, spotPrice, spreadShareCharged, 
     ask: <span className={`font-mono ${flashClassName(askFlash)}`}>{formatQuotePrice(ask)}</span>,
     delta: <span className={`font-mono ${flashClassName(deltaFlash)}`}>{formatChainDelta(delta)}</span>,
     iv: <span className="font-mono">{formatPercentage(impliedVolatility, 1)}</span>,
-    yield: <span className={`font-mono option-chain-yield ${flashClassName(yieldFlash)}`}>{formatPercentage(yieldFraction, 0)}</span>,
+    yield: <span className={`font-mono ${yieldFraction === null ? "text-secondary" : "option-chain-yield"} ${flashClassName(yieldFlash)}`}>{formatPercentage(yieldFraction, 0)}</span>,
   };
   return (
     <button
