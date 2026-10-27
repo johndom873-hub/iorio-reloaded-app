@@ -1042,6 +1042,8 @@ export interface BacktestCycleTimelineRow {
   hedgeCostYield?: number | null;
   /** An option sold while the cycle held shares: the cycle's cash break-even just before the sale (a call on held shares under a break-even rule: the floor it was held to). Null while none were held. */
   breakEvenAtSale?: number | null;
+  /** Vol Farmer v2: the break-even of the position the sale was for, before its premium: first (its Calls, and the Puts it caps), second (its Calls), both for a shared Call order. Absent elsewhere and on sessions run before 2026-10-27. */
+  positionBreakEvens?: { first: number | null; second: number | null };
   /** The shares the cycle held once the row's moment (its look's orders, or the end's marks) was done, as traded on the row's day. */
   sharesHeld?: number;
   /** A put sold as a rung of the ladder: the figures its sale recorded (null for any other put); absent on other rows. */
