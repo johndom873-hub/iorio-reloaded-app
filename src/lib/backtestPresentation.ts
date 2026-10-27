@@ -920,6 +920,16 @@ export function describeNoCallRun(run: BacktestNoCallRun, stockMove: number | nu
   return `No Call on ${formatNumber(run.sharesHeld)} shares for ${pluralizeCount(run.sessions, "session")}${hedge}: ${run.reasons.map(describeNoCallReason).join(", ")}${stock}`;
 }
 
+/**
+ * A Vol Farmer v2 Put's Step for its cycle row's tooltip (the Step at each Put sale, Marcelo 2026-10-27): "Step 21.1% = IV
+ * 73.1% × √(21 ÷ 252), the one-month move its options priced in.", then "The Put's strike: at most $408.25 = B-E¹ $517.43 × (1 − 21.1%)".
+ */
+export function describePutStep(step: NonNullable<BacktestCycleTimelineRow["putStep"]>, firstBreakEven: number): string {
+  const stepText = formatPercentage(step.stepPct / 100, 1);
+  const source = step.impliedVolatility === null ? `Step ${stepText}, the fixed Step: no IV in the 10 sessions before` : `Step ${stepText} = IV ${formatPercentage(step.impliedVolatility, 1)} × √(21 ÷ 252), the one-month move its options priced in`;
+  return `${source}.\nThe Put's strike: at most ${formatCurrency(firstBreakEven * (1 - step.stepPct / 100))} = B-E¹ ${formatCurrency(firstBreakEven)} × (1 − ${stepText})`;
+}
+
 /** A No Call row's tooltip: the days each reason was seen, the look's note on the first day of each, why no contract qualified, and the stock's move. */
 export function describeNoCallRunRules(run: BacktestNoCallRun): string {
   const lines = ["No Call, the days each reason was seen (a day counts under every reason seen at any of its looks):"];

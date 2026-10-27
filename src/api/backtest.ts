@@ -223,6 +223,7 @@ export interface BacktestVolFarmerV2Settings {
   stepRule: "fixed" | "implied_move_at_put_sale";
   leapsMinDte: number;
   leapsAbsDelta: number;
+  leapsMaxAccountPct: number;
 }
 
 /** The Steady Stake's values (the API's BacktestSteadyStakeSettings). */
@@ -1045,6 +1046,8 @@ export interface BacktestCycleTimelineRow {
   breakEvenAtSale?: number | null;
   /** Vol Farmer v2: the break-even of the position the sale was for, before its premium: first (its Calls, and the Puts it caps), second (its Calls), both for a shared Call order. Absent elsewhere and on sessions run before 2026-10-27. */
   positionBreakEvens?: { first: number | null; second: number | null };
+  /** Vol Farmer v2, a Put sold with the Step at each Put sale: its Step, % below B-E¹, and the IV it came from (null: no IV, the fixed Step). Absent elsewhere and on sessions run before 2026-10-27. */
+  putStep?: { stepPct: number; impliedVolatility: number | null };
   /** The shares the cycle held once the row's moment (its look's orders, or the end's marks) was done, as traded on the row's day. */
   sharesHeld?: number;
   /** A put sold as a rung of the ladder: the figures its sale recorded (null for any other put); absent on other rows. */

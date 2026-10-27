@@ -28,6 +28,7 @@ import {
   describeLadderRung,
   describeNoCallRun,
   describeNoCallRunRules,
+  describePutStep,
   describeOpenCycles,
   describeSessionSpan,
   summarizeCycleTotals,
@@ -203,22 +204,32 @@ function noCallCell(key: string, cycle: BacktestCycle, run: BacktestNoCallRun, c
 /** A cycle's no-Call days of its days with shares ("40 of 58"); a dash with none. */
 const noCallDaysText = (noCallDays: BacktestCycle["noCallDays"]) => (noCallDays && noCallDays.days > 0 ? `${formatNumber(noCallDays.days)} of ${formatNumber(noCallDays.shareDays)}` : dash);
 
-/** "$54.23¹", "$41.10²", or both for one Call order the two positions shared. */
-function PositionBreakEvens({ breakEvens }: { breakEvens: NonNullable<BacktestCycleTimelineRow["positionBreakEvens"]> }) {
+/** "$54.23¹", "$41.10²", or both for one Call order the two positions shared; a Put sold with the Step at each Put sale adds it: "$517.43¹ · Step 21.1%". */
+function PositionBreakEvens({ breakEvens, step }: { breakEvens: NonNullable<BacktestCycleTimelineRow["positionBreakEvens"]>; step: BacktestCycleTimelineRow["putStep"] }) {
   const parts = [
     { value: breakEvens.first, mark: "1", who: "the first position's break-even" },
     { value: breakEvens.second, mark: "2", who: "the second position's break-even" },
   ].filter((part) => part.value !== null);
   return (
-    <span title={`B-E${parts.map((part) => (part.mark === "1" ? "¹" : "²")).join(" / B-E")}: ${parts.map((part) => part.who).join("; ")}, before this sale`}>
-      {parts.map((part, index) => (
-        <span key={part.mark}>
-          {index > 0 && " / "}
-          {formatCurrency(part.value!)}
-          <sup>{part.mark}</sup>
-        </span>
-      ))}
-    </span>
+    <>
+      <span title={`B-E${parts.map((part) => (part.mark === "1" ? "¹" : "²")).join(" / B-E")}: ${parts.map((part) => part.who).join("; ")}, before this sale`}>
+        {parts.map((part, index) => (
+          <span key={part.mark}>
+            {index > 0 && " / "}
+            {formatCurrency(part.value!)}
+            <sup>{part.mark}</sup>
+          </span>
+        ))}
+      </span>
+      {step && breakEvens.first !== null && (
+        <>
+          {" · "}
+          <TooltipSpan text={describePutStep(step, breakEvens.first)} multiline className="dotted-underline-label">
+            Step {formatPercentage(step.stepPct / 100, 1)}
+          </TooltipSpan>
+        </>
+      )}
+    </>
   );
 }
 
@@ -246,7 +257,7 @@ function tradeCell(key: string, cycle: BacktestCycle, row: BacktestCycleTimeline
       // A share purchase shows its price (Marcelo 2026-10-23); an option sold while shares were held, the break-even before it.
       if (event.name === "Bought shares") return row.stockPrice === null ? null : formatCurrency(row.stockPrice);
       // Vol Farmer v2 (Marcelo 2026-10-27): the break-even of the position the sale was for, ¹ the first's, ² the second's.
-      if (row.positionBreakEvens) return <PositionBreakEvens breakEvens={row.positionBreakEvens} />;
+      if (row.positionBreakEvens) return <PositionBreakEvens breakEvens={row.positionBreakEvens} step={row.putStep} />;
       return row.breakEvenAtSale == null ? null : formatCurrency(row.breakEvenAtSale);
     case "shares":
       return row.sharesHeld == null ? null : formatNumber(row.sharesHeld);
@@ -392,7 +403,7 @@ const columnDefinitions: Omit<DataTableColumn<CyclesTableRow>, "render">[] = [
     key: "breakEven",
     header: "B-E",
     headerTitle:
-      "Break-even, in cash: (cost of every share bought in the cycle − what shares that left it brought in − net premium) ÷ shares held; selling the shares held at it leaves the cycle flat (Free once below zero). In a Vol Farmer session it is the hedge rule's: the hedge Puts' realized P&L in place of the net premium (the Calls' premium too where the session's hedge rule counts it). An open cycle: now. An option sold while the cycle held shares: the break-even just before the sale (a call on held shares under a break-even rule: the floor its strike was held to). A share purchase: its price.",
+      "Break-even, in cash: (cost of every share bought in the cycle − what shares that left it brought in − net premium) ÷ shares held; selling the shares held at it leaves the cycle flat (Free once below zero). In a Vol Farmer session it is the hedge rule's: the hedge Puts' realized P&L in place of the net premium (the Calls' premium too where the session's hedge rule counts it). An open cycle: now. An option sold while the cycle held shares: the break-even just before the sale (a call on held shares under a break-even rule: the floor its strike was held to). A share purchase: its price. Vol Farmer v2: the break-even of the position the sale was for, ¹ the first's, ² the second's; a Put sold with the Step at each Put sale also shows its Step, how far below B-E¹ its strike was capped.",
     align: "right",
     cellClassName: "text-nowrap",
   },
