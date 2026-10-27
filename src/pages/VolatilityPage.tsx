@@ -64,13 +64,14 @@ function BestYieldCell({ best }: { best: BestCallYield | null }) {
   );
 }
 
-function IvRankCell({ rank }: { rank: number | null }) {
-  if (rank === null) return <span className="font-mono text-secondary">—</span>;
+/** A 0–100 figure (IV Rank, IV percentile) with a bar of the same length. */
+function ZeroToHundredBarCell({ value, label }: { value: number | null; label: string }) {
+  if (value === null) return <span className="font-mono text-secondary">—</span>;
   return (
     <span className="d-inline-flex align-items-center gap-2 justify-content-end">
-      <span className="font-mono">{formatNumber(rank, 0)}</span>
+      <span className="font-mono">{label}</span>
       <span className="volatility-rank-bar" aria-hidden="true">
-        <span style={{ width: `${Math.max(0, Math.min(100, rank))}%` }} />
+        <span style={{ width: `${Math.max(0, Math.min(100, value))}%` }} />
       </span>
     </span>
   );
@@ -190,8 +191,8 @@ export function VolatilityPage() {
           return <span className={`font-mono ${pnlTextClass(gap)}`}>{gap === null ? "—" : formatVolatilityPoints(gap)}</span>;
         },
       },
-      { key: "ivRank", header: "IV Rank", align: "right", group: { label: "Volatility" }, headerTitle: volatilityColumnExplanation.ivRank, sortValue: (row) => row.ivRank, render: (row) => <IvRankCell rank={row.ivRank} /> },
-      { key: "ivPercentile", header: "IV %ile", align: "right", group: { label: "Volatility" }, headerTitle: volatilityColumnExplanation.ivPercentile, sortValue: (row) => row.ivPercentile, render: (row) => <span className="font-mono">{row.ivPercentile === null ? "—" : formatPercentageValue(row.ivPercentile, 0)}</span> },
+      { key: "ivRank", header: "IV Rank", align: "right", group: { label: "Volatility" }, headerTitle: volatilityColumnExplanation.ivRank, sortValue: (row) => row.ivRank, render: (row) => <ZeroToHundredBarCell value={row.ivRank} label={formatNumber(row.ivRank, 0)} /> },
+      { key: "ivPercentile", header: "IV %ile", align: "right", group: { label: "Volatility" }, headerTitle: volatilityColumnExplanation.ivPercentile, sortValue: (row) => row.ivPercentile, render: (row) => <ZeroToHundredBarCell value={row.ivPercentile} label={formatPercentageValue(row.ivPercentile, 0)} /> },
       ...expiryWindowColumns.map(
         (window): DataTableColumn<VolatilityRow> => ({
           key: window.key,
