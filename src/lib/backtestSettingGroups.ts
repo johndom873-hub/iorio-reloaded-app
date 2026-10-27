@@ -192,8 +192,8 @@ export function backtestSettingGroupSummary(group: BacktestSettingGroup, text: (
       ].join(" · ");
     case "Vol Farmer v2":
       return [
-        `Puts while the Calls yield under ${shown("volFarmerV2.putTriggerCallYieldPct")}`,
-        `|delta| ≤ ${text("volFarmerV2.putMaxAbsDelta")}, ${shown("volFarmerV2.putStrikeBelowFirstBreakEvenPct")} below the first break-even`,
+        `Step ${shown("volFarmerV2.stepCallYieldPct")}`,
+        `Put |delta| ${text("volFarmerV2.putMaxAbsDelta")}, ${shown("volFarmerV2.putStrikeBelowFirstBreakEvenPct")} below the first break-even`,
         `LEAPS ${text("volFarmerV2.leapsMinDte")}+ days at |delta| ${text("volFarmerV2.leapsAbsDelta")}`,
       ].join(" · ");
   }
