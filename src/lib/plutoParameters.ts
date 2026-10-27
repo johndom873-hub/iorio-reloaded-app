@@ -1,4 +1,4 @@
-import type { PlutoExecutionStrategy, PlutoLadderTickerSettings, PlutoSettings, PlutoSettingsField } from "../api/pluto";
+import type { PlutoLadderTickerSettings, PlutoSettings, PlutoSettingsField } from "../api/pluto";
 import { formatCurrency, formatInputNumber } from "./formatters";
 
 // Every Pluto parameter the Settings tab edits, grouped as on the approved redesign (2026-10-06). Labels, units
@@ -23,12 +23,8 @@ export interface PlutoParameterSpec {
   options?: readonly string[];
   /** What a select shows for each option value; the value itself when missing. */
   optionLabels?: Readonly<Record<string, string>>;
-  /** Disabled while Pluto runs (on and not paused), with this line under the help. */
-  lockedWhileRunning?: string;
   /** Rendered on one row with the parameter before it (min/max pairs). */
   pairedWithPrevious?: boolean;
-  /** Read by one execution strategy only, inside a group both read (from the code, 2026-10-15); absent: both read it. */
-  strategy?: PlutoExecutionStrategy;
 }
 
 export interface PlutoParameterGroup {
@@ -37,21 +33,10 @@ export interface PlutoParameterGroup {
   parameters: PlutoParameterSpec[];
   /** The group's key figures, shown in its header while collapsed. */
   summary: (settings: PlutoSettings) => string;
-  /** Read by one execution strategy only: shown, editable, with a note while the other runs (Marcelo 2026-10-15). */
-  strategy?: PlutoExecutionStrategy;
 }
-
-/** The note on a group (or field) the active strategy doesn't read. */
-export const inactiveStrategyNote = "Not running: changes apply when you switch to this strategy.";
 
 function dollarsOfAccount(context: PlutoParameterContext, pct: number): string {
   return context.netLiquidationValue === null ? "" : ` (${formatCurrency((context.netLiquidationValue * pct) / 100, 0)} now)`;
-}
-
-function dollarsOfBudget(context: PlutoParameterContext, pct: number): string {
-  if (context.netLiquidationValue === null) return "";
-  const budget = (context.netLiquidationValue * context.settings.capitalBudgetPct) / 100;
-  return ` (${formatCurrency((budget * pct) / 100, 0)} now)`;
 }
 
 /** " COIN and SMCI override it." for the tickers with their own value of a ladder setting; "" when none does. */
@@ -61,30 +46,10 @@ function ladderOverrideNote(context: PlutoParameterContext, overrides: (ticker: 
   return ` ${symbols.join(", ").replace(/, ([^,]*)$/, " and $1")} override${symbols.length === 1 ? "s" : ""} it.`;
 }
 
-/** The execution strategies' names as the screens show them. */
-export const executionStrategyLabels: Readonly<Record<PlutoExecutionStrategy, string>> = { edge_margin: "Edge Margin", cc_put_ladder: "CC + Put Ladder" };
-
 export const plutoParameterGroups: PlutoParameterGroup[] = [
-  {
-    key: "strategy",
-    title: "Strategy",
-    summary: (settings) => executionStrategyLabels[settings.executionStrategy],
-    parameters: [
-      {
-        field: "executionStrategy",
-        label: "Active strategy",
-        kind: "select",
-        options: ["edge_margin", "cc_put_ladder"],
-        optionLabels: executionStrategyLabels,
-        lockedWhileRunning: "Pause Pluto to switch strategy.",
-        help: "Which strategy places Pluto's orders. Switch only while Pluto is paused; the active strategy takes over every open position. Pluto's safety checks and the capital budget apply to both.",
-      },
-    ],
-  },
   {
     key: "ladder",
     title: "CC + Put Ladder",
-    strategy: "cc_put_ladder",
     summary: (settings) => `share level ${settings.ladderSharesPct}% · ${settings.ladderRungs} rungs · Calls' |delta| ${settings.ladderMinAbsDelta.toFixed(2)}–${settings.ladderMaxAbsDelta.toFixed(2)} · ${settings.ladderMinDte}–${settings.ladderMaxDte} DTE · shock ${settings.ladderShockMinPct}–${settings.ladderShockMaxPct}%`,
     parameters: [
       { field: "ladderSharesPct", label: "Share level", unit: "% of pot", kind: "number", step: "1", help: (context) => `Part of each ticker's pot that buys shares; the rest is the Put reserve, split across the rungs.${ladderOverrideNote(context, (ticker) => ticker.tickerOverrides.ladderSharesPct !== null)}` },
@@ -113,7 +78,6 @@ export const plutoParameterGroups: PlutoParameterGroup[] = [
   {
     key: "ladderSafety",
     title: "Ladder safety",
-    strategy: "cc_put_ladder",
     summary: (settings) => `${settings.ladderMaxWorkingOrdersPerTicker} working orders · ${settings.ladderMaxOpenPositionsPerTicker} open positions · ${settings.ladderMaxOrdersPerTickerPerDay} orders a day per ticker · ${settings.ladderMaxOpenPositions} positions · ${settings.ladderMaxOrdersPerDay} orders a day across the book · SPY ${settings.ladderSpyStressBreakerPct}% · ${settings.ladderTickerCooldownMinutes ? `${settings.ladderTickerCooldownMinutes} min cooldown` : "no cooldown"}`,
     parameters: [
       { field: "ladderMaxWorkingOrdersPerTicker", label: "Working orders per ticker", unit: "orders", kind: "integer", step: "1", help: "At most this many of a ticker's ladder orders work at once; the rest go at the next looks." },
@@ -121,110 +85,49 @@ export const plutoParameterGroups: PlutoParameterGroup[] = [
       { field: "ladderMaxOrdersPerTickerPerDay", label: "Orders per ticker per day", unit: "orders", kind: "integer", step: "1", help: "Every ladder order sent on a ticker in a day counts, re-prices included." },
       { field: "ladderMaxOpenPositions", label: "Open positions, all tickers", unit: "positions", kind: "integer", step: "1", help: "Across every ladder ticker: open positions plus working ladder orders. Sales beyond it wait for a later look." },
       { field: "ladderMaxOrdersPerDay", label: "Orders per day, all tickers", unit: "orders", kind: "integer", step: "1", help: "Ladder orders sent in a day across every ticker, counted as the per-ticker cap counts them. Sales beyond it wait." },
-      { field: "ladderSpyStressBreakerPct", label: "SPY stress breaker", unit: "% drop", kind: "number", step: "0.1", help: "No new ladder orders while SPY is down this much today. Edge Margin keeps its own value; the daily-loss breaker is one value for both." },
+      { field: "ladderSpyStressBreakerPct", label: "SPY stress breaker", unit: "% drop", kind: "number", step: "0.1", help: "No new ladder orders while SPY is down this much today. The daily-loss breaker is under Session & breakers." },
       { field: "ladderTickerCooldownMinutes", label: "Ticker cooldown", unit: "min", kind: "integer", step: "1", help: "Minutes after a filled ladder order before the ladder acts on that ticker again. 0 = no cooldown." },
     ],
   },
   {
     key: "capital",
     title: "Capital",
-    summary: (settings) => `budget ${settings.capitalBudgetPct}% of the account · order size ${settings.orderSizePctOfBudget}% of budget · up to ${settings.maxOpenPositions} positions · ${settings.stressRiskBudgetPct > 0 ? `stress cap ${settings.stressRiskBudgetPct}% at ${settings.stressSigmas}σ` : "stress cap off"}`,
+    summary: (settings) => `budget ${settings.capitalBudgetPct}% of the account`,
     parameters: [
       { field: "capitalBudgetPct", label: "Capital budget", unit: "% of account", kind: "number", step: "1", help: (context) => `Everything that may be committed at once on the tickers Pluto is enabled on, human positions there included${dollarsOfAccount(context, context.settings.capitalBudgetPct)}. Hedges are not counted.` },
-      { field: "maxTickerPctOfBudget", strategy: "edge_margin", label: "Max per ticker", unit: "% of budget", kind: "number", step: "1", help: (context) => `Ceiling per underlying, counting human positions too${dollarsOfBudget(context, context.settings.maxTickerPctOfBudget)}.` },
-      { field: "maxSectorPctOfBudget", strategy: "edge_margin", label: "Max per sector", unit: "% of budget", kind: "number", step: "1", help: (context) => (context.settings.maxSectorPctOfBudget >= 100 ? "Ceiling per sector, counting human positions too. 100 turns the check off." : `Ceiling per sector, counting human positions too${dollarsOfBudget(context, context.settings.maxSectorPctOfBudget)}. 100 turns the check off.`) },
-      { field: "maxOpenPositions", strategy: "edge_margin", label: "Max open positions", unit: "positions", kind: "integer", step: "1", help: "Pluto opens nothing new once it holds this many." },
-      { field: "maxActionsPerSession", strategy: "edge_margin", label: "Max orders per day", unit: "orders", kind: "integer", step: "1", help: "Orders Pluto may send in one trading day." },
-      { field: "orderSizePctOfBudget", strategy: "edge_margin", label: "Order size", unit: "% of budget", kind: "number", step: "1", help: (context) => `What Pluto commits per order${dollarsOfBudget(context, context.settings.orderSizePctOfBudget)}. Less only when a tighter limit applies: budget left, per-ticker cap, cash reserve or the contract's volume today.` },
-      { field: "minCashReservePct", strategy: "edge_margin", label: "Min cash reserve", unit: "% of account", kind: "number", step: "1", help: "Cash that must stay uncommitted after an order." },
-      { field: "stressRiskBudgetPct", strategy: "edge_margin", label: "Stress cap per order", unit: "% of account", kind: "number", step: "0.1", help: (context) => `Most one order may lose if the stock moves against it by the stress move before expiry${dollarsOfAccount(context, context.settings.stressRiskBudgetPct)}. Longer expiries carry a bigger move, so they get fewer contracts. Applies to puts and to calls that buy shares, not to calls on shares already held. 0 turns the cap off.` },
-      { field: "stressSigmas", strategy: "edge_margin", label: "Stress move", unit: "σ", kind: "number", step: "0.1", help: "Size of that adverse move, in standard deviations of the stock's forecast volatility up to expiry. Code adds 0.5σ for a stock in an unusually volatile stretch and 0.5σ when it is already down more than a normal day today. At 2σ, SMCI's 2-day move was 13.6%." },
-    ],
-  },
-  {
-    key: "quality",
-    title: "Candidate quality",
-    strategy: "edge_margin",
-    summary: (settings) => `grade ${settings.minGrade} or better · Edge Yield ${settings.minEdgeYieldPct}%+ · |delta| ≤ ${settings.maxAbsDelta} · ${settings.minDte}–${settings.maxDte} DTE`,
-    parameters: [
-      { field: "minGrade", label: "Min grade", kind: "select", options: ["strong", "good", "weak"], help: "Lowest valuation-model grade the model may be offered, from the edge margin (1 − fair value ÷ mid): Strong 20% or more, Good 10% to 20%, Weak 0% to 10%." },
-      { field: "minEdgeYieldPct", label: "Min Edge Yield", unit: "% a year", kind: "number", step: "1", help: "Lowest Edge Yield a candidate needs: the valuation model's expected profit (after costs) as a yearly rate on the contract's exposure (net of the premium), over the calendar days to expiry. Measured as a rate, so a 2-day contract and a 30-day one meet the same bar. Rolls: the net roll Edge $ on the new leg's exposure and days." },
-      { field: "maxAbsDelta", label: "Max |delta|", kind: "number", step: "0.01", help: "Furthest-in-the-money strike Pluto may sell, by absolute delta." },
-      { field: "minDte", label: "Days to expiry", unit: "min", kind: "integer", step: "1", help: "Shortest and longest expiry Pluto may trade." },
-      { field: "maxDte", label: "Max DTE", unit: "max", kind: "integer", step: "1", help: "Longest expiry, in days.", pairedWithPrevious: true },
-      { field: "minAnnualizedYieldPct", label: "Min annualized yield", unit: "%", kind: "number", step: "1", help: "Lowest annualized premium yield a candidate needs: the premium after friction ÷ the contract's exposure (net of the premium), annualized on calendar days to expiry." },
-      { field: "maxSpreadPct", label: "Max spread", unit: "% of mid", kind: "number", step: "1", help: "Widest bid-ask spread, as a share of the mid, Pluto will trade into." },
-      { field: "minOpenInterest", label: "Min open interest", unit: "contracts", kind: "integer", step: "1", help: "At the 10:00 snapshot." },
-      { field: "minSessionVolume", label: "Min session volume", unit: "contracts", kind: "integer", step: "1", help: "Contracts traded today." },
-      { field: "maxQuoteAgeMinutes", label: "Max quote age", unit: "min", kind: "integer", step: "1", help: "Oldest live quote Pluto accepts before re-quoting." },
-      { field: "maxContractsVolumeSharePct", label: "Max share of contract volume", unit: "%", kind: "number", step: "1", help: "One order may be at most this share of the contract's volume today." },
-    ],
-  },
-  {
-    key: "surface",
-    title: "Surface & model risk",
-    strategy: "edge_margin",
-    summary: (settings) => `slice fit error up to ${settings.maxSliceRmseVp} vp · IV shift up to ${settings.maxIvShiftVp} vp · day move up to ${settings.maxDayMoveMultiple}× normal`,
-    parameters: [
-      { field: "maxSliceRmseVp", label: "Max slice fit error", unit: "vp", kind: "number", step: "0.1", help: "Worst surface fit error, in volatility points, Pluto trusts for the expiry." },
-      { field: "minSlicePointCount", label: "Min slice points", unit: "quotes", kind: "integer", step: "1", help: "Fewest quotes the expiry's fit must rest on." },
-      { field: "maxMidVsSurfaceIvVp", label: "Max mid vs surface IV", unit: "vp", kind: "number", step: "0.1", help: "Largest gap between the market's mid IV and the surface before the candidate is suspect." },
-      { field: "maxIvShiftVp", label: "Max IV shift", unit: "vp", kind: "number", step: "0.1", help: "Largest move of the ticker's IV since the 10:00 fit before Pluto stands aside." },
-      { field: "maxDayMoveMultiple", label: "Max day move", unit: "× normal", kind: "number", step: "0.1", help: "Pluto ignores a ticker whose move today is more than this many times its normal day (its forecast volatility ÷ √252). At 3×, a stock whose normal day is 4.2% is ignored beyond 12.6%." },
     ],
   },
   {
     key: "session",
     title: "Session & breakers",
-    summary: (settings) => `window ${settings.windowStartEt}–${settings.windowEndEt} ET · daily loss breaker ${settings.dailyLossBreakerPct}% · SPY stress −${settings.spyStressBreakerPct}%`,
+    summary: (settings) => `window ${settings.windowStartEt}–${settings.windowEndEt} ET · daily loss breaker ${settings.dailyLossBreakerPct}% · quotes up to ${settings.maxQuoteAgeMinutes} min old`,
     parameters: [
       { field: "windowStartEt", label: "Window start", unit: "ET", kind: "time", help: "Pluto acts from this Eastern time." },
       { field: "windowEndEt", label: "Window end", unit: "ET", kind: "time", help: "Pluto stops acting at this Eastern time, or 30 minutes before an early close if that comes first." },
       { field: "dailyLossBreakerPct", label: "Daily loss breaker", unit: "% of account", kind: "number", step: "0.1", help: "A day down this much versus last night trips a breaker: Pluto stops until a person resets it." },
-      { field: "spyStressBreakerPct", strategy: "edge_margin", label: "SPY stress", unit: "% down", kind: "number", step: "0.1", help: "SPY down this much today blocks new positions; rolls and closes continue. Lifts by itself when SPY recovers." },
-      { field: "maxEdgeMarginDriftPts", strategy: "edge_margin", label: "Max edge margin drift", unit: "pts", kind: "number", step: "1", help: "If the edge margin (1 − fair value ÷ mid) moved more than this many percentage points, either way, between the model's decision and the order, the order is refused. At 10, a contract decided at 35% is refused below 25% or above 45%." },
-      { field: "tickerCooldownMinutes", strategy: "edge_margin", label: "Ticker cooldown", unit: "min", kind: "integer", step: "1", help: "Minutes Pluto waits after one of its orders on a ticker fills before acting on that ticker again (an order that never filled doesn't count). Closes are not held back. 0 turns the cooldown off." },
+      { field: "maxQuoteAgeMinutes", label: "Max quote age", unit: "min", kind: "integer", step: "1", help: "A band quote older than this is left out of the ladder's look." },
       { field: "maxFillSlippagePct", label: "Max fill slippage", unit: "%", kind: "number", step: "1", help: "A fill this far past the reference price (below the bid for a sell, above the ask for a buy), as a share of it, trips the fill_slippage breaker." },
-    ],
-  },
-  {
-    key: "model",
-    title: "Model",
-    strategy: "edge_margin",
-    summary: (settings) => `${settings.modelId} · $${settings.dailyCostCeilingUsd.toFixed(2)} a day ceiling · confidence floor ${settings.confidenceFloor}`,
-    parameters: [
-      { field: "modelId", label: "Model", kind: "text", help: "OpenRouter model id, requested at the cheapest eligible tier (:floor). A change is audited like any other parameter." },
-      { field: "reasoningEffort", label: "Reasoning effort", kind: "select", options: ["low", "medium", "high"], help: "How hard the model thinks per call; higher costs more and takes longer." },
-      { field: "callTimeoutSeconds", label: "Call timeout", unit: "s", kind: "integer", step: "1", help: "A model call slower than this counts as a failure." },
-      { field: "dailyCostCeilingUsd", label: "Daily cost ceiling", unit: "$ / day", kind: "number", step: "0.5", help: "No more model calls once today's spend reaches this." },
-      { field: "confidenceFloor", label: "Confidence floor", kind: "number", step: "0.05", help: "An order verdict below this confidence is treated as no order." },
-      { field: "consecutiveModelFailuresBreaker", label: "Consecutive failures breaker", unit: "failures", kind: "integer", step: "1", help: "This many model failures in a row trip a breaker." },
-      { field: "promptVersion", label: "Prompt version", kind: "text", help: "Recorded with every decision so prompt changes can be compared." },
+      { field: "maxActionsPerSession", label: "Orders shown as allowed", unit: "orders", kind: "integer", step: "1", help: "The status card counts today's orders against this. The ladder is held by its own daily caps under Ladder safety, not by this." },
     ],
   },
   {
     key: "triggers",
-    title: "Analysis & lines",
-    summary: (settings) => `Day Signals every ${settings.daySignalsPollSeconds} s · ${settings.perTickerModelCooldownMinutes} min per-ticker model cooldown · up to ${settings.maxEnabledTickers} tickers`,
+    title: "Quotes & lines",
+    summary: (settings) => `ladder quotes checked every ${settings.bandQuotePollSeconds} s · bursts of up to ${settings.burstLines} lines · up to ${settings.maxEnabledTickers} tickers`,
     parameters: [
-      { field: "daySignalsPollSeconds", label: "Day Signals poll", unit: "s", kind: "integer", step: "1", help: "How often Pluto checks Day Signals for contracts quoted since its last analysis." },
-      { field: "burstLines", label: "Burst lines", unit: "lines", kind: "integer", step: "1", help: "Most option contracts Pluto quotes live in one short burst before deciding on a ticker. Their IBKR lines are booked only while the burst runs." },
-      { field: "burstSettleSeconds", label: "Burst settle", unit: "s", kind: "integer", step: "1", help: "How long a burst waits for quotes before scoring." },
-      { field: "perTickerModelCooldownMinutes", strategy: "edge_margin", label: "Per-ticker model cooldown", unit: "min", kind: "integer", step: "1", help: "The model is not asked about the same ticker again within this time." },
+      { field: "bandQuotePollSeconds", label: "Ladder quotes poll", unit: "s", kind: "integer", step: "1", help: "How often Pluto checks the market quote loop for ladder quotes received since its last round." },
+      { field: "burstLines", label: "Burst lines", unit: "lines", kind: "integer", step: "1", help: "Most option contracts Pluto re-quotes live in one short burst before pricing a ladder order. Their IBKR lines are booked only while the burst runs." },
+      { field: "burstSettleSeconds", label: "Burst settle", unit: "s", kind: "integer", step: "1", help: "How long a burst waits for quotes before the order is priced." },
       { field: "maxEnabledTickers", label: "Max allowed tickers", unit: "tickers", kind: "integer", step: "1", help: "Cap on Shortlist tickers Pluto may trade; each holds one IBKR market-data line." },
-      { field: "messageRateLimitPerSecond", label: "Message rate limit", unit: "msg / s", kind: "integer", step: "1", help: "Ceiling on IBKR messages per second from Pluto's connection." },
     ],
   },
   {
     key: "operations",
-    title: "Operations & closes",
-    summary: (settings) => `Telegram: ${settings.telegramVerbosity === "actions" ? "actions" : "off"} · buyback from ${settings.buybackMinDte} DTE`,
+    title: "Operations",
+    summary: (settings) => `Telegram: ${settings.telegramVerbosity === "actions" ? "actions" : "off"} · pause after ${settings.crashLoopRestartsPerHour} restarts an hour`,
     parameters: [
       { field: "crashLoopRestartsPerHour", label: "Crash-loop restarts", unit: "per hour", kind: "integer", step: "1", help: "More agent restarts than this in an hour pause Pluto until a person resumes it." },
       { field: "telegramVerbosity", label: "Telegram verbosity", kind: "select", options: ["actions", "off"], help: "actions: every order and close Pluto sends, and how each one ended. off: none of those. Breakers, pauses and switching Pluto on or off are always sent." },
-      { field: "unstructuredCloseMinPct", strategy: "edge_margin", label: "Unstructured close min", unit: "% of cost", kind: "number", step: "0.1", help: "Shares with no call against them are offered for closing only above this cycle profit." },
-      { field: "unstructuredCloseMinDollars", strategy: "edge_margin", label: "Unstructured close min", unit: "$", kind: "number", step: "1", help: "And only above this dollar profit." },
-      { field: "buybackMinDte", strategy: "edge_margin", label: "Buyback min DTE", unit: "days", kind: "integer", step: "1", help: "A short leg closer to expiry than this is left to expire rather than bought back." },
     ],
   },
 ];
@@ -245,8 +148,6 @@ export function settingsInputValue(field: PlutoSettingsField, value: string): st
 
 /** Where a paired field's own label reads as half of a pair ("Days to expiry", "|Delta| range"), the audit names it alone. */
 const parameterAuditLabel: Partial<Record<PlutoSettingsField, string>> = {
-  minDte: "Min DTE",
-  maxDte: "Max DTE",
   ladderMinDte: "Ladder min DTE",
   ladderMaxDte: "Ladder max DTE",
   ladderMinAbsDelta: "Ladder Calls' |delta| lower limit",
@@ -258,18 +159,60 @@ const parameterAuditLabel: Partial<Record<PlutoSettingsField, string>> = {
 };
 
 export const plutoParameterLabelByField: Record<string, string> = {
-  // Renamed fields, still named in older settings audit rows and events.
+  // Renamed and retired fields, still named in older settings audit rows and events.
   maxAbsDayChangePct: "Max day move (old, % of price)",
   maxTickerExposurePct: "Max per ticker (old, % of account)",
   maxSectorExposurePct: "Max per sector (old, % of account)",
+  daySignalsPollSeconds: "Ladder quotes poll",
+  executionStrategy: "Active strategy (retired)",
+  maxTickerPctOfBudget: "Max per ticker (retired)",
+  maxSectorPctOfBudget: "Max per sector (retired)",
+  maxOpenPositions: "Max open positions (retired)",
+  orderSizePctOfBudget: "Order size (retired)",
+  minCashReservePct: "Min cash reserve (retired)",
+  stressRiskBudgetPct: "Stress cap per order (retired)",
+  stressSigmas: "Stress move (retired)",
+  minGrade: "Min grade (retired)",
+  minEdgeYieldPct: "Min Edge Yield (retired)",
+  maxAbsDelta: "Max |delta| (retired)",
+  minDte: "Min DTE (retired)",
+  maxDte: "Max DTE (retired)",
+  minAnnualizedYieldPct: "Min annualized yield (retired)",
+  maxSpreadPct: "Max spread (retired)",
+  minOpenInterest: "Min open interest (retired)",
+  minSessionVolume: "Min session volume (retired)",
+  maxContractsVolumeSharePct: "Max share of contract volume (retired)",
+  maxSliceRmseVp: "Max slice fit error (retired)",
+  minSlicePointCount: "Min slice points (retired)",
+  maxMidVsSurfaceIvVp: "Max mid vs surface IV (retired)",
+  maxIvShiftVp: "Max IV shift (retired)",
+  maxDayMoveMultiple: "Max day move (retired)",
+  spyStressBreakerPct: "SPY stress, Edge Margin (retired)",
+  maxEdgeMarginDriftPts: "Max edge margin drift (retired)",
+  tickerCooldownMinutes: "Ticker cooldown, Edge Margin (retired)",
+  modelId: "Model (retired)",
+  reasoningEffort: "Reasoning effort (retired)",
+  callTimeoutSeconds: "Call timeout (retired)",
+  dailyCostCeilingUsd: "Daily cost ceiling (retired)",
+  confidenceFloor: "Confidence floor (retired)",
+  consecutiveModelFailuresBreaker: "Consecutive failures breaker (retired)",
+  promptVersion: "Prompt version (retired)",
+  perTickerModelCooldownMinutes: "Per-ticker model cooldown (retired)",
+  messageRateLimitPerSecond: "Message rate limit (retired)",
+  unstructuredCloseMinPct: "Unstructured close min % (retired)",
+  unstructuredCloseMinDollars: "Unstructured close min $ (retired)",
+  buybackMinDte: "Buyback min DTE (retired)",
   ...Object.fromEntries(plutoParameterGroups.flatMap((group) => group.parameters.map((parameter) => [parameter.field, parameterAuditLabel[parameter.field] ?? parameter.label]))),
 };
 
 export type PlutoSettingsFormState = Record<PlutoSettingsField, string>;
 
-/** A saved or typed value as the screen shows it: a select's option label ("Edge Margin"), else the value. */
+/** Option labels of retired select fields, still named in older settings audit rows. */
+const retiredOptionLabels: Readonly<Record<string, Readonly<Record<string, string>>>> = { executionStrategy: { edge_margin: "Edge Margin", cc_put_ladder: "CC + Put Ladder" } };
+
+/** A saved or typed value as the screen shows it: a select's option label, else the value. */
 export function formatSettingDisplay(field: string, value: string): string {
-  return plutoParameterSpecByField[field]?.optionLabels?.[value] ?? value;
+  return (plutoParameterSpecByField[field]?.optionLabels ?? retiredOptionLabels[field])?.[value] ?? value;
 }
 
 /** A number as the field shows it: at least the step's decimals ("0.30" for step 0.01), never fewer than the value

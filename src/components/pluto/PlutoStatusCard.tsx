@@ -5,7 +5,7 @@ import { cancelOrder } from "../../api/positions";
 import { useIsAdmin } from "../../hooks/useAuth";
 import { pausePluto, resetPlutoBreaker, resumePluto, updatePlutoMode, updatePlutoStressOverride, type PlutoSettings, type PlutoState, type PlutoStateCore } from "../../api/pluto";
 import { formatCompactDollarsTrimmed, formatEasternTime, formatHoursMinutesUntil, pluralize, todayInEasternIso } from "../../lib/formatters";
-import { checkLabel, describeOrderLine, formatAgeInWords, humanizeKey, orderedChecks, sentenceCase, spyStressFromState, spyStressLimitForStrategy, type PlutoStatus } from "../../lib/plutoPresentation";
+import { checkLabel, describeOrderLine, formatAgeInWords, humanizeKey, orderedChecks, sentenceCase, spyStressFromState, type PlutoStatus } from "../../lib/plutoPresentation";
 import { ConfirmModal } from "../ConfirmModal";
 import { Spinner } from "../Spinner";
 import { CheckIcon, CrossIcon, Meter, PauseIcon, PlayIcon, ResetIcon, StopIcon, WarningIcon } from "./plutoBits";
@@ -90,7 +90,6 @@ export function PlutoStatusCard({ state, status, settings, now, isPhone, showKpi
   const breakerNames = Object.keys(state.breakers);
   const working = state.workingOrders;
   const stress = spyStressFromState(state);
-  const stressLimit = settings ? spyStressLimitForStrategy(settings) : null;
   const stressOverrideOn = state.stressOverrideDate === todayInEasternIso();
   const session = state.session;
   const tickers = state.enabledTickers.count;
@@ -282,7 +281,6 @@ export function PlutoStatusCard({ state, status, settings, now, isPhone, showKpi
   // ---- KPI figures ----
   const nlv = state.book.netLiquidationValue;
   const budget = nlv === null ? null : (nlv * state.book.capitalBudgetPct) / 100;
-  const orderSize = budget === null ? null : (budget * state.book.orderSizePctOfBudget) / 100;
   const ordersMax = state.counters.maxActionsPerSession;
   const windowStartMs = new Date(session.windowStartAt).getTime();
   const windowEndMs = new Date(session.windowEndAt).getTime();
@@ -383,7 +381,7 @@ export function PlutoStatusCard({ state, status, settings, now, isPhone, showKpi
               ) : (
                 <>
                   <span className="strong">No new positions while SPY is down {stress.spyDayChangePct === null ? "" : `${Math.abs(stress.spyDayChangePct).toFixed(1)}% `}today</span>{" "}
-                  <span className="muted">(the limit is {stressLimit?.limitPct ?? "—"}%). {stressLimit?.stillRuns ?? ""} Lifts by itself if SPY recovers.</span>
+                  <span className="muted">(the limit is {settings?.ladderSpyStressBreakerPct ?? "—"}%). The ladder sells nothing new. Lifts by itself if SPY recovers.</span>
                 </>
               )}
             </span>
@@ -421,7 +419,6 @@ export function PlutoStatusCard({ state, status, settings, now, isPhone, showKpi
               <Meter pct={budget ? (state.book.committedDollars / budget) * 100 : 0} />
               <div className="pm-kpi-s">
                 {pluralize(state.book.openPositionCount, "managed position")}
-                {!isPhone && orderSize !== null ? ` · order size ${formatCompactDollarsTrimmed(orderSize)}` : ""}
               </div>
             </div>
             <div className="pm-kpi">

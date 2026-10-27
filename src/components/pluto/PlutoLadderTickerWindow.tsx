@@ -4,7 +4,6 @@ import { useIsAdmin } from "../../hooks/useAuth";
 import { fetchPlutoTickerSettingsAudit, savePlutoTickerSettings, type PlutoLadderTickerSettings, type PlutoSettings, type PlutoTickerSettingsAuditRow, type PlutoTickerSettingsField } from "../../api/pluto";
 import { formatBrowserClockTime, formatBrowserDayMonth, formatCurrency, formatDayMonth, formatInputNumber, formatNumber } from "../../lib/formatters";
 import { effectiveAllocationPct, ladderFit, ladderPriceCeilings, tickerFieldLabel, type LadderFit } from "../../lib/plutoLadderPresentation";
-import { executionStrategyLabels } from "../../lib/plutoParameters";
 import { HelpTooltip } from "../HelpTooltip";
 import { ReadOnlySetting } from "../ReadOnlySetting";
 import { Spinner } from "../Spinner";
@@ -470,14 +469,6 @@ export function PlutoLadderTickerWindow({ ticker, companyName, enabledInPluto, a
             </div>
             <div className="modal-body">
               {!isAdmin && <ViewOnlyNote className="mb-3">Only an admin can change {symbol}'s settings.</ViewOnlyNote>}
-              {settings.executionStrategy !== "cc_put_ladder" && (
-                <div className="pm-alert info mb-3">
-                  <InfoIcon />
-                  <div className="pm-alert-body">
-                    <div className="pm-alert-text">Pluto runs {executionStrategyLabels[settings.executionStrategy]} now. The ladder values apply once Pluto switches to the CC + Put Ladder; the allocation applies to both strategies.</div>
-                  </div>
-                </div>
-              )}
               <div className="ts-grid">
                 {isAdmin ? (
                   <section className="pm-card ts-form">

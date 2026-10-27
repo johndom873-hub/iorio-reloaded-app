@@ -110,70 +110,26 @@ export interface PlutoState extends PlutoStateCore {
     netLiquidationValue: number | null;
     netLiquidationValueAsOf: string | null;
     capitalBudgetPct: number;
-    orderSizePctOfBudget: number;
-    maxOpenPositions: number;
   };
   agent: { connected: boolean; heartbeatAgeSeconds: number; gitSha: string | null; appEnvironment: string | null } | null;
 }
 
-export type PlutoReasoningEffort = "low" | "medium" | "high";
 export type PlutoTelegramVerbosity = "actions" | "off";
 
-/** Pluto's active execution strategy; switched only while Pluto is off or paused (PUT /pluto/settings refuses otherwise). */
-export type PlutoExecutionStrategy = "edge_margin" | "cc_put_ladder";
-
 export interface PlutoSettings {
-  executionStrategy: PlutoExecutionStrategy;
   capitalBudgetPct: number;
-  maxTickerPctOfBudget: number;
-  maxSectorPctOfBudget: number;
-  maxOpenPositions: number;
   maxActionsPerSession: number;
-  orderSizePctOfBudget: number;
-  minCashReservePct: number;
-  minGrade: "strong" | "good" | "weak";
-  minEdgeYieldPct: number;
-  maxAbsDelta: number;
-  minDte: number;
-  maxDte: number;
-  minAnnualizedYieldPct: number;
-  maxSpreadPct: number;
-  minOpenInterest: number;
-  minSessionVolume: number;
-  maxQuoteAgeMinutes: number;
-  maxContractsVolumeSharePct: number;
-  maxSliceRmseVp: number;
-  minSlicePointCount: number;
-  maxMidVsSurfaceIvVp: number;
-  maxIvShiftVp: number;
-  maxDayMoveMultiple: number;
-  stressRiskBudgetPct: number;
-  stressSigmas: number;
   windowStartEt: string;
   windowEndEt: string;
   dailyLossBreakerPct: number;
-  spyStressBreakerPct: number;
-  maxEdgeMarginDriftPts: number;
-  tickerCooldownMinutes: number;
+  maxQuoteAgeMinutes: number;
   maxFillSlippagePct: number;
-  modelId: string;
-  reasoningEffort: PlutoReasoningEffort;
-  callTimeoutSeconds: number;
-  dailyCostCeilingUsd: number;
-  confidenceFloor: number;
-  consecutiveModelFailuresBreaker: number;
-  promptVersion: string;
-  daySignalsPollSeconds: number;
+  bandQuotePollSeconds: number;
   burstLines: number;
   burstSettleSeconds: number;
-  perTickerModelCooldownMinutes: number;
   maxEnabledTickers: number;
-  messageRateLimitPerSecond: number;
   crashLoopRestartsPerHour: number;
   telegramVerbosity: PlutoTelegramVerbosity;
-  unstructuredCloseMinPct: number;
-  unstructuredCloseMinDollars: number;
-  buybackMinDte: number;
   // The CC + Put Ladder's strategy-wide values (a ticker may override shares, rungs and the |delta| range).
   ladderSharesPct: number;
   ladderRungs: number;

@@ -735,14 +735,13 @@ a.pm-b:hover, button.pm-b.link:hover { text-decoration: underline; }
   .ts-modal .modal-content { container-type: normal; }
 }
 /* A settings group the active strategy doesn't read (Marcelo 2026-10-15: shown and editable, with this note). */
-.pm-strategy-note { padding: 8px 18px; border-bottom: 1px solid var(--border-soft); font-size: 12.5px; color: var(--warning-text); background: var(--warning-lt); }
 /* Tinted rows and notes: muted, warning, link and badge text adjusted to keep 4.5:1 on the tint, both themes. */
 .pm-table tr.on, .pm-m-tk.on { --muted: #5f6673; --success-text: #17722f; }
 /* Bootstrap's text-secondary (shared cells such as Earnings' "(in Nd)") ignores the tokens above: it takes the row's muted shade. */
 .pm-table tr.on .text-secondary, .pm-m-tk.on .text-secondary { color: var(--muted) !important; }
-.ts-row.changed, .pm-field.changed, .pm-strategy-note { --muted: var(--text); --warning-text: #a05400; --azure-text: #1a62a3; }
+.ts-row.changed, .pm-field.changed { --muted: var(--text); --warning-text: #a05400; --azure-text: #1a62a3; }
 :root[data-bs-theme="dark"] .pm-table tr.on, :root[data-bs-theme="dark"] .pm-m-tk.on { --muted: #b0b8c4; --success-text: #4ade80; }
-:root[data-bs-theme="dark"] .ts-row.changed, :root[data-bs-theme="dark"] .pm-field.changed, :root[data-bs-theme="dark"] .pm-strategy-note { --warning-text: #fbbf24; --azure-text: #a5d8fd; --link: #7dd3fc; }
+:root[data-bs-theme="dark"] .ts-row.changed, :root[data-bs-theme="dark"] .pm-field.changed { --warning-text: #fbbf24; --azure-text: #a5d8fd; --link: #7dd3fc; }
 /* Paired inputs share the 190px control column: tighter padding keeps values like 0.05 and units like "min %" whole. */
 .pm-pair .pm-input input { padding: 0 6px; }
 .pm-pair .pm-input .unit { padding: 0 6px; }
