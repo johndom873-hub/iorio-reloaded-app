@@ -193,7 +193,7 @@ export function backtestSettingGroupSummary(group: BacktestSettingGroup, text: (
     case "Vol Farmer v2":
       return [
         `Puts start under ${shown("volFarmerV2.putsStartCallYieldPct")}`,
-        `Put |delta| ${text("volFarmerV2.putMaxAbsDelta")}, Step ${shown("volFarmerV2.stepBelowFirstBreakEvenPct")} below the first break-even`,
+        `Put |delta| ${text("volFarmerV2.putMaxAbsDelta")}, Step ${text("volFarmerV2.stepRule") === "implied_move_at_put_sale" ? "the one-month implied move at each Put sale" : shown("volFarmerV2.stepBelowFirstBreakEvenPct")} below the first break-even`,
         `LEAPS ${text("volFarmerV2.leapsMinDte")}+ days at |delta| ${text("volFarmerV2.leapsAbsDelta")}`,
       ].join(" · ");
   }

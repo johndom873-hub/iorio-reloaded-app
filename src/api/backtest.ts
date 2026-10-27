@@ -220,6 +220,7 @@ export interface BacktestVolFarmerV2Settings {
   putsStartCallYieldPct: number;
   putMaxAbsDelta: number;
   stepBelowFirstBreakEvenPct: number;
+  stepRule: "fixed" | "implied_move_at_put_sale";
   leapsMinDte: number;
   leapsAbsDelta: number;
 }
