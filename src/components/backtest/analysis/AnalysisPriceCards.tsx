@@ -162,7 +162,7 @@ export function AnalysisPriceCards({ symbol, figures, shown, showingTrial, stale
               {priceChart.cashPanel && (
                 <span className="analysis-legend-item">
                   <span className="analysis-ladder-line is-cash-available" />
-                  Cash available: the cash not locked in open Cash-Secured Puts (strike × 100 × contracts) ÷ the account value, at the day's 10:00 marks before its orders (the analysis's backtest)
+                  Cash available: the cash not locked in open Cash-Secured Puts (strike × 100 × contracts) ÷ the account value, just before the day's close: after its orders, before its expiries settle (the analysis's backtest)
                 </span>
               )}
               <IvPercentileLegendItem chart={priceChart} />

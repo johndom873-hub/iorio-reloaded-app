@@ -204,7 +204,6 @@ export function BacktestSessionPage() {
         days={detail.days}
         trades={detail.trades}
         monthlyReturns={detail.monthlyReturns}
-        accuracyBands={detail.accuracyByMarginBand}
         cycles={detail.cycles}
         allSymbolsStatistics={detail.allSymbolsStatistics}
         pnlSources={detail.pnlSources ?? null}

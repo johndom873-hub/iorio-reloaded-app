@@ -74,7 +74,7 @@ function PriceChartBody({ chart, range, logScale, severalSymbols }: { chart: Bac
           {drawn.cashPanel && (
             <span className="analysis-legend-item">
               <span className="analysis-ladder-line is-cash-available" />
-              Cash available: the cash not locked in open Cash-Secured Puts (strike × 100 × contracts) ÷ the account value, at the day's 10:00 marks before its orders{severalSymbols && " (the whole account, every symbol's)"}
+              Cash available: the cash not locked in open Cash-Secured Puts (strike × 100 × contracts) ÷ the account value, just before the day's close: after its orders, before its expiries settle{severalSymbols && " (the whole account, every symbol's)"}
             </span>
           )}
           <IvPercentileLegendItem chart={drawn} />

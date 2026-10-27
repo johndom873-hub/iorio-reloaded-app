@@ -332,9 +332,13 @@ export const backtestCycleMetricExplanation = {
   optionsSold: "Options sold: opening puts and calls and the new leg of each roll.",
   inTheMoneyAtExpiry: "Contracts in the money at expiry = options sold that expired with the strike crossed ÷ options sold that expired. An option in the money by $0.01 or more at its expiry day's close is assigned.",
   shares:
-    "The shares' part of the CAGR = CAGR × the shares' P&L ÷ the account's P&L. The shares' P&L is the account's P&L less its interest and every option's (the Covered Calls, the Puts sold and the hedge): what the shares made, sold and still held at the account's last marks, after commissions. With the Covered Calls, the hedge, the Puts sold and interest, the parts add up to the CAGR. Held on: the session's trading days with shares at any time of the day ÷ all of them.",
+    "The shares' part of the CAGR = CAGR × the shares' P&L ÷ the account's P&L. The shares' P&L is the account's P&L less its interest and every option's (the Covered Calls, the Puts sold and the hedge): what the shares made, sold and still held at the account's last marks, after commissions. With the Covered Calls, the Cash-Secured Puts, the LEAPS, the hedge and interest, the parts add up to the CAGR. Held on: the session's trading days with shares at any time of the day ÷ all of them.",
   coveredCalls:
     "The Calls' part of the CAGR = CAGR × the Calls' P&L ÷ the account's P&L. The Calls' P&L: the premiums less the buybacks and commissions, a Call still open at its last mark. Quoted at sale: the median of the yearly yield recorded at each sale, as the Wheel cycle rows show it. Open on: the session's trading days with a Call at any time of the day ÷ all of them.",
+  cashSecuredPuts:
+    "The Puts' part of the CAGR = CAGR × the Cash-Secured Puts' P&L ÷ the account's P&L. Their P&L: the premiums less the buybacks and commissions, a Put still open at its last mark; what an assigned Put's shares did afterwards is in the shares' part. Quoted at sale: the median of the yearly yield recorded at each sale, as the Wheel cycle rows show it. Open on: the session's trading days with a Cash-Secured Put at any time of the day ÷ all of them.",
+  leaps:
+    "The LEAPS' part of the CAGR = CAGR × the LEAPS Calls' P&L ÷ the account's P&L. Their P&L: what they were sold or settled for at expiry, less their cost and commissions, one still held at its last mark. Held on: the session's trading days with a LEAPS at any time of the day ÷ all of them.",
   hedge:
     "The hedge's part of the CAGR = CAGR × the hedge Puts' P&L ÷ the account's P&L. Their P&L: what they were sold or settled for, less their cost and commissions, a Put still open at its last mark. Quoted at purchase: the median of each purchase's yearly cost, (time value × 100 + commission) ÷ (stock price × 100) ÷ (days ÷ 365), as the Wheel cycle rows show it. Open on: the session's trading days with a hedge Put at any time of the day ÷ all of them.",
 } as const;
@@ -356,20 +360,6 @@ export function drawdownsOf(values: number[]): number[] {
     peak = Math.max(peak, value);
     return peak > 0 ? value / peak - 1 : 0;
   });
-}
-
-/** The trades that closed (have a P&L): Σ P&L made and Σ Edge $ predicted, the two terms of edge capture. */
-export function closedTradeTotals(trades: BacktestTrade[]): { madeDollars: number; predictedDollars: number } {
-  const closed = trades.filter((trade) => trade.pnlDollars !== null);
-  return {
-    madeDollars: closed.reduce((sum, trade) => sum + (trade.pnlDollars ?? 0), 0),
-    predictedDollars: closed.reduce((sum, trade) => sum + (trade.expectedPnlDollars ?? 0), 0),
-  };
-}
-
-export function describeEdgeCaptureTotals(totals: { madeDollars: number; predictedDollars: number }): string {
-  if (totals.madeDollars === 0 && totals.predictedDollars === 0) return "no closed trades";
-  return `made ${formatCompactDollarsTrimmed(totals.madeDollars)} of ${formatCompactDollarsTrimmed(totals.predictedDollars)} predicted`;
 }
 
 export function describeAverageWinLoss(metrics: BacktestMetrics): string {

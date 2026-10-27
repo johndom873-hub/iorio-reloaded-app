@@ -1,17 +1,14 @@
 import type { ReactNode } from "react";
-import type { BacktestAccuracyBand, BacktestCycle, BacktestMetrics, BacktestMonthlyReturn, BacktestPnlBasis, BacktestPnlSource, BacktestPnlSources, BacktestSessionDay, BacktestTickerStatistics, BacktestTrade } from "../../api/backtest";
+import type { BacktestCycle, BacktestMetrics, BacktestMonthlyReturn, BacktestPnlBasis, BacktestPnlSource, BacktestPnlSources, BacktestSessionDay, BacktestTickerStatistics, BacktestTrade } from "../../api/backtest";
 import { formatCompactDollarsTrimmed, formatNumber, formatPercentage, formatRatio, formatSignedPnl, pluralizeCount, pnlTextClass } from "../../lib/formatters";
 import {
   backtestCycleMetricExplanation,
   backtestMetricExplanation,
-  closedTradeTotals,
   describeAverageWinLoss,
   describeDeepestDrawdown,
-  describeEdgeCaptureTotals,
   describeOpenCycles,
   isCycleBasis,
   signedPercentDisplay,
-  sumAccuracyBands,
   summarizeCycleTotals,
   worstMonthOf,
 } from "../../lib/backtestPresentation";
@@ -70,7 +67,6 @@ interface BacktestKpiTilesProps {
   days: BacktestSessionDay[];
   trades: BacktestTrade[];
   monthlyReturns: BacktestMonthlyReturn[];
-  accuracyBands: BacktestAccuracyBand[];
   cycles: BacktestCycle[];
   allSymbolsStatistics: BacktestTickerStatistics | null;
   /** Shares, Covered Calls and Hedge (approved 2026-10-26): each tile when the session held it. */
@@ -80,15 +76,13 @@ interface BacktestKpiTilesProps {
 /** The headline figures, led by the wheel cycle P&L (whether the book made money, as the platform counts it). The win rate,
  *  averages and edge capture are measured on closed cycles, or per option on sessions run before cycles carried the P&L.
  *  Buy and hold sits in its own comparison table, not on the tiles. "—" until the run has finished. */
-export function BacktestKpiTiles({ pnlBasis, metrics, days, trades, monthlyReturns, accuracyBands, cycles, allSymbolsStatistics, pnlSources }: BacktestKpiTilesProps) {
+export function BacktestKpiTiles({ pnlBasis, metrics, days, trades, monthlyReturns, cycles, allSymbolsStatistics, pnlSources }: BacktestKpiTilesProps) {
   const cycleBasis = isCycleBasis(pnlBasis);
   const cycleTotals = summarizeCycleTotals(cycles);
   const hasBook = allSymbolsStatistics !== null || cycles.length > 0;
   const cyclePnl = allSymbolsStatistics?.totalPnlDollars ?? cycleTotals.closedDollars + cycleTotals.openDollars;
   const deepestDrawdown = describeDeepestDrawdown(days);
   const worstMonth = worstMonthOf(monthlyReturns);
-  const bandTotals = sumAccuracyBands(accuracyBands);
-  const edgeCaptureTotals = cycleBasis ? { madeDollars: bandTotals.realizedPnlDollars, predictedDollars: bandTotals.predictedPnlDollars } : closedTradeTotals(trades);
   const openCyclesLine = <OpenCyclesLine openCount={cycleTotals.openCount} openDollars={cycleTotals.openDollars} />;
 
   const leadTile: KpiTileProps | null = hasBook
@@ -170,12 +164,6 @@ export function BacktestKpiTiles({ pnlBasis, metrics, days, trades, monthlyRetur
       lines: [cycleBasis ? "per closed cycle" : "per trade"],
     },
     {
-      label: "Edge capture",
-      explanation: cycleBasis ? backtestCycleMetricExplanation.edgeCapture : backtestMetricExplanation.edgeCapture,
-      value: formatRatio(metrics?.edgeCapture, 2),
-      lines: [!cycleBasis ? describeEdgeCaptureTotals(edgeCaptureTotals) : bandTotals.cycleCount ? `${describeEdgeCaptureTotals(edgeCaptureTotals)}, closed cycles; share gains count` : "no closed cycles"],
-    },
-    {
       label: "Capital in use",
       explanation: cycleBasis ? backtestCycleMetricExplanation.capitalInUse : backtestMetricExplanation.capitalInUse,
       value: formatPercentage(metrics?.capitalInUse, 0),
@@ -208,6 +196,28 @@ export function BacktestKpiTiles({ pnlBasis, metrics, days, trades, monthlyRetur
             pnlSources.coveredCalls.quotedYieldMedian === null ? null : `quoted at sale: median ${formatPercentage(pnlSources.coveredCalls.quotedYieldMedian, 1)} a year (${pluralizeCount(pnlSources.coveredCalls.quotedCount, "Call")})`,
             `a Call open on ${formatPercentage(pnlSources.coveredCalls.daysHeldShare, 0)} of the session's days`,
           ],
+        }
+      : null,
+    pnlSources?.cashSecuredPuts
+      ? {
+          label: "Cash-Secured Puts",
+          explanation: backtestCycleMetricExplanation.cashSecuredPuts,
+          value: signedPercentDisplay(pnlSources.cashSecuredPuts.cagrPart).text,
+          valueClassName: signedPercentDisplay(pnlSources.cashSecuredPuts.cagrPart).className,
+          lines: [
+            <SourcePnlLine key="source" cagr={metrics?.cagr} source={pnlSources.cashSecuredPuts} after="after buybacks and commissions" />,
+            pnlSources.cashSecuredPuts.quotedYieldMedian === null ? null : `quoted at sale: median ${formatPercentage(pnlSources.cashSecuredPuts.quotedYieldMedian, 1)} a year (${pluralizeCount(pnlSources.cashSecuredPuts.quotedCount, "Put")})`,
+            `a Put open on ${formatPercentage(pnlSources.cashSecuredPuts.daysHeldShare, 0)} of the session's days`,
+          ],
+        }
+      : null,
+    pnlSources?.leaps
+      ? {
+          label: "LEAPS",
+          explanation: backtestCycleMetricExplanation.leaps,
+          value: signedPercentDisplay(pnlSources.leaps.cagrPart).text,
+          valueClassName: signedPercentDisplay(pnlSources.leaps.cagrPart).className,
+          lines: [<SourcePnlLine key="source" cagr={metrics?.cagr} source={pnlSources.leaps} after="after what they were sold or settled for" />, `a LEAPS held on ${formatPercentage(pnlSources.leaps.daysHeldShare, 0)} of the session's days`],
         }
       : null,
     pnlSources?.hedge

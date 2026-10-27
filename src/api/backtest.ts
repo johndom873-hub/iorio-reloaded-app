@@ -1257,6 +1257,8 @@ export interface BacktestPnlSources {
   coveredCalls: (BacktestPnlSource & { quotedYieldMedian: number | null; quotedCount: number }) | null;
   /** With the median yearly cost of each hedge Put bought, a positive fraction. */
   hedge: (BacktestPnlSource & { quotedCostMedian: number | null; quotedCount: number }) | null;
+  /** With the median yearly yield recorded at each Put sale. */
+  cashSecuredPuts: (BacktestPnlSource & { quotedYieldMedian: number | null; quotedCount: number }) | null;
   /** Vol Farmer v2's LEAPS Calls; absent from sessions read before it existed. */
   leaps?: BacktestPnlSource | null;
 }
