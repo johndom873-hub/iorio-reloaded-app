@@ -1,8 +1,9 @@
 import { apiRequest } from "./client";
+import type { OpenOrderStrategyKey } from "./strategy";
 
 export interface OrderLimitsCheckParams {
   symbol: string;
-  strategyKey: "covered_call" | "cash_secured_put";
+  strategyKey: OpenOrderStrategyKey;
   quantity: number;
   strike: number;
   /** The option's price per share (the limit, or the mid): the order's exposure is net of the premium it sells for. */
@@ -16,6 +17,8 @@ export interface OrderLimitsCheckParams {
 export interface OrderLimitsResult {
   blocked: boolean;
   reasons: string[];
+  /** The figures behind the verdict; totalPortfolioValue is the account's net liquidation value. */
+  details?: { orderNotional: number; totalPortfolioValue: number; orderSharePct: number };
 }
 
 // Single shared evaluation of the blocking limits (max order size %, max exposure per ticker %, min cash

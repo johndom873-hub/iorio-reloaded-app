@@ -21,15 +21,16 @@ import { OrderReviewPanel, type OrderReviewQuoteSeed } from "./OrderReviewPanel"
 import { Spinner } from "./Spinner";
 import { TickerHeaderStrip } from "./TickerHeaderStrip";
 import { TickerPositionsCards } from "./TickerPositionsCards";
-import { OptionChainCard, type ChainContractRef } from "./ticker/OptionChainCard";
+import { OptionChainCard, type ChainContractRef, type OptionChainMode } from "./ticker/OptionChainCard";
+import { LeapsOrderSetupForm } from "./ticker/LeapsOrderSetupForm";
 import { OpenOrderSetupForm } from "./ticker/OpenOrderSetupForm";
 import { RollOrderSetupForm } from "./ticker/RollOrderSetupForm";
 
 // The Ticker modal (2026-10-27, the Signals modal without Signals): the one ticker modal, opened from every ticker link
 // (mounted once by TickerModalProvider). Header strip, the ticker's volatility figures, the full option chain of one
 // expiry with live quotes for the contracts on screen (any out-of-the-money call or put can be picked), the order
-// setup (a new covered call or cash-secured put, or a roll of a held short leg picked on the chain), the Positions and
-// Wheel-cycle cards, technicals and the charts.
+// setup (a new covered call or cash-secured put, or a roll of a held short leg picked on the chain; in Buy LEAPS mode a
+// Call bought), the Positions and Wheel-cycle cards, technicals and the charts.
 
 interface TickerModalProps {
   symbol: string;
@@ -45,6 +46,8 @@ interface TickerModalProps {
 const badgeFontSize = { fontSize: "0.72rem" } as const;
 const macdSignalBadgeClass: Record<MacdSignal, string> = { Bullish: "badge-change-pos", Bearish: "badge-change-neg", Neutral: "badge-change-flat" };
 const liveContractsSettleMs = 300;
+/** Buy LEAPS opens on the first expiry at least this many days out (Marcelo 2026-10-27). */
+const leapsDefaultMinimumDte = 365;
 
 function quoteSeedOf(quote: LiveContractQuote | null): OrderReviewQuoteSeed | null {
   return quote ? { bid: quote.bid, ask: quote.ask, impliedVolatility: quote.impliedVolatility, delta: quote.delta, theta: null, vega: null } : null;
@@ -83,6 +86,7 @@ export function TickerModal({ symbol, initialRollLegId = null, focusPositionId =
   const [chainError, setChainError] = useState<string | null>(null);
   const [selectedExpiry, setSelectedExpiry] = useState<string | null>(null);
   const [chainPhoneSide, setChainPhoneSide] = useState<"C" | "P">("C");
+  const [chainMode, setChainMode] = useState<OptionChainMode>("sell");
   const [chainNotice, setChainNotice] = useState<string | null>(null);
   const [quotesFrame, setQuotesFrame] = useState<OptionQuotesFrame | null>(null);
 
@@ -250,6 +254,19 @@ export function TickerModal({ symbol, initialRollLegId = null, focusPositionId =
     setPick(contract);
   }
 
+  // Sell ↔ Buy LEAPS drops any pick or roll. Buy LEAPS opens the first expiry a year or more out (else the furthest);
+  // Sell goes back to the nearest expiry.
+  function switchChainMode(mode: OptionChainMode) {
+    if (pendingOrder || mode === chainMode) return;
+    clearSelection();
+    setChainMode(mode);
+    if (mode === "leaps") {
+      const expiries = chain?.expiries ?? [];
+      const leapsExpiry = expiries.find((expiry) => expiry.dte >= leapsDefaultMinimumDte) ?? expiries.at(-1);
+      if (leapsExpiry && leapsExpiry.expiry !== chain?.selectedExpiry) setSelectedExpiry(leapsExpiry.expiry);
+    } else setSelectedExpiry(null);
+  }
+
   // A position card's Roll button: roll mode on that leg, and the chain on its side.
   const rollLeg = useCallback(
     (legId: string) => {
@@ -264,6 +281,7 @@ export function TickerModal({ symbol, initialRollLegId = null, focusPositionId =
       }
       setRollNotice(null);
       setPick(null);
+      setChainMode("sell");
       setRollModeLegId(legId);
       setChainPhoneSide(leg.right);
       if (leg.expiry !== chain?.selectedExpiry && chain?.expiries.some((expiry) => expiry.expiry === leg.expiry)) setSelectedExpiry(leg.expiry);
@@ -337,6 +355,10 @@ export function TickerModal({ symbol, initialRollLegId = null, focusPositionId =
         }
         setRollNotice(null);
         setChainPhoneSide("C");
+        if (chainMode === "leaps") {
+          setChainMode("sell");
+          if (!prefill) setSelectedExpiry(null);
+        }
         // Recovery Path's Sell This: that exact contract.
         if (prefill) {
           pickChainContract({ expiry: prefill.expiry, strike: prefill.strike, right: "C" }, true);
@@ -449,6 +471,9 @@ export function TickerModal({ symbol, initialRollLegId = null, focusPositionId =
                       pickingDisabled={pendingOrder !== null}
                       phoneSide={chainPhoneSide}
                       onPhoneSideChange={setChainPhoneSide}
+                      mode={chainMode}
+                      modeSwitchDisabled={pendingOrder !== null}
+                      onModeChange={switchChainMode}
                       onSelectExpiry={(expiry) => {
                         if (expiry !== chain?.selectedExpiry) setSelectedExpiry(expiry);
                       }}
@@ -498,6 +523,17 @@ export function TickerModal({ symbol, initialRollLegId = null, focusPositionId =
                           onCancel={clearSelection}
                           onSubmitted={(order, adaptivePriority) => setPendingOrder({ order, adaptivePriority })}
                         />
+                      ) : pick && chainMode === "leaps" ? (
+                        <LeapsOrderSetupForm
+                          key={pickKey!}
+                          symbol={symbol}
+                          contract={{ expiry: pick.expiry, strike: pick.strike, dte: pickDte ?? 0, bid: pickQuote?.bid ?? null, ask: pickQuote?.ask ?? null, delta: pickQuote?.delta ?? null, impliedVolatility: pickQuote?.impliedVolatility ?? null }}
+                          spotPrice={spotPrice}
+                          notice={earningsNotice}
+                          accessLevelRefusal={accessLevelRefusal}
+                          onCancel={clearSelection}
+                          onSubmitted={(order, adaptivePriority) => setPendingOrder({ order, adaptivePriority })}
+                        />
                       ) : pick ? (
                         <OpenOrderSetupForm
                           key={pickKey!}
@@ -517,7 +553,7 @@ export function TickerModal({ symbol, initialRollLegId = null, focusPositionId =
                             Order setup
                           </div>
                           <p className="text-secondary mb-0" style={{ fontSize: "0.85rem" }}>
-                            {rollModeLeg ? `Pick the ${rollModeLeg.right === "C" ? "call" : "put"} to roll to on the chain.` : "Pick any contract on the chain to sell a covered call or a cash-secured put, or Roll a position below."}
+                            {rollModeLeg ? `Pick the ${rollModeLeg.right === "C" ? "call" : "put"} to roll to on the chain.` : chainMode === "leaps" ? "Pick any Call on the chain to buy it as a LEAPS." : "Pick any contract on the chain to sell a covered call or a cash-secured put, or Roll a position below."}
                           </p>
                         </>
                       )}

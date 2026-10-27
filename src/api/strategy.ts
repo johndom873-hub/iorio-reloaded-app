@@ -4,3 +4,5 @@
 // api/shortlist.ts, so this platform-wide type didn't have to keep living
 // inside a feature-specific api client.
 export type StrategyKey = "covered_call" | "cash_secured_put";
+/** What an opening order can be: the two short strategies, or a LEAPS (a long Call bought). */
+export type OpenOrderStrategyKey = StrategyKey | "leaps";

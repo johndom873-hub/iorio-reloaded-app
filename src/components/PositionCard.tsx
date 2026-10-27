@@ -7,6 +7,7 @@ import { useColumnVisibility } from "./DataTable/useColumnVisibility";
 import { ApexChart } from "./charts/ApexChart";
 import { ClosePositionModal } from "./ClosePositionModal";
 import { RecoveryPathModal } from "./RecoveryPathModal";
+import { LeapsPnlOverTimeModal } from "./LeapsPnlOverTimeModal";
 import { useChartPriceRange } from "../hooks/useChartPriceRange";
 import { useTheme } from "../hooks/useTheme";
 import type { Greeks, Position, UnrealizedPnlResult } from "../api/positions";
@@ -79,7 +80,8 @@ const payoffAxisMaximumStepsBelowZero = 4;
 // P&L, capped so a lopsided position (a put's small premium against a huge max loss) keeps its gain side readable; the
 // steeper part of the loss then runs off the bottom (Max Loss is shown above the chart).
 function buildPayoffYAxis(payoff: ReturnType<typeof computePayoff>, chartPoints: PayoffPoint[]): { min?: number; max?: number; tickAmount?: number } {
-  if (!payoff || !(payoff.maxGain > 0)) return {};
+  // A LEAPS has no cap on its gain (Infinity): Apex scales that axis itself.
+  if (!payoff || !(payoff.maxGain > 0) || !Number.isFinite(payoff.maxGain)) return {};
   const top = payoff.maxGain * payoffAxisMaximumGainMargin;
   const lowestPnl = Math.min(0, ...chartPoints.map((point) => point.pnl));
   const stepsBelowZero = Math.min(payoffAxisMaximumStepsBelowZero, Math.max(1, Math.ceil(-lowestPnl / top - 1e-9)));
@@ -173,9 +175,12 @@ export function PositionCard({
 
   const payoff = useMemo(
     // Hedges and unstructured positions have no strategy payoff diagram.
-    () => (position.strategyKey === "covered_call" || position.strategyKey === "cash_secured_put" ? computePayoff(position.strategyKey, displayedLegs, position.breakEven ?? null) : null),
+    () => (position.strategyKey === "covered_call" || position.strategyKey === "cash_secured_put" || position.strategyKey === "leaps" ? computePayoff(position.strategyKey, displayedLegs, position.breakEven ?? null) : null),
     [position, displayedLegs],
   );
+  // A LEAPS's long Call, for its P&L over time.
+  const leapsCallLeg = position.strategyKey === "leaps" ? (displayedLegs.find((leg) => leg.legType === "option" && leg.side === "long" && leg.optionType === "call" && leg.strikePrice !== null && leg.expiryDate !== null) ?? null) : null;
+  const [showPnlOverTime, setShowPnlOverTime] = useState(false);
   const chartPriceRange = useChartPriceRange(payoff?.breakeven ?? null, currentPrice);
   const payoffChartPoints = useMemo(() => (payoff && chartPriceRange ? computePayoffChartPoints(payoff, chartPriceRange) : []), [payoff, chartPriceRange]);
 
@@ -325,10 +330,16 @@ export function PositionCard({
       {payoff && (
         <div className="d-flex flex-wrap align-items-center justify-content-lg-center gap-2">
           <span className="small fw-semibold">Payout at Expiration</span>
-        <TooltipSpan className="small position-stat" text="Best case at expiration: the premium kept plus the stock's move up to the strike. Below zero when the shares cost more than the strike plus the premium earned on them: assignment then sells them at a loss">
-          <span className="position-stat-label">Max Gain:</span> <span className={pnlTextClass(payoff.maxGain)}>{formatSignedPnl(payoff.maxGain, 0)}</span>
-        </TooltipSpan>
-        <TooltipSpan className="small position-stat" text="Worst case at expiration: the stock (or the assigned shares) going to zero">
+        {Number.isFinite(payoff.maxGain) ? (
+          <TooltipSpan className="small position-stat" text="Best case at expiration: the premium kept plus the stock's move up to the strike. Below zero when the shares cost more than the strike plus the premium earned on them: assignment then sells them at a loss">
+            <span className="position-stat-label">Max Gain:</span> <span className={pnlTextClass(payoff.maxGain)}>{formatSignedPnl(payoff.maxGain, 0)}</span>
+          </TooltipSpan>
+        ) : (
+          <TooltipSpan className="small position-stat" text="A bought Call gains as far as the stock rises above the breakeven: no cap">
+            <span className="position-stat-label">Max Gain:</span> <span className="text-success">Unlimited</span>
+          </TooltipSpan>
+        )}
+        <TooltipSpan className="small position-stat" text={position.strategyKey === "leaps" ? "Worst case at expiration: the premium paid, if the stock ends at or below the strike" : "Worst case at expiration: the stock (or the assigned shares) going to zero"}>
           <span className="position-stat-label">Max Loss:</span> <span className="text-danger">{formatSignedPnl(-payoff.maxLoss, 0)}</span>
         </TooltipSpan>
         <TooltipSpan
@@ -339,8 +350,13 @@ export function PositionCard({
               : "Stock price at expiration where the position neither gains nor loses"
           }
         >
-          <span className="position-stat-label">Breakeven:</span> {formatCurrency(payoff.breakeven)}
+          <span className="position-stat-label">{position.strategyKey === "leaps" ? "Breakeven at expiry:" : "Breakeven:"}</span> {formatCurrency(payoff.breakeven)}
         </TooltipSpan>
+        {leapsCallLeg && position.status === "open" && (
+          <button type="button" className="btn btn-outline-primary btn-sm py-0 leaps-pnl-button" onClick={() => setShowPnlOverTime(true)}>
+            P&amp;L over time
+          </button>
+        )}
         {position.strategyKey === "covered_call" && (position.cycleOpenPositionCount ?? 0) > 1 && position.cycleBreakEven != null && (
           <div className="small text-secondary w-100 text-lg-center">
             {position.symbol} has {position.cycleOpenPositionCount} positions: the whole-cycle break-even, {formatCurrency(position.cycleBreakEven, 2)}, is in the Wheel cycle card.
@@ -538,6 +554,16 @@ export function PositionCard({
             setShowClose(false);
             onChanged();
           }}
+        />
+      )}
+
+      {showPnlOverTime && leapsCallLeg && (
+        <LeapsPnlOverTimeModal
+          symbol={position.symbol}
+          position={{ strike: Number(leapsCallLeg.strikePrice), expiryIso: leapsCallLeg.expiryDate!.slice(0, 10), premium: Number(leapsCallLeg.entryPrice), contracts: leapsCallLeg.quantity, multiplier: leapsCallLeg.multiplier }}
+          initialImpliedVolatility={null}
+          initialSpotPrice={currentPrice}
+          onClose={() => setShowPnlOverTime(false)}
         />
       )}
 

@@ -34,6 +34,20 @@ export interface TickerTradingContext {
   nextEarningsDateIso: string | null;
 }
 
+/** What the LEAPS P&L-over-time chart values a Call with (API GET /tickers/:symbol/valuation-inputs). */
+export interface TickerValuationInputs {
+  symbol: string;
+  /** IBKR's expected dividends per share over the next 12 months; null when IBKR sent none. */
+  nextTwelveMonthsDividends: number | null;
+  nextDividendDate: string | null;
+  /** FRED rate as a decimal; null when unavailable. */
+  riskFreeRate: number | null;
+}
+
+export function fetchTickerValuationInputs(symbol: string): Promise<TickerValuationInputs> {
+  return apiRequest<TickerValuationInputs>(`/tickers/${encodeURIComponent(symbol)}/valuation-inputs`);
+}
+
 export function fetchTickerTradingContext(symbol: string): Promise<TickerTradingContext> {
   return apiRequest<TickerTradingContext>(`/tickers/${encodeURIComponent(symbol)}/trading-context`);
 }

@@ -1512,6 +1512,39 @@
 .option-chain-cell.has-strike {
   grid-template-columns: 4rem repeat(5, minmax(0, 1fr));
 }
+/* Buy LEAPS: strike + bid, ask, mid, Δ, IV, breakeven, to breakeven; a phone keeps mid, Δ and breakeven. */
+.option-chain-column-labels.is-leaps,
+.option-chain-cell.is-leaps {
+  grid-template-columns: 4.5rem repeat(4, minmax(0, 0.8fr)) minmax(0, 0.8fr) minmax(0, 1.2fr) minmax(0, 1fr);
+}
+.option-chain-column-labels.is-leaps.is-compact,
+.option-chain-cell.is-leaps.is-compact {
+  grid-template-columns: 5rem repeat(2, minmax(0, 1fr)) minmax(0, 1.3fr);
+}
+.option-chain-cell.is-leaps.is-compact {
+  min-height: 2.75rem;
+}
+/* LEAPS P&L over time: one tile per date, five across on a wide screen, two on a phone. */
+.leaps-breakeven-strip {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(9.5rem, 1fr));
+  gap: 0.5rem;
+}
+/* LEAPS on a phone: the Sell | Buy LEAPS switch, the P&L over time buttons and the P&L modal's controls are 44px tap targets. */
+@media (max-width: 991.98px) {
+  .option-chain-mode-toggle > .btn,
+  .leaps-pnl-button,
+  .leaps-pnl-modal .btn,
+  .leaps-pnl-modal .form-select {
+    min-height: 2.75rem;
+    min-width: 2.75rem;
+  }
+}
+.option-chain-itm-tag {
+  font-family: var(--tblr-font-sans-serif);
+  font-size: 0.65rem;
+  font-weight: 600;
+}
 .option-chain-cell {
   width: 100%;
   min-height: 2rem;

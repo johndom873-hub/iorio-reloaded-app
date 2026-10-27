@@ -1,7 +1,7 @@
 import { apiRequest, apiBaseUrl, apiStreamedRequest } from "./client";
 import { openMultiplexedStream } from "./streamMultiplexer";
 import { openDeferredEventSource } from "./tickerDetail";
-import type { StrategyKey } from "./strategy";
+import type { OpenOrderStrategyKey, StrategyKey } from "./strategy";
 
 export type PositionStatus = "open" | "closed";
 export type LegType = "stock" | "option";
@@ -207,7 +207,7 @@ export interface OrderRequest {
 
 export interface OpenOrderInput {
   symbol: string;
-  strategyKey: StrategyKey;
+  strategyKey: OpenOrderStrategyKey;
   stock?: { quantity: number; limitPrice: number };
   option: { quantity: number; limitPrice: number; strikePrice: number; expiryDate: string };
   /** Signals modal only: the scores at the moment the order was built, stored with the order for Phase 2 (see signals.ts). */

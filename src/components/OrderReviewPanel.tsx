@@ -16,7 +16,7 @@ export interface OrderReviewQuoteSeed {
   vega: number | null;
 }
 import { fetchAccountValue, fetchAvailableCash } from "../api/dashboard";
-import type { StrategyKey } from "../api/strategy";
+import type { OpenOrderStrategyKey, StrategyKey } from "../api/strategy";
 import {
   daysToExpiry,
   formatCurrency,
@@ -26,6 +26,7 @@ import {
   formatNumber,
   formatPercentage,
   formatPercentageValue,
+  formatSignedPercentage,
   formatSignedPnl,
   ibkrExpiryToIsoDate,
   orderRequestStatusBadgeClass,
@@ -35,6 +36,8 @@ import {
 import { computeAnnualizedYield, computeCapitalAtRiskFromOrderLegs, computeFrictionDollarsPerContract, computePayoff, orderLegsToPayoffInput } from "../lib/payoff";
 import { DottedLabelTooltip } from "./HelpTooltip";
 import { computeProbabilityOfProfit } from "../lib/probabilityOfProfit";
+import { computeLongCallProbabilityOfProfit } from "../lib/leapsValuation";
+import { LeapsPnlOverTimeModal } from "./LeapsPnlOverTimeModal";
 import { flashClassName, useFlashOnChange } from "../hooks/useFlashOnChange";
 import { useTooltip } from "../hooks/useTooltip";
 
@@ -213,8 +216,13 @@ export function OrderReviewPanel({ order: initialOrder, initialAdaptivePriority,
   // Risk: $48,419" and a max-loss bigger than the position itself, both
   // nonsensical for a trade that's ending the position, not starting one).
   const isOpeningOrder = order.payload.strategyKey && order.requestType.startsWith("open_");
-  const payoff = isOpeningOrder ? computePayoff(order.payload.strategyKey as StrategyKey, orderLegsToPayoffInput(order.payload.legs)) : null;
-  const capitalAtRisk = isOpeningOrder ? computeCapitalAtRiskFromOrderLegs(order.payload.strategyKey as StrategyKey, order.payload.legs) : null;
+  // A LEAPS buys its Call: no yield, exposure or Return/Risk; its cost (the premium, the most it can lose) is the cash it takes.
+  const isLeaps = Boolean(isOpeningOrder) && order.payload.strategyKey === "leaps";
+  const payoff = isOpeningOrder ? computePayoff(order.payload.strategyKey as OpenOrderStrategyKey, orderLegsToPayoffInput(order.payload.legs)) : null;
+  const capitalAtRisk = isOpeningOrder && !isLeaps ? computeCapitalAtRiskFromOrderLegs(order.payload.strategyKey as StrategyKey, order.payload.legs) : null;
+  const leapsCost = isLeaps && payoff ? payoff.maxLoss : null;
+  const cashRequired = leapsCost ?? capitalAtRisk;
+  const [showPnlOverTime, setShowPnlOverTime] = useState(false);
   const optionLeg = order.payload.legs.find((leg) => leg.role === "option");
   const stockLeg = order.payload.legs.find((leg) => leg.role === "stock");
   // Real bug found live-testing the POP addition below, 2026-09-02: this was
@@ -259,7 +267,7 @@ export function OrderReviewPanel({ order: initialOrder, initialAdaptivePriority,
   // the flat commission. Without a two-sided quote there is no half-spread to charge, so no yield is shown.
   const liveFrictionDollarsPerContract = quote && quote.bid !== null && quote.ask !== null ? computeFrictionDollarsPerContract({ bid: quote.bid, ask: quote.ask, spreadShareCharged: quote.spreadShareCharged }) : null;
   const liveYield =
-    isOpeningOrder && optionLeg?.strike !== undefined && dte !== null && liveFrictionDollarsPerContract !== null
+    isOpeningOrder && !isLeaps && optionLeg?.strike !== undefined && dte !== null && liveFrictionDollarsPerContract !== null
       ? computeAnnualizedYield(order.payload.strategyKey as StrategyKey, {
           premium: liveOptionMid,
           dte,
@@ -283,7 +291,9 @@ export function OrderReviewPanel({ order: initialOrder, initialAdaptivePriority,
   // few-point gap, not yet resolved — so this is provisional, not a number
   // to act on alone (see the tooltip below).
   const livePop =
-    isOpeningOrder && popSpotPrice !== null && optionLeg?.strike !== undefined && optionLeg.right && dte !== null && quote?.impliedVolatility
+    isLeaps && popSpotPrice !== null && optionLeg?.strike !== undefined && dte !== null && quote?.impliedVolatility
+      ? computeLongCallProbabilityOfProfit({ spotPrice: popSpotPrice, strike: optionLeg.strike, premium: optionLeg.unitPrice, impliedVolatility: quote.impliedVolatility, daysToExpiry: dte, riskFreeRate: order.riskFreeRate ?? null })
+      : isOpeningOrder && popSpotPrice !== null && optionLeg?.strike !== undefined && optionLeg.right && dte !== null && quote?.impliedVolatility
       ? computeProbabilityOfProfit({
           spotPrice: popSpotPrice,
           strike: optionLeg.strike,
@@ -364,8 +374,13 @@ export function OrderReviewPanel({ order: initialOrder, initialAdaptivePriority,
 
   return (
     <div className="border rounded p-3 d-flex flex-column gap-3">
-      <div className="fw-bold" style={{ fontSize: "1.1rem" }}>
+      <div className="fw-bold d-flex align-items-center gap-2" style={{ fontSize: "1.1rem" }}>
         Order Review
+        {isLeaps && (
+          <span className="badge bg-leaps" style={{ fontSize: "0.72rem" }}>
+            LEAPS
+          </span>
+        )}
       </div>
       {error && <div className="alert alert-danger">{error}</div>}
 
@@ -382,7 +397,53 @@ export function OrderReviewPanel({ order: initialOrder, initialAdaptivePriority,
         ))}
       </ul>
 
-      {(payoff || capitalAtRisk !== null || liveYield !== null || livePop !== null) && (
+      {isLeaps && payoff && leapsCost !== null && optionLeg?.strike !== undefined && (
+        <div className="row g-3 font-mono" style={{ fontSize: "0.85rem" }}>
+          <div className="col-4">
+            <div className="text-secondary text-uppercase" style={{ fontSize: "0.68rem" }}>Cost</div>
+            <div className="fw-semibold">{formatCurrency(leapsCost, 0)}</div>
+          </div>
+          <div className="col-4">
+            <div ref={expPctTooltipRef} className="text-secondary text-uppercase" style={{ fontSize: "0.68rem" }} tabIndex={0}>
+              Share of account
+            </div>
+            <div className="fw-semibold">{totalAccountValue === null ? "—" : formatPercentageValue((leapsCost / totalAccountValue) * 100, 1)}</div>
+          </div>
+          <div className="col-4">
+            <div className="text-secondary text-uppercase" style={{ fontSize: "0.68rem" }}>Days to expiry</div>
+            <div className="fw-semibold">{dte ?? "—"}</div>
+          </div>
+          <div className="col-4">
+            <div className="text-secondary text-uppercase" style={{ fontSize: "0.68rem" }}>Max Gain</div>
+            <div className="fw-semibold text-success">Unlimited</div>
+          </div>
+          <div className="col-4">
+            <div className="text-secondary text-uppercase" style={{ fontSize: "0.68rem" }}>Max Loss</div>
+            <div className="fw-semibold text-danger">{formatSignedPnl(-payoff.maxLoss, 0)}</div>
+          </div>
+          <div className="col-4">
+            <div className="text-secondary text-uppercase" style={{ fontSize: "0.68rem" }}>Breakeven</div>
+            <div className="fw-semibold">{formatCurrency(payoff.breakeven)}</div>
+          </div>
+          <div className="col-4">
+            <div className="text-secondary text-uppercase" style={{ fontSize: "0.68rem" }}>To breakeven</div>
+            <div className="fw-semibold">{popSpotPrice !== null && popSpotPrice > 0 ? formatSignedPercentage(payoff.breakeven / popSpotPrice - 1, 1) : "—"}</div>
+          </div>
+          <div className="col-4">
+            <div ref={popTooltipRef} className="text-secondary text-uppercase" style={{ fontSize: "0.68rem" }} tabIndex={0}>
+              POP
+            </div>
+            <div className="fw-semibold">{formatPercentage(livePop)}</div>
+          </div>
+          <div className="col-4 d-flex align-items-end">
+            <button type="button" className="btn btn-outline-primary btn-sm leaps-pnl-button" onClick={() => setShowPnlOverTime(true)}>
+              P&amp;L over time
+            </button>
+          </div>
+        </div>
+      )}
+
+      {!isLeaps && (payoff || capitalAtRisk !== null || liveYield !== null || livePop !== null) && (
         <div className="row g-3 font-mono" style={{ fontSize: "0.85rem" }}>
           {liveYield !== null && (
             <div className="col-4">
@@ -501,7 +562,7 @@ export function OrderReviewPanel({ order: initialOrder, initialAdaptivePriority,
           one row that's always presented as a negative figure; the other two
           keep their default color regardless of sign. font-mono applies to
           the number only, not the label, per the approved design. */}
-      {isOpeningOrder && optionLeg && capitalAtRisk !== null && (
+      {isOpeningOrder && optionLeg && cashRequired !== null && (
         <div className="d-flex flex-column gap-1" style={{ fontSize: "0.8rem" }}>
           <div className="d-flex justify-content-between">
             <span className="text-secondary">Available cash to trade</span>
@@ -511,12 +572,12 @@ export function OrderReviewPanel({ order: initialOrder, initialAdaptivePriority,
           </div>
           <div className="d-flex justify-content-between">
             <span className="text-secondary">Cash required</span>
-            <span className="font-mono fw-semibold text-danger">{formatSignedPnl(-capitalAtRisk, 0)}</span>
+            <span className="font-mono fw-semibold text-danger">{formatSignedPnl(-cashRequired, 0)}</span>
           </div>
           <div className="d-flex justify-content-between">
             <span className="text-secondary">Cash after this trade</span>
             <span className="font-mono fw-semibold">
-              {availableCashToTrade !== null ? formatCurrency(availableCashToTrade - capitalAtRisk) : <Spinner size="sm" label="Loading available cash" />}
+              {availableCashToTrade !== null ? formatCurrency(availableCashToTrade - cashRequired) : <Spinner size="sm" label="Loading available cash" />}
             </span>
           </div>
         </div>
@@ -612,6 +673,15 @@ export function OrderReviewPanel({ order: initialOrder, initialAdaptivePriority,
         <button type="button" className="btn btn-outline-secondary" onClick={onCancelled}>
           Close
         </button>
+      )}
+      {showPnlOverTime && isLeaps && optionLeg?.strike !== undefined && optionLegExpiryIso && (
+        <LeapsPnlOverTimeModal
+          symbol={order.payload.symbol}
+          position={{ strike: optionLeg.strike, expiryIso: optionLegExpiryIso, premium: optionLeg.unitPrice, contracts: optionLeg.quantity, multiplier: 100 }}
+          initialImpliedVolatility={quote?.impliedVolatility ?? null}
+          initialSpotPrice={liveSpotPrice ?? null}
+          onClose={() => setShowPnlOverTime(false)}
+        />
       )}
     </div>
   );

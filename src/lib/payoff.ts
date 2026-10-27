@@ -1,5 +1,5 @@
 import type { OrderLeg } from "../api/positions";
-import type { StrategyKey } from "../api/strategy";
+import type { OpenOrderStrategyKey, StrategyKey } from "../api/strategy";
 
 export interface PayoffPoint {
   price: number;
@@ -118,8 +118,27 @@ export function computeCashSecuredPutPayoff(legs: PayoffLegInput[]): PayoffResul
   };
 }
 
-export function computePayoff(strategyKey: StrategyKey, legs: PayoffLegInput[], positionBreakEven: number | null = null): PayoffResult | null {
+// A LEAPS (a long Call): the premium paid is the most it can lose, the gain has no cap (maxGain is Infinity), and it
+// breaks even at expiry at strike + premium (approved by Marcelo 2026-10-27).
+export function computeLongCallPayoff(legs: PayoffLegInput[]): PayoffResult | null {
+  const callLeg = legs.find((leg) => leg.legType === "option" && leg.optionType === "call");
+  if (!callLeg || callLeg.strikePrice === null) return null;
+
+  const premium = Number(callLeg.entryPrice);
+  const strike = Number(callLeg.strikePrice);
+  const shareCount = callLeg.quantity * callLeg.multiplier;
+
+  return {
+    maxGain: Infinity,
+    maxLoss: premium * shareCount,
+    breakeven: strike + premium,
+    payoffAt: (price: number) => (Math.max(price - strike, 0) - premium) * shareCount,
+  };
+}
+
+export function computePayoff(strategyKey: OpenOrderStrategyKey, legs: PayoffLegInput[], positionBreakEven: number | null = null): PayoffResult | null {
   if (strategyKey === "covered_call") return computeCoveredCallPayoff(legs, positionBreakEven);
+  if (strategyKey === "leaps") return computeLongCallPayoff(legs);
   return computeCashSecuredPutPayoff(legs);
 }
 
