@@ -3,10 +3,11 @@ import type { ReactNode } from "react";
 import { Link } from "react-router-dom";
 import type { PlutoActionContract, PlutoActionKind } from "../../api/pluto";
 import { strategyBadgeFor, type PlutoBadgeTone } from "../../lib/plutoPresentation";
+import { strategyBadgeClass } from "../../lib/positionPnl";
 
 // Small presentational pieces shared by the Pluto screen's cards (mockup classes, see PlutoPage.css).
 
-const strategyColourClasses = { cc: "bg-blue text-white", csp: "bg-purple text-white", ns: "bg-orange text-white" } as const;
+const strategyColourClasses = { cc: "bg-blue text-white", csp: "bg-purple text-white", leaps: strategyBadgeClass("leaps"), ns: "bg-orange text-white" } as const;
 
 export function StrategyBadge({ kind, contract }: { kind: PlutoActionKind; contract: PlutoActionContract | null }) {
   const badge = strategyBadgeFor(kind, contract);

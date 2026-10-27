@@ -368,6 +368,7 @@ a.pm-b:hover, button.pm-b.link:hover { text-decoration: underline; }
 @media (max-width: 767px) { .pm-input { height: 44px; } }
 .pm-was { font-size: 12px; color: var(--warning-text); font-weight: 600; margin-top: 4px; text-align: right; }
 .pm-card-t { white-space: nowrap; }
+.pm-group-note { padding: 0.75rem 1.125rem 0.25rem; font-size: 0.78rem; color: var(--muted); line-height: 1.4; }
 .pm-group-sum { font-size: 12.5px; color: var(--muted); font-weight: 400; white-space: normal; min-width: 0; }
 .pm-savebar { display: flex; align-items: center; gap: 12px; padding: 12px 18px; border: 1px solid var(--warning-border); background: var(--surface); border-radius: 8px; box-shadow: var(--menu-shadow); position: sticky; top: 16px; z-index: 4; }
 .pm-savebar .pend { width: 8px; height: 8px; border-radius: 50%; background: #f59f00; flex: none; }
@@ -617,6 +618,8 @@ a.pm-b:hover, button.pm-b.link:hover { text-decoration: underline; }
 .pm-how-pair { display: flex; flex-wrap: wrap; gap: 1rem; align-items: stretch; }
 .pm-how-pair > .pm-card { flex: 1 1 22.5rem; min-width: 0; }
 .pm-how-list { margin: 0; padding-left: 1.1rem; display: flex; flex-direction: column; gap: 0.5rem; font-size: 0.85rem; line-height: 1.5; }
+.pm-how-pair > .pm-how-list { flex: 1 1 18rem; min-width: 0; }
+.pm-how-strategies { align-self: flex-start; }
 .pm-how-formula { border-top: 1px solid var(--border); }
 .pm-how-formula summary { cursor: pointer; font-size: 0.85rem; font-weight: 600; color: var(--strong); min-height: 44px; display: flex; align-items: center; }
 .pm-how-formula-body { display: flex; flex-direction: column; gap: 0.4rem; font-size: 0.8rem; line-height: 1.55; padding-bottom: 0.25rem; }
@@ -762,3 +765,21 @@ a.pm-b:hover, button.pm-b.link:hover { text-decoration: underline; }
   .pm-m-tk.locked { grid-template-columns: auto minmax(0, 1fr) auto; }
   .pm-ro-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.875rem 1rem; padding: 0.875rem 1rem 1rem; }
 }
+
+/* Vol Farmer v2 card (Live tab) */
+.pm-v2-table td { vertical-align: top; }
+.pm-v2-last { min-width: 16rem; max-width: 28rem; }
+.pm-v2-note { white-space: normal; overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+.pm-v2-leaps { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 0.375rem; }
+.pm-v2-ticker { min-width: 8.5rem; }
+.pm-v2-position { min-width: 15rem; }
+.pm-v2-leaps-cell { min-width: 14rem; }
+.pm-v2-warnings { padding: 0.75rem 1.125rem 0; }
+.pm-v2-warnings .pm-alert-text + .pm-alert-text { margin-top: 0.25rem; }
+.pm-v2-m-head { display: flex; align-items: baseline; justify-content: space-between; gap: 0.5rem; }
+.pm-v2-m-grid { display: grid; grid-template-columns: 7.5rem minmax(0, 1fr); gap: 0.375rem 0.75rem; margin: 0.5rem 0 0; font-size: 0.8rem; }
+.pm-v2-m-grid dt { font-weight: 500; color: var(--muted); }
+.pm-v2-m-grid dd { margin: 0; min-width: 0; overflow-wrap: anywhere; }
+.pm-v2-m-quiet { margin-top: 0.25rem; font-size: 0.8rem; color: var(--muted); overflow-wrap: anywhere; }
+@media (max-width: 767px) { .pm-strategy .pm-select { height: 44px; } }
+.pm-v2-warnings .pm-tkr { color: inherit; text-decoration: underline; text-underline-offset: 2px; }

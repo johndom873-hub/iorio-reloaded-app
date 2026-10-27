@@ -149,6 +149,17 @@ export interface PlutoSettings {
   ladderMaxOrdersPerDay: number;
   ladderSpyStressBreakerPct: number;
   ladderTickerCooldownMinutes: number;
+  // Vol Farmer v2's values, every v2 ticker alike: set once from the lab's of 27 Oct 2026, never synced with the lab.
+  volFarmerV2PutsStartCallYieldPct: number;
+  volFarmerV2PutMaxAbsDelta: number;
+  volFarmerV2StepBelowFirstBreakEvenPct: number;
+  volFarmerV2StepRule: "fixed" | "implied_move_at_put_sale";
+  volFarmerV2LeapsMinDte: number;
+  volFarmerV2LeapsAbsDelta: number;
+  volFarmerV2LeapsMaxAllocationPct: number;
+  volFarmerV2CallMinAbsDelta: number;
+  volFarmerV2CallMaxAbsDelta: number;
+  volFarmerV2MaxSpreadPctOfMid: number;
   updatedAt: string;
   updatedByUserId: string | null;
 }
@@ -180,7 +191,7 @@ export interface PlutoGateResult {
 }
 
 /** close_position: a whole covered call (call bought back, shares sold) closed by code before earnings, never by the model. */
-export type PlutoActionKind = "open_covered_call" | "open_cash_secured_put" | "roll" | "close_shares" | "close_leg" | "close_position" | "no_trade";
+export type PlutoActionKind = "open_covered_call" | "open_cash_secured_put" | "roll" | "close_shares" | "close_leg" | "close_position" | "buy_leaps" | "sell_leaps" | "no_trade";
 export type PlutoActionOutcome = "validated" | "blocked" | "order_built" | "confirmed" | "filled" | "partially_filled" | "cancelled" | "cancelled_partially_filled" | "rejected" | "error" | "no_trade";
 
 /** What an action trades: an open's contract, a roll's replacement (plus the held leg it replaces), a close's leg or shares. */
@@ -611,6 +622,23 @@ export interface PlutoHowItWorks {
       rungs: { rung: number; strikeCap: number }[];
     };
   };
+  volFarmerV2: {
+    callMinAbsDelta: number;
+    callMaxAbsDelta: number;
+    maxSpreadPctOfMid: number;
+    minimumBid: number;
+    maxVolumeSharePct: number;
+    putsStartCallYieldPct: number;
+    putMaxAbsDelta: number;
+    stepRule: PlutoSettings["volFarmerV2StepRule"];
+    /** The fixed Step, and the implied-move Step's fallback. */
+    stepBelowFirstBreakEvenPct: number;
+    stepLookbackSessions: number;
+    leapsMinDte: number;
+    leapsAbsDelta: number;
+    leapsMaxAllocationPct: number;
+    example: { accountValue: number; allocationPct: number; pot: number; stockPrice: number; lots: number; firstBreakEven: number; impliedVolatilityPct: number; stepPct: number; putStrikeCap: number; leapsCap: number };
+  };
 }
 
 export function fetchPlutoHowItWorks(): Promise<PlutoHowItWorks> {
@@ -673,6 +701,49 @@ export interface PlutoLadderTickerSettings {
   lastClose: { price: number; date: string } | null;
   capitalBudgetDollars: number | null;
   recommendedShockSource: { maxDrawdownPct: number | null; closesUsed: number; fromIso: string | null; toIso: string | null } | null;
+  /** The strategy set on the ticker (null: the default, Vol Farmer v2) and the one Pluto runs on it. */
+  strategy: PlutoStrategy | null;
+  effectiveStrategy: PlutoStrategy;
+}
+
+/** The strategy Pluto runs on a ticker. */
+export type PlutoStrategy = "vol_farmer_v2" | "cc_put_ladder";
+
+/** An option one of v2's positions holds: a leg of the book, or an order still working. */
+export interface PlutoVolFarmerV2Option {
+  strike: number;
+  expiry: string;
+  contracts: number;
+  working: boolean;
+}
+
+export interface PlutoVolFarmerV2Position {
+  shares: number;
+  costPerShare: number;
+  /** B-E¹ / B-E²; null while the second position holds no shares. */
+  breakEvenPerShare: number | null;
+  calls: PlutoVolFarmerV2Option[];
+  puts: PlutoVolFarmerV2Option[];
+}
+
+/** A Vol Farmer v2 ticker as v2's memory counts it (GET /pluto/vol-farmer-v2). */
+export interface PlutoVolFarmerV2Ticker {
+  symbol: string;
+  adoptedAt: string | null;
+  /** No memory yet: v2 waits to adopt the ticker's holdings (the last round's notes say why), or has not looked yet. */
+  waiting: boolean;
+  first: PlutoVolFarmerV2Position | null;
+  second: PlutoVolFarmerV2Position | null;
+  leaps: { strike: number; expiry: string; heldContracts: number; intendedContracts: number } | null;
+  workingOrders: { kind: "covered_call" | "cash_secured_put" | "buy_leaps" | "sell_leaps"; strike: number; expiry: string; contracts: number }[];
+  lastRoundAt: string | null;
+  lastRoundNotes: string[];
+  /** What the last round read: the pot, what the ticker commits as the pot check counts it, v2's free cash and the LEAPS cap. */
+  lastRoundFigures: { potDollars: number; committedDollars: number; freeCashDollars: number; leapsCapDollars: number } | null;
+}
+
+export function fetchPlutoVolFarmerV2(): Promise<PlutoVolFarmerV2Ticker[]> {
+  return apiRequest<PlutoVolFarmerV2Ticker[]>("/pluto/vol-farmer-v2");
 }
 
 export function fetchPlutoLadderSettings(): Promise<PlutoLadderTickerSettings[]> {
@@ -686,10 +757,10 @@ export function fetchPlutoLadderTickerSettings(symbol: string): Promise<PlutoLad
 export type PlutoTickerSettingsField = "allocationPct" | "ladderSharesPct" | "ladderShockOverridePct" | "ladderRungs" | "ladderMinAbsDelta" | "ladderMaxAbsDelta";
 
 /** A ticker's own values (pluto_ticker_settings); null = the default. */
-export type PlutoTickerSettingsValues = Record<PlutoTickerSettingsField, number | null> & { symbol: string; updatedAt: string | null };
+export type PlutoTickerSettingsValues = Record<PlutoTickerSettingsField, number | null> & { symbol: string; strategy: PlutoStrategy | null; updatedAt: string | null };
 
-/** Each field a number, or null for the default again. */
-export function savePlutoTickerSettings(symbol: string, input: Partial<Record<PlutoTickerSettingsField, number | null>>): Promise<PlutoTickerSettingsValues> {
+/** Each field a number, or null for the default again; the strategy one of Pluto's, or null for the default. */
+export function savePlutoTickerSettings(symbol: string, input: Partial<Record<PlutoTickerSettingsField, number | null>> & { strategy?: PlutoStrategy | null }): Promise<PlutoTickerSettingsValues> {
   return apiRequest<PlutoTickerSettingsValues>(`/pluto/ticker-settings/${encodeURIComponent(symbol)}`, { method: "PUT", body: JSON.stringify(input) });
 }
 

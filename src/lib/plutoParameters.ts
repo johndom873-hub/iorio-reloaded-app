@@ -33,6 +33,8 @@ export interface PlutoParameterGroup {
   parameters: PlutoParameterSpec[];
   /** The group's key figures, shown in its header while collapsed. */
   summary: (settings: PlutoSettings) => string;
+  /** A line above the group's settings while it is open. */
+  note?: string;
 }
 
 function dollarsOfAccount(context: PlutoParameterContext, pct: number): string {
@@ -80,13 +82,49 @@ export const plutoParameterGroups: PlutoParameterGroup[] = [
     title: "Ladder safety",
     summary: (settings) => `${settings.ladderMaxWorkingOrdersPerTicker} working orders · ${settings.ladderMaxOpenPositionsPerTicker} open positions · ${settings.ladderMaxOrdersPerTickerPerDay} orders a day per ticker · ${settings.ladderMaxOpenPositions} positions · ${settings.ladderMaxOrdersPerDay} orders a day across the book · SPY ${settings.ladderSpyStressBreakerPct}% · ${settings.ladderTickerCooldownMinutes ? `${settings.ladderTickerCooldownMinutes} min cooldown` : "no cooldown"}`,
     parameters: [
-      { field: "ladderMaxWorkingOrdersPerTicker", label: "Working orders per ticker", unit: "orders", kind: "integer", step: "1", help: "At most this many of a ticker's ladder orders work at once; the rest go at the next looks." },
-      { field: "ladderMaxOpenPositionsPerTicker", label: "Open positions per ticker", unit: "positions", kind: "integer", step: "1", help: "The ladder opens nothing new on a ticker holding this many." },
-      { field: "ladderMaxOrdersPerTickerPerDay", label: "Orders per ticker per day", unit: "orders", kind: "integer", step: "1", help: "Every ladder order sent on a ticker in a day counts, re-prices included." },
-      { field: "ladderMaxOpenPositions", label: "Open positions, all tickers", unit: "positions", kind: "integer", step: "1", help: "Across every ladder ticker: open positions plus working ladder orders. Sales beyond it wait for a later look." },
-      { field: "ladderMaxOrdersPerDay", label: "Orders per day, all tickers", unit: "orders", kind: "integer", step: "1", help: "Ladder orders sent in a day across every ticker, counted as the per-ticker cap counts them. Sales beyond it wait." },
-      { field: "ladderSpyStressBreakerPct", label: "SPY stress breaker", unit: "% drop", kind: "number", step: "0.1", help: "No new ladder orders while SPY is down this much today. The daily-loss breaker is under Session & breakers." },
-      { field: "ladderTickerCooldownMinutes", label: "Ticker cooldown", unit: "min", kind: "integer", step: "1", help: "Minutes after a filled ladder order before the ladder acts on that ticker again. 0 = no cooldown." },
+      { field: "ladderMaxWorkingOrdersPerTicker", label: "Working orders per ticker", unit: "orders", kind: "integer", step: "1", help: "At most this many of a ticker's orders work at once, the ladder's and Vol Farmer v2's alike; the rest go at the next looks." },
+      { field: "ladderMaxOpenPositionsPerTicker", label: "Open positions per ticker", unit: "positions", kind: "integer", step: "1", help: "Neither strategy opens anything new on a ticker holding this many." },
+      { field: "ladderMaxOrdersPerTickerPerDay", label: "Orders per ticker per day", unit: "orders", kind: "integer", step: "1", help: "Every order either strategy sends on a ticker in a day counts, re-prices included." },
+      { field: "ladderMaxOpenPositions", label: "Open positions, all tickers", unit: "positions", kind: "integer", step: "1", help: "Across every Pluto ticker: open positions plus working orders. Sales beyond it wait for a later look." },
+      { field: "ladderMaxOrdersPerDay", label: "Orders per day, all tickers", unit: "orders", kind: "integer", step: "1", help: "Orders both strategies send in a day across every ticker, counted as the per-ticker cap counts them. Sales beyond it wait." },
+      { field: "ladderSpyStressBreakerPct", label: "SPY stress breaker", unit: "% drop", kind: "number", step: "0.1", help: "While SPY is down this much today, the ladder sends nothing and Vol Farmer v2 opens nothing; a LEAPS sale still goes. The daily-loss breaker is under Session & breakers." },
+      { field: "ladderTickerCooldownMinutes", label: "Ticker cooldown", unit: "min", kind: "integer", step: "1", help: "Minutes after a filled Pluto order before either strategy acts on that ticker again. 0 = no cooldown." },
+    ],
+  },
+  {
+    key: "volFarmerV2",
+    title: "Vol Farmer v2",
+    note: "Every Vol Farmer v2 ticker. Set from the lab's values of 27 Oct 2026; never synced with the lab. The caps, cooldown and SPY stress breaker under Ladder safety count v2's orders too.",
+    summary: (settings) => `Calls' |delta| ${settings.volFarmerV2CallMinAbsDelta.toFixed(2)}–${settings.volFarmerV2CallMaxAbsDelta.toFixed(2)} · Puts under ${settings.volFarmerV2PutsStartCallYieldPct}% a year, |delta| ≤ ${settings.volFarmerV2PutMaxAbsDelta.toFixed(2)} · Step ${settings.volFarmerV2StepRule === "fixed" ? `${settings.volFarmerV2StepBelowFirstBreakEvenPct}% fixed` : "the implied move"} · LEAPS ${settings.volFarmerV2LeapsMinDte}+ DTE, |delta| ${settings.volFarmerV2LeapsAbsDelta.toFixed(2)}, ≤ ${settings.volFarmerV2LeapsMaxAllocationPct}% of the pot · spread ${settings.volFarmerV2MaxSpreadPctOfMid}%`,
+    parameters: [
+      { field: "volFarmerV2CallMinAbsDelta", label: "Calls' |delta| range", unit: "min", kind: "number", step: "0.01", help: "Calls v2 may sell, by absolute delta. A Call is also struck at or above its position's break-even." },
+      { field: "volFarmerV2CallMaxAbsDelta", label: "Calls' max |delta|", unit: "max", kind: "number", step: "0.01", help: "Highest absolute delta of a Call v2 may sell.", pairedWithPrevious: true },
+      { field: "volFarmerV2MaxSpreadPctOfMid", label: "Max spread", unit: "% of mid", kind: "number", step: "1", help: "Widest bid-ask spread, as a share of the mid, of every v2 order, the LEAPS' included." },
+      { field: "volFarmerV2PutsStartCallYieldPct", label: "Puts start under", unit: "% a year", kind: "number", step: "0.5", help: "When the first position needs a new Call and the best one pays under this, v2 sells Puts with the other half of the pot." },
+      { field: "volFarmerV2PutMaxAbsDelta", label: "Put |delta|", unit: "max", kind: "number", step: "0.01", help: "The Puts' highest absolute delta." },
+      {
+        field: "volFarmerV2StepRule",
+        label: "Step rule",
+        kind: "select",
+        options: ["implied_move_at_put_sale", "fixed"],
+        optionLabels: { implied_move_at_put_sale: "Implied move", fixed: "Fixed" },
+        help: "How far below B-E¹ the Puts are struck at most: the one-month implied move at each Put sale, IBKR's 30-day IV × √(21 ÷ 252) (an IV of 30% gives a Step of 8.7%), or the fixed Step below.",
+      },
+      { field: "volFarmerV2StepBelowFirstBreakEvenPct", label: "Step", unit: "% below B-E¹", kind: "number", step: "0.5", help: "The fixed Step, and the implied move's when IBKR has no IV for the ticker." },
+      { field: "volFarmerV2LeapsMinDte", label: "LEAPS expiry from", unit: "days", kind: "integer", step: "1", help: "The first listed expiry at least this far out." },
+      { field: "volFarmerV2LeapsAbsDelta", label: "LEAPS |delta|", kind: "number", step: "0.01", help: "The Call whose absolute delta is nearest this." },
+      {
+        field: "volFarmerV2LeapsMaxAllocationPct",
+        label: "LEAPS cap",
+        unit: "% of pot",
+        kind: "number",
+        step: "1",
+        help: (context) => {
+          const example = (context.ladderTickers ?? []).find((ticker) => ticker.effectiveStrategy === "vol_farmer_v2" && ticker.potDollars !== null);
+          const cap = example ? ` ${context.settings.volFarmerV2LeapsMaxAllocationPct}% of ${example.symbol}'s ${formatCurrency(example.potDollars!, 0)} pot is ${formatCurrency((example.potDollars! * context.settings.volFarmerV2LeapsMaxAllocationPct) / 100, 0)} today.` : "";
+          return `The most a LEAPS purchase spends, as a share of the ticker's pot, paid from the cash free in Pluto's budget.${cap}`;
+        },
+      },
     ],
   },
   {
@@ -155,6 +193,16 @@ const parameterAuditLabel: Partial<Record<PlutoSettingsField, string>> = {
   ladderShockMaxPct: "Shock ceiling",
   ladderMaxSpreadPctOfMid: "Ladder max spread",
   ladderTickerCooldownMinutes: "Ladder ticker cooldown",
+  volFarmerV2CallMinAbsDelta: "Vol Farmer v2 Calls' |delta| lower limit",
+  volFarmerV2CallMaxAbsDelta: "Vol Farmer v2 Calls' |delta| upper limit",
+  volFarmerV2MaxSpreadPctOfMid: "Vol Farmer v2 max spread",
+  volFarmerV2PutsStartCallYieldPct: "Vol Farmer v2 Puts start under",
+  volFarmerV2PutMaxAbsDelta: "Vol Farmer v2 Put |delta|",
+  volFarmerV2StepRule: "Vol Farmer v2 Step rule",
+  volFarmerV2StepBelowFirstBreakEvenPct: "Vol Farmer v2 Step",
+  volFarmerV2LeapsMinDte: "Vol Farmer v2 LEAPS expiry from",
+  volFarmerV2LeapsAbsDelta: "Vol Farmer v2 LEAPS |delta|",
+  volFarmerV2LeapsMaxAllocationPct: "Vol Farmer v2 LEAPS cap",
 };
 
 export const plutoParameterLabelByField: Record<string, string> = {

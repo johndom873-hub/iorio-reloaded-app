@@ -5,6 +5,7 @@ import { ColumnVisibilityPopover } from "../DataTable/ColumnVisibilityPopover";
 import { useColumnVisibility } from "../DataTable/useColumnVisibility";
 import { PlutoActivityFeed } from "./PlutoActivityFeed";
 import { PlutoOrdersTable } from "./PlutoOrdersTable";
+import { PlutoVolFarmerV2Card } from "./PlutoVolFarmerV2Card";
 import { CardLink } from "./plutoBits";
 
 interface PlutoLiveTabProps {
@@ -64,18 +65,24 @@ export function PlutoLiveTab({ state, actions, actionsLoading, actionsError, fee
     </section>
   );
 
+  const volFarmerV2Card = <PlutoVolFarmerV2Card lastPassAt={state?.lastPassAt ?? null} isPhone={isPhone} onOpenTicker={onOpenTicker} />;
+
   if (isPhone) {
     return (
       <div className="pm-stack tight">
         {ordersCard}
+        {volFarmerV2Card}
         {activityCard}
       </div>
     );
   }
   return (
-    <div className="pm-grid-live">
-      <div className="pm-stack">{ordersCard}</div>
-      {activityCard}
+    <div className="pm-stack">
+      <div className="pm-grid-live">
+        <div className="pm-stack">{ordersCard}</div>
+        {activityCard}
+      </div>
+      {volFarmerV2Card}
     </div>
   );
 }

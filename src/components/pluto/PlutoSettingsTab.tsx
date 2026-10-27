@@ -46,7 +46,7 @@ function brokenDeltaRanges(tickers: PlutoLadderTickerSettings[], form: PlutoSett
 /** Each enabled ticker's fit checks at a set of strategy values: its own overrides and pot, the last close. */
 function tickerFitsAt(tickers: PlutoLadderTickerSettings[], values: Pick<PlutoSettings, "ladderSharesPct" | "ladderRungs" | "ladderShockMinPct" | "ladderShockMaxPct" | "ladderShockNoHistoryPct" | "capitalBudgetPct">, savedBudgetPct: number) {
   return tickers.flatMap((ticker) => {
-    if (ticker.potDollars === null || ticker.lastClose === null) return [];
+    if (ticker.effectiveStrategy !== "cc_put_ladder" || ticker.potDollars === null || ticker.lastClose === null) return [];
     const shockPct = ticker.overrideShockPct ?? recommendedShockAt(ticker.recommendedShockSource, { minPct: values.ladderShockMinPct, maxPct: values.ladderShockMaxPct, noHistoryPct: values.ladderShockNoHistoryPct });
     if (shockPct === null) return [];
     // The pot is the allocation of the capital budget: it follows a budget being edited.
@@ -125,6 +125,7 @@ function GroupCard({ group, settings, form, changed, state, ladderTickers, broke
         </h2>
         <CollapseButton open={isOpen} onToggle={onToggle} label={group.title} />
       </ToggleHeader>
+      {isOpen && group.note && <div className="pm-group-note">{group.note}</div>}
       {isOpen && readOnly && <ReadOnlyGroupSettings rows={rows} settings={settings} context={context} />}
       {isOpen &&
         !readOnly &&
@@ -278,7 +279,7 @@ export function PlutoSettingsTab({ settings, audit, loading, error, state, isPho
       {ladderTickers === null ? (
         <div className="pm-empty">Loading the tickers…</div>
       ) : fitsNow.length === 0 ? (
-        <div className="pm-empty">No enabled ticker with a pot and a last close.</div>
+        <div className="pm-empty">No enabled CC + Put Ladder ticker with a pot and a last close.</div>
       ) : (
         <ul className="pm-tk-checks">
           {fitsNow.map((entry) => {
@@ -297,7 +298,7 @@ export function PlutoSettingsTab({ settings, audit, loading, error, state, isPho
         </ul>
       )}
       <div className="pm-card-foot">
-        {isAdmin ? "Each enabled ticker with its own overrides and pot at its last close, recomputed as you type." : "Each enabled ticker with its own overrides and pot at its last close."}{" "}
+        {isAdmin ? "Each enabled CC + Put Ladder ticker with its own overrides and pot at its last close, recomputed as you type." : "Each enabled CC + Put Ladder ticker with its own overrides and pot at its last close."}{" "}
         <button type="button" className="pm-link small" onClick={onOpenTickersTab}>
           Open the Tickers tab
         </button>
