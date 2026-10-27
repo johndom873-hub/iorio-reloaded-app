@@ -281,14 +281,15 @@ export function PlutoStatusCard({ state, status, settings, now, isPhone, showKpi
   // ---- KPI figures ----
   const nlv = state.book.netLiquidationValue;
   const budget = nlv === null ? null : (nlv * state.book.capitalBudgetPct) / 100;
-  const ordersMax = state.counters.maxActionsPerSession;
+  const ordersToday = state.counters.ordersToday;
+  const ordersMax = state.counters.maxOrdersPerDay;
   const windowStartMs = new Date(session.windowStartAt).getTime();
   const windowEndMs = new Date(session.windowEndAt).getTime();
   const windowSub = !session.isOpen ? "Market closed today" : now.getTime() < windowStartMs ? `Starts in ${formatHoursMinutesUntil(session.windowStartAt, now)} · market closes ${session.closeTimeEt}` : now.getTime() < windowEndMs ? `${formatHoursMinutesUntil(session.windowEndAt, now)} left · market closes ${session.closeTimeEt}` : `Closed for today · market closes ${session.closeTimeEt}`;
   const firstWorking = working[0] ?? null;
   const workingSub = firstWorking ? `${describeOrderLine(firstWorking, firstWorking.limitPrice)} · ${formatAgeInWords(firstWorking.createdAt, now)}${working.length > 1 ? ` · +${working.length - 1} more` : ""}` : "None at IBKR";
 
-  const subline = isPhone && !showKpis ? `${state.ordersToday.sent} of ${ordersMax} orders today · ${working.length} working` : status.subline;
+  const subline = isPhone && !showKpis ? `${ordersToday} of ${ordersMax} orders today · ${working.length} working` : status.subline;
 
   return (
     <>
@@ -404,9 +405,9 @@ export function PlutoStatusCard({ state, status, settings, now, isPhone, showKpi
             <div className="pm-kpi">
               <div className="pm-kpi-l">Orders today</div>
               <div className="pm-kpi-v">
-                {state.ordersToday.sent} <small>of {ordersMax}{isPhone ? "" : " allowed"}</small>
+                {ordersToday} <small>of {ordersMax}{isPhone ? "" : " allowed"}</small>
               </div>
-              <Meter pct={(state.ordersToday.sent / Math.max(1, ordersMax)) * 100} warn={state.ordersToday.sent >= ordersMax} />
+              <Meter pct={(ordersToday / Math.max(1, ordersMax)) * 100} warn={ordersToday >= ordersMax} />
               <div className="pm-kpi-s">
                 {state.ordersToday.filled} filled · {state.ordersToday.working} working{state.ordersToday.blocked > 0 ? ` · ${state.ordersToday.blocked} blocked` : ""}
               </div>

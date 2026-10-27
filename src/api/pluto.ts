@@ -95,7 +95,8 @@ export interface PlutoState extends PlutoStateCore {
   workingOrders: PlutoWorkingOrder[];
   /** The platform's unfilled-order sweep cancels an order resting this long at IBKR (0 = never). */
   unfilledCancelMinutes: number;
-  counters: { actionsToday: number; maxActionsPerSession: number };
+  /** The ladder's orders sent today, as its daily cap across the book counts them, and that cap. */
+  counters: { ordersToday: number; maxOrdersPerDay: number };
   enabledTickers: { count: number; max: number };
   session: PlutoSession;
   /** The newest analysis's pre-model checks: what holds Pluto back between analyses (worker offline, SPY stress…). */
@@ -118,7 +119,6 @@ export type PlutoTelegramVerbosity = "actions" | "off";
 
 export interface PlutoSettings {
   capitalBudgetPct: number;
-  maxActionsPerSession: number;
   windowStartEt: string;
   windowEndEt: string;
   dailyLossBreakerPct: number;

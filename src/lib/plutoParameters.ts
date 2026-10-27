@@ -107,7 +107,6 @@ export const plutoParameterGroups: PlutoParameterGroup[] = [
       { field: "dailyLossBreakerPct", label: "Daily loss breaker", unit: "% of account", kind: "number", step: "0.1", help: "A day down this much versus last night trips a breaker: Pluto stops until a person resets it." },
       { field: "maxQuoteAgeMinutes", label: "Max quote age", unit: "min", kind: "integer", step: "1", help: "A band quote older than this is left out of the ladder's look." },
       { field: "maxFillSlippagePct", label: "Max fill slippage", unit: "%", kind: "number", step: "1", help: "A fill this far past the reference price (below the bid for a sell, above the ask for a buy), as a share of it, trips the fill_slippage breaker." },
-      { field: "maxActionsPerSession", label: "Orders shown as allowed", unit: "orders", kind: "integer", step: "1", help: "The status card counts today's orders against this. The ladder is held by its own daily caps under Ladder safety, not by this." },
     ],
   },
   {
@@ -164,6 +163,7 @@ export const plutoParameterLabelByField: Record<string, string> = {
   maxTickerExposurePct: "Max per ticker (old, % of account)",
   maxSectorExposurePct: "Max per sector (old, % of account)",
   daySignalsPollSeconds: "Ladder quotes poll",
+  maxActionsPerSession: "Max orders per day (retired)",
   executionStrategy: "Active strategy (retired)",
   maxTickerPctOfBudget: "Max per ticker (retired)",
   maxSectorPctOfBudget: "Max per sector (retired)",
