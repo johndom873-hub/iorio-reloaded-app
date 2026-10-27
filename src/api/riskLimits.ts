@@ -1,6 +1,7 @@
 import { apiRequest, apiBaseUrl } from "./client";
 import { openMultiplexedStream } from "./streamMultiplexer";
 import type { StrategyKey } from "./strategy";
+import type { PositionStrategyKey } from "./positions";
 
 /**
  * The one set of trading limits (backend table trading_settings). The three limits that block an order, the
@@ -53,7 +54,7 @@ export interface ConcentrationRow {
 }
 
 export interface StrategyAllocationRow {
-  strategyKey: StrategyKey | "unallocated";
+  strategyKey: PositionStrategyKey | "unallocated";
   notionalValue: string;
 }
 

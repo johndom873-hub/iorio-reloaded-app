@@ -636,6 +636,11 @@ export function formatSignedPnl(amountInDollars: number | null | undefined, deci
   return formatted;
 }
 
+/** Whether an amount shows as $0 at these decimal places (formatCurrency rounds half away from zero): screens leave out what would show at $0. */
+export function showsAsZeroDollars(amountInDollars: number, decimalPlaces = 0): boolean {
+  return Math.abs(amountInDollars) < 0.5 / 10 ** decimalPlaces;
+}
+
 /**
  * A per-share or per-contract transaction price (a fill, an average fill, a limit): two decimals, up to four when the
  * price has them ("1.20", "92.4325"); "$92.4325" with withDollarSign. A string is read as a number (Postgres numerics).

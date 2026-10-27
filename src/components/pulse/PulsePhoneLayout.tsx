@@ -17,6 +17,14 @@ export interface PhoneSystemLed {
   ledClass: string;
 }
 
+/** One slice of the Allocation bar: the desktop tooltip names it by label, the phone legend by shortLabel. */
+export interface PulseAllocationSegment {
+  label: string;
+  shortLabel: string;
+  percent: number;
+  color: string;
+}
+
 export interface PulsePhoneLayoutProps {
   clock: string;
   keepLiveSwitch: ReactNode;
@@ -24,7 +32,8 @@ export interface PulsePhoneLayoutProps {
   attentionPill: ReactNode;
   marketLine: ReactNode;
   kpiTiles: ReactNode;
-  allocation: { ccPct: number; cspPct: number; unstructuredPct: number; hedgePct: number; cashPct: number };
+  /** Only the slices above 0%: one at 0% shows in neither the bar nor the legend. */
+  allocation: PulseAllocationSegment[];
   charts: { pnlSeries: number[]; pnlChart: ReactNode; deltaChart: ReactNode };
   positions: { count: number; totalPnl: number | null; exposurePercent: number | null; head: ReactNode; rows: ReactNode; empty: ReactNode };
   topPremiums: { shownCount: number; tickerCount: number; bestRow: ReactNode; head: ReactNode; rows: ReactNode; empty: ReactNode };
@@ -102,19 +111,15 @@ export function PulsePhoneLayout({
         <div className="phone-alloc-head">
           <span className="kpi-label">Allocation</span>
           <span className="phone-alloc-legend">
-            <AllocationLegendItem color="var(--tblr-blue)" label="CC" percent={allocation.ccPct} />
-            <AllocationLegendItem color="var(--tblr-purple)" label="CSP" percent={allocation.cspPct} />
-            <AllocationLegendItem color="var(--tblr-orange)" label="N/S" percent={allocation.unstructuredPct} />
-            <AllocationLegendItem color="var(--iorio-hedge)" label="HDG" percent={allocation.hedgePct} />
-            <AllocationLegendItem color="var(--border-strong)" label="Cash" percent={allocation.cashPct} />
+            {allocation.map((segment) => (
+              <AllocationLegendItem key={segment.shortLabel} color={segment.color} label={segment.shortLabel} percent={segment.percent} />
+            ))}
           </span>
         </div>
         <div className="alloc-bar">
-          <span className="alloc-seg" style={{ width: `${allocation.ccPct}%`, background: "var(--tblr-blue)" }} />
-          <span className="alloc-seg" style={{ width: `${allocation.cspPct}%`, background: "var(--tblr-purple)" }} />
-          <span className="alloc-seg" style={{ width: `${allocation.unstructuredPct}%`, background: "var(--tblr-orange)" }} />
-          <span className="alloc-seg" style={{ width: `${allocation.hedgePct}%`, background: "var(--iorio-hedge)" }} />
-          <span className="alloc-seg" style={{ width: `${allocation.cashPct}%`, background: "var(--border-strong)" }} />
+          {allocation.map((segment) => (
+            <span key={segment.shortLabel} className="alloc-seg" style={{ width: `${segment.percent}%`, background: segment.color }} />
+          ))}
         </div>
       </div>
 

@@ -357,7 +357,7 @@ export function ClosePositionModal({ position, onClose, onClosed }: ClosePositio
                   <div className="d-flex justify-content-between align-items-center border rounded p-2 mb-3">
                     <DottedLabelTooltip
                       label="Wheel cycle P&L"
-                      tooltipHtml={`Live profit and loss of ${position.symbol}'s whole wheel cycle (every put, call, share and hedge since it began), with shares and open options marked at live prices. Covers the entire ticker, not only this position.`}
+                      tooltipHtml={`Live profit and loss of ${position.symbol}'s whole wheel cycle (every put, call, share, hedge and LEAPS since it began), with shares and open options marked at live prices. Covers the entire ticker, not only this position.`}
                     />
                     {liveState?.cycleTotal != null ? (
                       <span className={`fw-bold font-mono ${pnlTextClass(liveState.cycleTotal)}`}>{formatSignedPnl(liveState.cycleTotal)}</span>

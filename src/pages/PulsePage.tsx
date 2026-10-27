@@ -48,7 +48,7 @@ import { AVAILABLE_CASH_PERCENT_BANDS, higherIsWorseStatus, lowerIsWorseStatus, 
 import { TopologyMap, type PulseEvent } from "../components/pulse/TopologyMap";
 import { nodeIdsForActiveEdges } from "../components/pulse/pulseEdges";
 import { formatOrderLegsSummary, orderAwaitsFillPrices, type LatestEventsOrder } from "../components/pulse/latestEventsOrders";
-import { PulsePhoneLayout, type PhoneSystemLed } from "../components/pulse/PulsePhoneLayout";
+import { PulsePhoneLayout, type PhoneSystemLed, type PulseAllocationSegment } from "../components/pulse/PulsePhoneLayout";
 import { useMediaQuery } from "../hooks/useMediaQuery";
 import { ResizableRail } from "../components/pulse/ResizableRail";
 import { ResizableColumns } from "../components/pulse/ResizableColumns";
@@ -106,7 +106,7 @@ const GATEWAY_HEALTHY_UPTIME_MS = 30 * 60_000;
 // Each poll also keeps the market quote loop quoting the Calls behind it (a 2-minute lease on the server).
 const topPremiumsRefreshIntervalMs = 30_000;
 
-const strategyBadgeModifier: Record<string, string> = { covered_call: "cc", cash_secured_put: "csp", hedge: "hedge", unstructured: "ns" };
+const strategyBadgeModifier: Record<string, string> = { covered_call: "cc", cash_secured_put: "csp", hedge: "hedge", leaps: "leaps", unstructured: "ns" };
 
 // Latest Events' own terse status wording (distinct from
 // orderRequestStatusLabel's fuller labels used in OrderReviewPanel/Trade
@@ -435,13 +435,16 @@ export function PulsePage() {
   // own entry. Don't "fix" them to agree.
   const yesterdaysPnl = summary?.periods.day !== null && summary?.periods.day !== undefined ? Number(summary.periods.day) : null;
 
-  // Same basis as the Dashboard's Allocation bar and tiles: the four strategies and Available Cash over their total.
+  // Same basis as the Dashboard's Allocation bar and tiles: the five strategies and Available Cash over their total.
   const allocationPercents = exposure ? allocationBarPercents(portfolioFromExposure(exposure)) : null;
-  const ccPct = allocationPercents?.coveredCalls ?? 0;
-  const cspPct = allocationPercents?.cashSecuredPuts ?? 0;
-  const unstructuredPct = allocationPercents?.unstructured ?? 0;
-  const hedgePct = allocationPercents?.hedge ?? 0;
-  const cashPct = allocationPercents?.availableCash ?? 0;
+  const allocationSegments: PulseAllocationSegment[] = [
+    { label: "Covered Calls", shortLabel: "CC", percent: allocationPercents?.coveredCalls ?? 0, color: "var(--tblr-blue)" },
+    { label: "Cash-Secured Puts", shortLabel: "CSP", percent: allocationPercents?.cashSecuredPuts ?? 0, color: "var(--tblr-purple)" },
+    { label: "No strategy", shortLabel: "N/S", percent: allocationPercents?.unstructured ?? 0, color: "var(--tblr-orange)" },
+    { label: "Hedge", shortLabel: "HDG", percent: allocationPercents?.hedge ?? 0, color: "var(--iorio-hedge)" },
+    { label: "LEAPS", shortLabel: "LEAPS", percent: allocationPercents?.leaps ?? 0, color: "var(--iorio-leaps)" },
+    { label: "Cash", shortLabel: "Cash", percent: allocationPercents?.availableCash ?? 0, color: "var(--border-strong)" },
+  ].filter((segment) => segment.percent > 0);
 
   // --- Positions: same fetch + live SSE idiom as PositionsPage.tsx. ---
   const [positions, setPositions] = useState<Position[]>([]);
@@ -1342,7 +1345,7 @@ export function PulsePage() {
             </span>
           }
           kpiTiles={kpiValueTiles}
-          allocation={{ ccPct, cspPct, unstructuredPct, hedgePct, cashPct }}
+          allocation={allocationSegments}
           charts={{ pnlSeries, pnlChart: pnlChartPanel, deltaChart: deltaChartPanel }}
           positions={{
             count: positions.length,
@@ -1434,15 +1437,14 @@ export function PulsePage() {
         <div className="kpi-tile">
           <span className="kpi-label">Allocation</span>
           <div className="alloc-bar">
-            <span className="alloc-seg" style={{ width: `${ccPct}%`, background: "var(--tblr-blue)" }} data-label={`Covered Calls — ${ccPct.toFixed(0)}%`} />
-            <span className="alloc-seg" style={{ width: `${cspPct}%`, background: "var(--tblr-purple)" }} data-label={`Cash-Secured Puts — ${cspPct.toFixed(0)}%`} />
-            <span
-              className="alloc-seg"
-              style={{ width: `${unstructuredPct}%`, background: "var(--tblr-orange)" }}
-              data-label={`No strategy — ${unstructuredPct.toFixed(0)}%`}
-            />
-            <span className="alloc-seg" style={{ width: `${hedgePct}%`, background: "var(--iorio-hedge)" }} data-label={`Hedge — ${hedgePct.toFixed(0)}%`} />
-            <span className="alloc-seg" style={{ width: `${cashPct}%`, background: "var(--border-strong)" }} data-label={`Cash — ${cashPct.toFixed(0)}%`} />
+            {allocationSegments.map((segment) => (
+              <span
+                key={segment.label}
+                className="alloc-seg"
+                style={{ width: `${segment.percent}%`, background: segment.color }}
+                data-label={`${segment.label} — ${segment.percent.toFixed(0)}%`}
+              />
+            ))}
           </div>
         </div>
       </div>

@@ -15,13 +15,14 @@ export function portfolioFromExposure(exposure: ExposureData): Portfolio {
     cashSecuredPuts: valueFor("cash_secured_put"),
     unstructured: valueFor("unstructured"),
     hedge: valueFor("hedge"),
+    leaps: valueFor("leaps"),
     availableCash: exposure.availableCash,
   };
 }
 
 /**
  * The Allocation bar's slice widths (Dashboard and Pulse), in %: each of the
- * five Portfolio values over their total (approved 2026-10-21), so the bar
+ * six Portfolio values over their total (approved 2026-10-21), so the bar
  * always matches the tiles under it. A negative value (cash on margin) draws
  * no slice and is left out of the total; unknown cash counts as 0. All zero
  * when nothing is positive.
@@ -32,6 +33,7 @@ export function allocationBarPercents(portfolio: Portfolio): Record<keyof Portfo
     cashSecuredPuts: Math.max(0, portfolio.cashSecuredPuts),
     unstructured: Math.max(0, portfolio.unstructured),
     hedge: Math.max(0, portfolio.hedge),
+    leaps: Math.max(0, portfolio.leaps),
     availableCash: Math.max(0, portfolio.availableCash ?? 0),
   };
   const total = Object.values(drawnValues).reduce((sum, value) => sum + value, 0);
@@ -41,6 +43,7 @@ export function allocationBarPercents(portfolio: Portfolio): Record<keyof Portfo
     cashSecuredPuts: percentOf(drawnValues.cashSecuredPuts),
     unstructured: percentOf(drawnValues.unstructured),
     hedge: percentOf(drawnValues.hedge),
+    leaps: percentOf(drawnValues.leaps),
     availableCash: percentOf(drawnValues.availableCash),
   };
 }

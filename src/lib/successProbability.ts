@@ -6,7 +6,7 @@
 //   short call (covered call):    success = assigned,     P(Δ) = |Δ|
 //   short put (cash-secured put): success = not assigned, P(Δ) = 1 - |Δ|
 //
-// Only a short option leg has a success probability; a long leg (e.g. the TLT hedge) or a non-option leg is null.
+// Only a short option leg has a success probability; a long leg (e.g. the TLT LEAPS) or a non-option leg is null.
 
 export const SUCCESS_PROBABILITY_HEADER = "P(Δ)";
 

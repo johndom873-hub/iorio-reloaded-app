@@ -50,6 +50,16 @@
   color: #fff !important;
 }
 
+/* LEAPS strategy colour: gold with dark text (10.6:1), the same in both themes. */
+:root {
+  --iorio-leaps: #ffd43b;
+  --iorio-leaps-fg: #1d2733;
+}
+.badge.bg-leaps {
+  background-color: var(--iorio-leaps) !important;
+  color: var(--iorio-leaps-fg) !important;
+}
+
 /* Text selection: Tabler's 10% primary tint is near-invisible (1.07:1 on dark inputs, 1.16:1 on white). Light uses
    the accessible blue at 25% (≈ the macOS highlight, 1.46:1 on white); dark uses the brand sky blue at 45%
    (≈2:1 on every dark surface, white text on it 5.8:1+). Text keeps its own colour. */

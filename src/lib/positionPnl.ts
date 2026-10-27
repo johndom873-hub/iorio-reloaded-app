@@ -56,22 +56,31 @@ export function strategyAbbrev(strategyKey: PositionStrategyKey): string {
 export function strategyTooltip(strategyKey: PositionStrategyKey): string {
   if (strategyKey === "covered_call") return "Covered Call";
   if (strategyKey === "cash_secured_put") return "Cash-Secured Put";
-  if (strategyKey === "hedge") return "Hedge — a long option held to offset the risk of the other positions";
+  if (strategyKey === "hedge") return "Hedge — a long Put held to protect the other positions";
   if (strategyKey === "leaps") return "LEAPS — a long Call";
   return "No strategy (N/S) — a position that doesn't pair into a covered call or cash-secured put; needs review";
 }
 
 // THE strategy palette (the Strategy scoreboard's, standardized 2026-09-20):
-// CC blue, CSP purple, N/S orange, hedge dark cyan (--iorio-hedge, theme.css) — solid colours. Every place a
+// CC blue, CSP purple, N/S orange, hedge dark cyan (--iorio-hedge, theme.css), LEAPS gold (--iorio-leaps) — solid colours. Every place a
 // strategy is shown as a coloured badge, chart series or bar segment uses
 // these so a colour always means the same strategy; see StrategyBadge.tsx
 // and strategyColors.ts.
 export function strategyBadgeClass(strategyKey: PositionStrategyKey): string {
   if (strategyKey === "covered_call") return "bg-blue text-white";
   if (strategyKey === "cash_secured_put") return "bg-purple text-white";
-  // A LEAPS wears the hedge's colour until its own is designed.
-  if (strategyKey === "hedge" || strategyKey === "leaps") return "bg-hedge";
+  if (strategyKey === "hedge") return "bg-hedge";
+  if (strategyKey === "leaps") return "bg-leaps";
   return "bg-orange text-orange-fg";
+}
+
+/** The same palette as the CSS variable holding each colour, for chart series ("--tblr-blue"). */
+export function strategyColorVariable(strategyKey: PositionStrategyKey): string {
+  if (strategyKey === "covered_call") return "--tblr-blue";
+  if (strategyKey === "cash_secured_put") return "--tblr-purple";
+  if (strategyKey === "hedge") return "--iorio-hedge";
+  if (strategyKey === "leaps") return "--iorio-leaps";
+  return "--tblr-orange";
 }
 
 // Whether Stock P&L is meaningful to show for this position — not just

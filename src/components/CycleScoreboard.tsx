@@ -3,12 +3,12 @@ import { CollapsibleCard } from "./CollapsibleCard";
 import { CycleBucketBadge } from "./CycleBucketBadge";
 import { Spinner } from "./Spinner";
 import { fetchCycleScoreboard, type CycleBucketKey, type CycleScoreboard as CycleScoreboardData } from "../api/positions";
-import { formatSignedPnl, pnlTextClass } from "../lib/formatters";
+import { formatSignedPnl, pnlTextClass, showsAsZeroDollars } from "../lib/formatters";
 import { TooltipSpan } from "./TooltipSpan";
 
-const bucketOrder: CycleBucketKey[] = ["csp", "unstructured", "cc", "hedge"];
+const bucketOrder: CycleBucketKey[] = ["csp", "unstructured", "cc", "hedge", "leaps"];
 
-// Fair strategy scoreboard (approved 2026-09-19): every wheel cycle attributed to CSP / Unstructured / CC / Hedge. The
+// Fair strategy scoreboard (approved 2026-09-19): every wheel cycle attributed to CSP / Unstructured / CC / Hedge / LEAPS, a strategy at $0 left out. The
 // "Premium only" column is the old view where a put looks like free money; the fair view charges it for the
 // assignment (assignment-day close vs strike) and gives each strategy only what happened while it held the shares.
 export function CycleScoreboard() {
@@ -47,6 +47,7 @@ export function CycleScoreboard() {
               <tbody>
                 {bucketOrder.map((bucket) => {
                   const row = data.buckets[bucket];
+                  if ([row.premium, row.stock, row.total].every((amount) => showsAsZeroDollars(amount, 2))) return null;
                   return (
                     <tr key={bucket}>
                       <td><CycleBucketBadge bucket={bucket} /></td>
@@ -60,7 +61,7 @@ export function CycleScoreboard() {
               <tfoot className="table-totals-row">
                 <tr>
                   <td>Total</td>
-                  <td className="text-end font-mono">{formatSignedPnl(data.buckets.csp.premium + data.buckets.cc.premium + data.buckets.hedge.premium)}</td>
+                  <td className="text-end font-mono">{formatSignedPnl(data.buckets.csp.premium + data.buckets.cc.premium + data.buckets.hedge.premium + data.buckets.leaps.premium)}</td>
                   <td className={`text-end font-mono ${pnlTextClass(data.buckets.csp.stock + data.buckets.unstructured.stock + data.buckets.cc.stock)}`}>
                     {formatSignedPnl(data.buckets.csp.stock + data.buckets.unstructured.stock + data.buckets.cc.stock)}
                   </td>

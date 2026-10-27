@@ -626,7 +626,7 @@
 .iorio-pulse-page .pos-head,
 .iorio-pulse-page .pos-row {
   display: grid;
-  grid-template-columns: 2.3rem 2.0rem 1.1rem 3rem 2.2rem 1.2rem 1fr;
+  grid-template-columns: 2.3rem 2.75rem 1.1rem 3rem 2.2rem 1.2rem 1fr;
   column-gap: 0.3rem;
   align-items: center;
 }
@@ -671,6 +671,10 @@
 .iorio-pulse-page .strat-badge.hedge {
   background: var(--iorio-hedge);
   color: #fff;
+}
+.iorio-pulse-page .strat-badge.leaps {
+  background: var(--iorio-leaps);
+  color: var(--iorio-leaps-fg);
 }
 .iorio-pulse-page .strat-badge.ns {
   background: var(--tblr-orange);
@@ -1522,7 +1526,7 @@
 /* Table rows: 26px positions/signals, 24px trades/events, 12px text */
 .iorio-pulse-page.pulse-phone .pos-head,
 .iorio-pulse-page.pulse-phone .pos-row {
-  grid-template-columns: 46px 34px 28px 54px 42px 34px 1fr;
+  grid-template-columns: 46px 44px 28px 54px 42px 34px 1fr;
 }
 .iorio-pulse-page.pulse-phone .yield-head,
 .iorio-pulse-page.pulse-phone .yield-row {

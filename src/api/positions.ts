@@ -43,7 +43,7 @@ export interface PositionLeg {
 // reconcilePositionsFromIbkr and PROGRESS.md's "IBKR is the source of
 // truth" decision, 2026-08-24.
 //
-// "hedge" is a long option bought outside the app (e.g. the long TLT call that hedges the cash-secured puts).
+// "hedge" is a long Put bought outside the app to protect the other positions, "leaps" a long Call (e.g. the TLT one).
 export type PositionStrategyKey = StrategyKey | "unstructured" | "hedge" | "leaps";
 
 export interface Position {

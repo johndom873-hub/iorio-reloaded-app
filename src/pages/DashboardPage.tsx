@@ -41,9 +41,10 @@ import {
   formatSignedPnl,
   formatUtcClockTimeInBrowserTime,
   pnlTextClass,
+  showsAsZeroDollars,
 } from "../lib/formatters";
 import { allocationBarPercents, portfolioFromExposure } from "../lib/portfolioFromExposure";
-import { describeShareHandOverPositions, positionCloseReasonLabel } from "../lib/positionPnl";
+import { describeShareHandOverPositions, positionCloseReasonLabel, strategyColorVariable } from "../lib/positionPnl";
 import { useRefreshAfterTickerModal, useTickerModal } from "../hooks/useTickerModal";
 import { TooltipSpan } from "../components/TooltipSpan";
 import { PerformanceCard } from "../components/PerformanceCard";
@@ -55,6 +56,7 @@ const strategyLabels: Record<string, string> = {
   cash_secured_put: "Cash-Secured Puts",
   unstructured: "No strategy",
   hedge: "Hedges",
+  leaps: "LEAPS",
   unallocated: "Unallocated (cash)",
 };
 
@@ -91,6 +93,10 @@ interface AllocationListProps {
     isUnallocated?: boolean;
     tickerSymbol?: string;
     focusPositionId?: string;
+    /** A fixed colour (By Strategy: the strategy's own) in place of the next categorical one. */
+    color?: string;
+    /** The slice label's colour on that fixed colour; white when unset. */
+    labelColor?: string;
   }[];
   // Overrides the donut's center label — e.g. "Top 5" for a truncated
   // list, so its total doesn't read as "the full account total" when it
@@ -110,14 +116,15 @@ function tablerColor(variableName: string): string {
 }
 
 // Assigns the fixed-order categorical palette to each real row (skipping
-// "Unallocated", which always gets the neutral gray) — computed once and
+// "Unallocated", which always gets the neutral gray, and a row with its own
+// colour) — computed once and
 // shared between the donut's slices and the list's swatches below it, so
 // identity is never color-alone: every slice has a same-colored dot next
 // to its label and $ value.
 function allocationColors(rows: AllocationListProps["rows"], theme: "light" | "dark"): string[] {
   const categorical = categoricalByTheme[theme];
   let nextSlot = 0;
-  return rows.map((row) => (row.isUnallocated ? unallocatedGrayByTheme[theme] : categorical[nextSlot++ % categorical.length]));
+  return rows.map((row) => row.color ?? (row.isUnallocated ? unallocatedGrayByTheme[theme] : categorical[nextSlot++ % categorical.length]));
 }
 
 function AllocationDonut({
@@ -144,7 +151,11 @@ function AllocationDonut({
         // val is the slice's share of THIS donut's own series sum -- the same
         // basis as the wedge angles themselves, so labels always add up to
         // 100% (matches the legend rows below, which use the same basis).
-        dataLabels: { enabled: rows.length <= 6, formatter: (val: number) => formatPercentageValue(val, 0) },
+        dataLabels: {
+          enabled: rows.length <= 6,
+          formatter: (val: number) => formatPercentageValue(val, 0),
+          style: { colors: rows.map((row) => row.labelColor ?? "#fff") },
+        },
         legend: { show: false }, // the list below doubles as the legend (label + swatch)
         tooltip: { y: { formatter: (val: number) => formatCurrency(val, 0) } },
         plotOptions: {
@@ -287,6 +298,7 @@ const ALLOCATION_COLORS = {
   cashSecuredPuts: "var(--tblr-purple)",
   unstructured: "var(--tblr-orange)",
   hedge: "var(--iorio-hedge)",
+  leaps: "var(--iorio-leaps)",
   cash: "var(--tblr-gray-500)",
 } as const;
 
@@ -298,10 +310,10 @@ const periodColumns: { key: keyof StrategyPeriodPnlRow; label: string }[] = [
 ];
 
 // Footnote for the Residual row on both P&L cards. Residual = the account's own P&L (change in net liquidation value)
-// minus the four strategy rows, so it is a plug: it holds whatever the strategy cycles don't attribute. Interest and
+// minus the strategy rows, so it is a plug: it holds whatever the strategy cycles don't attribute. Interest and
 // dividends are deliberately not named: Flex shows none on this paper account (see PROGRESS.md, 2026-09-11 / 2026-09-21).
 const residualTooltipHtml =
-  "<strong>Residual</strong> = account P&amp;L (change in net liquidation value) minus the four strategy rows." +
+  "<strong>Residual</strong> = account P&amp;L (change in net liquidation value) minus the strategy rows." +
   "<br/><br/>It holds what the strategy cycles don't attribute: commissions (cycles are gross) and timing differences " +
   "between IBKR's account value and this platform's price marks, which are captured at slightly different moments." +
   "<br/><br/>Positions open at the start of a period with no stored option mark are also left out of that period's strategy rows, " +
@@ -660,17 +672,42 @@ export function DashboardPage() {
   const totalUnrealizedPnlPercent =
     totalUnrealizedPnl !== null && accountValueBeforeUnrealizedPnl ? (totalUnrealizedPnl / accountValueBeforeUnrealizedPnl) * 100 : null;
 
-  // Same basis as Pulse's Allocation bar: the five tiles below over their total (allocationBarPercents).
+  // Same basis as Pulse's Allocation bar: the tiles below over their total (allocationBarPercents). One list for the
+  // bar and the tiles, so they keep one order; anything at $0 shows in neither.
   const allocationPercents = portfolio ? allocationBarPercents(portfolio) : null;
-  const allocationSegments = [
-    { label: "Covered Calls", percent: allocationPercents?.coveredCalls ?? 0, color: ALLOCATION_COLORS.coveredCalls },
-    { label: "Cash-Secured Puts", percent: allocationPercents?.cashSecuredPuts ?? 0, color: ALLOCATION_COLORS.cashSecuredPuts },
-    { label: "No strategy", percent: allocationPercents?.unstructured ?? 0, color: ALLOCATION_COLORS.unstructured },
-    { label: "Hedges", percent: allocationPercents?.hedge ?? 0, color: ALLOCATION_COLORS.hedge },
-    { label: "Cash", percent: allocationPercents?.availableCash ?? 0, color: ALLOCATION_COLORS.cash },
-  ];
+  const allocationItems = [
+    { label: "Covered Calls", value: portfolio?.coveredCalls ?? null, percent: allocationPercents?.coveredCalls ?? 0, color: ALLOCATION_COLORS.coveredCalls },
+    { label: "Cash-Secured Puts", value: portfolio?.cashSecuredPuts ?? null, percent: allocationPercents?.cashSecuredPuts ?? 0, color: ALLOCATION_COLORS.cashSecuredPuts },
+    { label: "No strategy", value: portfolio?.unstructured ?? null, percent: allocationPercents?.unstructured ?? 0, color: ALLOCATION_COLORS.unstructured },
+    { label: "Hedges", value: portfolio?.hedge ?? null, percent: allocationPercents?.hedge ?? 0, color: ALLOCATION_COLORS.hedge },
+    { label: "LEAPS", value: portfolio?.leaps ?? null, percent: allocationPercents?.leaps ?? 0, color: ALLOCATION_COLORS.leaps },
+    { label: "Cash", tileLabel: "Available Cash", value: portfolio?.availableCash ?? null, percent: allocationPercents?.availableCash ?? 0, color: ALLOCATION_COLORS.cash },
+  ].filter((item) => item.value === null || !showsAsZeroDollars(item.value));
 
   const sectorRows = (exposure?.concentrationBySector ?? []).filter((row: ConcentrationRow) => row.sector !== "Unallocated");
+
+  // P&L Over Time: a series per strategy in the strategy palette, then the Residual; a strategy at $0 every day is left out.
+  const historyStrategySeries: { strategyKey: PositionStrategyKey; name: string; valueOf: (point: PnlHistoryPoint) => number }[] = [
+    { strategyKey: "covered_call", name: "Covered Calls", valueOf: (point) => point.coveredCalls },
+    { strategyKey: "cash_secured_put", name: "Cash-Secured Puts", valueOf: (point) => point.cashSecuredPuts },
+    { strategyKey: "unstructured", name: "No strategy", valueOf: (point) => point.unstructured },
+    { strategyKey: "hedge", name: "Hedges", valueOf: (point) => point.hedge },
+    { strategyKey: "leaps", name: "LEAPS", valueOf: (point) => point.leaps },
+  ];
+  const historySeries = [
+    ...historyStrategySeries
+      .filter((series) => history.some((point) => !showsAsZeroDollars(series.valueOf(point))))
+      .map((series) => ({
+        name: series.name,
+        color: tablerColor(strategyColorVariable(series.strategyKey)),
+        data: history.map((point) => ({ x: point.snapshotDate, y: series.valueOf(point) })),
+      })),
+    {
+      name: "Residual",
+      color: tablerColor("--tblr-secondary"),
+      data: history.map((point) => ({ x: point.snapshotDate, y: point.residual === null ? null : point.residual })),
+    },
+  ];
 
   return (
     <>
@@ -731,22 +768,21 @@ export function DashboardPage() {
         {!portfolioError && !portfolioLoading && (
           <>
             <div className="allocation-bar mt-2 mb-3">
-              {allocationSegments.map((segment) => (
-                <span
-                  key={segment.label}
-                  className="allocation-seg"
-                  style={{ width: `${segment.percent}%`, background: segment.color }}
-                  data-label={`${segment.label} — ${segment.percent.toFixed(0)}%`}
-                />
-              ))}
+              {allocationItems
+                .filter((item) => item.percent > 0)
+                .map((item) => (
+                  <span
+                    key={item.label}
+                    className="allocation-seg"
+                    style={{ width: `${item.percent}%`, background: item.color }}
+                    data-label={`${item.label} — ${item.percent.toFixed(0)}%`}
+                  />
+                ))}
             </div>
-            {/* Keep this order identical to allocationSegments (the bar above). */}
             <div className="row g-3">
-              <PortfolioTile label="Covered Calls" value={portfolio?.coveredCalls ?? null} swatchColor={ALLOCATION_COLORS.coveredCalls} />
-              <PortfolioTile label="Cash-Secured Puts" value={portfolio?.cashSecuredPuts ?? null} swatchColor={ALLOCATION_COLORS.cashSecuredPuts} />
-              <PortfolioTile label="No strategy" value={portfolio?.unstructured ?? null} swatchColor={ALLOCATION_COLORS.unstructured} />
-              <PortfolioTile label="Hedges" value={portfolio?.hedge ?? null} swatchColor={ALLOCATION_COLORS.hedge} />
-              <PortfolioTile label="Available Cash" value={portfolio?.availableCash ?? null} swatchColor={ALLOCATION_COLORS.cash} />
+              {allocationItems.map((item) => (
+                <PortfolioTile key={item.label} label={item.tileLabel ?? item.label} value={item.value} swatchColor={item.color} />
+              ))}
             </div>
           </>
         )}
@@ -898,10 +934,19 @@ export function DashboardPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    <PeriodPnlRow label={<StrategyBadge strategyKey="covered_call" />} row={periodPnl.coveredCalls} />
-                    <PeriodPnlRow label={<StrategyBadge strategyKey="cash_secured_put" />} row={periodPnl.cashSecuredPuts} />
-                    <PeriodPnlRow label={<StrategyBadge strategyKey="unstructured" />} row={periodPnl.unstructured} />
-                    <PeriodPnlRow label={<StrategyBadge strategyKey="hedge" />} row={periodPnl.hedge} />
+                    {(
+                      [
+                        ["covered_call", periodPnl.coveredCalls],
+                        ["cash_secured_put", periodPnl.cashSecuredPuts],
+                        ["unstructured", periodPnl.unstructured],
+                        ["hedge", periodPnl.hedge],
+                        ["leaps", periodPnl.leaps],
+                      ] as const
+                    )
+                      .filter(([, row]) => periodColumns.some((column) => !showsAsZeroDollars(row[column.key])))
+                      .map(([strategyKey, row]) => (
+                        <PeriodPnlRow key={strategyKey} label={<StrategyBadge strategyKey={strategyKey} />} row={row} />
+                      ))}
                     <PeriodPnlRow label={<DottedLabelTooltip label="Residual" tooltipHtml={residualTooltipHtml} />} row={periodPnl.residual} />
                     <PeriodPnlRow label="Total" row={periodPnl.total} bold />
                   </tbody>
@@ -918,11 +963,9 @@ export function DashboardPage() {
               <div className="text-secondary">No data yet.</div>
             ) : (
               (() => {
-                // Fixed rows (matching P&L by Period's convention) rather
-                // than only rendering whatever strategy_key happens to have
-                // a row today — Unstructured otherwise disappears from this
-                // table entirely whenever no unstructured position is open.
-                const knownRows = (["covered_call", "cash_secured_put", "unstructured", "hedge"] as const).map((strategyKey) => {
+                // Every known strategy, missing ones at $0, so the Residual
+                // subtracts them all; a row at $0 is then left out (as in P&L by Period).
+                const knownRows = (["covered_call", "cash_secured_put", "unstructured", "hedge", "leaps"] as const).map((strategyKey) => {
                   const found = summary.strategyBreakdown.find((row) => row.strategyKey === strategyKey);
                   return {
                     strategyKey,
@@ -946,7 +989,9 @@ export function DashboardPage() {
                         </tr>
                       </thead>
                       <tbody>
-                        {knownRows.map((row) => (
+                        {knownRows
+                          .filter((row) => !showsAsZeroDollars(row.realizedPnl) || !showsAsZeroDollars(row.unrealizedPnl))
+                          .map((row) => (
                           <tr key={row.strategyKey}>
                             <td><StrategyBadge strategyKey={row.strategyKey} /></td>
                             <td className={`text-end font-mono ${pnlTextClass(row.realizedPnl)}`}>{formatSignedPnl(row.realizedPnl, 0)}</td>
@@ -995,12 +1040,16 @@ export function DashboardPage() {
                 title="By Strategy"
                 emptyMessage="No open positions yet."
                 totalAccountValue={exposure?.totalAccountValue ?? null}
-                rows={(exposure?.strategyAllocation ?? []).map((row: StrategyAllocationRow) => ({
-                  key: row.strategyKey,
-                  label: strategyLabels[row.strategyKey] ?? row.strategyKey,
-                  notionalValue: row.notionalValue,
-                  isUnallocated: row.strategyKey === "unallocated",
-                }))}
+                rows={(exposure?.strategyAllocation ?? [])
+                  .filter((row: StrategyAllocationRow) => !showsAsZeroDollars(Number(row.notionalValue)))
+                  .map((row: StrategyAllocationRow) => ({
+                    key: row.strategyKey,
+                    label: strategyLabels[row.strategyKey] ?? row.strategyKey,
+                    notionalValue: row.notionalValue,
+                    isUnallocated: row.strategyKey === "unallocated",
+                    ...(row.strategyKey === "unallocated" ? {} : { color: tablerColor(strategyColorVariable(row.strategyKey)) }),
+                    ...(row.strategyKey === "leaps" ? { labelColor: tablerColor("--iorio-leaps-fg") } : {}),
+                  }))}
               />
               <AllocationList
                 title="Top Positions"
@@ -1058,16 +1107,7 @@ export function DashboardPage() {
           <ApexChart
             type="bar"
             height={260}
-            series={[
-              { name: "Covered Calls", data: history.map((point) => ({ x: point.snapshotDate, y: point.coveredCalls })) },
-              { name: "Cash-Secured Puts", data: history.map((point) => ({ x: point.snapshotDate, y: point.cashSecuredPuts })) },
-              { name: "No strategy", data: history.map((point) => ({ x: point.snapshotDate, y: point.unstructured })) },
-              { name: "Hedges", data: history.map((point) => ({ x: point.snapshotDate, y: point.hedge })) },
-              {
-                name: "Residual",
-                data: history.map((point) => ({ x: point.snapshotDate, y: point.residual === null ? null : point.residual })),
-              },
-            ]}
+            series={historySeries.map(({ name, data }) => ({ name, data }))}
             options={{
               // Stacked columns rather than stacked areas: ApexCharts stacks positives up and negatives down
               // for bars, but sums mixed-sign area series cumulatively, so the bands cross each other.
@@ -1076,7 +1116,7 @@ export function DashboardPage() {
               annotations: { yaxis: [{ y: 0, borderColor: textColorByTheme[theme], borderWidth: 1.5, strokeDashArray: 0 }] },
               plotOptions: { bar: { columnWidth: "70%" } },
               fill: { opacity: 1 }, // ApexCharts' bar default is 0.85, which lets the dark card show through and mutes the colours
-              colors: [tablerColor("--tblr-blue"), tablerColor("--tblr-purple"), tablerColor("--tblr-orange"), tablerColor("--iorio-hedge"), tablerColor("--tblr-secondary")],
+              colors: historySeries.map((series) => series.color),
               xaxis: {
                 type: "datetime",
                 tickAmount: Math.min(history.length - 1, 7),
