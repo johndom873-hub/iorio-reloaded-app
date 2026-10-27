@@ -42,8 +42,6 @@ interface SettingsFormState {
   deltaTargetMax: string;
   recoveryDteMin: string;
   recoveryDteMax: string;
-  /** Not on the screen since Signals was retired: the save sends the stored value back until the API drops the field. */
-  minAnnualizedYieldPct: string;
   commissionWarnSharePctOfPremium: string;
   priceCheckMaxDeviationPct: string;
   priceCheckMinToleranceDollars: string;
@@ -60,7 +58,6 @@ function toFormState(settings: TradingSettings): SettingsFormState {
     deltaTargetMax: formatInputNumber(settings.deltaTargetMax),
     recoveryDteMin: formatInputNumber(settings.recoveryDteMin, 0),
     recoveryDteMax: formatInputNumber(settings.recoveryDteMax, 0),
-    minAnnualizedYieldPct: formatInputNumber(settings.minAnnualizedYieldPct),
     commissionWarnSharePctOfPremium: formatInputNumber(settings.commissionWarnSharePctOfPremium),
     priceCheckMaxDeviationPct: formatInputNumber(settings.priceCheckMaxDeviationPct),
     priceCheckMinToleranceDollars: formatInputNumber(settings.priceCheckMinToleranceDollars),
@@ -77,7 +74,6 @@ const fieldLabels: Record<keyof SettingsFormState, string> = {
   deltaTargetMax: "Delta max",
   recoveryDteMin: "Expiry window min",
   recoveryDteMax: "Expiry window max",
-  minAnnualizedYieldPct: "Min annualised yield %",
   commissionWarnSharePctOfPremium: "Commission warning %",
   priceCheckMaxDeviationPct: "Max distance from the live mid %",
   priceCheckMinToleranceDollars: "Minimum allowance $",
@@ -100,7 +96,6 @@ function toUpdateInput(form: SettingsFormState): TradingSettingsInput {
     deltaTargetMax: Number(form.deltaTargetMax),
     recoveryDteMin: Number(form.recoveryDteMin),
     recoveryDteMax: Number(form.recoveryDteMax),
-    minAnnualizedYieldPct: Number(form.minAnnualizedYieldPct),
     commissionWarnSharePctOfPremium: Number(form.commissionWarnSharePctOfPremium),
     priceCheckMaxDeviationPct: Number(form.priceCheckMaxDeviationPct),
     priceCheckMinToleranceDollars: Number(form.priceCheckMinToleranceDollars),
@@ -466,7 +461,8 @@ function CapitalSplitBlocks() {
   );
 }
 
-const historyFieldLabels: Record<string, string> = { ...fieldLabels, tradingHalt: "Trading halt" };
+// A retired field still named in older history rows.
+const historyFieldLabels: Record<string, string> = { ...fieldLabels, tradingHalt: "Trading halt", minAnnualizedYieldPct: "Min annualised yield % (retired)" };
 
 /** A stored history value as the page words it: the halt's "on"/"off" capitalised, numbers as stored. */
 function printHistoryValue(field: string, value: string | null): string {

@@ -16,7 +16,6 @@ export interface TradingSettings {
   deltaTargetMax: number;
   recoveryDteMin: number;
   recoveryDteMax: number;
-  minAnnualizedYieldPct: number;
   commissionWarnSharePctOfPremium: number;
   priceCheckMaxDeviationPct: number;
   priceCheckMinToleranceDollars: number;
