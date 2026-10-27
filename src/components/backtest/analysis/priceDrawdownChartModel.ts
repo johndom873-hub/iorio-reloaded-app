@@ -1,14 +1,14 @@
 import { useEffect, useMemo, useRef, useState, type HTMLAttributes, type RefObject } from "react";
 import type { ApexAxisChartSeries, ApexOptions } from "apexcharts";
-import type { AnalysisBacktestFigures, AnalysisBarIndicators, AnalysisFigures, AnalysisMaxDrawdown, AnalysisPriceRange } from "../../../api/backtestAnalysis";
+import type { AnalysisBacktestFigures, AnalysisBarIndicators, AnalysisFigures, AnalysisMaxDrawdown, AnalysisPriceRange, SessionLeapsEvent } from "../../../api/backtestAnalysis";
 import { analysisChartColors, analysisLadderPutBlockText, maxDrawdownOfBars } from "../../../lib/analysisPresentation";
 import { describeSplitRatio } from "../../../lib/backtestPresentation";
 import { daysToExpiry, formatAxisDollars, formatCurrency, formatDayMonthYear, formatNumber, formatOptionContractLabel, formatOrderSize, formatPercentage } from "../../../lib/formatters";
 
 // The "Price and Max drawdown" chart, shared by the Analyse window (its analysis backtest) and a session's results (that
-// session): daily candles with their 50- and 200-day averages, the drawdown band, shaded runs of days, the ladder's next
-// Put's cap and floor and the rungs sold, a log scale to switch on, and under the candles the account's cash available
-// and the IV Percentile.
+// session): daily candles, the drawdown band, shaded runs of days, the ladder's next Put's cap and floor and the rungs
+// sold, Vol Farmer v2's two break-evens and LEAPS, a log scale to switch on, and under the candles the account's cash
+// available and the IV Percentile.
 // This module: its ranges, the window a drag moves, the log scale preference and the chart's options (the components are in
 // priceDrawdownChart.tsx).
 
@@ -198,14 +198,18 @@ export interface PriceDrawdownChartInput {
   splits: readonly { firstDayAfter: string; ratio: number }[];
   /** The account's cash available each day at its 10:00 marks: [date, free cash, cash locked in open puts, account value]; null: no panel. */
   cashAvailable: NonNullable<AnalysisBacktestFigures["cashAvailable"]> | null;
-  /** IV Percentile and the 50- and 200-day averages, one per bar of `bars` (indicatorsInWindow); null: none. */
+  /** IV Percentile, one per bar of `bars` (indicatorsInWindow); null: none. */
   indicators: AnalysisBarIndicators | null;
+  /** Vol Farmer v2 (a session's chart only): [date, B-E, B-E2] after each 10:00 look. */
+  breakEvenLevels?: readonly [string, number | null, number | null][];
+  /** Vol Farmer v2: its LEAPS bought, sold and expired. */
+  leapsEvents?: readonly SessionLeapsEvent[];
 }
 
 /** The indicators of a window's bars, cut from those of every bar (the API works them out over the whole data file). */
 export function indicatorsInWindow(indicators: AnalysisBarIndicators | null | undefined, from: number, to: number): AnalysisBarIndicators | null {
   if (!indicators) return null;
-  return { ivPercentile: indicators.ivPercentile.slice(from, to + 1), movingAverage50: indicators.movingAverage50.slice(from, to + 1), movingAverage200: indicators.movingAverage200.slice(from, to + 1) };
+  return { ivPercentile: indicators.ivPercentile.slice(from, to + 1) };
 }
 
 /** "IV Percentile 52%: IV 64.0%; 131 of the last 252 days were at or below it". */
@@ -219,6 +223,16 @@ export type PriceDrawdownChart = ReturnType<typeof buildPriceDrawdownChart>;
 const rungBadgeOffsetY = 4;
 
 /** "Rung 2 of 2 (reaches 1.44 slices of the reserve; $11,305 already committed)". */
+/** The LEAPS badges' glyphs: bought, sold, expired. */
+export const leapsEventGlyph: Record<SessionLeapsEvent["kind"], string> = { bought: "▲", sold: "▼", expired: "✕" };
+
+/** "LEAPS bought: HOOD $20 Call · 20 Jan 2023 (410DTE) · 22× @ 8.48", "LEAPS expired worthless: …". */
+function describeLeapsEvent(symbol: string, event: SessionLeapsEvent): string {
+  const contract = `${formatOptionContractLabel({ symbol, strike: event.strike, right: "C", expiry: event.expiry, dte: daysToExpiry(event.expiry, event.date) })}${formatOrderSize(event.contracts, event.kind === "expired" && event.price === 0 ? null : event.price)}`;
+  const what = event.kind === "bought" ? "LEAPS bought" : event.kind === "sold" ? "LEAPS sold" : event.price === 0 ? "LEAPS expired worthless" : "LEAPS expired, sold at its intrinsic value";
+  return `${what}: ${contract}`;
+}
+
 function describeRungReached([rungNumber, rungs, slices, committed]: [number, number, number, number]): string {
   return `Rung ${rungNumber} of ${rungs} (reaches ${slices.toFixed(2)} slices of the reserve${committed > 0 ? `; ${formatCurrency(committed, 0)} already committed` : ""})`;
 }
@@ -250,9 +264,13 @@ export function buildPriceDrawdownChart(input: PriceDrawdownChartInput) {
     day ? `Cash available <b>${formatPercentage(day.share, 0)}</b>: ${formatCurrency(day.freeCash, 0)} of a ${formatCurrency(day.accountValue, 0)} account${day.locked > 0 ? `; ${formatCurrency(day.locked, 0)} locked in puts` : ""}` : "";
   const cashInRange = cashAvailable.flatMap((day) => (day ? [day] : []));
   const cashRecorded = input.cashAvailable !== null && input.cashAvailable.length > 0;
-  // The 50- and 200-day averages on the candles and the IV Percentile panel under them (approved 2026-10-26).
-  const average50 = bars.map((_, index) => input.indicators?.movingAverage50[index] ?? null);
-  const average200 = bars.map((_, index) => input.indicators?.movingAverage200[index] ?? null);
+  // Vol Farmer v2 (Marcelo 2026-10-27): each position's break-even after the day's 10:00 look, and its LEAPS by date.
+  const breakEvenByDate = new Map((input.breakEvenLevels ?? []).map((level) => [level[0], level]));
+  const breakEvens = bars.map((bar) => breakEvenByDate.get(bar[0]) ?? null);
+  const leapsByDate = new Map<string, SessionLeapsEvent[]>();
+  for (const event of input.leapsEvents ?? []) if (event.date >= first && event.date <= last) leapsByDate.set(event.date, [...(leapsByDate.get(event.date) ?? []), event]);
+  const closeByDate = new Map(bars.map((bar) => [bar[0], bar[4]]));
+  // The IV Percentile panel under the candles (approved 2026-10-26).
   const ivPercentile = bars.map((_, index) => input.indicators?.ivPercentile[index] ?? null);
   const ivRecorded = ivPercentile.some((day) => day !== null);
   const panelBelow = cashRecorded || ivRecorded;
@@ -265,8 +283,8 @@ export function buildPriceDrawdownChart(input: PriceDrawdownChartInput) {
   const dark = theme === "dark";
   const options: ApexOptions = {
     chart: { animations: { enabled: false }, zoom: { enabled: false }, background: "transparent", parentHeightOffset: 0 },
-    colors: [colors.text, colors.ladder, colors.ladder, colors.movingAverage50, colors.movingAverage200],
-    stroke: { width: [1, 2, 2, 1.5, 1.5], curve: ["straight", "stepline", "stepline", "straight", "straight"], dashArray: [0, 5, 0, 5, 0] },
+    colors: [colors.text, colors.ladder, colors.ladder, colors.breakEven, colors.breakEven2],
+    stroke: { width: [1, 2, 2, 2, 2], curve: ["straight", "stepline", "stepline", "stepline", "stepline"], dashArray: [0, 5, 0, 0, 5] },
     markers: { size: 0, hover: { size: 0 } },
     legend: { show: false },
     // With a panel below, the bottom one carries the dates.
@@ -285,9 +303,11 @@ export function buildPriceDrawdownChart(input: PriceDrawdownChartInput) {
           : "";
         const rungLines = (rungsByDate.get(bar[0]) ?? []).map(([, , fills, reached]) => `<div>${reached ? describeRungReached(reached) : "Rung sold"}: ${fills.map(([strike, expiry, contracts]) => `${formatOptionContractLabel({ strike, right: "P", expiry, dte: daysToExpiry(expiry, bar[0]) })}${formatOrderSize(contracts, null)}`).join(", ")}</div>`).join("");
         const cashLine = cashAvailable[dataPointIndex] ? `<div>${cashAvailableText(cashAvailable[dataPointIndex])}</div>` : "";
-        const averages = [average50[dataPointIndex] == null ? null : `50-day average ${formatCurrency(average50[dataPointIndex]!)}`, average200[dataPointIndex] == null ? null : `200-day average ${formatCurrency(average200[dataPointIndex]!)}`].filter((text) => text !== null);
-        const averagesLine = averages.length > 0 ? `<div>${averages.join(" · ")}</div>` : "";
-        return `<div style="padding:0.4rem 0.6rem;font-size:0.75rem"><b>${formatDayMonthYear(bar[0])}</b><div style="font-family:var(--tblr-font-monospace)">O ${bar[1].toFixed(2)} · H ${bar[2].toFixed(2)} · L ${bar[3].toFixed(2)} · C ${bar[4].toFixed(2)}</div>${averagesLine}${ladderLine}${rungLines}${cashLine}</div>`;
+        const breakEven = breakEvens[dataPointIndex];
+        const breakEvenParts = breakEven ? [breakEven[1] === null ? null : `B-E ${formatCurrency(breakEven[1])}`, breakEven[2] === null ? null : `B-E2 ${formatCurrency(breakEven[2])}`].filter((text) => text !== null) : [];
+        const breakEvenLine = breakEvenParts.length > 0 ? `<div>${breakEvenParts.join(" · ")}</div>` : "";
+        const leapsLines = (leapsByDate.get(bar[0]) ?? []).map((event) => `<div>${leapsEventGlyph[event.kind]} ${describeLeapsEvent(symbol, event)}</div>`).join("");
+        return `<div style="padding:0.4rem 0.6rem;font-size:0.75rem"><b>${formatDayMonthYear(bar[0])}</b><div style="font-family:var(--tblr-font-monospace)">O ${bar[1].toFixed(2)} · H ${bar[2].toFixed(2)} · L ${bar[3].toFixed(2)} · C ${bar[4].toFixed(2)}</div>${breakEvenLine}${leapsLines}${ladderLine}${rungLines}${cashLine}</div>`;
       },
     },
     annotations: {
@@ -318,6 +338,15 @@ export function buildPriceDrawdownChart(input: PriceDrawdownChartInput) {
               }
             : { x: timeOfDate(date), y: toAxis(strike), marker: { size: 5, fillColor: colors.ladder, strokeColor: colors.surface, strokeWidth: 2 } },
         ),
+        // A gold badge on the day's close per LEAPS event: ▲ bought, ▼ sold, ✕ expired.
+        ...[...leapsByDate.entries()].flatMap(([date, events]) =>
+          events.map((event, index) => ({
+            x: timeOfDate(date),
+            y: toAxis(closeByDate.get(date) ?? event.strike),
+            marker: { size: 0 },
+            label: { text: leapsEventGlyph[event.kind], textAnchor: "middle", offsetY: rungBadgeOffsetY - index * 16, borderColor: colors.leapsText, borderWidth: 1, borderRadius: 3, style: { background: colors.leaps, color: colors.leapsText, fontSize: "0.65rem", fontWeight: 700, padding: { left: 4, right: 4, top: 1, bottom: 2 } } },
+          })),
+        ),
       ],
     },
     dataLabels: { enabled: false },
@@ -326,8 +355,8 @@ export function buildPriceDrawdownChart(input: PriceDrawdownChartInput) {
     { name: symbol, type: "candlestick", data: bars.map((bar) => ({ x: timeOfDate(bar[0]), y: [bar[1], bar[2], bar[3], bar[4]].map(toAxis) })) },
     { name: "Ladder cap", type: "line", data: bars.map((bar, index) => ({ x: timeOfDate(bar[0]), y: levels[index]?.[1] == null ? null : toAxis(levels[index]![1]!) })) },
     { name: "Ladder floor", type: "line", data: bars.map((bar, index) => ({ x: timeOfDate(bar[0]), y: levels[index]?.[2] == null ? null : toAxis(levels[index]![2]!) })) },
-    { name: "50-day average", type: "line", data: bars.map((bar, index) => ({ x: timeOfDate(bar[0]), y: average50[index] === null ? null : toAxis(average50[index]!) })) },
-    { name: "200-day average", type: "line", data: bars.map((bar, index) => ({ x: timeOfDate(bar[0]), y: average200[index] === null ? null : toAxis(average200[index]!) })) },
+    { name: "B-E", type: "line", data: bars.map((bar, index) => ({ x: timeOfDate(bar[0]), y: breakEvens[index]?.[1] == null ? null : toAxis(breakEvens[index]![1]!) })) },
+    { name: "B-E2", type: "line", data: bars.map((bar, index) => ({ x: timeOfDate(bar[0]), y: breakEvens[index]?.[2] == null ? null : toAxis(breakEvens[index]![2]!) })) },
   ];
   const highestShare = cashInRange.length > 0 ? Math.max(...cashInRange.map((day) => day.share)) : 1;
   const cashPanel = cashRecorded
@@ -386,5 +415,5 @@ export function buildPriceDrawdownChart(input: PriceDrawdownChartInput) {
     : null;
   const lowestDay = cashInRange.reduce<(typeof cashInRange)[number] | null>((lowest, day) => (lowest === null || day.share < lowest.share ? day : lowest), null);
   const cashSummary = lowestDay ? { median: medianOf(cashInRange.map((day) => day.share))!, lowest: lowestDay.share, lowestDate: lowestDay.date } : null;
-  return { options, series, smallDays: daysIn(smallRuns), strikeDays: daysIn(strikeRuns), lastLevel, cashPanel, cashSummary, splitsInRange, ivPercentilePanel, hasAverage50: average50.some((value) => value !== null), hasAverage200: average200.some((value) => value !== null) };
+  return { options, series, smallDays: daysIn(smallRuns), strikeDays: daysIn(strikeRuns), lastLevel, cashPanel, cashSummary, splitsInRange, ivPercentilePanel, hasBreakEven: breakEvens.some((level) => level?.[1] != null), hasBreakEven2: breakEvens.some((level) => level?.[2] != null), leapsKinds: new Set([...leapsByDate.values()].flat().map((event) => event.kind)) };
 }

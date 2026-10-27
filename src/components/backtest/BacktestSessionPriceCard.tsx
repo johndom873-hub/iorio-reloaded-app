@@ -6,12 +6,12 @@ import { dateRuns } from "../../lib/analysisPresentation";
 import { formatNumber } from "../../lib/formatters";
 import { Spinner } from "../Spinner";
 import { BacktestCard } from "./backtestBits";
-import { IvPercentileLegendItem, LadderLegendItems, MovingAverageLegendItems, PriceChartActions, PriceDrawdownCaption, PriceDrawdownCharts, PriceWindowNavigator, SplitLegendItem } from "./analysis/priceDrawdownChart";
+import { BreakEvenLegendItems, IvPercentileLegendItem, LadderLegendItems, PriceChartActions, PriceDrawdownCaption, PriceDrawdownCharts, PriceWindowNavigator, SplitLegendItem } from "./analysis/priceDrawdownChart";
 import { buildPriceDrawdownChart, historyYearsOf, indicatorsInWindow, useLogScalePreference, usePriceWindow, type PriceChartRange } from "./analysis/priceDrawdownChartModel";
 
 // The Analyse window's "Price and Max drawdown" chart on a session's results (Marcelo 2026-10-20): over the session's
 // period, with this session's ladder levels, rungs sold and orders over one strike (no "Pot too small": that is the
-// Analyse window's fit), the 50- and 200-day averages and the IV Percentile (2026-10-26); one symbol at a time.
+// Analyse window's fit), the IV Percentile (2026-10-26), Vol Farmer v2's B-E, B-E2 and LEAPS (2026-10-27); one symbol at a time.
 
 function PriceChartBody({ chart, range, logScale, severalSymbols }: { chart: BacktestSessionPriceChart; range: PriceChartRange; logScale: boolean; severalSymbols: boolean }) {
   const { theme } = useTheme();
@@ -34,11 +34,14 @@ function PriceChartBody({ chart, range, logScale, severalSymbols }: { chart: Bac
       cashAvailable: chart.cashAvailable,
       splits: chart.splits ?? [],
       indicators: indicatorsInWindow(chart.barIndicators, priceWindow.from, priceWindow.to),
+      breakEvenLevels: chart.breakEvenLevels ?? [],
+      leapsEvents: chart.leapsEvents ?? [],
     });
   }, [chart, bars, drawdown, theme, logScale, priceWindow.from, priceWindow.to]);
 
   if (chart.bars.length === 0) return <div className="card-body text-secondary">No IBKR daily bars for {chart.symbol} in the session's period.</div>;
   const ladderRecorded = chart.ladderLevels.length > 0 || chart.ladderRungsSold.length > 0;
+  const breakEvensRecorded = (chart.breakEvenLevels ?? []).length > 0;
   return (
     <div className="card-body">
       {drawn && (
@@ -63,11 +66,11 @@ function PriceChartBody({ chart, range, logScale, severalSymbols }: { chart: Bac
               <LadderLegendItems />
               <span className="analysis-legend-item">{drawn.lastLevel ? "Levels from this session, each day a cycle held shares" : "No cycle held shares in this range"}</span>
             </>
-          ) : (
+          ) : breakEvensRecorded ? null : (
             <span className="analysis-legend-item">Ladder cap and floor: none recorded (no ladder in this session, or it ran before the levels were kept)</span>
           )}
           <SplitLegendItem splits={drawn.splitsInRange} />
-          <MovingAverageLegendItems chart={drawn} />
+          <BreakEvenLegendItems chart={drawn} />
           {drawn.cashPanel && (
             <span className="analysis-legend-item">
               <span className="analysis-ladder-line is-cash-available" />

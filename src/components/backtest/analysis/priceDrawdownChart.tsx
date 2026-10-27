@@ -3,7 +3,7 @@ import type { AnalysisFigures, AnalysisMaxDrawdown } from "../../../api/backtest
 import { formatCurrency, formatDayMonthYear, formatNumber, formatPercentage } from "../../../lib/formatters";
 import { describeSplitRatio } from "../../../lib/backtestPresentation";
 import { ApexChart } from "../../charts/ApexChart";
-import { priceRanges, type OptionDataPeriod, type PriceChartRange, type PriceDrawdownChart, type PriceWindow } from "./priceDrawdownChartModel";
+import { leapsEventGlyph, priceRanges, type OptionDataPeriod, type PriceChartRange, type PriceDrawdownChart, type PriceWindow } from "./priceDrawdownChartModel";
 
 // The "Price and Max drawdown" chart, shared by the Analyse window (its analysis backtest) and a session's results (that
 // session): daily candles with their 50- and 200-day averages, the drawdown band, shaded runs of days, the ladder's next
@@ -176,22 +176,30 @@ export function SplitLegendItem({ splits }: { splits: readonly { firstDayAfter: 
   );
 }
 
-/** The legend items of the averages drawn in the range. */
-export function MovingAverageLegendItems({ chart }: { chart: Pick<NonNullable<PriceDrawdownChart>, "hasAverage50" | "hasAverage200"> }) {
+/** Vol Farmer v2's legend items: the break-even lines and the LEAPS badges drawn in the range. */
+export function BreakEvenLegendItems({ chart }: { chart: Pick<NonNullable<PriceDrawdownChart>, "hasBreakEven" | "hasBreakEven2" | "leapsKinds"> }) {
   return (
     <>
-      {chart.hasAverage50 && (
+      {chart.hasBreakEven && (
         <span className="analysis-legend-item">
-          <span className="analysis-ladder-line is-average-50" />
-          50-day average: the average of the last 50 daily closes
+          <span className="analysis-ladder-line is-break-even" />
+          B-E: the first position's break-even, what its shares cost less its Calls' premiums, per share
         </span>
       )}
-      {chart.hasAverage200 && (
+      {chart.hasBreakEven2 && (
         <span className="analysis-legend-item">
-          <span className="analysis-ladder-line is-average-200" />
-          200-day average: the average of the last 200 daily closes
+          <span className="analysis-ladder-line is-break-even-2" />
+          B-E2: the second position's, the assigned Puts' strike less its Puts' and Calls' premiums, per share
         </span>
       )}
+      {(["bought", "sold", "expired"] as const)
+        .filter((kind) => chart.leapsKinds.has(kind))
+        .map((kind) => (
+          <span key={kind} className="analysis-legend-item">
+            <span className="analysis-leaps-badge">{leapsEventGlyph[kind]}</span>
+            {kind === "bought" ? "LEAPS bought" : kind === "sold" ? "LEAPS sold" : "LEAPS expired"}
+          </span>
+        ))}
     </>
   );
 }

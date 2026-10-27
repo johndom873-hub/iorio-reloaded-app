@@ -255,15 +255,26 @@ export interface BacktestSessionPriceChart {
   cashAvailable: NonNullable<AnalysisBacktestFigures["cashAvailable"]>;
   /** The symbol's splits in the session's period: the bars before one are its traded prices ÷ the ratio. */
   splits: BacktestDetectedSplit[];
+  /** Vol Farmer v2: [date, B-E, B-E2] after each 10:00 look, split-adjusted; null while that position holds no shares. Empty for other sessions. */
+  breakEvenLevels: [string, number | null, number | null][];
+  /** Vol Farmer v2: its LEAPS Calls bought, sold and expired, as traded. */
+  leapsEvents: SessionLeapsEvent[];
+}
+
+/** A LEAPS Call bought, sold or expired (at its expiry: worthless, or at its intrinsic value), as traded; price per share. */
+export interface SessionLeapsEvent {
+  date: string;
+  kind: "bought" | "sold" | "expired";
+  contracts: number;
+  strike: number;
+  expiry: string;
+  price: number;
 }
 
 /** The price chart's indicators for each bar (approved 2026-10-26), aligned with the bars. */
 export interface AnalysisBarIndicators {
   /** [share, bars at or below, bars with an IV]: of the last 252 bars, those whose IV was at or below the bar's ÷ those with one; null without an IV or under 20 in the window. */
   ivPercentile: ([number, number, number] | null)[];
-  /** The average of the last 50 / 200 closes, the bar's own included; null until that many closes. */
-  movingAverage50: (number | null)[];
-  movingAverage200: (number | null)[];
 }
 
 /** Why no ladder Put could be sold at a day's first look. */

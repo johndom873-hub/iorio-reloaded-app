@@ -2225,8 +2225,8 @@
   --analysis-link-hover: #075985;
   --analysis-ladder: #2a78d6;
   --analysis-cash-available: #0f7d6e;
-  --analysis-average-50: #49566c;
-  --analysis-average-200: #1d273b;
+  --analysis-break-even: #2a78d6;
+  --analysis-break-even-2: #6f42c1;
   --analysis-implied-volatility: #eb6834;
   --price-navigator-window: rgba(42, 120, 214, 0.12);
   --price-navigator-dim: rgba(29, 39, 59, 0.08);
@@ -2234,8 +2234,8 @@
 :root[data-bs-theme="dark"] {
   --analysis-ladder: #3987e5;
   --analysis-cash-available: #4fc9b8;
-  --analysis-average-50: #9ba9be;
-  --analysis-average-200: #f9fafb;
+  --analysis-break-even: #3987e5;
+  --analysis-break-even-2: #b18cf0;
   --analysis-implied-volatility: #d95926;
   --price-navigator-window: rgba(57, 135, 229, 0.18);
   --price-navigator-dim: rgba(0, 0, 0, 0.25);
@@ -2453,8 +2453,8 @@
 .analysis-ladder-line { display: inline-block; width: 1.2rem; height: 0; border-top: 2px solid var(--analysis-ladder); }
 .analysis-ladder-line.is-dashed { border-top-style: dashed; }
 .analysis-ladder-line.is-cash-available { border-top-color: var(--analysis-cash-available); }
-.analysis-ladder-line.is-average-50 { border-top-style: dashed; border-top-color: var(--analysis-average-50); }
-.analysis-ladder-line.is-average-200 { border-top-color: var(--analysis-average-200); }
+.analysis-ladder-line.is-break-even { border-top-color: var(--analysis-break-even); }
+.analysis-ladder-line.is-break-even-2 { border-top-style: dashed; border-top-color: var(--analysis-break-even-2); }
 .analysis-ladder-line.is-iv-percentile { border-top-color: var(--analysis-implied-volatility); }
 .analysis-split-line { display: inline-block; width: 0; height: 0.9rem; border-left: 2px dashed var(--tblr-secondary-color); }
 .analysis-panel-label { margin: 0.25rem 0 0 3.25rem; font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--tblr-secondary-color); }
@@ -2474,6 +2474,7 @@
 .price-navigator-window { fill: var(--price-navigator-window); stroke: var(--analysis-ladder); stroke-width: 1.5; vector-effect: non-scaling-stroke; }
 .price-navigator-grip { fill: var(--analysis-ladder); }
 /* A rung's badge, as the chart draws it: white on a blue dark enough for 4.5:1 in both themes, ringed in the ladder's blue. */
+.analysis-leaps-badge { display: inline-flex; align-items: center; justify-content: center; min-width: 1rem; height: 1rem; padding: 0 0.25rem; border-radius: 0.25rem; background: var(--iorio-leaps); color: var(--iorio-leaps-fg); font-size: 0.65rem; font-weight: 700; line-height: 1; }
 .analysis-rung-badge { display: inline-flex; align-items: center; justify-content: center; min-width: 1rem; height: 1rem; padding: 0 0.25rem; border-radius: 0.5rem; background: #1f6bc4; border: 1px solid var(--analysis-ladder); color: #ffffff; font-size: 0.65rem; font-weight: 700; line-height: 1; }
 .analysis-stat-pair { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.5rem; }
 .analysis-stat-pair > div { border: 1px solid var(--tblr-border-color); border-radius: var(--tblr-border-radius); padding: 0.4rem 0.6rem; display: flex; flex-direction: column; gap: 0.05rem; }

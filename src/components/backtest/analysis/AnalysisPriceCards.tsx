@@ -6,10 +6,10 @@ import { formatDayMonthYear, formatNumber, formatPercentage, formatVolatilityPoi
 import { useTheme } from "../../../hooks/useTheme";
 import { ApexChart } from "../../charts/ApexChart";
 import { AnalysisCard, AnalysisNote, AnalysisSeriesKey } from "./analysisBits";
-import { IvPercentileLegendItem, LadderLegendItems, MovingAverageLegendItems, PriceChartActions, PriceDrawdownCaption, PriceDrawdownCharts, PriceWindowNavigator, SplitLegendItem } from "./priceDrawdownChart";
+import { IvPercentileLegendItem, LadderLegendItems, PriceChartActions, PriceDrawdownCaption, PriceDrawdownCharts, PriceWindowNavigator, SplitLegendItem } from "./priceDrawdownChart";
 import { buildPriceDrawdownChart, historyYearsOf, indicatorsInWindow, medianOf, timeOfDate, useLogScalePreference, usePriceWindow, yearsBefore, type PriceChartRange } from "./priceDrawdownChartModel";
 
-// Price and Max drawdown (daily candles with their 50- and 200-day averages, the drawdown band, the days the pot was too
+// Price and Max drawdown (daily candles, the drawdown band, the days the pot was too
 // small and the days an order needed more than one strike, and the analysis backtest's ladder: its next Put's cap, its
 // floor and the rungs sold; a log scale to switch on; under the candles, the backtest account's cash available and the IV
 // Percentile, and under them a navigator for the window), and volatility (21-day Yang-Zhang and IBKR's implied, implied
@@ -133,10 +133,9 @@ export function AnalysisPriceCards({ symbol, figures, shown, showingTrial, stale
             </div>
           )}
           <PriceDrawdownCaption chart={priceChart} drawdown={drawdown} />
-          {priceChart && !analysed && (priceChart.splitsInRange.length > 0 || priceChart.hasAverage50 || priceChart.hasAverage200 || priceChart.ivPercentilePanel) && (
+          {priceChart && !analysed && (priceChart.splitsInRange.length > 0 || priceChart.ivPercentilePanel) && (
             <div className="analysis-chart-legend">
               <SplitLegendItem splits={priceChart.splitsInRange} />
-              <MovingAverageLegendItems chart={priceChart} />
               <IvPercentileLegendItem chart={priceChart} />
             </div>
           )}
@@ -160,7 +159,6 @@ export function AnalysisPriceCards({ symbol, figures, shown, showingTrial, stale
                 </>
               )}
               <SplitLegendItem splits={priceChart.splitsInRange} />
-              <MovingAverageLegendItems chart={priceChart} />
               {priceChart.cashPanel && (
                 <span className="analysis-legend-item">
                   <span className="analysis-ladder-line is-cash-available" />
