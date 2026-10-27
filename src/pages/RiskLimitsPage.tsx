@@ -42,6 +42,7 @@ interface SettingsFormState {
   deltaTargetMax: string;
   recoveryDteMin: string;
   recoveryDteMax: string;
+  /** Not on the screen since Signals was retired: the save sends the stored value back until the API drops the field. */
   minAnnualizedYieldPct: string;
   commissionWarnSharePctOfPremium: string;
   priceCheckMaxDeviationPct: string;
@@ -718,7 +719,7 @@ export function RiskLimitsPage() {
 
               <SettingsSection
                 title="Unfilled orders"
-                description="Orders are sent to IBKR as limits at the mid. One that has not filled after this many minutes is cancelled automatically, because Signals move through the day and a resting limit tends to fill just after the price has moved against it."
+                description="Orders are sent to IBKR as limits at the mid. One that has not filled after this many minutes is cancelled automatically, because prices move through the day and a resting limit tends to fill just after the price has moved against it."
               >
                 <NumberField
                   label={fieldLabels.orderUnfilledCancelMinutes}
@@ -757,7 +758,7 @@ export function RiskLimitsPage() {
 
               <SettingsSection
                 title="Delta band"
-                description="Applies to Signals suggestions, to new orders (an order outside the band cannot be confirmed) and to the Recovery Path scan."
+                description="Applies to new orders (an order outside the band cannot be confirmed) and to the Recovery Path scan."
               >
                 <NumberField
                   label={fieldLabels.deltaTargetMin}
@@ -798,23 +799,14 @@ export function RiskLimitsPage() {
                 />
               </SettingsSection>
 
-              <SettingsSection title="Signals" description="Signals only suggests trades that pay at least this much per year, and counts part of each contract's bid/ask spread as a trading cost.">
-                <NumberField
-                  label={fieldLabels.minAnnualizedYieldPct}
-                  unit="percent"
-                  readOnly={!isAdmin}
-                  value={formState.minAnnualizedYieldPct}
-                  step="0.5"
-                  help="Floor on annualised yield (premium as a % of the exposure net of the premium, scaled to a year by days to expiry). Candidates below it are filtered out."
-                  onChange={(value) => updateField("minAnnualizedYieldPct", value)}
-                />
+              <SettingsSection title="Premium yield" description="The Volatility screen, the Ticker modal's option chain and Order Review count part of each contract's bid/ask spread as a trading cost when they show a premium yield.">
                 <NumberField
                   label={fieldLabels.spreadCostChargedPct}
                   unit="percent"
                   readOnly={!isAdmin}
                   value={formState.spreadCostChargedPct}
                   step="5"
-                  help="How much of the half-spread (the distance from the mid to the bid) Signals counts as a trading cost. Orders go out as limits at the mid, but a fill can come up to half a spread below the fair price at that moment. 0 assumes every fill is worth the full mid, 100 assumes every fill is at the bid. Changes the valuation model's Edge $, Edge Yield, grades and roll values."
+                  help="How much of the half-spread (the distance from the mid to the bid) counts as a trading cost. Orders go out as limits at the mid, but a fill can come up to half a spread below the fair price at that moment. 0 assumes every fill is worth the full mid, 100 assumes every fill is at the bid."
                   onChange={(value) => updateField("spreadCostChargedPct", value)}
                 />
               </SettingsSection>

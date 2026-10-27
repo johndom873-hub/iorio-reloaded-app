@@ -372,7 +372,7 @@ export function PlutoTickersTab({ rows, loading, error, state, maxEnabled, isPho
         <div className="pm-card-h">
           <div className="pm-min0">
             <h2 className="pm-card-t">Tickers Pluto may trade</h2>
-            {!isPhone && <div className="pm-card-meta pm-meta-top">{isAdmin ? "Every Shortlist ticker with Signals on. Switch one on to let Pluto trade it; the same switch is in the Shortlist's Pluto column." : "Every Shortlist ticker with Signals on. Only an admin can switch Pluto on or off for a ticker."}</div>}
+            {!isPhone && <div className="pm-card-meta pm-meta-top">{isAdmin ? "Every Shortlist ticker. Switch one on to let Pluto trade it; the same switch is in the Shortlist's Pluto column." : "Every Shortlist ticker. Only an admin can switch Pluto on or off for a ticker."}</div>}
           </div>
           {isPhone ? (
             <span className="pm-card-meta">
