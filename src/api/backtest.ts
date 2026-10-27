@@ -862,7 +862,7 @@ export interface BacktestPositionLeg {
 export interface BacktestPosition {
   positionId: string;
   symbol: string;
-  strategyKey: "cash_secured_put" | "covered_call" | "unstructured" | "hedge";
+  strategyKey: "cash_secured_put" | "covered_call" | "unstructured" | "hedge" | "leaps";
   status: "open" | "closed";
   openedAt: string;
   closedAt: string | null;
@@ -944,7 +944,7 @@ export interface BacktestFillsPage {
 /** The time of the capture's own look, "HH:MM" Eastern: the day's account mark and surface fit are taken then. */
 export const backtestCaptureLookTimeEt = "10:00";
 
-export type BacktestActionKind = "open_cash_secured_put" | "open_covered_call" | "buy_shares" | "roll" | "close_shares" | "close_leg" | "close_position" | "buy_hedge" | "sell_hedge";
+export type BacktestActionKind = "open_cash_secured_put" | "open_covered_call" | "buy_shares" | "roll" | "close_shares" | "close_leg" | "close_position" | "buy_hedge" | "sell_hedge" | "buy_leaps" | "sell_leaps";
 
 /** One thing Pluto did or tried in a pass: filled, or blocked with the gate that refused it. */
 export interface BacktestAction {
@@ -1019,7 +1019,8 @@ export interface BacktestCycle {
   freeCashShareLowest?: { share: number; on: string } | null;
   /** The cycle's session days with shares and no Call open, and its session days with shares. */
   noCallDays?: { days: number; shareDays: number };
-  buckets: { csp: BacktestCycleBucket; unstructured: BacktestCycleBucket; cc: BacktestCycleBucket; hedge: BacktestCycleBucket };
+  /** leaps: absent on cycles stored before the LEAPS had a bucket of their own. */
+  buckets: { csp: BacktestCycleBucket; unstructured: BacktestCycleBucket; cc: BacktestCycleBucket; hedge: BacktestCycleBucket; leaps?: BacktestCycleBucket };
   dataFlags: string[];
 }
 
@@ -1260,13 +1261,15 @@ export interface BacktestPnlSource {
   daysHeldShare: number;
 }
 
-/** The session tiles' Shares, Covered Calls and Hedge; each null when the session never held it. */
+/** The session tiles' Shares, Covered Calls, Hedge and LEAPS; each null when the session never held it. */
 export interface BacktestPnlSources {
   shares: BacktestPnlSource | null;
   /** With the median yearly yield recorded at each Call sale. */
   coveredCalls: (BacktestPnlSource & { quotedYieldMedian: number | null; quotedCount: number }) | null;
   /** With the median yearly cost of each hedge Put bought, a positive fraction. */
   hedge: (BacktestPnlSource & { quotedCostMedian: number | null; quotedCount: number }) | null;
+  /** Vol Farmer v2's LEAPS Calls; absent from sessions read before it existed. */
+  leaps?: BacktestPnlSource | null;
 }
 
 export interface BacktestCompareResponse {

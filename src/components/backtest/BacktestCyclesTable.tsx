@@ -68,16 +68,19 @@ function SignedDollars({ value, bold = false, cents = false }: { value: number; 
 /** A trade's dollars in cents; nothing booked shows as a dash. */
 const tradeDollars = (value: number) => (value === 0 ? dash : <SignedDollars value={value} cents />);
 
-/** Each strategy's share of the cycle in the platform's badges and order: CSP, N/S, CC, Hedge, the ones that took part. */
+/** Each strategy's share of the cycle in the platform's badges and order: CSP, N/S, CC, Hedge, LEAPS, the ones that took part (a cycle stored before the LEAPS bucket has none). */
 function CycleStrategies({ cycle }: { cycle: BacktestCycle }) {
-  const parts = cycleBucketOrder.filter((bucket) => cycle.buckets[bucket].total !== 0 || cycle.buckets[bucket].premium !== 0 || cycle.buckets[bucket].capital !== 0);
+  const parts = cycleBucketOrder.filter((bucket) => {
+    const part = cycle.buckets[bucket];
+    return part !== undefined && (part.total !== 0 || part.premium !== 0 || part.capital !== 0);
+  });
   if (parts.length === 0) return dash;
   return (
     <span className="d-inline-flex flex-wrap align-items-center column-gap-2 row-gap-1">
       {parts.map((bucket) => (
         <span key={bucket} className="d-inline-flex align-items-center gap-1 text-nowrap">
           <CycleBucketBadge bucket={bucket} />
-          <SignedDollars value={cycle.buckets[bucket].total} />
+          <SignedDollars value={cycle.buckets[bucket]!.total} />
         </span>
       ))}
     </span>

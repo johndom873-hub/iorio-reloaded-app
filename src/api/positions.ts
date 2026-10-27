@@ -44,7 +44,7 @@ export interface PositionLeg {
 // truth" decision, 2026-08-24.
 //
 // "hedge" is a long option bought outside the app (e.g. the long TLT call that hedges the cash-secured puts).
-export type PositionStrategyKey = StrategyKey | "unstructured" | "hedge";
+export type PositionStrategyKey = StrategyKey | "unstructured" | "hedge" | "leaps";
 
 export interface Position {
   id: string;
@@ -594,7 +594,8 @@ function openLegacyUnrealizedPnlStream(
 }
 
 // Wheel cycles (approved 2026-09-19, see cycles.ts in the API repo).
-export type CycleBucketKey = "csp" | "unstructured" | "cc" | "hedge";
+/** hedge: long Puts; leaps: the long Calls of a LEAPS position. */
+export type CycleBucketKey = "csp" | "unstructured" | "cc" | "hedge" | "leaps";
 
 export interface CycleBucketResult {
   premium: number;

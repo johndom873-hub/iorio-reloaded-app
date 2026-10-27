@@ -9,6 +9,7 @@ const strategyKeyByBucket: Record<CycleBucketKey, PositionStrategyKey> = {
   unstructured: "unstructured",
   cc: "covered_call",
   hedge: "hedge",
+  leaps: "leaps",
 };
 
 export function CycleBucketBadge({ bucket }: { bucket: CycleBucketKey }) {

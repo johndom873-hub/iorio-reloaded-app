@@ -48,6 +48,7 @@ export function strategyAbbrev(strategyKey: PositionStrategyKey): string {
   if (strategyKey === "covered_call") return "CC";
   if (strategyKey === "cash_secured_put") return "CSP";
   if (strategyKey === "hedge") return "HDG";
+  if (strategyKey === "leaps") return "LEAPS";
   return "N/S";
 }
 
@@ -56,6 +57,7 @@ export function strategyTooltip(strategyKey: PositionStrategyKey): string {
   if (strategyKey === "covered_call") return "Covered Call";
   if (strategyKey === "cash_secured_put") return "Cash-Secured Put";
   if (strategyKey === "hedge") return "Hedge — a long option held to offset the risk of the other positions";
+  if (strategyKey === "leaps") return "LEAPS — a long Call";
   return "No strategy (N/S) — a position that doesn't pair into a covered call or cash-secured put; needs review";
 }
 
@@ -67,7 +69,8 @@ export function strategyTooltip(strategyKey: PositionStrategyKey): string {
 export function strategyBadgeClass(strategyKey: PositionStrategyKey): string {
   if (strategyKey === "covered_call") return "bg-blue text-white";
   if (strategyKey === "cash_secured_put") return "bg-purple text-white";
-  if (strategyKey === "hedge") return "bg-hedge";
+  // A LEAPS wears the hedge's colour until its own is designed.
+  if (strategyKey === "hedge" || strategyKey === "leaps") return "bg-hedge";
   return "bg-orange text-orange-fg";
 }
 

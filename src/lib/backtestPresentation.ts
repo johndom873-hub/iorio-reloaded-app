@@ -819,8 +819,8 @@ export function backtestCycleLabel(cycle: Pick<BacktestCycle, "symbol" | "cycleN
   return `${cycle.symbol} #${cycle.cycleNumber}`;
 }
 
-/** The platform's bucket order (the Profit & Loss scoreboard). */
-export const cycleBucketOrder = ["csp", "unstructured", "cc", "hedge"] as const;
+/** The platform's bucket order (the Profit & Loss scoreboard), then Vol Farmer v2's LEAPS. */
+export const cycleBucketOrder = ["csp", "unstructured", "cc", "hedge", "leaps"] as const;
 
 /** What the shares made in a cycle, as the platform's Wheel cycle card sums it. */
 export function cycleStockDollars(cycle: Pick<BacktestCycle, "buckets">): number {
@@ -1137,6 +1137,8 @@ export const actionKindLabel: Record<BacktestActionKind, string> = {
   close_position: "Close position",
   buy_hedge: "Buy hedge",
   sell_hedge: "Sell hedge",
+  buy_leaps: "Buy LEAPS",
+  sell_leaps: "Sell LEAPS",
 };
 
 export function failedGateOf(action: Pick<BacktestAction, "gateResults">): BacktestAction["gateResults"][number] | null {
