@@ -217,9 +217,9 @@ export interface BacktestVolFarmerSettings {
 
 /** Vol Farmer v2's values (the API's BacktestVolFarmerV2Settings; research). */
 export interface BacktestVolFarmerV2Settings {
-  stepCallYieldPct: number;
+  putsStartCallYieldPct: number;
   putMaxAbsDelta: number;
-  putStrikeBelowFirstBreakEvenPct: number;
+  stepBelowFirstBreakEvenPct: number;
   leapsMinDte: number;
   leapsAbsDelta: number;
 }
