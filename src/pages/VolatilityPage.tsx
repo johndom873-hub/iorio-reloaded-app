@@ -29,7 +29,7 @@ export const volatilityColumnExplanation = {
   atmImpliedVolatility: "IBKR's 30-day implied volatility for the stock, live; the last close's value while the market is shut. The same series IV Rank and IV %ile rank.",
   forecast21: "Realized volatility of the last 21 trading days (Yang-Zhang), to the last close.",
   forecast63: "Realized volatility of the last 63 trading days (Yang-Zhang), to the last close. Blank with under 64 daily bars.",
-  ivMinusForecast: "ATM IV − FV 21d in volatility points: how much richer (green) or cheaper (red) options are priced than the stock has recently moved.",
+  ivMinusForecast: "IV − FV 21d in volatility points: how much richer (green) or cheaper (red) options are priced than the stock has recently moved.",
   ivRank: "Where IBKR's 30-day IV at the last close sits between its low (0) and high (100) of the last 252 trading days.",
   ivPercentile: "Share of the last 252 trading days whose IV closed below the last close's.",
   bestCallYield: "The highest yield a year after costs among Calls inside the delta band above with this many days to expiry: (mid − costs) ÷ (spot − mid) × 365 ÷ days to expiry, a same-day expiry counted as 1 day. Costs: the Risk & Limits spread cost share of the half-spread plus $0.68 commission per contract. Amber when earnings fall before that Call's expiry. Live only while the market is open.",
@@ -176,7 +176,7 @@ export function VolatilityPage() {
         render: (row) => <span className={`font-mono ${row.priceSource === "close" ? "text-secondary" : ""}`}>{formatCurrency(row.price)}</span>,
       },
       { key: "day", header: "Day", align: "right", group: { label: "Stock" }, sortValue: (row) => row.dayChangePercent, render: (row) => <span className={`font-mono ${pnlTextClass(row.dayChangePercent)}`}>{formatSignedPercentageValue(row.dayChangePercent, 1)}</span> },
-      { key: "atmIv", header: "ATM IV", align: "right", group: { label: "Volatility" }, headerTitle: volatilityColumnExplanation.atmImpliedVolatility, sortValue: (row) => row.atmImpliedVolatility, render: (row) => <span className="font-mono">{formatPercentage(row.atmImpliedVolatility, 1)}</span> },
+      { key: "atmIv", header: "IV", align: "right", group: { label: "Volatility" }, headerTitle: volatilityColumnExplanation.atmImpliedVolatility, sortValue: (row) => row.atmImpliedVolatility, render: (row) => <span className="font-mono">{formatPercentage(row.atmImpliedVolatility, 1)}</span> },
       { key: "fv21", header: "FV 21d", align: "right", group: { label: "Volatility" }, headerTitle: volatilityColumnExplanation.forecast21, sortValue: (row) => row.forecast21, render: (row) => <span className="font-mono">{formatPercentage(row.forecast21, 1)}</span> },
       { key: "fv63", header: "FV 63d", align: "right", group: { label: "Volatility" }, headerTitle: volatilityColumnExplanation.forecast63, sortValue: (row) => row.forecast63, render: (row) => <span className="font-mono">{formatPercentage(row.forecast63, 1)}</span> },
       {
@@ -297,7 +297,7 @@ export function VolatilityPage() {
                       </span>
                     </div>
                     <div className="volatility-mobile-grid font-mono">
-                      <MobileFigure label="ATM IV" value={formatPercentage(row.atmImpliedVolatility, 1)} />
+                      <MobileFigure label="IV" value={formatPercentage(row.atmImpliedVolatility, 1)} />
                       <MobileFigure label="FV 21d" value={formatPercentage(row.forecast21, 1)} />
                       <MobileFigure label="IV − FV 21d" value={gap === null ? "—" : formatVolatilityPoints(gap)} tone={pnlTextClass(gap)} />
                       <MobileFigure label="FV 63d" value={formatPercentage(row.forecast63, 1)} />

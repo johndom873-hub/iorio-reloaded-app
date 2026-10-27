@@ -404,7 +404,7 @@ export function TickerModal({ symbol, initialRollLegId = null, focusPositionId =
 
               {tradingContextError && <div className="alert alert-danger">{tradingContextError}</div>}
               <div className="d-flex flex-wrap align-items-center gap-3 mb-3" style={{ fontSize: "0.8rem" }}>
-                <TickerMetric label={`ATM IV${volatility?.atmImpliedVolatilitySource === "close" ? " (last close)" : ""}`} value={formatPercentage(volatility?.atmImpliedVolatility ?? null, 1)} />
+                <TickerMetric label={`IV${volatility?.atmImpliedVolatilitySource === "close" ? " (last close)" : ""}`} value={formatPercentage(volatility?.atmImpliedVolatility ?? null, 1)} />
                 <TickerMetric label="FV 21d" value={formatPercentage(volatility?.forecast21 ?? null, 1)} />
                 <TickerMetric label="FV 63d" value={formatPercentage(volatility?.forecast63 ?? null, 1)} />
                 <TickerMetric label="IV − FV 21d" value={ivMinusForecast === null ? "—" : formatVolatilityPoints(ivMinusForecast)} valueClassName={pnlTextClass(ivMinusForecast)} />
