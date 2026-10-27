@@ -40,14 +40,12 @@ import { formatCurrency, formatNumber, pluralizeCount } from "../../lib/formatte
 import {
   buildBacktestOverrides,
   decisionMakerHint,
-  describeLlmEstimate,
   describeOverrideChanges,
   describeTickerProblem,
   describeUnavailableChoices,
   describeYearOption,
   formatSettingRowValue,
   isSettingChanged,
-  llmSessionNote,
   parseDollarAmountText,
   sessionDecisionMaker,
   settingInputText,
@@ -373,8 +371,7 @@ export function NewBacktestSessionPage() {
   const allRows = template?.rows ?? [];
   const settingRows = allRows.filter((row) => row.path !== decisionMakerPath);
   const decisionMakerRow = allRows.find((row) => row.path === decisionMakerPath) ?? null;
-  const decisionMaker = (valueByPath[decisionMakerPath] ?? "rules") as BacktestDecisionMaker;
-  const decidedByModel = decisionMaker === "llm";
+  const decisionMaker = (valueByPath[decisionMakerPath] ?? "baseline") as BacktestDecisionMaker;
   // The Baseline runs per-ticker pots: each ticker its pot and ladder values. The rules and the AI model run one starting value.
   const perTickerPots = decisionMaker === "baseline";
   // Several runs only with the Baseline deciding (D1): only it has ticker values. Each run's capital is the sum of its pots (D4).
@@ -730,7 +727,6 @@ export function NewBacktestSessionPage() {
                 <strong>{created.batch.name}</strong>: {created.runs.length} runs are queued; their progress shows on the batch's page and under Background jobs.
               </>
             )}
-            {created.llmEstimate && <div className="mt-1">The AI model decides. {describeLlmEstimate(created.llmEstimate)}.</div>}
           </div>
         </div>
         <div className="alert alert-warning" role="status">
@@ -1195,34 +1191,6 @@ export function NewBacktestSessionPage() {
           )}
         </BacktestCard>
 
-        {decidedByModel && (
-          <BacktestCard title="The AI model" description="what the session may take, before it starts" className="mb-3">
-            <div className="card-body py-2" style={{ fontSize: "0.85rem", lineHeight: 1.5 }} aria-live="polite">
-              {estimateRequestText === null ? (
-                <div className="text-secondary">Pick the symbols, the period and the starting value for an estimate.</div>
-              ) : !estimateIsCurrent ? (
-                <Spinner size="sm" label="Estimating the model calls" />
-              ) : estimate.error ? (
-                <div className="backtest-ticker-problem">{estimate.error}</div>
-              ) : estimate.result?.llmEstimate ? (
-                <div className="fw-semibold">
-                  {describeLlmEstimate(estimate.result.llmEstimate)}
-                  <span className="text-secondary fw-normal"> · over {pluralizeCount(estimate.result.llmEstimate.tradingDays, "trading day")}, an upper bound</span>
-                </div>
-              ) : (
-                <div className="text-secondary">No estimate: the session would run on the rules.</div>
-              )}
-              <div className="text-secondary mt-1">{llmSessionNote}</div>
-              {estimateIsCurrent && estimate.result && estimate.result.warnings.length > 0 && (
-                <ul className="mb-0 mt-2 ps-3 iorio-note-amber">
-                  {estimate.result.warnings.map((warning) => (
-                    <li key={warning}>{warning}</li>
-                  ))}
-                </ul>
-              )}
-            </div>
-          </BacktestCard>
-        )}
         {submitAttempted && problems.length > 0 && (
           <div className="alert alert-danger">
             <ul className="mb-0 ps-3">

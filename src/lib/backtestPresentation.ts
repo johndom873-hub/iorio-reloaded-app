@@ -40,7 +40,6 @@ import {
   type BacktestTradeEnding,
   type BacktestWheelCycleSummary,
   type EffectiveBacktestSettings,
-  type LlmSessionEstimate,
 } from "../api/backtest";
 import {
   daysToExpiry,
@@ -1241,15 +1240,6 @@ export function sessionDecisionMaker(session: { overrides: BacktestSettingsOverr
 export function describeLlmCalls(calls: { asked: number; fromCache: number }): string {
   return `${pluralizeCount(calls.asked, "decision")} asked of the model, ${formatNumber(calls.fromCache)} of them answered from the cache`;
 }
-
-/** "About 2,604–5,208 model calls, 5.8–11.6 h of model time". */
-export function describeLlmEstimate(estimate: LlmSessionEstimate): string {
-  return `About ${formatNumber(estimate.callsLow)}–${formatNumber(estimate.callsHigh)} model calls, ${formatNumber(estimate.modelHoursLow, 1)}–${formatNumber(estimate.modelHoursHigh, 1)} h of model time`;
-}
-
-/** The plain note beside the estimate, before a session with the AI model deciding starts. */
-export const llmSessionNote =
-  "Runs Claude Sonnet on your Claude subscription (not billed per call). Symbols and dates are masked from the model. If the plan's usage limit is reached the session stops; Resume continues it, and answered calls are reused.";
 
 /** The account value chart's value axis: linear, or logarithmic (equal % moves take equal heights, so a session's line is not
  *  flattened by a buy and hold that grew 6×). Chosen per browser (useBacktestValueScale). */

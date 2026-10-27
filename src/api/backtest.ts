@@ -492,10 +492,10 @@ export interface BacktestSettingChoice {
   unavailableReason?: string;
 }
 
-export type BacktestSettingGroup = "How the session runs" | "Put ladder" | "Calls and Covered Calls" | "Contract choice" | "Entry filters" | "Exits" | "Hedge" | "Steady Stake" | "Vol Farmer" | "Vol Farmer v2" | "Capital and sizing" | "Candidate quality" | "Model" | "System checks" | "Rules' choices";
+export type BacktestSettingGroup = "How the session runs" | "Put ladder" | "Calls and Covered Calls" | "Contract choice" | "Entry filters" | "Exits" | "Hedge" | "Steady Stake" | "Vol Farmer" | "Vol Farmer v2";
 
-/** "baseline_wheel": rows the Baseline wheel (the CC + Put Ladder) reads, some shared with the rules and the AI model; "steady_stake": rows only the Steady Stake reads; "pluto_rules": rows only the rules and the AI model read. */
-export type BacktestSettingSection = "baseline_wheel" | "steady_stake" | "vol_farmer" | "vol_farmer_v2" | "pluto_rules";
+/** "baseline_wheel": rows the Baseline wheel (the CC + Put Ladder) reads; the others: rows only that decision maker reads. */
+export type BacktestSettingSection = "baseline_wheel" | "steady_stake" | "vol_farmer" | "vol_farmer_v2";
 
 /** A row's value against another row's: `oneOf` / `noneOf` its choice values, or a number `above`. */
 export interface BacktestSettingCondition {
@@ -542,14 +542,6 @@ export interface BacktestSettingsTemplate {
 export const backtestMaxSymbolsPerSession = 30;
 
 /** The API's llm/estimateLlmSession.ts: the model calls and hours of model time a session with the AI model deciding may take. */
-export interface LlmSessionEstimate {
-  tradingDays: number;
-  callsLow: number;
-  callsHigh: number;
-  modelHoursLow: number;
-  modelHoursHigh: number;
-}
-
 /** What POST /backtest/sessions answers: the session, its job, and what the session will do differently because of what its data files hold (it still runs). */
 export interface CreateBacktestSessionResponse {
   session: BacktestSessionListItem;
@@ -557,8 +549,6 @@ export interface CreateBacktestSessionResponse {
   warnings: string[];
   /** Each ticker's pot, weight and values as the session froze them ("pots"); null otherwise. */
   resolvedBySymbol: Record<string, BacktestSymbolSettings> | null;
-  /** With the AI model as decision maker: how many calls and how many hours of model time the session may take (an upper bound); null with the rules. */
-  llmEstimate: LlmSessionEstimate | null;
 }
 
 /**
@@ -567,7 +557,6 @@ export interface CreateBacktestSessionResponse {
  */
 export interface BacktestSessionEstimateResponse {
   warnings: string[];
-  llmEstimate: LlmSessionEstimate | null;
   /** The session's capital: the starting value given, else Σ the pots; null while a ticker has no pot. */
   capital: number | null;
   bookMode: BacktestBookMode;
@@ -630,8 +619,6 @@ export interface CreateBacktestBatchResponse {
   batch: BacktestBatchSummary;
   runs: { session: BacktestSessionListItem; job: BacktestJobView }[];
   warnings: string[];
-  /** One run with the AI model deciding: its estimate; null otherwise. */
-  llmEstimate: LlmSessionEstimate | null;
 }
 
 /** An account value series point: the run (or the combined portfolio), buy and hold of its tickers, buy and hold of SPY (null when not kept). */

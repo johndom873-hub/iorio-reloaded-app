@@ -358,7 +358,7 @@ export function BacktestLabSettingsModal({ onClose, stacked = false }: { onClose
     );
   };
 
-  const sections: BacktestSettingSection[] = ["baseline_wheel", "steady_stake", "vol_farmer", "vol_farmer_v2", "pluto_rules"];
+  const sections: BacktestSettingSection[] = ["baseline_wheel", "steady_stake", "vol_farmer", "vol_farmer_v2"];
 
   const overrideColumns: DataTableColumn<BacktestLabTickerOverrides>[] = [
     { key: "ticker", header: "Ticker", freezeOnPhone: true, render: (row) => <span className="fw-bold">{row.symbol}</span> },

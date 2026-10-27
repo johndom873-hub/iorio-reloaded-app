@@ -11,19 +11,16 @@ export const backtestSettingSectionTitles: Record<BacktestSettingSection, string
   steady_stake: "Used by the Steady Stake",
   vol_farmer: "Used by the Vol Farmer",
   vol_farmer_v2: "Used by Vol Farmer v2",
-  pluto_rules: "Pluto's rules and the AI model",
 };
 
-export const steadyStakeSectionNote = "Used only when the decision maker is the Steady Stake. None of these change a CC + Put Ladder session or Pluto's rules; the ladder's values and Pluto's rules don't change a Steady Stake session.";
+export const steadyStakeSectionNote = "Used only when the decision maker is the Steady Stake. None of these change a CC + Put Ladder session; the ladder's values don't change a Steady Stake session.";
 
-export const volFarmerSectionNote = "Used only when the decision maker is the Vol Farmer. None of these change a CC + Put Ladder, Steady Stake or Pluto's rules session.";
+export const volFarmerSectionNote = "Used only when the decision maker is the Vol Farmer. None of these change a CC + Put Ladder or Steady Stake session.";
 
 export const volFarmerV2SectionNote = "Used only when the decision maker is Vol Farmer v2, with the Vol Farmer's Calls' |delta| range and spread limit. None of these change any other session.";
 
-export const plutoRulesSectionNote = "Used only when the decision maker is the rules or the AI model. None of these change a CC + Put Ladder, Steady Stake or Vol Farmer session.";
-
 /** The note under a section's title; the CC + Put Ladder's section opens the table and has none. */
-export const backtestSettingSectionNotes: Record<BacktestSettingSection, string | null> = { baseline_wheel: null, steady_stake: steadyStakeSectionNote, vol_farmer: volFarmerSectionNote, vol_farmer_v2: volFarmerV2SectionNote, pluto_rules: plutoRulesSectionNote };
+export const backtestSettingSectionNotes: Record<BacktestSettingSection, string | null> = { baseline_wheel: null, steady_stake: steadyStakeSectionNote, vol_farmer: volFarmerSectionNote, vol_farmer_v2: volFarmerV2SectionNote };
 
 export interface BacktestSettingRowGroup {
   group: BacktestSettingGroup;
@@ -108,7 +105,6 @@ const callStrikeSummaries: Record<string, string> = {
   above_latest_entry: "strike ≥ the latest purchase",
   above_average_cost: "strike ≥ the average price",
 };
-const rollSummaries: Record<string, string> = { flagged_legs: "roll flagged legs", any_eligible: "roll whenever eligible", never: "never roll" };
 
 /**
  * A closed group's one-line summary. `text` is a row's value as typed; `shown` is how its row prints it (a choice's label,
@@ -200,16 +196,6 @@ export function backtestSettingGroupSummary(group: BacktestSettingGroup, text: (
         `|delta| ≤ ${text("volFarmerV2.putMaxAbsDelta")}, ${shown("volFarmerV2.putStrikeBelowFirstBreakEvenPct")} below the first break-even`,
         `LEAPS ${text("volFarmerV2.leapsMinDte")}+ days at |delta| ${text("volFarmerV2.leapsAbsDelta")}`,
       ].join(" · ");
-    case "Capital and sizing":
-      return `budget ${shown("pluto.capitalBudgetPct")} · order ${shown("pluto.orderSizePctOfBudget")} · Kelly ${text("kellyFraction")}`;
-    case "Candidate quality":
-      return `grade ≥ ${shown("pluto.minGrade").toLowerCase()} · Edge Yield ≥ ${shown("pluto.minEdgeYieldPct")} · ${text("pluto.minDte")}–${text("pluto.maxDte")} DTE`;
-    case "Model":
-      return `fit error ≤ ${text("pluto.maxSliceRmseVp")} vol pts · ≥ ${text("pluto.minSlicePointCount")} quotes · forecast ${text("fixed.forecastWindowDays")} days`;
-    case "System checks":
-      return `${text("pluto.maxActionsPerSession")} orders a day · cooldown ${text("pluto.tickerCooldownMinutes")} min · loss breaker ${shown("pluto.dailyLossBreakerPct")}`;
-    case "Rules' choices":
-      return [rollSummaries[text("policy.roll")] ?? shown("policy.roll"), text("policy.buyback") === "when_offered" ? "buy back when offered" : "never buy back"].join(" · ");
   }
 }
 
