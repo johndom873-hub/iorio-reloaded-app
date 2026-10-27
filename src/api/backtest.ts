@@ -13,7 +13,7 @@ export type BacktestJobDisplayStatus = BacktestJobStatus | "stopped";
 export type BacktestTablesMode = "walk_forward" | "current";
 
 /** Who makes the choices the AI model makes live: the stand-in rules (BacktestPolicySettings), or the model itself (Claude through the subscription, src/backtest/llm/). */
-export type BacktestDecisionMaker = "rules" | "llm" | "baseline" | "steady_stake" | "vol_farmer";
+export type BacktestDecisionMaker = "rules" | "llm" | "baseline" | "steady_stake" | "vol_farmer" | "vol_farmer_v2";
 
 /** The baseline wheel (decision maker "baseline"): no Pluto rules and no Signals, everything held to expiry. */
 export interface BacktestBaselineSettings {
@@ -182,6 +182,8 @@ export interface BacktestSettings {
   steadyStake?: BacktestSteadyStakeSettings;
   /** Absent on sessions created before the Vol Farmer existed. */
   volFarmer?: BacktestVolFarmerSettings;
+  /** Absent on sessions created before Vol Farmer v2 existed. */
+  volFarmerV2?: BacktestVolFarmerV2Settings;
 }
 
 /** The Vol Farmer's values (the API's BacktestVolFarmerSettings). */
@@ -213,6 +215,15 @@ export interface BacktestVolFarmerSettings {
   hedge: "put" | "none";
 }
 
+/** Vol Farmer v2's values (the API's BacktestVolFarmerV2Settings; research). */
+export interface BacktestVolFarmerV2Settings {
+  putTriggerCallYieldPct: number;
+  putMaxAbsDelta: number;
+  putStrikeBelowFirstBreakEvenPct: number;
+  leapsMinDte: number;
+  leapsAbsDelta: number;
+}
+
 /** The Steady Stake's values (the API's BacktestSteadyStakeSettings). */
 export interface BacktestSteadyStakeSettings {
   stakePct: number;
@@ -234,6 +245,7 @@ export interface BacktestSettingsOverrides {
   baseline?: Partial<BacktestBaselineSettings>;
   steadyStake?: Partial<BacktestSteadyStakeSettings>;
   volFarmer?: Partial<BacktestVolFarmerSettings>;
+  volFarmerV2?: Partial<BacktestVolFarmerV2Settings>;
 }
 
 /** A session's settings with its overrides applied and every default filled in: what the engine runs on. */
@@ -480,10 +492,10 @@ export interface BacktestSettingChoice {
   unavailableReason?: string;
 }
 
-export type BacktestSettingGroup = "How the session runs" | "Put ladder" | "Calls and Covered Calls" | "Contract choice" | "Entry filters" | "Exits" | "Hedge" | "Steady Stake" | "Vol Farmer" | "Capital and sizing" | "Candidate quality" | "Model" | "System checks" | "Rules' choices";
+export type BacktestSettingGroup = "How the session runs" | "Put ladder" | "Calls and Covered Calls" | "Contract choice" | "Entry filters" | "Exits" | "Hedge" | "Steady Stake" | "Vol Farmer" | "Vol Farmer v2" | "Capital and sizing" | "Candidate quality" | "Model" | "System checks" | "Rules' choices";
 
 /** "baseline_wheel": rows the Baseline wheel (the CC + Put Ladder) reads, some shared with the rules and the AI model; "steady_stake": rows only the Steady Stake reads; "pluto_rules": rows only the rules and the AI model read. */
-export type BacktestSettingSection = "baseline_wheel" | "steady_stake" | "vol_farmer" | "pluto_rules";
+export type BacktestSettingSection = "baseline_wheel" | "steady_stake" | "vol_farmer" | "vol_farmer_v2" | "pluto_rules";
 
 /** A row's value against another row's: `oneOf` / `noneOf` its choice values, or a number `above`. */
 export interface BacktestSettingCondition {

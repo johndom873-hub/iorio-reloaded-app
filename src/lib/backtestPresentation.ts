@@ -1210,10 +1210,10 @@ export function roundValueAxis(low: number, high: number, maxTicks: number): { m
 
 // ---- Decision maker (the stand-in rules, or the AI model through the Claude subscription) ----
 
-export const decisionMakerLabel: Record<BacktestDecisionMaker, string> = { rules: "Rules", llm: "The AI model", baseline: "Baseline wheel", steady_stake: "Steady Stake", vol_farmer: "Vol Farmer" };
+export const decisionMakerLabel: Record<BacktestDecisionMaker, string> = { rules: "Rules", llm: "The AI model", baseline: "Baseline wheel", steady_stake: "Steady Stake", vol_farmer: "Vol Farmer", vol_farmer_v2: "Vol Farmer v2" };
 
 /** "decided by the rules", in a session's subtitle. */
-export const decidedByPhrase: Record<BacktestDecisionMaker, string> = { rules: "the rules", llm: "the AI model", baseline: "the baseline wheel", steady_stake: "the Steady Stake", vol_farmer: "the Vol Farmer" };
+export const decidedByPhrase: Record<BacktestDecisionMaker, string> = { rules: "the rules", llm: "the AI model", baseline: "the baseline wheel", steady_stake: "the Steady Stake", vol_farmer: "the Vol Farmer", vol_farmer_v2: "Vol Farmer v2" };
 
 /** Who decided a session's choices: its override, else its frozen settings; "rules" on sessions saved before the choice existed. */
 export function sessionDecisionMaker(session: { overrides: BacktestSettingsOverrides; settingsSnapshot: BacktestSettings }): BacktestDecisionMaker {
@@ -1324,6 +1324,7 @@ export const decisionMakerHint: Record<BacktestDecisionMaker, string> = {
   baseline: "each ticker gets its own pot and ladder values (Tickers, below)",
   steady_stake: "a steady share of each ticker's pot in its shares, Calls and Puts sold on expiry days; the starting value is split equally across the tickers",
   vol_farmer: "shares, a Covered Call and a long Put that hedges them, all unwound when the stock reaches the Call's strike",
+  vol_farmer_v2: "two Covered Calls at different levels: the second from Puts sold on half the pot after a fall, a LEAPS Call when even it finds no Call",
 };
 
 /** Where a ticker's value came from, as its badge reads (lowest layer first: the order a reset walks back down). */

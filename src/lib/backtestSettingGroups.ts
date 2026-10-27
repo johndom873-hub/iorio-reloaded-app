@@ -10,6 +10,7 @@ export const backtestSettingSectionTitles: Record<BacktestSettingSection, string
   baseline_wheel: "Used by the CC + Put Ladder",
   steady_stake: "Used by the Steady Stake",
   vol_farmer: "Used by the Vol Farmer",
+  vol_farmer_v2: "Used by Vol Farmer v2",
   pluto_rules: "Pluto's rules and the AI model",
 };
 
@@ -17,10 +18,12 @@ export const steadyStakeSectionNote = "Used only when the decision maker is the 
 
 export const volFarmerSectionNote = "Used only when the decision maker is the Vol Farmer. None of these change a CC + Put Ladder, Steady Stake or Pluto's rules session.";
 
+export const volFarmerV2SectionNote = "Used only when the decision maker is Vol Farmer v2, with the Vol Farmer's Calls' |delta| range and spread limit. None of these change any other session.";
+
 export const plutoRulesSectionNote = "Used only when the decision maker is the rules or the AI model. None of these change a CC + Put Ladder, Steady Stake or Vol Farmer session.";
 
 /** The note under a section's title; the CC + Put Ladder's section opens the table and has none. */
-export const backtestSettingSectionNotes: Record<BacktestSettingSection, string | null> = { baseline_wheel: null, steady_stake: steadyStakeSectionNote, vol_farmer: volFarmerSectionNote, pluto_rules: plutoRulesSectionNote };
+export const backtestSettingSectionNotes: Record<BacktestSettingSection, string | null> = { baseline_wheel: null, steady_stake: steadyStakeSectionNote, vol_farmer: volFarmerSectionNote, vol_farmer_v2: volFarmerV2SectionNote, pluto_rules: plutoRulesSectionNote };
 
 export interface BacktestSettingRowGroup {
   group: BacktestSettingGroup;
@@ -190,6 +193,12 @@ export function backtestSettingGroupSummary(group: BacktestSettingGroup, text: (
               `protection on a ${shown("volFarmer.protectionFallPct")} fall`,
             ]),
         `${shown("volFarmer.putCashReservePct")} cash kept`,
+      ].join(" · ");
+    case "Vol Farmer v2":
+      return [
+        `Puts while the Calls yield under ${shown("volFarmerV2.putTriggerCallYieldPct")}`,
+        `|delta| ≤ ${text("volFarmerV2.putMaxAbsDelta")}, ${shown("volFarmerV2.putStrikeBelowFirstBreakEvenPct")} below the first break-even`,
+        `LEAPS ${text("volFarmerV2.leapsMinDte")}+ days at |delta| ${text("volFarmerV2.leapsAbsDelta")}`,
       ].join(" · ");
     case "Capital and sizing":
       return `budget ${shown("pluto.capitalBudgetPct")} · order ${shown("pluto.orderSizePctOfBudget")} · Kelly ${text("kellyFraction")}`;
