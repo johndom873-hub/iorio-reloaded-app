@@ -224,6 +224,8 @@ export interface BacktestVolFarmerV2Settings {
   leapsMinDte: number;
   leapsAbsDelta: number;
   leapsMaxAccountPct: number;
+  /** When it decides: at 10:00 only, or at every look (as Pluto runs it). */
+  looks: "first_look" | "every_look";
 }
 
 /** The Steady Stake's values (the API's BacktestSteadyStakeSettings). */
