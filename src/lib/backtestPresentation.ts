@@ -20,6 +20,9 @@ import {
   type BacktestJobView,
   type BacktestMetrics,
   type BacktestMonthlyReturn,
+  type BacktestNoCallReason,
+  type BacktestNoCallRun,
+  type BacktestNoCandidateDetail,
   type BacktestNoSaleDays,
   type BacktestPnlBasis,
   type BacktestPosition,
@@ -883,17 +886,44 @@ export function describeIdleStretchReason(stretch: BacktestIdleStretch, lead: st
 export function describeIdleStretchRules(stretch: BacktestIdleStretch, lead: "No entry" | "No call", entryFilterLimits: BacktestCycleGap["entryFilterLimits"] | null = null): string {
   const lines = [`${lead}, the days each reason was seen (a day counts under every reason seen at any of its looks):`];
   for (const { reason, days } of noSaleReasons(stretch.noSaleDays, entryFilterLimits)) lines.push(`• ${reason}: ${pluralizeCount(days, "day")}`);
-  const noCandidate = stretch.noCandidate;
-  if (noCandidate) {
-    const noun = noCandidate.right === "P" ? "put" : "call";
-    const contracts = noCandidate.firstDay.checks.reduce((sum, check) => sum + check.contracts, 0);
-    lines.push("", `No candidate on ${noCandidate.firstDay.date} at ${noCandidate.firstDay.lookTimeEt} ET: none of ${pluralizeCount(contracts, noun)} qualified. Each check in order, and the ${noun}s it left out:`);
-    for (const check of noCandidate.firstDay.checks) lines.push(`• ${check.rule}: ${formatNumber(check.contracts)}`);
-    if (noCandidate.days > 1) {
-      const byCheck = backtestCandidateChecks.flatMap((check) => (noCandidate.daysByCheck[check] ? [`${candidateCheckLabels[check]} ${formatNumber(noCandidate.daysByCheck[check]!)}`] : []));
-      lines.push("", `On the ${formatNumber(noCandidate.days)} days with no candidate, the days each check left ${noun}s out: ${byCheck.join(" · ")}`);
-    }
+  if (stretch.noCandidate) lines.push(...noCandidateLines(stretch.noCandidate));
+  return lines.join("\n");
+}
+
+/** The tooltip's lines on the days no contract qualified: the first such day's checks in order, then each check's days. */
+function noCandidateLines(noCandidate: BacktestNoCandidateDetail): string[] {
+  const noun = noCandidate.right === "P" ? "put" : "call";
+  const contracts = noCandidate.firstDay.checks.reduce((sum, check) => sum + check.contracts, 0);
+  const lines = ["", `No candidate on ${noCandidate.firstDay.date} at ${noCandidate.firstDay.lookTimeEt} ET: none of ${pluralizeCount(contracts, noun)} qualified. Each check in order, and the ${noun}s it left out:`];
+  for (const check of noCandidate.firstDay.checks) lines.push(`• ${check.rule}: ${formatNumber(check.contracts)}`);
+  if (noCandidate.days > 1) {
+    const byCheck = backtestCandidateChecks.flatMap((check) => (noCandidate.daysByCheck[check] ? [`${candidateCheckLabels[check]} ${formatNumber(noCandidate.daysByCheck[check]!)}`] : []));
+    lines.push("", `On the ${formatNumber(noCandidate.days)} days with no candidate, the days each check left ${noun}s out: ${byCheck.join(" · ")}`);
   }
+  return lines;
+}
+
+/** A No Call reason with its figure: "no Call passed the hedge rule (shares at $324.38)". */
+const describeNoCallReason = (reason: BacktestNoCallReason) => (reason.figure === null ? reason.reason : `${reason.reason} (${reason.figure.kind === "breakEven" ? "shares break even at" : "shares at"} ${formatCurrency(reason.figure.dollars)})`);
+
+/**
+ * A No Call row's description (approved by Marcelo 2026-10-27): "No Call on 200 shares for 32 sessions, the hedge Put
+ * held: no Call passed the hedge rule (shares at $324.38) · stock +3.5%"; `stockMove` null leaves the stock out.
+ */
+export function describeNoCallRun(run: BacktestNoCallRun, stockMove: number | null): string {
+  const hedge = run.hedgePutDays === 0 ? "" : run.hedgePutDays === run.sessions ? ", the hedge Put held" : `, the hedge Put held on ${formatNumber(run.hedgePutDays)} of them`;
+  const stock = stockMove === null ? "" : ` · stock ${formatSignedPercentage(stockMove, 1)}`;
+  return `No Call on ${formatNumber(run.sharesHeld)} shares for ${pluralizeCount(run.sessions, "session")}${hedge}: ${run.reasons.map(describeNoCallReason).join(", ")}${stock}`;
+}
+
+/** A No Call row's tooltip: the days each reason was seen, the look's note on the first day of each, why no contract qualified, and the stock's move. */
+export function describeNoCallRunRules(run: BacktestNoCallRun): string {
+  const lines = ["No Call, the days each reason was seen (a day counts under every reason seen at any of its looks):"];
+  for (const reason of run.reasons) lines.push(`• ${describeNoCallReason(reason)}: ${pluralizeCount(reason.days, "day")}`);
+  const notes = run.reasons.flatMap((reason) => (reason.firstNote ? [`• ${formatDayMonthYear(reason.firstNote.date)}: ${reason.firstNote.text}`] : []));
+  if (notes.length > 0) lines.push("", "The look's note on the first day of each:", ...notes);
+  if (run.noCandidate) lines.push(...noCandidateLines(run.noCandidate));
+  lines.push("", "Stock: the close of the run's last session ÷ the close of the session before it − 1, on split-adjusted closes.");
   return lines.join("\n");
 }
 

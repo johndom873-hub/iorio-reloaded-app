@@ -8,9 +8,9 @@ import {
   type BacktestCycleGap,
   type BacktestCycleTimelineRow,
   type BacktestIdleStretch,
+  type BacktestNoCallRun,
   type BacktestSessionDay,
   type BacktestSessionStockPrices,
-  type BacktestStockOnlyStretch,
 } from "../../api/backtest";
 import { useCollapsibleCard } from "../../hooks/useCollapsibleCard";
 import { formatCurrency, formatDayMonthYear, formatNumber, formatPercentage, formatSignedPercentage, formatSignedPnl, pluralizeCount, pnlTextClass } from "../../lib/formatters";
@@ -26,6 +26,8 @@ import {
   describeIdleStretchReason,
   describeIdleStretchRules,
   describeLadderRung,
+  describeNoCallRun,
+  describeNoCallRunRules,
   describeOpenCycles,
   describeSessionSpan,
   summarizeCycleTotals,
@@ -39,16 +41,17 @@ import { BacktestCard, BacktestCardTitle, BacktestCollapseToggle } from "./backt
 
 // The Wheel cycles table (mockup approved 2026-10-20): every cycle oldest first; with one symbol shown, an Idle row for
 // each stretch with no cycle open; a cycle's row opens to its trades (the platform's cycle timeline, whose premium and
-// stock add up to the cycle's figures) and the stretches its shares had no call on. Every row puts its values in the
-// table's own columns.
+// stock add up to the cycle's figures) and the runs of days its shares had no Call (No-Call days, approved 2026-10-27).
+// Every row puts its values in the table's own columns.
 
 type CycleStatusFilter = "all" | "open" | "closed";
+type CycleNoCallFilter = "all" | "withNoCallDays";
 
 type CyclesTableRow =
   | { kind: "cycle"; key: string; cycle: BacktestCycle }
   | { kind: "gap"; key: string; gap: BacktestCycleGap }
   | { kind: "trade"; key: string; cycle: BacktestCycle; row: BacktestCycleTimelineRow }
-  | { kind: "stockOnly"; key: string; cycle: BacktestCycle; stretch: BacktestStockOnlyStretch };
+  | { kind: "noCall"; key: string; cycle: BacktestCycle; run: BacktestNoCallRun };
 
 type CycleDetailState = { status: "loading" } | { status: "loaded"; detail: BacktestCycleDetail | null } | { status: "failed"; error: string };
 
@@ -118,8 +121,8 @@ function priceText(price: number | null, splitFactor = 1): ReactNode {
 }
 const cashText = (share: number | null | undefined) => (share == null ? dash : formatPercentage(share, 0));
 
-/** A stretch's cells (an Idle row between cycles, a Stock only row in a cycle's trades). */
-function stretchCell(key: string, stretch: BacktestIdleStretch, own: { label: ReactNode; sessions: string; reason: string; rules: string; accountReturn: ReactNode; price: number | null; splitFactor: number; shares: number | null }): ReactNode {
+/** An Idle row's cells: a stretch between cycles. */
+function stretchCell(key: string, stretch: BacktestIdleStretch, own: { label: ReactNode; sessions: string; reason: string; rules: string; accountReturn: ReactNode; price: number | null; splitFactor: number }): ReactNode {
   switch (key) {
     case "cycle":
       return own.label;
@@ -141,8 +144,6 @@ function stretchCell(key: string, stretch: BacktestIdleStretch, own: { label: Re
       return own.sessions;
     case "price":
       return priceText(own.price, own.splitFactor);
-    case "shares":
-      return own.shares === null ? dash : formatNumber(own.shares);
     case "cash":
       return cashText(stretch.freeCashShareAtStart);
     case "strategies":
@@ -165,24 +166,39 @@ function gapCell(key: string, gap: BacktestCycleGap, context: CellContext): Reac
     accountReturn: <SignedPercent fraction={context.accountReturn(gap.firstIdleDay, gap.lastIdleDay)} plain />,
     price: context.priceOn(gap.symbol, gap.firstIdleDay, "tenOclock"),
     splitFactor: context.splitFactorOn(gap.symbol, gap.firstIdleDay),
-    shares: null,
   });
 }
 
-/** A stock-only stretch is one of a cycle's breakdown rows: its Session # is its first session's alone. */
-function stockOnlyCell(key: string, cycle: BacktestCycle, stretch: BacktestStockOnlyStretch, context: CellContext): ReactNode {
-  if (["pnl", "status", "premium", "stock", "breakEven"].includes(key)) return null;
-  return stretchCell(key, stretch, {
-    label: <span className="backtest-cycle-event-name">Stock only</span>,
-    sessions: describeSessionSpan(context.sessionNumberOf(stretch.firstIdleDay)),
-    reason: describeIdleStretchReason(stretch, `No option on ${formatNumber(stretch.sharesHeld)} shares`),
-    rules: describeIdleStretchRules(stretch, "No call"),
-    accountReturn: null,
-    price: context.priceOn(cycle.symbol, stretch.firstIdleDay, "tenOclock"),
-    splitFactor: context.splitFactorOn(cycle.symbol, stretch.firstIdleDay),
-    shares: stretch.sharesHeld,
-  });
+/** A run of days with shares and no Call is one of a cycle's breakdown rows: its first and last days, its span, its price on its first day, its shares and its length, and why. */
+function noCallCell(key: string, cycle: BacktestCycle, run: BacktestNoCallRun, context: CellContext): ReactNode {
+  switch (key) {
+    case "cycle":
+      return <span className="backtest-cycle-event-name">No Call</span>;
+    case "opened":
+      return run.firstDay;
+    case "closed":
+      return run.lastDay;
+    case "sessions":
+      return describeSessionSpan(context.sessionNumberOf(run.firstDay), context.sessionNumberOf(run.lastDay));
+    case "price":
+      return priceText(context.priceOn(cycle.symbol, run.firstDay, "tenOclock"), context.splitFactorOn(cycle.symbol, run.firstDay));
+    case "shares":
+      return formatNumber(run.sharesHeld);
+    case "noCallDays":
+      return formatNumber(run.sessions);
+    case "strategies":
+      return (
+        <TooltipSpan text={describeNoCallRunRules(run)} multiline className="dotted-underline-label backtest-cycle-row-detail">
+          {describeNoCallRun(run, context.buyAndHold(cycle.symbol, run.firstDay, run.lastDay))}
+        </TooltipSpan>
+      );
+    default:
+      return null;
+  }
 }
+
+/** A cycle's no-Call days of its days with shares ("40 of 58"); a dash with none. */
+const noCallDaysText = (noCallDays: BacktestCycle["noCallDays"]) => (noCallDays && noCallDays.days > 0 ? `${formatNumber(noCallDays.days)} of ${formatNumber(noCallDays.shareDays)}` : dash);
 
 function tradeCell(key: string, cycle: BacktestCycle, row: BacktestCycleTimelineRow, context: CellContext): ReactNode {
   const event = describeCycleTimelineEvent(row);
@@ -278,6 +294,8 @@ function cycleCell(key: string, cycle: BacktestCycle, context: CellContext): Rea
       ) : (
         dash
       );
+    case "noCallDays":
+      return noCallDaysText(cycle.noCallDays);
     case "cash":
       if (cycle.status === "open") return cashText(cycle.freeCashShareNow);
       return cycle.freeCashShareLowest ? (
@@ -306,8 +324,8 @@ function cellOf(row: CyclesTableRow, key: string, context: CellContext): ReactNo
       return gapCell(key, row.gap, context);
     case "trade":
       return tradeCell(key, row.cycle, row.row, context);
-    case "stockOnly":
-      return stockOnlyCell(key, row.cycle, row.stretch, context);
+    case "noCall":
+      return noCallCell(key, row.cycle, row.run, context);
   }
 }
 
@@ -330,19 +348,19 @@ const columnDefinitions: Omit<DataTableColumn<CyclesTableRow>, "render">[] = [
     cellClassName: "text-nowrap",
   },
   { key: "status", header: "Status", headerTitle: "Open: the symbol is not flat yet at the session's end, and its P&L is at the last marks. Closed: the symbol went flat again." },
-  { key: "opened", header: "Opened", headerTitle: "A cycle's first day; an idle or stock-only stretch's first session; a trade's day.", cellClassName: "font-mono text-nowrap" },
-  { key: "closed", header: "Closed", headerTitle: "A cycle's last day; an idle or stock-only stretch's last session; an option sold or bought: its expiry.", cellClassName: "font-mono text-nowrap" },
+  { key: "opened", header: "Opened", headerTitle: "A cycle's first day; an idle stretch's or a No Call run's first session; a trade's day.", cellClassName: "font-mono text-nowrap" },
+  { key: "closed", header: "Closed", headerTitle: "A cycle's last day; an idle stretch's or a No Call run's last session; an option sold or bought: its expiry.", cellClassName: "font-mono text-nowrap" },
   {
     key: "sessions",
     header: "Session #",
-    headerTitle: "The session's trading days, numbered from 1 on its first (weekends and holidays have none): a cycle's or an idle stretch's first → last (an open cycle's to the session's end); a trade's own, a stock-only stretch's first.",
+    headerTitle: "The session's trading days, numbered from 1 on its first (weekends and holidays have none): a cycle's, an idle stretch's or a No Call run's first → last (an open cycle's to the session's end); a trade's own.",
     align: "right",
     cellClassName: "text-nowrap",
   },
   {
     key: "price",
     header: "Price",
-    headerTitle: "The stock price as traded. A cycle or a stretch: the 10:00 price on its first day. A trade: the 10:00 price the day's looks saw; an assignment, a hand-over or a mark: that day's close.",
+    headerTitle: "The stock price as traded. A cycle, a stretch or a No Call run: the 10:00 price on its first day. A trade: the 10:00 price the day's looks saw; an assignment, a hand-over or a mark: that day's close.",
     align: "right",
     cellClassName: "text-nowrap",
   },
@@ -357,7 +375,15 @@ const columnDefinitions: Omit<DataTableColumn<CyclesTableRow>, "render">[] = [
   {
     key: "shares",
     header: "Shares",
-    headerTitle: "Shares held, as traded on the row's day. A closed cycle: the most it held (the day on hover); an open cycle: at the last marks. A trade: once everything done at that look is done (a look's rows show the same number). A stock-only stretch: the shares it held.",
+    headerTitle: "Shares held, as traded on the row's day. A closed cycle: the most it held (the day on hover); an open cycle: at the last marks. A trade: once everything done at that look is done (a look's rows show the same number). A No Call run: the shares held on its first day.",
+    align: "right",
+    cellClassName: "text-nowrap",
+  },
+  {
+    key: "noCallDays",
+    header: "No-Call days",
+    headerTitle:
+      "A cycle's session days with shares and no Call open at any time of the day, of its session days with shares. A Call covers every day from its sale to its expiry or buy-back, both included (as the Covered Calls tile counts them); shares a put's assignment delivers at the close count from the next session. A No Call row: its sessions.",
     align: "right",
     cellClassName: "text-nowrap",
   },
@@ -365,7 +391,7 @@ const columnDefinitions: Omit<DataTableColumn<CyclesTableRow>, "render">[] = [
     key: "cash",
     header: "Cash",
     headerTitle:
-      "Free cash ÷ the account value: the cash not locked in open Cash-Secured Puts (strike × 100 × contracts), as the engine counts what it may still spend, over the account's value at that day's 10:00 marks (so a flat account after a day's gains can read a hair over 100%); the whole account's in a session of several symbols. A trade: once everything done at that look is done. A closed cycle: its lowest, at each day's 10:00 marks and after each of its looks (the day on hover); an open cycle: at the session's last day. Idle and stock-only stretches: at their first day's 10:00 marks.",
+      "Free cash ÷ the account value: the cash not locked in open Cash-Secured Puts (strike × 100 × contracts), as the engine counts what it may still spend, over the account's value at that day's 10:00 marks (so a flat account after a day's gains can read a hair over 100%); the whole account's in a session of several symbols. A trade: once everything done at that look is done. A closed cycle: its lowest, at each day's 10:00 marks and after each of its looks (the day on hover); an open cycle: at the session's last day. Idle stretches: at their first day's 10:00 marks.",
     align: "right",
     cellClassName: "text-nowrap",
   },
@@ -374,25 +400,25 @@ const columnDefinitions: Omit<DataTableColumn<CyclesTableRow>, "render">[] = [
   {
     key: "strategies",
     header: "By strategy",
-    headerTitle: "Each strategy's part of the cycle P&L, as the platform's Profit & Loss scoreboard attributes it. A trade: the strategy that owns it and what happened. Idle and stock-only stretches: why nothing was sold, the full rules in the tooltip.",
+    headerTitle: "Each strategy's part of the cycle P&L, as the platform's Profit & Loss scoreboard attributes it. A trade: the strategy that owns it and what happened. Idle stretches and No Call runs: why nothing was sold, the full rules in the tooltip.",
   },
 ];
 
-/** A cycle's trades and its stock-only stretches, each stretch before the first trade dated on or after its first session. */
+/** A cycle's trades and its No Call runs, each run before the first trade dated on or after its first session. */
 function breakdownRows(cycle: BacktestCycle, detail: BacktestCycleDetail): CyclesTableRow[] {
-  const pending = [...detail.stockOnlyStretches].sort((a, b) => a.firstIdleDay.localeCompare(b.firstIdleDay));
+  const pending = [...detail.noCallRuns].sort((a, b) => a.firstDay.localeCompare(b.firstDay));
   const rows: CyclesTableRow[] = [];
-  const stockOnlyRow = (stretch: BacktestStockOnlyStretch): CyclesTableRow => ({ kind: "stockOnly", key: `stock-only-${cycleKeyOf(cycle)}-${stretch.firstIdleDay}`, cycle, stretch });
+  const noCallRow = (run: BacktestNoCallRun): CyclesTableRow => ({ kind: "noCall", key: `no-call-${cycleKeyOf(cycle)}-${run.firstDay}`, cycle, run });
   // Within one moment: the shares first, then the Calls and other options, then the hedge's Puts (Marcelo 2026-10-21 and
   // 2026-10-23); rows of a kind keep the derivation's order. A moment's rows share their Shares, B-E and Cash, so the
   // order changes no figure.
   const rankWithinMoment = (row: BacktestCycleTimelineRow) => (row.instrument === "stock" ? 0 : row.bucket === "hedge" ? 2 : 1);
   const ordered = detail.timeline.map((row, index) => ({ row, index })).sort((a, b) => (a.row.at !== null && a.row.at === b.row.at ? rankWithinMoment(a.row) - rankWithinMoment(b.row) : 0) || a.index - b.index);
   ordered.forEach(({ row, index }) => {
-    while (pending.length > 0 && pending[0]!.firstIdleDay <= row.tradingDate) rows.push(stockOnlyRow(pending.shift()!));
+    while (pending.length > 0 && pending[0]!.firstDay <= row.tradingDate) rows.push(noCallRow(pending.shift()!));
     rows.push({ kind: "trade", key: `trade-${cycleKeyOf(cycle)}-${index}`, cycle, row });
   });
-  return [...rows, ...pending.map(stockOnlyRow)];
+  return [...rows, ...pending.map(noCallRow)];
 }
 
 /** Every wheel cycle of the session, oldest first, all on one table; filter by symbol and status. With one symbol shown, a
@@ -416,6 +442,7 @@ export function BacktestCyclesTable({
   const [isOpen, setIsOpen] = useCollapsibleCard("backtest-cycles", true);
   const [symbolFilter, setSymbolFilter] = useState("");
   const [statusFilter, setStatusFilter] = useState<CycleStatusFilter>("all");
+  const [noCallFilter, setNoCallFilter] = useState<CycleNoCallFilter>("all");
   const [openCycleKeys, setOpenCycleKeys] = useState<ReadonlySet<string>>(() => new Set());
   const [details, setDetails] = useState<ReadonlyMap<string, CycleDetailState>>(() => new Map());
   // Each read of the session (a running one is polled) reads its opened cycles' trades again; a slower, older answer is dropped.
@@ -489,18 +516,19 @@ export function BacktestCyclesTable({
   }
 
   const filtered = cycles
-    .filter((cycle) => (symbolFilter === "" || cycle.symbol === symbolFilter) && (statusFilter === "all" || cycle.status === statusFilter))
+    .filter((cycle) => (symbolFilter === "" || cycle.symbol === symbolFilter) && (statusFilter === "all" || cycle.status === statusFilter) && (noCallFilter === "all" || (cycle.noCallDays?.days ?? 0) > 0))
     .sort((a, b) => a.openedAt.localeCompare(b.openedAt) || a.symbol.localeCompare(b.symbol));
   const filteredTotals = summarizeCycleTotals(filtered);
   const filteredPnl = filteredTotals.closedDollars + filteredTotals.openDollars;
 
   // Gaps mean something only along one symbol's cycles: a session of one symbol, or one picked. Each goes before the
-  // cycle after it, else (that cycle filtered out, or none: to the session's end) after the cycle before it.
+  // cycle after it, else (that cycle filtered out, or none: to the session's end) after the cycle before it. The cycles
+  // with no-Call days are listed without them.
   const gapSymbol = symbols.length === 1 ? symbols[0]! : symbolFilter === "" ? null : symbolFilter;
   const shownCycleNumbers = new Set(filtered.filter((cycle) => cycle.symbol === gapSymbol).map((cycle) => cycle.cycleNumber));
   const gapsBefore = new Map<number, BacktestCycleGap[]>();
   const gapsAfter = new Map<number, BacktestCycleGap[]>();
-  if (gapSymbol !== null && statusFilter !== "open") {
+  if (gapSymbol !== null && statusFilter !== "open" && noCallFilter === "all") {
     for (const gap of cycleGaps.filter((entry) => entry.symbol === gapSymbol)) {
       const anchor = gap.beforeCycleNumber !== null && shownCycleNumbers.has(gap.beforeCycleNumber) ? { map: gapsBefore, cycleNumber: gap.beforeCycleNumber } : gap.afterCycleNumber !== null && shownCycleNumbers.has(gap.afterCycleNumber) ? { map: gapsAfter, cycleNumber: gap.afterCycleNumber } : null;
       if (anchor) anchor.map.set(anchor.cycleNumber, [...(anchor.map.get(anchor.cycleNumber) ?? []), gap]);
@@ -541,7 +569,7 @@ export function BacktestCyclesTable({
     if (row.kind === "cycle") return openCycleKeys.has(row.key) ? "table-active" : undefined;
     // An assignment's row and a Vol Farmer crossing's rows are framed (theme.css).
     if (row.kind === "trade") return /^(Put|Call) assigned/.test(row.row.label) || row.row.crossing === true ? "backtest-cycle-trade-row backtest-cycle-highlighted-row" : "backtest-cycle-trade-row";
-    return row.kind === "stockOnly" ? "backtest-cycle-trade-row backtest-cycle-idle-row" : "backtest-cycle-idle-row";
+    return row.kind === "noCall" ? "backtest-cycle-trade-row backtest-cycle-idle-row" : "backtest-cycle-idle-row";
   };
 
   return (
@@ -576,6 +604,10 @@ export function BacktestCyclesTable({
                 <option value="open">Open</option>
                 <option value="closed">Closed</option>
               </select>
+              <select className="form-select w-auto" aria-label="No-Call days" value={noCallFilter} onChange={(event) => setNoCallFilter(event.target.value as CycleNoCallFilter)}>
+                <option value="all">All cycles</option>
+                <option value="withNoCallDays">With no-Call days</option>
+              </select>
               {toggle}
             </div>
           </>
@@ -583,6 +615,7 @@ export function BacktestCyclesTable({
         footerCells={{
           cycle: filtered.length === cycles.length ? "All cycles" : `${pluralizeCount(filtered.length, "cycle")} shown`,
           pnl: <SignedDollars value={filteredPnl} bold />,
+          noCallDays: noCallDaysText({ days: filtered.reduce((sum, cycle) => sum + (cycle.noCallDays?.days ?? 0), 0), shareDays: filtered.reduce((sum, cycle) => sum + (cycle.noCallDays?.shareDays ?? 0), 0) }),
           premium: <SignedDollars value={filtered.reduce((sum, cycle) => sum + cycle.netPremiumDollars, 0)} />,
           stock: <SignedDollars value={filtered.reduce((sum, cycle) => sum + cycleStockDollars(cycle), 0)} />,
         }}
