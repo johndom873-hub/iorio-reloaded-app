@@ -134,11 +134,11 @@ function LadderExplanation({ values }: { values: PlutoHowItWorks }) {
       <Card title="How the money is split">
         <p className="pm-how-text muted">Each ticker gets a pot. Part of it buys shares, the rest is kept in cash for the Puts. The pot is set when the cycle starts and only grows: if the account falls during a cycle, the plan stays as it was.</p>
         <div className="pm-how-figures">
-          <Figure tone="plain" label="Ticker's pot" value={formatCurrency(example.pot, 0)} detail={`allocation ${pct(example.allocationPct)} × capital budget ${pct(shared.capitalBudgetPct)} × account ${formatCurrency(example.accountValue, 0)}`} />
+          <Figure tone="plain" label="Ticker's pot" value={formatCurrency(example.pot, 0)} detail={`allocation ${pct(example.allocationPct)}${shared.excessAllowancePct > 0 ? ` × (1 + excess allowance ${pct(shared.excessAllowancePct)})` : ""} × capital budget ${pct(shared.capitalBudgetPct)} × account ${formatCurrency(example.accountValue, 0)}`} />
           <Figure tone="call" label="Shares (Covered Calls)" value={formatCurrency(example.sharesBudget, 0)} detail={`${pct(ladder.sharesPct)} of the pot`} />
           <Figure tone="put" label="Reserve (Put ladder)" value={formatCurrency(example.reserve, 0)} detail={`${ladder.rungs} rungs of ${formatCurrency(example.rungCollateral, 0)}`} />
         </div>
-        <p className="pm-how-note">Example figures. The pot is the ticker's allocation × Pluto's capital budget × the larger of the account value when the cycle started and today's.</p>
+        <p className="pm-how-note">Example figures. The pot is the ticker's allocation, raised by the excess allowance ({pct(shared.excessAllowancePct)} now), × Pluto's capital budget × the larger of the account value when the cycle started and today's. With an allowance the pots add up to more than the budget and share its cash.</p>
       </Card>
 
       <Card title="How deep the ladder goes">
@@ -236,11 +236,14 @@ function VolFarmerV2Explanation({ values }: { values: PlutoHowItWorks }) {
           <p className="pm-how-text">
             If even the second position finds no Call at or above B-E², Pluto buys a <b>LEAPS</b>: a Call <Value>{v2.leapsMinDte}</Value> or more days out that gains as the stock recovers. It is sold as soon as the second position's shares are called away, even at a loss.
           </p>
+          <p className="pm-how-text">
+            The v2 tickers share Pluto's budget. Each ticker's pot is its allocation of the budget, raised by the excess allowance (<Value>{pct(shared.excessAllowancePct)}</Value> now), so the pots can add up to more than the budget: the tickers rarely need their whole pots at once. When the budget's free cash runs short, a new cycle buys only the lots it pays for, and the tickers take turns so the same one is not always last. The LEAPS wait until every ticker has sold its Calls and Puts.
+          </p>
           <p className="pm-how-text muted">Pluto looks at every v2 ticker at every round, all day. Every order goes at the mid; one that does not fill is planned again at a later round.</p>
         </Card>
         <Card title="A worked example">
           <p className="pm-how-text">
-            A {formatCurrency(example.accountValue, 0)} account, Pluto's budget {pct(shared.capitalBudgetPct)}, the ticker's allocation {pct(example.allocationPct)}: its pot is <b>{formatCurrency(example.pot, 0)}</b>.
+            A {formatCurrency(example.accountValue, 0)} account, Pluto's budget {pct(shared.capitalBudgetPct)}, the ticker's allocation {pct(example.allocationPct)}{shared.excessAllowancePct > 0 && <>, the excess allowance {pct(shared.excessAllowancePct)}</>}: its pot is <b>{formatCurrency(example.pot, 0)}</b>.
           </p>
           <ol className="pm-how-list">
             <li>The stock is at {formatCurrency(example.stockPrice)}. Half the pot, {formatCurrency(halfPot, 0)}, buys <b>{example.lots} lots</b> ({example.lots * 100} shares), with a Call sold on them.</li>
@@ -269,6 +272,8 @@ function VolFarmerV2Explanation({ values }: { values: PlutoHowItWorks }) {
             <li>Short of its count when bought, the LEAPS is topped up with the same contract at the next rounds.</li>
             <li>The caps under the CC + Put Ladder's safety settings count v2's orders too. While SPY is down <Value>{pct(ladder.spyStressBreakerPct)}</Value> or more on the day, v2 opens nothing; a LEAPS sale still goes.</li>
             <li>Every order but a LEAPS is held to the ticker's pot; a LEAPS to Pluto's budget across every ticker.</li>
+            <li>A new cycle's lots and a Put's contracts are no more than the free cash pays for: Pluto's budget left, at most the account's free cash.</li>
+            <li>The v2 tickers take turns at each round in alphabetical order, starting one ticker further each day. A LEAPS is bought or topped up after every ticker's other orders, with the free cash they left.</li>
           </ul>
         </div>
         <p className="pm-how-note">A ticker Pluto already held when it switched to v2 keeps its holdings: every share joins the first position at the cycle's break-even, its open Calls stay the first position's, its open Puts the second's. A ticker holding only Puts waits until they expire or are assigned.</p>

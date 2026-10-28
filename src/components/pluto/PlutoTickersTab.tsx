@@ -5,10 +5,11 @@ import { FrozenTickerBadge } from "../FrozenTickerBadge";
 import { useFrozenTickers } from "../../hooks/useFrozenTickers";
 import { useIsAdmin } from "../../hooks/useAuth";
 import { ApiError } from "../../api/client";
-import { fetchPlutoLadderSettings, fetchPlutoVolFarmerV2, updateShortlistBotEnabled, type PlutoLadderTickerSettings, type PlutoSettings, type PlutoState, type PlutoVolFarmerV2Ticker } from "../../api/pluto";
+import { fetchPlutoLadderSettings, fetchPlutoVolFarmerV2, savePlutoAllocations, updateShortlistBotEnabled, type PlutoLadderTickerSettings, type PlutoSettings, type PlutoState, type PlutoVolFarmerV2Ticker } from "../../api/pluto";
 import type { ShortlistRow, TickerBackfillRun } from "../../api/shortlist";
-import { formatBrowserDayMonth, formatCurrency, formatInputNumber, pluralize } from "../../lib/formatters";
-import { effectiveAllocationPct, ladderFit, recommendedShockAt } from "../../lib/plutoLadderPresentation";
+import { formatBrowserDayMonth, formatCurrency, formatInputNumber, formatPercentageValueTrimmed, pluralize } from "../../lib/formatters";
+import { allocationDraftOf, allocationPercentText, buildPlutoAllocationView, type PlutoAllocationDraft, type PlutoAllocationTicker } from "../../lib/plutoAllocationEdit";
+import { ladderFit, recommendedShockAt } from "../../lib/plutoLadderPresentation";
 import { ColumnVisibilityPopover } from "../DataTable/ColumnVisibilityPopover";
 import { useColumnVisibility } from "../DataTable/useColumnVisibility";
 import { Spinner } from "../Spinner";
@@ -16,6 +17,7 @@ import { TooltipSpan } from "../TooltipSpan";
 import { DailyBarsCell, EarningsCell, ImpliedVolatilityDaysCell, OptionChainExpiriesCell, PreparingStatusBadge } from "../shortlist/readinessCells";
 import { TickerPrepModal } from "../shortlist/TickerPrepModal";
 import { Meter, SearchIcon, TickerButton, ToneBadge } from "./plutoBits";
+import { PlutoAllocationSaveBar, PlutoAllocationStrip } from "./PlutoAllocationStrip";
 import { PlutoStopsManagingConfirm, plutoStopsManagingPositions } from "./PlutoStopsManagingConfirm";
 import { PlutoLadderTickerWindow } from "./PlutoLadderTickerWindow";
 import { PlutoTickerStrategySelect } from "./PlutoTickerStrategySelect";
@@ -34,6 +36,8 @@ interface PlutoTickersTabProps {
   settings: PlutoSettings | null;
   /** The window's "Edit the strategy values" link. */
   onOpenSettingsTab: () => void;
+  /** After Edit allocations saves: Pluto's settings again (the excess allowance is one of them). */
+  onAllocationsSaved: () => void;
 }
 
 type Filter = "all" | "on" | "off";
@@ -45,7 +49,7 @@ const columns = [
   { key: "sector", header: "Sector" },
   { key: "now", header: "Pluto now" },
   { key: "allocation", header: "Allocation", title: "% of Pluto's capital budget: set, or an equal share of what the set allocations leave", align: "right" },
-  { key: "pot", header: "Pot", title: "The allocation of Pluto's capital budget at last night's account value", align: "right" },
+  { key: "pot", header: "Pot", title: "The allocation of Pluto's capital budget, raised by the excess allowance, at last night's account value", align: "right" },
   { key: "ladder", header: "Ladder", title: "The CC + Put Ladder values this ticker overrides" },
   { key: "checks", header: "Checks", title: "A CC + Put Ladder ticker: whether a lot and a ladder Put fit the pot at the last close" },
   { key: "dailyBars", header: "Daily bars", title: "Daily price history", align: "right" },
@@ -56,7 +60,7 @@ const columns = [
   { key: "settings", header: "Settings" },
 ] as const;
 
-const percentText = (value: number) => `${formatInputNumber(+value.toFixed(2), 2)}%`;
+const percentText = (value: number) => formatPercentageValueTrimmed(value, 2);
 
 /** "6 rungs · |delta| ≤ 0.25": what a ticker overrides; empty when nothing. */
 function describeLadderOverrides(ticker: PlutoLadderTickerSettings): string[] {
@@ -150,7 +154,7 @@ function changedBy(row: ShortlistRow): string | null {
   return `${row.botEnabledChangedBy ?? "—"} · ${formatBrowserDayMonth(row.botEnabledChangedAt)}`;
 }
 
-export function PlutoTickersTab({ rows, loading, error, state, maxEnabled, isPhone, onOpenTicker, onToggled, onPrepRunChange, settings, onOpenSettingsTab }: PlutoTickersTabProps) {
+export function PlutoTickersTab({ rows, loading, error, state, maxEnabled, isPhone, onOpenTicker, onToggled, onPrepRunChange, settings, onOpenSettingsTab, onAllocationsSaved }: PlutoTickersTabProps) {
   const frozenTickers = useFrozenTickers();
   const isAdmin = useIsAdmin();
   const [filter, setFilter] = useState<Filter>("all");
@@ -163,6 +167,10 @@ export function PlutoTickersTab({ rows, loading, error, state, maxEnabled, isPho
   const [volFarmerV2Tickers, setVolFarmerV2Tickers] = useState<PlutoVolFarmerV2Ticker[]>([]);
   const [settingsSymbol, setSettingsSymbol] = useState<string | null>(null);
   const [savedNote, setSavedNote] = useState<string | null>(null);
+  // Edit allocations (mockup approved 2026-10-28): the allocations and the allowance as typed; null while not editing.
+  const [allocationDraft, setAllocationDraft] = useState<PlutoAllocationDraft | null>(null);
+  const [savingAllocations, setSavingAllocations] = useState(false);
+  const [allocationSaveError, setAllocationSaveError] = useState<string | null>(null);
 
   // The ladder's per-ticker values; again whenever a ticker is switched on or off (its pot and the equal share change).
   const enabledKey = rows.filter((row) => row.botEnabled).map((row) => row.symbol).join(",");
@@ -181,7 +189,16 @@ export function PlutoTickersTab({ rows, loading, error, state, maxEnabled, isPho
   }, [loadLadder, enabledKey]);
   const ladderBySymbol = useMemo(() => new Map((ladderTickers ?? []).map((ticker) => [ticker.symbol, ticker])), [ladderTickers]);
   const volFarmerV2BySymbol = useMemo(() => new Map(volFarmerV2Tickers.map((ticker) => [ticker.symbol, ticker])), [volFarmerV2Tickers]);
-  const allocations = useMemo(() => effectiveAllocationPct(rows.filter((row) => row.botEnabled).map((row) => ({ symbol: row.symbol, setPct: ladderBySymbol.get(row.symbol)?.allocationPct ?? null }))), [rows, ladderBySymbol]);
+  // Every ticker's allocation as saved (as typed while editing). A ticker off the Shortlist that keeps a set allocation
+  // counts as switched off: the API counts every set allocation toward the 100%.
+  const allocationTickers = useMemo<PlutoAllocationTicker[]>(
+    () => [
+      ...rows.map((row) => ({ symbol: row.symbol, enabled: row.botEnabled, savedPct: ladderBySymbol.get(row.symbol)?.allocationPct ?? null })),
+      ...(ladderTickers ?? []).filter((ticker) => ticker.allocationPct !== null && !rows.some((row) => row.symbol === ticker.symbol)).map((ticker) => ({ symbol: ticker.symbol, enabled: false, savedPct: ticker.allocationPct })),
+    ],
+    [rows, ladderTickers, ladderBySymbol],
+  );
+  const editingAllocations = allocationDraft !== null;
 
   const enabledCount = rows.filter((row) => row.botEnabled).length;
   const needle = search.trim().toUpperCase();
@@ -189,7 +206,8 @@ export function PlutoTickersTab({ rows, loading, error, state, maxEnabled, isPho
     () => rows.filter((row) => (filter === "all" || (filter === "on") === row.botEnabled) && (!needle || row.symbol.toUpperCase().includes(needle) || (row.companyName ?? "").toUpperCase().includes(needle))),
     [rows, filter, needle],
   );
-  const visibleColumns = columns.filter((column) => isColumnVisible(column.key));
+  // While editing, the Allocation and Pot columns show even when hidden: the inputs are in them.
+  const visibleColumns = columns.filter((column) => isColumnVisible(column.key) || (editingAllocations && (column.key === "allocation" || column.key === "pot")));
 
   const toolbar = (
     <div className="pm-toolbar">
@@ -216,48 +234,105 @@ export function PlutoTickersTab({ rows, loading, error, state, maxEnabled, isPho
 
   const budget = ladderTickers?.find((ticker) => ticker.capitalBudgetDollars !== null)?.capitalBudgetDollars ?? null;
   const enabledRows = rows.filter((row) => row.botEnabled);
-  const setRows = enabledRows.filter((row) => ladderBySymbol.get(row.symbol)?.allocationPct != null);
-  const equalRows = enabledRows.filter((row) => ladderBySymbol.get(row.symbol)?.allocationPct == null);
-  const setTotal = setRows.reduce((sum, row) => sum + (ladderBySymbol.get(row.symbol)!.allocationPct ?? 0), 0);
-  const equalShare = equalRows.length === 0 ? null : Math.max(0, (100 - setTotal) / equalRows.length);
+  const allocationView = buildPlutoAllocationView(allocationTickers, allocationDraft, budget, settings?.excessAllowancePct ?? 0);
+  const startEditingAllocations = () => {
+    setAllocationDraft(allocationDraftOf(allocationTickers, settings?.excessAllowancePct ?? 0));
+    setAllocationSaveError(null);
+    setSavedNote(null);
+  };
+  const stopEditingAllocations = () => {
+    setAllocationDraft(null);
+    setAllocationSaveError(null);
+  };
+  const changeAllocationText = (symbol: string, text: string) => setAllocationDraft((previous) => previous && { ...previous, textBySymbol: { ...previous.textBySymbol, [symbol]: text } });
+  async function saveAllocations() {
+    const request = allocationView.request;
+    if (!request || savingAllocations) return;
+    setSavingAllocations(true);
+    setAllocationSaveError(null);
+    try {
+      const saved = await savePlutoAllocations(request);
+      const changeCount = saved.allocations.length + (saved.excessAllowance ? 1 : 0);
+      setAllocationDraft(null);
+      setSavedNote(changeCount === 0 ? "The allocations were already these: nothing changed." : `Allocations saved: ${pluralize(changeCount, "change")}. Pluto uses them from its next round.`);
+      void loadLadder();
+      onAllocationsSaved();
+    } catch (err) {
+      setAllocationSaveError(err instanceof ApiError ? err.message : "Could not save the allocations.");
+    } finally {
+      setSavingAllocations(false);
+    }
+  }
   const allocationStrip = ladderTickers && enabledRows.length > 0 && (
-    <div className="pm-alloc">
-      <span>
-        Pluto's budget <b>{budget === null ? "—" : formatCurrency(budget, 0)}</b>
-        {budget !== null && settings && <span className="muted"> ({percentText(settings.capitalBudgetPct)} of last night's {formatCurrency((budget * 100) / settings.capitalBudgetPct, 0)})</span>}
-      </span>
-      <span className="pm-alloc-bar" aria-hidden="true">
-        {setRows.map((row) => (
-          <span key={row.symbol} className="set" style={{ width: `${ladderBySymbol.get(row.symbol)!.allocationPct}%` }} />
-        ))}
-        {equalShare !== null && equalRows.map((row) => <span key={row.symbol} className="eq" style={{ width: `${equalShare}%` }} />)}
-      </span>
-      <span>
-        Set <b>{percentText(setTotal)}</b>
-        {setRows.length > 0 && <span className="muted"> ({setRows.map((row) => `${row.symbol} ${percentText(ladderBySymbol.get(row.symbol)!.allocationPct!)}`).join(", ")})</span>}
-      </span>
-      {equalShare !== null && (
-        <span>
-          Equal share <b>{percentText(equalShare)}</b> each for {equalRows.map((row) => row.symbol).join(", ")}
-        </span>
-      )}
-    </div>
+    <PlutoAllocationStrip
+      view={allocationView}
+      budgetDollars={budget}
+      capitalBudgetPct={settings?.capitalBudgetPct ?? null}
+      allowanceText={allocationDraft?.allowanceText ?? null}
+      onAllowanceChange={(text) => setAllocationDraft((previous) => previous && { ...previous, allowanceText: text })}
+      onEdit={settings ? startEditingAllocations : null}
+      locked={!isAdmin}
+      saving={savingAllocations}
+      onOpenTicker={onOpenTicker}
+    />
   );
+  /** A ticker's Allocation cell: its share and where it comes from, or its input while editing. */
+  const allocationCell = (row: ShortlistRow) => {
+    const allocation = allocationView.rowBySymbol.get(row.symbol);
+    const typed = allocationDraft?.textBySymbol[row.symbol];
+    if (editingAllocations && (row.botEnabled || typed !== undefined)) {
+      const isSet = allocation?.setPct != null;
+      const savedPct = ladderBySymbol.get(row.symbol)?.allocationPct ?? null;
+      const sub = !row.botEnabled
+        ? "switched off · counts toward 100%"
+        : isSet
+          ? allocation!.changed && allocation!.savedEffectivePct !== null ? `set · was ${allocationPercentText(allocation!.savedEffectivePct)}` : "set"
+          : savedPct !== null ? `equal share · was ${allocationPercentText(savedPct)}` : "equal share";
+      const equalShare = allocationView.summary.equalSharePct;
+      return (
+        <>
+          <span className={`pm-input pm-alloc-input${allocation?.problem ? " invalid" : ""}`}>
+            <input
+              type="text"
+              inputMode="decimal"
+              aria-label={`${row.symbol} allocation, % of Pluto's budget (empty: an equal share)`}
+              value={typed ?? ""}
+              placeholder={equalShare === null ? "" : formatInputNumber(+equalShare.toFixed(2), 2)}
+              onChange={(event) => changeAllocationText(row.symbol, event.target.value)}
+              disabled={savingAllocations}
+            />
+            <span className="unit">%</span>
+          </span>
+          <span className={`pm-cell-sub${isSet && allocationView.overFull ? " t-bad" : ""}`}>{sub}</span>
+        </>
+      );
+    }
+    if (!row.botEnabled || allocation?.effectivePct == null) return <span className="muted">—</span>;
+    return (
+      <>
+        <b className="strong num">{percentText(allocation.effectivePct)}</b>
+        <span className="pm-cell-sub">{allocation.setPct !== null ? "set" : "equal share"}</span>
+      </>
+    );
+  };
+  /** The Allocation cell's shading while editing: amber for a set allocation, red while the set ones come to over 100%. */
+  const allocationCellClass = (row: ShortlistRow): string | undefined => {
+    if (!editingAllocations || allocationView.rowBySymbol.get(row.symbol)?.setPct == null) return undefined;
+    return allocationView.overFull ? "pm-alloc-over" : "pm-alloc-set";
+  };
+  const potCell = (row: ShortlistRow) => {
+    if (!row.botEnabled) return <span className="muted">Not enabled</span>;
+    const ladder = ladderBySymbol.get(row.symbol);
+    const allocation = allocationView.rowBySymbol.get(row.symbol);
+    if (editingAllocations) return allocation?.potDollars == null ? <span className="muted">—</span> : allocation.potDollars === 0 ? <span className="muted">{formatCurrency(0, 0)}</span> : formatCurrency(allocation.potDollars, 0);
+    return ladder?.potDollars != null ? formatCurrency(ladder.potDollars, 0) : <span className="muted">—</span>;
+  };
   const ladderCells = (row: ShortlistRow) => {
     const ladder = ladderBySymbol.get(row.symbol);
-    const allocation = row.botEnabled ? allocations.get(row.symbol) ?? null : null;
     const overrides = ladder ? describeLadderOverrides(ladder) : [];
     return {
-      allocation:
-        allocation === null ? (
-          <span className="muted">—</span>
-        ) : (
-          <>
-            <b className="strong num">{percentText(allocation)}</b>
-            <span className="pm-cell-sub">{ladder?.allocationPct != null ? "set" : "equal share"}</span>
-          </>
-        ),
-      pot: !row.botEnabled ? <span className="muted">Not enabled</span> : ladder?.potDollars != null ? formatCurrency(ladder.potDollars, 0) : <span className="muted">—</span>,
+      allocation: allocationCell(row),
+      pot: potCell(row),
       ladder:
         overrides.length === 0 ? (
           <span className="muted">Strategy values</span>
@@ -285,7 +360,7 @@ export function PlutoTickersTab({ rows, loading, error, state, maxEnabled, isPho
       ),
       checks: row.botEnabled && ladder?.effectiveStrategy === "cc_put_ladder" ? <ChecksBadge check={savedTickerFit(ladder, settings)} /> : <span className="muted">—</span>,
       settings: (
-        <button type="button" className="pm-btn sm pm-tk-settings" onClick={() => setSettingsSymbol(row.symbol)} disabled={!ladder || !settings}>
+        <button type="button" className="pm-btn sm pm-tk-settings" onClick={() => setSettingsSymbol(row.symbol)} disabled={!ladder || !settings || editingAllocations} title={editingAllocations ? "Save or cancel the allocations first." : undefined}>
           Settings
         </button>
       ),
@@ -317,14 +392,22 @@ export function PlutoTickersTab({ rows, loading, error, state, maxEnabled, isPho
               </span>
               {(() => {
                 const cells = ladderCells(row);
+                const editingRow = editingAllocations && (row.botEnabled || allocationDraft.textBySymbol[row.symbol] !== undefined);
                 return (
                   <span className="pm-m-ladder">
-                    {row.botEnabled && (
-                      <>
-                        <span className="pm-m-ladder-fig">{cells.allocation}</span>
-                        <span className="pm-m-ladder-fig num">{cells.pot}</span>
-                        <span className="pm-m-ladder-fig">{cells.checks}</span>
-                      </>
+                    {editingRow ? (
+                      <span className={["pm-m-alloc", allocationCellClass(row)].filter(Boolean).join(" ")}>
+                        {cells.allocation}
+                        <span className="pm-m-alloc-pot num">{cells.pot}</span>
+                      </span>
+                    ) : (
+                      row.botEnabled && (
+                        <>
+                          <span className="pm-m-ladder-fig">{cells.allocation}</span>
+                          <span className="pm-m-ladder-fig num">{cells.pot}</span>
+                          <span className="pm-m-ladder-fig">{cells.checks}</span>
+                        </>
+                      )
                     )}
                     <span className="pm-m-ladder-fig">{cells.strategy}</span>
                     {cells.settings}
@@ -381,7 +464,7 @@ export function PlutoTickersTab({ rows, loading, error, state, maxEnabled, isPho
               return (
                 <tr key={row.id} className={row.botEnabled ? "on" : undefined}>
                   {visibleColumns.map((column) => (
-                    <td key={column.key} className={[("align" in column && column.align === "right") ? "r num" : "", column.key === "switch" || column.key === "dailyBars" || column.key === "earnings" ? "nw" : ""].filter(Boolean).join(" ") || undefined}>
+                    <td key={column.key} className={[("align" in column && column.align === "right") ? "r num" : "", column.key === "switch" || column.key === "dailyBars" || column.key === "earnings" ? "nw" : "", column.key === "allocation" ? (allocationCellClass(row) ?? "") : ""].filter(Boolean).join(" ") || undefined}>
                       {cells[column.key]}
                     </td>
                   ))}
@@ -419,6 +502,7 @@ export function PlutoTickersTab({ rows, loading, error, state, maxEnabled, isPho
         </div>
         {toolbar}
         {allocationStrip}
+        {editingAllocations && <PlutoAllocationSaveBar view={allocationView} saving={savingAllocations} saveError={allocationSaveError} onCancel={stopEditingAllocations} onSave={() => void saveAllocations()} onOpenTicker={onOpenTicker} />}
         {toggleError && <div className="alert alert-danger pm-error" role="alert">{toggleError}</div>}
         {ladderError && <div className="alert alert-danger pm-error" role="alert">{ladderError}</div>}
         {savedNote && (

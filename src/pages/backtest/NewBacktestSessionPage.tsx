@@ -20,6 +20,7 @@ import {
   type BacktestSettingsTemplate,
   type BacktestTablesMode,
   type BacktestTickerValueKey,
+  type BacktestVolFarmerV2Settings,
   type CreateBacktestBatchRequest,
   type CreateBacktestBatchResponse,
   type CreateBacktestSessionRequest,
@@ -34,9 +35,10 @@ import { BacktestStartBatchConfirmBody } from "../../components/backtest/Backtes
 import { BacktestStartSessionConfirmBody } from "../../components/backtest/BacktestStartSessionConfirmBody";
 import { BacktestSymbolPicker } from "../../components/backtest/BacktestSymbolPicker";
 import { BacktestTickerValuesCard } from "../../components/backtest/BacktestTickerValuesCard";
+import { BacktestVolFarmerV2TickersCard } from "../../components/backtest/BacktestVolFarmerV2TickersCard";
 import { useBacktestOverview } from "../../components/backtest/useBacktestPolling";
 import { useDebouncedValue } from "../../hooks/useDebouncedValue";
-import { formatCurrency, formatNumber, pluralizeCount } from "../../lib/formatters";
+import { formatCurrency, formatInputNumber, formatNumber, pluralizeCount } from "../../lib/formatters";
 import {
   buildBacktestOverrides,
   decisionMakerHint,
@@ -54,6 +56,7 @@ import {
   tickerValueInputText,
   tickerValueTextProblem,
   valueAtSettingsPath,
+  volFarmerV2ExcessAllowancePath,
   wholeYearsContaining,
   wholeYearsDates,
   wholeYearsMatching,
@@ -75,6 +78,7 @@ import {
   type BacktestTickerEdits,
   type BacktestTickerResolution,
 } from "../../lib/backtestTickerValueEdits";
+import { typedAllocationProblems, typedAllocationsBySymbol } from "../../lib/tickerAllocation";
 
 const pageTitle = "New session";
 const pageSubtitle = "Starts from the lab's settings as they are now (saved with the session). Change any of them for this session only; the lab itself is not touched.";
@@ -121,6 +125,31 @@ function initialValueByPath(template: BacktestSettingsTemplate, source: Backtest
     values[row.path] = settingInputText(fromSource ?? row.now);
   }
   return values;
+}
+
+/**
+ * A copied Vol Farmer v2 session's allocations as the Tickers card types them. A session from before allocations, sized by
+ * a dollar pot per ticker (volFarmerV2.tickerPotDollars), comes back as the values that give the same pots: an equal share
+ * with the excess allowance (pot × tickers ÷ starting value − 1) when the pots add up to the starting value or more, else
+ * every ticker's allocation at pot ÷ starting value. $100,000 × 24 ÷ $1,900,000 − 1 = 26.3158%.
+ */
+function copiedVolFarmerV2Allocations(source: BacktestSessionDetail["session"], symbols: string[]): { textBySymbol: Record<string, string>; allowanceText: string | null; note: string | null } {
+  const volFarmerV2 = source.overrides.volFarmerV2 as (Partial<BacktestVolFarmerV2Settings> & { tickerPotDollars?: number }) | undefined;
+  const textBySymbol = Object.fromEntries(
+    Object.entries(volFarmerV2?.tickerAllocationPct ?? {})
+      .filter(([symbol]) => symbols.includes(symbol))
+      .map(([symbol, pct]) => [symbol, formatInputNumber(pct, 4)]),
+  );
+  const pot = volFarmerV2?.tickerPotDollars;
+  if (typeof pot !== "number" || !(pot > 0) || !(source.startingValue > 0)) return { textBySymbol, allowanceText: null, note: null };
+  const potsShare = (pot * Math.max(1, source.symbols.length)) / source.startingValue;
+  const retired = `This session sized each ticker from a ${formatCurrency(pot, 0)} pot, a setting the lab no longer has.`;
+  if (potsShare >= 1) {
+    const allowanceText = formatInputNumber((potsShare - 1) * 100, 4);
+    return { textBySymbol, allowanceText, note: `${retired} It comes back as an equal share with a ${allowanceText}% excess allowance: the same pots.` };
+  }
+  const allocationText = formatInputNumber((pot / source.startingValue) * 100, 4);
+  return { textBySymbol: Object.fromEntries(symbols.map((symbol) => [symbol, allocationText])), allowanceText: "0", note: `${retired} It comes back as each ticker's allocation, ${allocationText}%: the same pots.` };
 }
 
 /** A run of a batch on the form (mockup approved 2026-10-17): its tickers and the values typed for them; `key` stays with the
@@ -192,6 +221,10 @@ export function NewBacktestSessionPage() {
   const [tickerEdits, setTickerEdits] = useState<BacktestTickerEdits>({});
   const [tablesMode, setTablesMode] = useState<BacktestTablesMode>("walk_forward");
   const [valueByPath, setValueByPath] = useState<Record<string, string>>({});
+  // Vol Farmer v2 deciding: each ticker's allocation as typed on the Tickers card (empty: an equal share).
+  const [allocationTextBySymbol, setAllocationTextBySymbol] = useState<Record<string, string>>({});
+  // A copied session sized by a dollar pot per ticker (before allocations): what it came back as.
+  const [retiredTickerPotNote, setRetiredTickerPotNote] = useState<string | null>(null);
   const [submitAttempted, setSubmitAttempted] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -301,11 +334,17 @@ export function NewBacktestSessionPage() {
         })),
       );
     }
+    const copiedAllocations = source && sessionDecisionMaker(source) === "vol_farmer_v2" ? copiedVolFarmerV2Allocations(source, sourceSymbols) : null;
+    if (copiedAllocations) {
+      setAllocationTextBySymbol(copiedAllocations.textBySymbol);
+      setRetiredTickerPotNote(copiedAllocations.note);
+    }
     const fromAnalysis = !source && !sourceBatch && analysisValues !== null && initialSymbols.includes(analysisValues.symbol) ? analysisValues : null;
     if (fromAnalysis && Object.keys(fromAnalysis.tickerEdits).length > 0) setTickerEdits({ [fromAnalysis.symbol]: fromAnalysis.tickerEdits });
     const editablePaths = new Set(template.rows.filter((row) => row.editable).map((row) => row.path));
     const analysisSettingValues = Object.fromEntries(Object.entries(fromAnalysis?.settingValues ?? {}).filter(([path]) => editablePaths.has(path)));
-    setValueByPath({ ...initialValueByPath(template, sourceSession), ...analysisSettingValues });
+    const copiedAllowance: Record<string, string> = copiedAllocations?.allowanceText != null ? { [volFarmerV2ExcessAllowancePath]: copiedAllocations.allowanceText } : {};
+    setValueByPath({ ...initialValueByPath(template, sourceSession), ...analysisSettingValues, ...copiedAllowance });
     setInitialized(true);
   }, [initialized, overview, template, sourceLoaded, sourceSession, sourceBatch, requestedSymbolsParam, analysisValues]);
 
@@ -314,6 +353,8 @@ export function NewBacktestSessionPage() {
    *  period the dates are cleared and the years cannot be picked. */
   const changeSymbols = (nextSymbols: string[]) => {
     setSymbols(nextSymbols);
+    // A dropped symbol takes its allocation with it (the API refuses one for a symbol not in the session).
+    setAllocationTextBySymbol((previous) => Object.fromEntries(Object.entries(previous).filter(([symbol]) => nextSymbols.includes(symbol))));
     // With several runs, a symbol picked goes into every run and one dropped leaves every run (D6).
     if (several) {
       const added = nextSymbols.filter((picked) => !symbols.includes(picked));
@@ -369,9 +410,13 @@ export function NewBacktestSessionPage() {
 
   const startingValue = parseDollarAmountText(startingValueText);
   const allRows = template?.rows ?? [];
-  const settingRows = allRows.filter((row) => row.path !== decisionMakerPath);
   const decisionMakerRow = allRows.find((row) => row.path === decisionMakerPath) ?? null;
   const decisionMaker = (valueByPath[decisionMakerPath] ?? "baseline") as BacktestDecisionMaker;
+  // Vol Farmer v2 deciding (mockup approved 2026-10-28): the Tickers card holds each ticker's allocation and, beside the
+  // starting value, the excess allowance, which leaves the Settings table.
+  const allowanceRow = allRows.find((row) => row.path === volFarmerV2ExcessAllowancePath) ?? null;
+  const showVolFarmerV2TickersCard = decisionMaker === "vol_farmer_v2" && selectedFiles.length > 0 && allowanceRow !== null;
+  const settingRows = allRows.filter((row) => row.path !== decisionMakerPath && !(showVolFarmerV2TickersCard && row.path === volFarmerV2ExcessAllowancePath));
   // The Baseline runs per-ticker pots: each ticker its pot and ladder values. The rules and the AI model run one starting value.
   const perTickerPots = decisionMaker === "baseline";
   // Several runs only with the Baseline deciding (D1): only it has ticker values. Each run's capital is the sum of its pots (D4).
@@ -388,7 +433,14 @@ export function NewBacktestSessionPage() {
     () => (latestResult?.resolvedBySymbol ? { capital: latestResult.capital, bySymbol: latestResult.resolvedBySymbol } : null),
     [latestResult],
   );
-  const overrides = useMemo(() => (template ? buildBacktestOverrides(template.rows, valueByPath) : {}), [template, valueByPath]);
+  const settingsOverrides = useMemo(() => (template ? buildBacktestOverrides(template.rows, valueByPath) : {}), [template, valueByPath]);
+  const allowanceText = valueByPath[volFarmerV2ExcessAllowancePath] ?? (allowanceRow ? String(allowanceRow.now) : "0");
+  // What the session overrides: the settings changed, and with Vol Farmer v2 deciding each allocation typed on the Tickers card.
+  const tickerAllocationPct = useMemo(() => (decisionMaker === "vol_farmer_v2" ? typedAllocationsBySymbol(symbols, allocationTextBySymbol) : {}), [decisionMaker, symbols, allocationTextBySymbol]);
+  const overrides = useMemo<BacktestSettingsOverrides>(
+    () => (Object.keys(tickerAllocationPct).length === 0 ? settingsOverrides : { ...settingsOverrides, volFarmerV2: { ...settingsOverrides.volFarmerV2, tickerAllocationPct } }),
+    [settingsOverrides, tickerAllocationPct],
+  );
   const symbolSettings = useMemo(
     () => (perTickerPots ? buildTickerSymbolSettings(symbols, tickerEdits, latestResolution, capitalMode) : null),
     [perTickerPots, symbols, tickerEdits, latestResolution, capitalMode],
@@ -508,7 +560,10 @@ export function NewBacktestSessionPage() {
   if (usesStartingValue && !(startingValue > 0)) problems.push("The starting account value must be a positive dollar amount.");
   if (showTickersCard) problems.push(...tickerProblemsOf(latestResolution));
   if (showRunsCard) runs.forEach((_, runIndex) => problems.push(...runProblems(runIndex)));
+  if (showVolFarmerV2TickersCard) problems.push(...typedAllocationProblems(symbols, allocationTextBySymbol, allowanceText));
   for (const row of allRows) {
+    // The Tickers card checks the allowance it shows.
+    if (showVolFarmerV2TickersCard && row.path === volFarmerV2ExcessAllowancePath) continue;
     const problem = row.editable ? settingValueProblem(row, valueByPath[row.path] ?? String(row.now)) : null;
     if (problem) problems.push(problem);
   }
@@ -771,7 +826,13 @@ export function NewBacktestSessionPage() {
     );
   }
 
-  const resetAllSettings = () => setValueByPath((previous) => ({ ...initialValueByPath(template, null), [decisionMakerPath]: previous[decisionMakerPath] ?? String(decisionMakerRow?.now ?? "rules") }));
+  // The Settings card resets what it shows: not the decision maker, nor the allowance while the Tickers card holds it.
+  const resetAllSettings = () =>
+    setValueByPath((previous) => ({
+      ...initialValueByPath(template, null),
+      [decisionMakerPath]: previous[decisionMakerPath] ?? String(decisionMakerRow?.now ?? "rules"),
+      ...(showVolFarmerV2TickersCard && previous[volFarmerV2ExcessAllowancePath] !== undefined ? { [volFarmerV2ExcessAllowancePath]: previous[volFarmerV2ExcessAllowancePath] } : {}),
+    }));
   const splitShare = startingValue > 0 && selectedFiles.length > 0 ? startingValue / selectedFiles.length : null;
   const unavailableDecisionMakers = decisionMakerRow ? describeUnavailableChoices(decisionMakerRow) : [];
 
@@ -806,6 +867,7 @@ export function NewBacktestSessionPage() {
       <BacktestBackLink />
       <PageHeader title={pageTitle} subtitle={pageSubtitle} />
       {sourceSessionId && !sourceSession && <div className="iorio-note-amber mb-2">The session to copy could not be loaded; the form starts from the lab's settings.</div>}
+      {retiredTickerPotNote && <div className="iorio-note-amber mb-2">{retiredTickerPotNote}</div>}
       <form onSubmit={handleSubmit} noValidate>
         <BacktestCard title="Session" className="mb-3">
           <div className="card-body">
@@ -846,7 +908,7 @@ export function NewBacktestSessionPage() {
                   ))}
                 </select>
                 <div id="backtest-session-decision-maker-hint" className="text-secondary mt-1" style={{ fontSize: "0.75rem" }}>
-                  {decisionMakerHint[decisionMaker]}
+                  {showVolFarmerV2TickersCard && selectedFiles.length > 1 ? "the tickers share one account, each with its share of the starting value (Tickers, below)" : decisionMakerHint[decisionMaker]}
                   {unavailableDecisionMakers.map((line) => (
                     <div key={line}>{line}</div>
                   ))}
@@ -1116,6 +1178,19 @@ export function NewBacktestSessionPage() {
             onResetGroup={resetTickerGroup}
             onResetAll={() => setTickerEdits({})}
             settingRows={allRows}
+          />
+        )}
+
+        {showVolFarmerV2TickersCard && allowanceRow && (
+          <BacktestVolFarmerV2TickersCard
+            symbols={symbols}
+            startingValue={startingValue}
+            allocationTextBySymbol={allocationTextBySymbol}
+            onAllocationChange={(symbol, text) => setAllocationTextBySymbol((previous) => ({ ...previous, [symbol]: text }))}
+            onResetAllocations={() => setAllocationTextBySymbol({})}
+            allowanceRow={allowanceRow}
+            allowanceText={allowanceText}
+            onAllowanceChange={(text) => setValueByPath((previous) => ({ ...previous, [volFarmerV2ExcessAllowancePath]: text }))}
           />
         )}
 

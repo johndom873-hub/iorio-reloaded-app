@@ -57,18 +57,6 @@ export function recommendedShockAt(source: PlutoLadderTickerSettings["recommende
   return Math.min(limits.maxPct, Math.max(limits.minPct, source.maxDrawdownPct));
 }
 
-/**
- * Each enabled ticker's allocation, % of Pluto's capital budget (formula approved 2026-10-15, the API's
- * effectiveAllocationPctBySymbol): a set allocation as is; every ticker without one gets (100 − the set allocations) ÷
- * the number of tickers without one, never below 0.
- */
-export function effectiveAllocationPct(tickers: readonly { symbol: string; setPct: number | null }[]): Map<string, number> {
-  const setTotal = tickers.reduce((sum, ticker) => sum + (ticker.setPct ?? 0), 0);
-  const unset = tickers.filter((ticker) => ticker.setPct === null).length;
-  const equalShare = unset === 0 ? 0 : Math.max(0, (100 - setTotal) / unset);
-  return new Map(tickers.map((ticker) => [ticker.symbol, ticker.setPct ?? equalShare]));
-}
-
 /** The prices above which a check fails (approved 2026-10-15): lot = pot × p ÷ 100; ladder Put = pot × (1 − p) ÷ (100 × (n − S)). */
 export function ladderPriceCeilings({ pot, sharesPct, rungs, shockPct }: Omit<LadderFitInput, "price">): { lot: number; put: number } {
   const share = sharesPct / 100;

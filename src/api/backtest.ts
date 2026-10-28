@@ -226,6 +226,10 @@ export interface BacktestVolFarmerV2Settings {
   leapsMaxAccountPct: number;
   /** When it decides: at 10:00 only, or at every look (as Pluto runs it). */
   looks: "first_look" | "every_look";
+  /** Each ticker's allocation, % of the account: set, or (missing) an equal share of what the set ones leave. */
+  tickerAllocationPct: Record<string, number>;
+  /** Each ticker's pot is its allocation raised by this, %, so the pots may add up to more than the account. */
+  excessAllowancePct: number;
 }
 
 /** The Steady Stake's values (the API's BacktestSteadyStakeSettings). */

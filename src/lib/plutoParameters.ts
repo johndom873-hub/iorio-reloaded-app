@@ -206,6 +206,8 @@ const parameterAuditLabel: Partial<Record<PlutoSettingsField, string>> = {
 };
 
 export const plutoParameterLabelByField: Record<string, string> = {
+  // Saved from the Tickers tab's allocations, not the Settings tab.
+  excessAllowancePct: "Excess allowance",
   // Renamed and retired fields, still named in older settings audit rows and events.
   maxAbsDayChangePct: "Max day move (old, % of price)",
   maxTickerExposurePct: "Max per ticker (old, % of account)",
