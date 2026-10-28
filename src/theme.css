@@ -997,14 +997,7 @@
    only its opacity animates, which the browser composites without repainting: a shadow or background repainted every
    frame inside a sideways-scrolled table can be drawn at stale positions by iPhone Safari, as amber blocks off the
    numbers. Being inside the element, the layer also paints above Tabler's row-state tint (.table-active's inset
-   box-shadow on the <td>). The amber is opaque and per theme so red/green P&L text keeps 4.5:1 at the peak: a
-   translucent bright amber lifts the dark surface towards the text's own lightness. */
-:root {
-  --iorio-flash-bg: #fff3cd;
-}
-:root[data-bs-theme="dark"] {
-  --iorio-flash-bg: #503c00;
-}
+   box-shadow on the <td>). */
 @keyframes flash-bg-changed {
   0%,
   35% {
@@ -1024,7 +1017,7 @@
   position: absolute;
   inset: 0;
   z-index: -1;
-  background-color: var(--iorio-flash-bg);
+  background-color: rgba(255, 193, 7, 0.45);
   opacity: 0;
   pointer-events: none;
   animation: flash-bg-changed 1500ms ease-out; /* keep equal to FLASH_DURATION_MS in useFlashOnChange.ts */
