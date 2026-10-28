@@ -10,7 +10,7 @@ import { ApexChart } from "./charts/ApexChart";
 import { Spinner } from "./Spinner";
 
 // "P&L over time" for a LEAPS (approved by Marcelo 2026-10-27): the Call's P&L against the stock price on today,
-// +3, +6 and +12 months and the expiry, valued with Black-Scholes at the contract's own IV (leapsValuation.ts), with an
+// +3, +6 and +12 months and the expiry, valued with Black-Scholes at the contract's own IV as of opening (leapsValuation.ts), with an
 // IV-change control, % of the premium or $, and the breakeven on each date. Opened from the order setup, Order Review
 // and the LEAPS position card. Informational: ESC and a backdrop click close it, and only it (it sits over the Ticker
 // modal, whose own ESC handler must not see the key).
@@ -79,22 +79,25 @@ export function LeapsPnlOverTimeModal({ symbol, position, initialImpliedVolatili
     };
   }, [symbol]);
 
-  // The contract's own live quote keeps its IV and the stock price current.
+  // The chart is drawn from the first live quote that has both the contract's IV and the stock price, then held: redrawing
+  // on every frame wiped the chart's hover tooltip and legend highlight about once a second.
   const contractKey = optionContractKey({ expiry: position.expiryIso, strike: position.strike, right: "C" });
-  useEffect(
-    () =>
-      openOptionQuotesStream(
-        symbol,
-        [contractKey],
-        (frame) => {
-          const impliedVolatility = frame.quotes[contractKey]?.impliedVolatility ?? null;
-          if (impliedVolatility !== null && impliedVolatility > 0) setLiveImpliedVolatility(impliedVolatility);
-          if (frame.spotPrice !== null && frame.spotPrice > 0) setLiveSpotPrice(frame.spotPrice);
-        },
-        () => {},
-      ),
-    [symbol, contractKey],
-  );
+  useEffect(() => {
+    let closeStream = () => {};
+    closeStream = openOptionQuotesStream(
+      symbol,
+      [contractKey],
+      (frame) => {
+        const impliedVolatility = frame.quotes[contractKey]?.impliedVolatility ?? null;
+        if (impliedVolatility === null || !(impliedVolatility > 0) || frame.spotPrice === null || !(frame.spotPrice > 0)) return;
+        setLiveImpliedVolatility(impliedVolatility);
+        setLiveSpotPrice(frame.spotPrice);
+        closeStream();
+      },
+      () => {},
+    );
+    return () => closeStream();
+  }, [symbol, contractKey]);
 
   const impliedVolatility = liveImpliedVolatility ?? initialImpliedVolatility;
   const spotPrice = liveSpotPrice ?? initialSpotPrice;
@@ -102,9 +105,13 @@ export function LeapsPnlOverTimeModal({ symbol, position, initialImpliedVolatili
   const dividendYield = valuationInputs?.nextTwelveMonthsDividends != null && spotPrice !== null && spotPrice > 0 ? valuationInputs.nextTwelveMonthsDividends / spotPrice : null;
   const todayIso = todayInEasternIso();
 
+  // Callers pass a new position object on every render (the order form re-renders on each live quote): keyed on its values,
+  // so an unchanged position doesn't rebuild the series and redraw the chart.
+  const { strike, expiryIso, premium, contracts, multiplier } = position;
+  const stablePosition = useMemo<LeapsPosition>(() => ({ strike, expiryIso, premium, contracts, multiplier }), [strike, expiryIso, premium, contracts, multiplier]);
   const curves = useMemo(
-    () => (impliedVolatility !== null && impliedVolatility > 0 && spotPrice !== null && spotPrice > 0 && riskFreeRate !== null ? buildLeapsPnlCurves(position, { spotPrice, impliedVolatility, riskFreeRate, dividendYield: dividendYield ?? 0 }, impliedVolatilityChange, todayIso) : null),
-    [position, spotPrice, impliedVolatility, riskFreeRate, dividendYield, impliedVolatilityChange, todayIso],
+    () => (impliedVolatility !== null && impliedVolatility > 0 && spotPrice !== null && spotPrice > 0 && riskFreeRate !== null ? buildLeapsPnlCurves(stablePosition, { spotPrice, impliedVolatility, riskFreeRate, dividendYield: dividendYield ?? 0 }, impliedVolatilityChange, todayIso) : null),
+    [stablePosition, spotPrice, impliedVolatility, riskFreeRate, dividendYield, impliedVolatilityChange, todayIso],
   );
 
   const shares = position.contracts * position.multiplier;

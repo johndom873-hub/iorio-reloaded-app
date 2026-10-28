@@ -74,6 +74,9 @@ export function optionContractKey(contract: { expiry: string; strike: number; ri
 export interface LiveContractQuote {
   bid: number | null;
   ask: number | null;
+  /** Contracts at the bid and at the ask, as IBKR's chain shows them. */
+  bidSize: number | null;
+  askSize: number | null;
   /** The contract's own delta from its mid (the platform's delta), else IBKR's. */
   delta: number | null;
   /** Implied volatility from the mid (0.35 = 35%). */

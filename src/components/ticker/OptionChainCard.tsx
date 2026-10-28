@@ -2,7 +2,7 @@ import { Fragment, useEffect, useRef, type ReactNode } from "react";
 import { optionContractKey, type LiveContractQuote, type TickerOptionChain } from "../../api/tickerTrading";
 import { FLASH_DURATION_MS, flashClassName, useFlashOnChange } from "../../hooks/useFlashOnChange";
 import { useMediaQuery } from "../../hooks/useMediaQuery";
-import { formatCurrency, formatCurrencyTrimmed, formatPercentage, formatQuotePrice, formatSignedPercentage } from "../../lib/formatters";
+import { formatCurrency, formatCurrencyTrimmed, formatNumber, formatPercentage, formatQuotePrice, formatSignedPercentage } from "../../lib/formatters";
 import { describeChainExpiryTab, isChainContractInTheMoney } from "../../lib/optionChainPresentation";
 import { computeAnnualizedYield, computeFrictionDollarsPerContract } from "../../lib/payoff";
 import { DottedLabelTooltip } from "../HelpTooltip";
@@ -10,10 +10,11 @@ import { Spinner } from "../Spinner";
 
 // The Ticker modal's option chain (2026-10-27, from the Signals chain without its grades): every listed expiry, the
 // strikes of the selected one, calls left / puts right on desktop, one side at a time with a Calls/Puts toggle on a
-// phone. Each cell shows the live bid, ask, delta, implied volatility and yield of the contracts on screen (the
-// `optionQuotes` stream); any out-of-the-money contract can be picked to build an order. Buy LEAPS mode (2026-10-27) shows
-// the Calls only, every strike in and out of the money, with what a buyer reads: the mid, the breakeven at expiry
-// (strike + mid) and how far the stock must rise to reach it.
+// phone. Each cell shows the live bid and ask with the contracts at each (IBKR's sizes), delta, implied volatility and
+// yield of the contracts on screen (the `optionQuotes` stream); any out-of-the-money contract can be picked to build an
+// order. Buy LEAPS mode (2026-10-27) shows the Calls only, every strike in and out of the money, with the same bid, ask,
+// delta and IV and, in place of the yield, the breakeven at expiry (strike + mid) and how far the stock must rise to
+// reach it (desktop only).
 
 /** Sell: covered calls and cash-secured puts. Buy LEAPS: a long Call. */
 export type OptionChainMode = "sell" | "leaps";
@@ -78,6 +79,18 @@ function ChainColumnLabels({ right, hasLeadingStrike }: { right: "C" | "P"; hasL
   );
 }
 
+/** A bid or ask with the contracts at it: after the price where the column has room, under it where it doesn't (theme.css). */
+function QuoteWithSize({ price, size, flashClass }: { price: number | null; size: number | null; flashClass: string }) {
+  return (
+    <span className="option-chain-quote-box">
+      <span className="option-chain-quote">
+        <span className={`font-mono ${flashClass}`}>{formatQuotePrice(price)}</span>
+        {price !== null && size !== null && <span className="option-chain-size font-mono">{formatNumber(size)}</span>}
+      </span>
+    </span>
+  );
+}
+
 function formatChainDelta(delta: number | null): string {
   return delta === null ? "—" : `${delta > 0 ? "+" : ""}${delta.toFixed(2)}`;
 }
@@ -93,8 +106,8 @@ function ChainCellButton({ contract, quote, dte, spotPrice, spreadShareCharged, 
   const yieldFraction = bid !== null && ask !== null && dte !== null && spreadShareCharged !== null ? computeAnnualizedYield(contract.right === "C" ? "covered_call" : "cash_secured_put", { premium: (bid + ask) / 2, dte: Math.max(dte, 1), strike: contract.strike, spotPrice: spotPrice ?? 0, frictionDollarsPerContract: computeFrictionDollarsPerContract({ bid, ask, spreadShareCharged }) }) : null;
   const yieldFlash = useFlashOnChange(yieldFraction !== null ? yieldFraction * 100 : null, FLASH_DURATION_MS, 0);
   const columnCells: Record<ChainColumn, ReactNode> = {
-    bid: <span className={`font-mono ${flashClassName(bidFlash)}`}>{formatQuotePrice(bid)}</span>,
-    ask: <span className={`font-mono ${flashClassName(askFlash)}`}>{formatQuotePrice(ask)}</span>,
+    bid: <QuoteWithSize price={bid} size={quote?.bidSize ?? null} flashClass={flashClassName(bidFlash)} />,
+    ask: <QuoteWithSize price={ask} size={quote?.askSize ?? null} flashClass={flashClassName(askFlash)} />,
     delta: <span className={`font-mono ${flashClassName(deltaFlash)}`}>{formatChainDelta(delta)}</span>,
     iv: <span className="font-mono">{formatPercentage(impliedVolatility, 1)}</span>,
     yield: <span className={`font-mono ${yieldFraction === null ? "text-secondary" : "option-chain-yield"} ${flashClassName(yieldFlash)}`}>{formatPercentage(yieldFraction, 0)}</span>,
@@ -116,14 +129,14 @@ function ChainCellButton({ contract, quote, dte, spotPrice, spreadShareCharged, 
   );
 }
 
-type LeapsChainColumn = "bid" | "ask" | "mid" | "delta" | "iv" | "breakeven" | "toBreakeven";
-const leapsColumnOrder: LeapsChainColumn[] = ["bid", "ask", "mid", "delta", "iv", "breakeven", "toBreakeven"];
-const leapsPhoneColumnOrder: LeapsChainColumn[] = ["mid", "delta", "breakeven"];
+// The Sell chain's bid, ask, delta and IV, then the breakeven columns in place of the yield; a phone keeps the first four.
+type LeapsChainColumn = "bid" | "ask" | "delta" | "iv" | "breakeven" | "toBreakeven";
+const leapsColumnOrder: LeapsChainColumn[] = ["bid", "ask", "delta", "iv", "breakeven", "toBreakeven"];
+const leapsPhoneColumnOrder: LeapsChainColumn[] = ["bid", "ask", "delta", "iv"];
 
 const leapsColumnLabels: Record<LeapsChainColumn, ReactNode> = {
-  bid: <span>Bid</span>,
-  ask: <span>Ask</span>,
-  mid: <span>Mid</span>,
+  bid: chainColumnLabels.bid,
+  ask: chainColumnLabels.ask,
   delta: chainColumnLabels.delta,
   iv: chainColumnLabels.iv,
   breakeven: <DottedLabelTooltip label="Breakeven" tooltipHtml="The stock price at expiry where the Call pays back its cost: strike + mid." focusable={false} />,
@@ -136,11 +149,11 @@ function LeapsChainCellButton({ contract, quote, spotPrice, inTheMoney, selected
   const mid = bid !== null && ask !== null ? (bid + ask) / 2 : null;
   const delta = quote?.delta ?? null;
   const breakeven = mid === null ? null : contract.strike + mid;
-  const midFlash = useFlashOnChange(mid, FLASH_DURATION_MS, 2);
+  const bidFlash = useFlashOnChange(bid, FLASH_DURATION_MS, 2);
+  const askFlash = useFlashOnChange(ask, FLASH_DURATION_MS, 2);
   const columnCells: Record<LeapsChainColumn, ReactNode> = {
-    bid: <span className="font-mono">{formatQuotePrice(bid)}</span>,
-    ask: <span className="font-mono">{formatQuotePrice(ask)}</span>,
-    mid: <span className={`font-mono fw-semibold ${flashClassName(midFlash)}`}>{formatQuotePrice(mid)}</span>,
+    bid: <QuoteWithSize price={bid} size={quote?.bidSize ?? null} flashClass={flashClassName(bidFlash)} />,
+    ask: <QuoteWithSize price={ask} size={quote?.askSize ?? null} flashClass={flashClassName(askFlash)} />,
     delta: <span className="font-mono">{formatChainDelta(delta)}</span>,
     iv: <span className="font-mono">{formatPercentage(quote?.impliedVolatility ?? null, 1)}</span>,
     breakeven: <span className="font-mono">{formatCurrency(breakeven)}</span>,
@@ -296,91 +309,93 @@ export function OptionChainCard({ chain, loading, error, spotPrice, liveQuotes, 
       )}
 
       {!error && !loading && chain && strikes.length > 0 && (
-        <div ref={scrollContainerRef} className={`option-chain-scroll${isPhoneLayout ? " is-phone" : ""}`}>
-          {isLeapsMode ? (
-            <table className="table table-sm card-table mb-0 option-chain-table">
-              <thead className="table-light">
-                <tr>
-                  <th className="p-0">
-                    <div className={`option-chain-column-labels is-leaps${isPhoneLayout ? " is-compact" : ""}`}>
-                      <span className="text-start">Strike</span>
-                      {(isPhoneLayout ? leapsPhoneColumnOrder : leapsColumnOrder).map((column) => (
-                        <Fragment key={column}>{leapsColumnLabels[column]}</Fragment>
-                      ))}
-                    </div>
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {strikes.map((strike, index) => (
-                  <Fragment key={strike}>
-                    {index === spotMarkerIndex && spotPrice !== null && <SpotMarkerRow spotPrice={spotPrice} columnCount={1} markerRef={setSpotMarker} />}
-                    <tr {...liveRowAttributes(strike, ["C"])}>
-                      <td className="p-0">{leapsCellFor(strike)}</td>
-                    </tr>
-                  </Fragment>
-                ))}
-                {spotMarkerIndex === strikes.length && spotPrice !== null && <SpotMarkerRow spotPrice={spotPrice} columnCount={1} markerRef={setSpotMarker} />}
-              </tbody>
-            </table>
-          ) : isPhoneLayout ? (
-            <table className="table table-sm card-table mb-0 option-chain-table">
-              <thead className="table-light">
-                <tr>
-                  <th className="p-0">
-                    <div className="option-chain-column-labels has-strike">
-                      <span className="text-start">Strike</span>
-                      <ChainColumnLabels right="P" hasLeadingStrike />
-                    </div>
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {strikes.map((strike, index) => (
-                  <Fragment key={strike}>
-                    {index === spotMarkerIndex && spotPrice !== null && <SpotMarkerRow spotPrice={spotPrice} columnCount={1} markerRef={setSpotMarker} />}
-                    <tr {...liveRowAttributes(strike, [phoneSide])}>
-                      <td className="p-0">{cellFor(strike, phoneSide, true)}</td>
-                    </tr>
-                  </Fragment>
-                ))}
-                {spotMarkerIndex === strikes.length && spotPrice !== null && <SpotMarkerRow spotPrice={spotPrice} columnCount={1} markerRef={setSpotMarker} />}
-              </tbody>
-            </table>
-          ) : (
-            <table className="table table-sm card-table mb-0 option-chain-table is-two-sided">
-              <thead className="table-light">
-                <tr>
-                  <th className="p-0">
-                    <div className="text-center pt-1">Calls</div>
-                    <div className="option-chain-column-labels">
-                      <ChainColumnLabels right="C" hasLeadingStrike={false} />
-                    </div>
-                  </th>
-                  <th className="text-center align-bottom option-chain-strike-column">Strike</th>
-                  <th className="p-0">
-                    <div className="text-center pt-1">Puts</div>
-                    <div className="option-chain-column-labels">
-                      <ChainColumnLabels right="P" hasLeadingStrike={false} />
-                    </div>
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {strikes.map((strike, index) => (
-                  <Fragment key={strike}>
-                    {index === spotMarkerIndex && spotPrice !== null && <SpotMarkerRow spotPrice={spotPrice} columnCount={3} markerRef={setSpotMarker} />}
-                    <tr {...liveRowAttributes(strike, ["C", "P"])}>
-                      <td className="p-0">{cellFor(strike, "C", false)}</td>
-                      <td className="text-center align-middle fw-bold font-mono option-chain-strike-column">{formatCurrencyTrimmed(strike).replace("$", "")}</td>
-                      <td className="p-0">{cellFor(strike, "P", false)}</td>
-                    </tr>
-                  </Fragment>
-                ))}
-                {spotMarkerIndex === strikes.length && spotPrice !== null && <SpotMarkerRow spotPrice={spotPrice} columnCount={3} markerRef={setSpotMarker} />}
-              </tbody>
-            </table>
-          )}
+        <div className="option-chain-scroll-frame">
+          <div ref={scrollContainerRef} className={`option-chain-scroll${isPhoneLayout ? " is-phone" : isLeapsMode ? "" : " is-two-sided"}`}>
+            {isLeapsMode ? (
+              <table className="table table-sm card-table mb-0 option-chain-table">
+                <thead className="table-light">
+                  <tr>
+                    <th className="p-0">
+                      <div className={`option-chain-column-labels is-leaps${isPhoneLayout ? " is-compact" : ""}`}>
+                        <span className="text-start">Strike</span>
+                        {(isPhoneLayout ? leapsPhoneColumnOrder : leapsColumnOrder).map((column) => (
+                          <Fragment key={column}>{leapsColumnLabels[column]}</Fragment>
+                        ))}
+                      </div>
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {strikes.map((strike, index) => (
+                    <Fragment key={strike}>
+                      {index === spotMarkerIndex && spotPrice !== null && <SpotMarkerRow spotPrice={spotPrice} columnCount={1} markerRef={setSpotMarker} />}
+                      <tr {...liveRowAttributes(strike, ["C"])}>
+                        <td className="p-0">{leapsCellFor(strike)}</td>
+                      </tr>
+                    </Fragment>
+                  ))}
+                  {spotMarkerIndex === strikes.length && spotPrice !== null && <SpotMarkerRow spotPrice={spotPrice} columnCount={1} markerRef={setSpotMarker} />}
+                </tbody>
+              </table>
+            ) : isPhoneLayout ? (
+              <table className="table table-sm card-table mb-0 option-chain-table">
+                <thead className="table-light">
+                  <tr>
+                    <th className="p-0">
+                      <div className="option-chain-column-labels has-strike">
+                        <span className="text-start">Strike</span>
+                        <ChainColumnLabels right="P" hasLeadingStrike />
+                      </div>
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {strikes.map((strike, index) => (
+                    <Fragment key={strike}>
+                      {index === spotMarkerIndex && spotPrice !== null && <SpotMarkerRow spotPrice={spotPrice} columnCount={1} markerRef={setSpotMarker} />}
+                      <tr {...liveRowAttributes(strike, [phoneSide])}>
+                        <td className="p-0">{cellFor(strike, phoneSide, true)}</td>
+                      </tr>
+                    </Fragment>
+                  ))}
+                  {spotMarkerIndex === strikes.length && spotPrice !== null && <SpotMarkerRow spotPrice={spotPrice} columnCount={1} markerRef={setSpotMarker} />}
+                </tbody>
+              </table>
+            ) : (
+              <table className="table table-sm card-table mb-0 option-chain-table is-two-sided">
+                <thead className="table-light">
+                  <tr>
+                    <th className="p-0">
+                      <div className="text-center pt-1">Calls</div>
+                      <div className="option-chain-column-labels">
+                        <ChainColumnLabels right="C" hasLeadingStrike={false} />
+                      </div>
+                    </th>
+                    <th className="text-center align-bottom option-chain-strike-column">Strike</th>
+                    <th className="p-0">
+                      <div className="text-center pt-1">Puts</div>
+                      <div className="option-chain-column-labels">
+                        <ChainColumnLabels right="P" hasLeadingStrike={false} />
+                      </div>
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {strikes.map((strike, index) => (
+                    <Fragment key={strike}>
+                      {index === spotMarkerIndex && spotPrice !== null && <SpotMarkerRow spotPrice={spotPrice} columnCount={3} markerRef={setSpotMarker} />}
+                      <tr {...liveRowAttributes(strike, ["C", "P"])}>
+                        <td className="p-0">{cellFor(strike, "C", false)}</td>
+                        <td className="text-center align-middle fw-bold font-mono option-chain-strike-column">{formatCurrencyTrimmed(strike).replace("$", "")}</td>
+                        <td className="p-0">{cellFor(strike, "P", false)}</td>
+                      </tr>
+                    </Fragment>
+                  ))}
+                  {spotMarkerIndex === strikes.length && spotPrice !== null && <SpotMarkerRow spotPrice={spotPrice} columnCount={3} markerRef={setSpotMarker} />}
+                </tbody>
+              </table>
+            )}
+          </div>
         </div>
       )}
     </div>
