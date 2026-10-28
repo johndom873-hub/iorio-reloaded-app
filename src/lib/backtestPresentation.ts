@@ -305,12 +305,11 @@ export const backtestMetricExplanation = {
   cagr: "CAGR = (end value ÷ start value) ^ (365 ÷ calendar days from start to end) − 1: the total return as a yearly rate on calendar time.",
   sortino: "Sortino = mean(daily return) × 252 ÷ (downside deviation × √252), with downside deviation = √(mean of min(daily return, 0)²) over all days. 252: a year holds about 252 trading days.",
   maxDrawdown: "Max drawdown: the largest fall from a previous peak of account value, as a % of that peak.",
+  excessCalmar: "Excess Calmar = (CAGR − the T-bill CAGR over the session's period) ÷ |Max drawdown|: the yearly return above cash for each unit of the largest fall. The T-bill CAGR is an all-cash account credited the 3-month Treasury bill rate as the engine credits interest. \"—\" with no drawdown.",
+  daysWithNoOptions: "Days with no options = the session's trading days with no Call or Put sold open at any time of the day ÷ all of them, every symbol together. An option sold counts from the day it was sold to the day it expired, was bought back or was assigned, both included. LEAPS and hedge Puts are bought, so they don't count. Longest: the most such trading days in a row.",
   worstMonth: "Worst month: the lowest monthly return. A month's return is its daily returns compounded: Π (1 + daily return) − 1.",
-  trades: "Trades opened in the period. Win rate = trades with P&L > 0 ÷ all closed trades.",
-  averageWinLoss: "Average win / average loss: the mean P&L of the winning / losing trades, in dollars.",
   edgeCapture: "Edge capture = Σ trade P&L ÷ Σ Edge $ the model predicted for those trades at entry (1.0 = the model was exactly right on average).",
   capitalInUse: "Capital in use = mean over days of (Σ EXP $ of open positions ÷ account value). EXP $ is net of premium: a put's (strike − premium) × 100 × contracts. Return on capital in use = Σ trade P&L ÷ Σ (EXP $ × calendar days held) × 365, the same basis as Edge Yield.",
-  inTheMoneyAtExpiry: "Contracts in the money at expiry = expired contracts with the strike crossed ÷ all expired contracts. An option in the money by $0.01 or more at its expiry day's close is assigned.",
   winRate: "Win rate = trades with P&L > 0 ÷ all closed trades.",
   returnOnCapitalInUse: "Return on capital in use = Σ trade P&L ÷ Σ (EXP $ × calendar days held) × 365, the same basis as Edge Yield.",
   interest: "Interest on idle cash: each day the cash balance earns the 3-month Treasury bill rate (FRED DTB3) × calendar days since the previous trading day ÷ 365.",
@@ -325,12 +324,10 @@ export const backtestCycleMetricExplanation = {
     "Wheel cycle P&L, as the platform's Wheel cycle view computes it: a cycle runs from the first position opened on a flat symbol until the symbol is flat again; its total is premiums in − buybacks − commissions + what the shares made, plus what an open cycle still holds at the session's last marks. Summed over every cycle of every symbol. Interest on idle cash is not in it (it is in the account's total return).",
   cycles: "Wheel cycles of the session, closed and open. A cycle closes only when the symbol is flat again, and Pluto's rules only close it in profit, so the closed cycles' win rate is 100% by construction: the open cycles are where a loss would be, so their count and P&L show beside it.",
   winRate: "Win rate = closed cycles with a total above 0 ÷ closed cycles. Pluto's rules only close a cycle in profit, so this is 100% by construction; read it with the open cycles beside it.",
-  averageWinLoss: "Average win / average loss: the mean total of the closed cycles above 0 / below 0, in dollars.",
   edgeCapture:
     "Edge capture = Σ closed cycles' totals ÷ Σ Edge $ the model predicted for the options sold in those cycles (1.0 = the model was exactly right on average). A cycle's total includes what its shares made while held after a put was assigned or under a covered call, on purpose: those share gains are part of the wheel's result. The model predicts only the options, so capture above 1.0 can come from the shares rather than from the options' edge.",
   capitalInUse: "Capital in use = mean over days of (Σ EXP $ of open positions ÷ account value). EXP $ is net of premium: a put's (strike − premium) × 100 × contracts. Return on capital in use = Σ every cycle's total ÷ Σ over the session days of (EXP $ held that day × calendar days to the next session day) × 365.",
   optionsSold: "Options sold: opening puts and calls and the new leg of each roll.",
-  inTheMoneyAtExpiry: "Contracts in the money at expiry = options sold that expired with the strike crossed ÷ options sold that expired. An option in the money by $0.01 or more at its expiry day's close is assigned.",
   shares:
     "The shares' part of the CAGR = CAGR × the shares' P&L ÷ the account's P&L. The shares' P&L is the account's P&L less its interest and every option's (the Covered Calls, the Puts sold and the hedge): what the shares made, sold and still held at the account's last marks, after commissions. With the Covered Calls, the Cash-Secured Puts, the LEAPS, the hedge and interest, the parts add up to the CAGR. Held on: the session's trading days with shares at any time of the day ÷ all of them.",
   coveredCalls:
@@ -360,10 +357,6 @@ export function drawdownsOf(values: number[]): number[] {
     peak = Math.max(peak, value);
     return peak > 0 ? value / peak - 1 : 0;
   });
-}
-
-export function describeAverageWinLoss(metrics: BacktestMetrics): string {
-  return `${formatSignedPnl(metrics.averageWinDollars, 0)} / ${formatSignedPnl(metrics.averageLossDollars, 0)}`;
 }
 
 // ---- Monthly returns ----

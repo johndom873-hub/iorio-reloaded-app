@@ -6,12 +6,12 @@ import { dateRuns } from "../../lib/analysisPresentation";
 import { formatNumber } from "../../lib/formatters";
 import { Spinner } from "../Spinner";
 import { BacktestCard } from "./backtestBits";
-import { BreakEvenLegendItems, IvPercentileLegendItem, LadderLegendItems, PriceChartActions, PriceDrawdownCaption, PriceDrawdownCharts, PriceWindowNavigator, SplitLegendItem } from "./analysis/priceDrawdownChart";
+import { BreakEvenLegendItems, ImpliedVolatilityLegendItem, LadderLegendItems, PriceChartActions, PriceDrawdownCaption, PriceDrawdownCharts, PriceWindowNavigator, SplitLegendItem } from "./analysis/priceDrawdownChart";
 import { buildPriceDrawdownChart, historyYearsOf, indicatorsInWindow, useLogScalePreference, usePriceWindow, type PriceChartRange } from "./analysis/priceDrawdownChartModel";
 
 // The Analyse window's "Price and Max drawdown" chart on a session's results (Marcelo 2026-10-20): over the session's
 // period, with this session's ladder levels, rungs sold and orders over one strike (no "Pot too small": that is the
-// Analyse window's fit), the IV Percentile (2026-10-26), Vol Farmer v2's B-E, B-E2 and LEAPS (2026-10-27); one symbol at a time.
+// Analyse window's fit), the IV % (2026-10-28, was the IV Percentile), Vol Farmer v2's B-E, B-E2 and LEAPS (2026-10-27); one symbol at a time.
 
 function PriceChartBody({ chart, range, logScale, severalSymbols }: { chart: BacktestSessionPriceChart; range: PriceChartRange; logScale: boolean; severalSymbols: boolean }) {
   const { theme } = useTheme();
@@ -77,7 +77,7 @@ function PriceChartBody({ chart, range, logScale, severalSymbols }: { chart: Bac
               Cash available: the cash not locked in open Cash-Secured Puts (strike × 100 × contracts) ÷ the account value, just before the day's close: after its orders, before its expiries settle{severalSymbols && " (the whole account, every symbol's)"}
             </span>
           )}
-          <IvPercentileLegendItem chart={drawn} />
+          <ImpliedVolatilityLegendItem chart={drawn} />
         </div>
       )}
     </div>

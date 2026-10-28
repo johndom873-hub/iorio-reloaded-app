@@ -2488,7 +2488,7 @@
 .analysis-ladder-line.is-cash-available { border-top-color: var(--analysis-cash-available); }
 .analysis-ladder-line.is-break-even { border-top-color: var(--analysis-break-even); }
 .analysis-ladder-line.is-break-even-2 { border-top-style: dashed; border-top-color: var(--analysis-break-even-2); }
-.analysis-ladder-line.is-iv-percentile { border-top-color: var(--analysis-implied-volatility); }
+.analysis-ladder-line.is-implied-volatility { border-top-color: var(--analysis-implied-volatility); }
 .analysis-split-line { display: inline-block; width: 0; height: 0.9rem; border-left: 2px dashed var(--tblr-secondary-color); }
 .analysis-panel-label { margin: 0.25rem 0 0 3.25rem; font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--tblr-secondary-color); }
 /* A price chart whose window a drag moves (priceDrawdownChart.tsx): horizontal drags move it, vertical swipes still scroll

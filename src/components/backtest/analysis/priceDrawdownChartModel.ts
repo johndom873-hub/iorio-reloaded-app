@@ -8,7 +8,7 @@ import { daysToExpiry, formatAxisDollars, formatCurrency, formatDayMonthYear, fo
 // The "Price and Max drawdown" chart, shared by the Analyse window (its analysis backtest) and a session's results (that
 // session): daily candles, the drawdown band, shaded runs of days, the ladder's next Put's cap and floor and the rungs
 // sold, Vol Farmer v2's two break-evens and LEAPS, a log scale to switch on, and under the candles the account's cash
-// available and the IV Percentile.
+// available and the implied volatility (IV %).
 // This module: its ranges, the window a drag moves, the log scale preference and the chart's options (the components are in
 // priceDrawdownChart.tsx).
 
@@ -198,7 +198,7 @@ export interface PriceDrawdownChartInput {
   splits: readonly { firstDayAfter: string; ratio: number }[];
   /** The account's cash available each day at its 10:00 marks: [date, free cash, cash locked in open puts, account value]; null: no panel. */
   cashAvailable: NonNullable<AnalysisBacktestFigures["cashAvailable"]> | null;
-  /** IV Percentile, one per bar of `bars` (indicatorsInWindow); null: none. */
+  /** IV Percentile, one per bar of `bars` (indicatorsInWindow), for the IV % tooltip; null: none. */
   indicators: AnalysisBarIndicators | null;
   /** Vol Farmer v2 (a session's chart only): [date, B-E, B-E2] after each 10:00 look. */
   breakEvenLevels?: readonly [string, number | null, number | null][];
@@ -212,9 +212,11 @@ export function indicatorsInWindow(indicators: AnalysisBarIndicators | null | un
   return { ivPercentile: indicators.ivPercentile.slice(from, to + 1) };
 }
 
-/** "IV Percentile 52%: IV 64.0%; 131 of the last 252 days were at or below it". */
-function describeIvPercentile([share, atOrBelow, windowDays]: [number, number, number], impliedVolatility: number | null): string {
-  return `IV Percentile <b>${formatPercentage(share, 0)}</b>: ${impliedVolatility === null ? "" : `IV ${formatPercentage(impliedVolatility, 1)}; `}${formatNumber(atOrBelow)} of the last ${formatNumber(windowDays)} days were at or below it`;
+/** "IV <b>64.0%</b> · IV Percentile 52%: 131 of the last 252 days were at or below it". */
+function describeImpliedVolatility(impliedVolatility: number, ivPercentile: [number, number, number] | null): string {
+  if (!ivPercentile) return `IV <b>${formatPercentage(impliedVolatility, 1)}</b>`;
+  const [share, atOrBelow, windowDays] = ivPercentile;
+  return `IV <b>${formatPercentage(impliedVolatility, 1)}</b> · IV Percentile ${formatPercentage(share, 0)}: ${formatNumber(atOrBelow)} of the last ${formatNumber(windowDays)} days were at or below it`;
 }
 
 export type PriceDrawdownChart = ReturnType<typeof buildPriceDrawdownChart>;
@@ -270,9 +272,10 @@ export function buildPriceDrawdownChart(input: PriceDrawdownChartInput) {
   const leapsByDate = new Map<string, SessionLeapsEvent[]>();
   for (const event of input.leapsEvents ?? []) if (event.date >= first && event.date <= last) leapsByDate.set(event.date, [...(leapsByDate.get(event.date) ?? []), event]);
   const closeByDate = new Map(bars.map((bar) => [bar[0], bar[4]]));
-  // The IV Percentile panel under the candles (approved 2026-10-26).
+  // The IV % panel under the candles (Marcelo 2026-10-28, in place of the IV Percentile, which stays in its tooltip).
   const ivPercentile = bars.map((_, index) => input.indicators?.ivPercentile[index] ?? null);
-  const ivRecorded = ivPercentile.some((day) => day !== null);
+  const impliedVolatilities = bars.flatMap((bar) => (bar[5] === null ? [] : [bar[5]]));
+  const ivRecorded = impliedVolatilities.length > 0;
   const panelBelow = cashRecorded || ivRecorded;
   // The log scale: each price plotted as log10 of itself on a plain axis, the axis labelled back in dollars (ApexCharts'
   // own logarithmic axis drops the candles and shifts the bands).
@@ -368,7 +371,7 @@ export function buildPriceDrawdownChart(input: PriceDrawdownChartInput) {
           fill: { type: "solid", opacity: 0.14 },
           markers: { size: 0, hover: { size: 0 } },
           legend: { show: false },
-          // With the IV Percentile under it, that panel carries the dates.
+          // With the IV % under it, that panel carries the dates.
           xaxis: { type: "datetime", labels: { show: !ivRecorded, datetimeUTC: true }, axisTicks: { show: !ivRecorded }, tooltip: { enabled: false } },
           yaxis: { min: 0, max: Math.max(100, Math.ceil(highestShare * 10) * 10), tickAmount: 2, labels: { formatter: (value: number) => `${Math.round(value)}%`, ...axisLabelWidth } },
           grid: { padding: { left: 4, right: 8, top: -8 } },
@@ -386,8 +389,10 @@ export function buildPriceDrawdownChart(input: PriceDrawdownChartInput) {
         series: [{ name: "Cash available", type: "area", data: bars.map((bar, index) => ({ x: timeOfDate(bar[0]), y: cashAvailable[index] ? +(cashAvailable[index]!.share * 100).toFixed(1) : null })) }],
       }
     : null;
-  // In the Volatility chart's implied-volatility orange.
-  const ivPercentilePanel = ivRecorded
+  // In the Volatility chart's implied-volatility orange; the axis from 0 to the window's highest IV, up to the next 25%
+  // and at least 100%.
+  const highestImpliedVolatility = ivRecorded ? Math.max(...impliedVolatilities) : 0;
+  const impliedVolatilityPanel = ivRecorded
     ? {
         options: {
           chart: { animations: { enabled: false }, zoom: { enabled: false }, background: "transparent", parentHeightOffset: 0 },
@@ -397,7 +402,7 @@ export function buildPriceDrawdownChart(input: PriceDrawdownChartInput) {
           markers: { size: 0, hover: { size: 0 } },
           legend: { show: false },
           xaxis: { type: "datetime", labels: { datetimeUTC: true }, tooltip: { enabled: false } },
-          yaxis: { min: 0, max: 100, tickAmount: 2, labels: { formatter: (value: number) => `${Math.round(value)}%`, ...axisLabelWidth } },
+          yaxis: { min: 0, max: Math.max(100, Math.ceil(highestImpliedVolatility * 4) * 25), tickAmount: 2, labels: { formatter: (value: number) => `${Math.round(value)}%`, ...axisLabelWidth } },
           grid: { padding: { left: 4, right: 8, top: -8 } },
           dataLabels: { enabled: false },
           tooltip: {
@@ -405,15 +410,14 @@ export function buildPriceDrawdownChart(input: PriceDrawdownChartInput) {
             intersect: false,
             custom: ({ dataPointIndex }: { dataPointIndex: number }) => {
               const bar = bars[dataPointIndex];
-              const day = ivPercentile[dataPointIndex];
-              return bar && day ? `<div style="padding:0.4rem 0.6rem;font-size:0.75rem"><b>${formatDayMonthYear(bar[0])}</b><div>${describeIvPercentile(day, bar[5])}</div></div>` : "";
+              return bar && bar[5] !== null ? `<div style="padding:0.4rem 0.6rem;font-size:0.75rem"><b>${formatDayMonthYear(bar[0])}</b><div>${describeImpliedVolatility(bar[5], ivPercentile[dataPointIndex])}</div></div>` : "";
             },
           },
         } satisfies ApexOptions,
-        series: [{ name: "IV Percentile", type: "area", data: bars.map((bar, index) => ({ x: timeOfDate(bar[0]), y: ivPercentile[index] ? +(ivPercentile[index]![0] * 100).toFixed(1) : null })) }],
+        series: [{ name: "IV %", type: "area", data: bars.map((bar) => ({ x: timeOfDate(bar[0]), y: bar[5] === null ? null : +(bar[5] * 100).toFixed(1) })) }],
       }
     : null;
   const lowestDay = cashInRange.reduce<(typeof cashInRange)[number] | null>((lowest, day) => (lowest === null || day.share < lowest.share ? day : lowest), null);
   const cashSummary = lowestDay ? { median: medianOf(cashInRange.map((day) => day.share))!, lowest: lowestDay.share, lowestDate: lowestDay.date } : null;
-  return { options, series, smallDays: daysIn(smallRuns), strikeDays: daysIn(strikeRuns), lastLevel, cashPanel, cashSummary, splitsInRange, ivPercentilePanel, hasBreakEven: breakEvens.some((level) => level?.[1] != null), hasBreakEven2: breakEvens.some((level) => level?.[2] != null), leapsKinds: new Set([...leapsByDate.values()].flat().map((event) => event.kind)) };
+  return { options, series, smallDays: daysIn(smallRuns), strikeDays: daysIn(strikeRuns), lastLevel, cashPanel, cashSummary, splitsInRange, impliedVolatilityPanel, hasBreakEven: breakEvens.some((level) => level?.[1] != null), hasBreakEven2: breakEvens.some((level) => level?.[2] != null), leapsKinds: new Set([...leapsByDate.values()].flat().map((event) => event.kind)) };
 }

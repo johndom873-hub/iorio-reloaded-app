@@ -1,10 +1,9 @@
 import type { ReactNode } from "react";
-import type { BacktestCycle, BacktestMetrics, BacktestMonthlyReturn, BacktestPnlBasis, BacktestPnlSource, BacktestPnlSources, BacktestSessionDay, BacktestTickerStatistics, BacktestTrade } from "../../api/backtest";
-import { formatCompactDollarsTrimmed, formatNumber, formatPercentage, formatRatio, formatSignedPnl, pluralizeCount, pnlTextClass } from "../../lib/formatters";
+import type { BacktestCycle, BacktestDaysWithNoOptions, BacktestMetrics, BacktestMonthlyReturn, BacktestPnlBasis, BacktestPnlSource, BacktestPnlSources, BacktestSessionDay, BacktestTickerStatistics } from "../../api/backtest";
+import { formatCompactDollarsTrimmed, formatDayMonthYear, formatNumber, formatPercentage, formatRatio, formatSignedPnl, pluralizeCount, pnlTextClass } from "../../lib/formatters";
 import {
   backtestCycleMetricExplanation,
   backtestMetricExplanation,
-  describeAverageWinLoss,
   describeDeepestDrawdown,
   describeOpenCycles,
   isCycleBasis,
@@ -65,18 +64,20 @@ interface BacktestKpiTilesProps {
   pnlBasis: BacktestPnlBasis;
   metrics: BacktestMetrics | null;
   days: BacktestSessionDay[];
-  trades: BacktestTrade[];
   monthlyReturns: BacktestMonthlyReturn[];
   cycles: BacktestCycle[];
   allSymbolsStatistics: BacktestTickerStatistics | null;
   /** Shares, Covered Calls and Hedge (approved 2026-10-26): each tile when the session held it. */
   pnlSources: BacktestPnlSources | null;
+  /** Excess Calmar and the days with no options (approved 2026-10-28); null before a run or on an older API. */
+  excessCalmar: number | null;
+  daysWithNoOptions: BacktestDaysWithNoOptions | null;
 }
 
-/** The headline figures, led by the wheel cycle P&L (whether the book made money, as the platform counts it). The win rate,
- *  averages and edge capture are measured on closed cycles, or per option on sessions run before cycles carried the P&L.
- *  Buy and hold sits in its own comparison table, not on the tiles. "—" until the run has finished. */
-export function BacktestKpiTiles({ pnlBasis, metrics, days, trades, monthlyReturns, cycles, allSymbolsStatistics, pnlSources }: BacktestKpiTilesProps) {
+/** The headline figures, led by the wheel cycle P&L (whether the book made money, as the platform counts it). Capital in
+ *  use is measured on the wheel cycles, or per option on sessions run before cycles carried the P&L. Buy and hold sits in
+ *  its own comparison table, not on the tiles. "—" until the run has finished. */
+export function BacktestKpiTiles({ pnlBasis, metrics, days, monthlyReturns, cycles, allSymbolsStatistics, pnlSources, excessCalmar, daysWithNoOptions }: BacktestKpiTilesProps) {
   const cycleBasis = isCycleBasis(pnlBasis);
   const cycleTotals = summarizeCycleTotals(cycles);
   const hasBook = allSymbolsStatistics !== null || cycles.length > 0;
@@ -101,24 +102,6 @@ export function BacktestKpiTiles({ pnlBasis, metrics, days, trades, monthlyRetur
         ],
       }
     : null;
-
-  const cyclesTile: KpiTileProps = {
-    label: "Wheel cycles",
-    explanation: backtestCycleMetricExplanation.cycles,
-    value: formatNumber(metrics?.cycleCount ?? cycles.length),
-    lines: [
-      metrics?.winRate === null || metrics?.winRate === undefined ? "none closed yet" : `${formatNumber(metrics.closedCycleCount ?? cycleTotals.closedCount)} closed, ${formatPercentage(metrics.winRate, 0)} in profit`,
-      openCyclesLine,
-      `${pluralizeCount(metrics?.tradeCount ?? trades.length, "option")} sold`,
-    ],
-  };
-
-  const tradesTile: KpiTileProps = {
-    label: "Trades",
-    explanation: backtestMetricExplanation.trades,
-    value: formatNumber(metrics?.tradeCount),
-    lines: [metrics?.winRate === null || metrics?.winRate === undefined ? "none closed yet" : `${formatPercentage(metrics.winRate, 0)} ended in profit`],
-  };
 
   const tiles: (KpiTileProps | null)[] = [
     leadTile,
@@ -150,18 +133,17 @@ export function BacktestKpiTiles({ pnlBasis, metrics, days, trades, monthlyRetur
       lines: [deepestDrawdown ?? "from a previous peak"],
     },
     {
+      label: "Excess Calmar",
+      explanation: backtestMetricExplanation.excessCalmar,
+      value: formatRatio(excessCalmar, 2),
+      lines: [],
+    },
+    {
       label: "Worst month",
       explanation: backtestMetricExplanation.worstMonth,
       value: signedPercentDisplay(metrics?.worstMonth).text,
       valueClassName: signedPercentDisplay(metrics?.worstMonth).className,
       lines: [worstMonth ?? "the lowest monthly return"],
-    },
-    cycleBasis ? cyclesTile : tradesTile,
-    {
-      label: "Average win / loss",
-      explanation: cycleBasis ? backtestCycleMetricExplanation.averageWinLoss : backtestMetricExplanation.averageWinLoss,
-      value: metrics ? describeAverageWinLoss(metrics) : "—",
-      lines: [cycleBasis ? "per closed cycle" : "per trade"],
     },
     {
       label: "Capital in use",
@@ -170,10 +152,17 @@ export function BacktestKpiTiles({ pnlBasis, metrics, days, trades, monthlyRetur
       lines: ["of the account value, on average", metrics?.returnOnCapitalInUse === null || metrics?.returnOnCapitalInUse === undefined ? null : `earning ${signedPercentDisplay(metrics.returnOnCapitalInUse).text} a year`],
     },
     {
-      label: "In the money at expiry",
-      explanation: cycleBasis ? backtestCycleMetricExplanation.inTheMoneyAtExpiry : backtestMetricExplanation.inTheMoneyAtExpiry,
-      value: formatPercentage(metrics?.inTheMoneyAtExpiryShare, 0),
-      lines: [cycleBasis ? "of options sold that expired, settled at the close" : "of expired contracts, settled at the close"],
+      label: "Days with no options",
+      explanation: backtestMetricExplanation.daysWithNoOptions,
+      value: formatPercentage(daysWithNoOptions?.share, 0),
+      lines: daysWithNoOptions
+        ? [
+            `${formatNumber(daysWithNoOptions.dayCount)} of ${formatNumber(daysWithNoOptions.tradingDayCount)} trading days`,
+            daysWithNoOptions.longestRun === null
+              ? "a Call or Put open every day"
+              : `longest: ${pluralizeCount(daysWithNoOptions.longestRun.days, "trading day")}, ${formatDayMonthYear(daysWithNoOptions.longestRun.from)} to ${formatDayMonthYear(daysWithNoOptions.longestRun.to)}`,
+          ]
+        : [],
     },
     // Each source's part of the CAGR, then its P&L, what was quoted at the trades and the days it was held.
     pnlSources?.shares

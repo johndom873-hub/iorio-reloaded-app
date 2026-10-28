@@ -202,11 +202,12 @@ export function BacktestSessionPage() {
         pnlBasis={session.pnlBasis}
         metrics={session.metrics}
         days={detail.days}
-        trades={detail.trades}
         monthlyReturns={detail.monthlyReturns}
         cycles={detail.cycles}
         allSymbolsStatistics={detail.allSymbolsStatistics}
         pnlSources={detail.pnlSources ?? null}
+        excessCalmar={detail.excessCalmar ?? null}
+        daysWithNoOptions={detail.daysWithNoOptions ?? null}
       />
 
       <BacktestCard
