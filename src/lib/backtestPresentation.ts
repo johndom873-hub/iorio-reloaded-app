@@ -1395,7 +1395,7 @@ export const decisionMakerHint: Record<BacktestDecisionMaker, string> = {
   baseline: "each ticker gets its own pot and ladder values (Tickers, below)",
   steady_stake: "a steady share of each ticker's pot in its shares, Calls and Puts sold on expiry days; the starting value is split equally across the tickers",
   vol_farmer: "shares, a Covered Call and a long Put that hedges them, all unwound when the stock reaches the Call's strike",
-  vol_farmer_v2: "two Covered Calls at different levels: the second from Puts sold on half the pot after a fall, a LEAPS Call when even it finds no Call",
+  vol_farmer_v2: "two Covered Calls at different levels: the second from Puts sold on half the pot after a fall, a LEAPS Call once the price is half a Step below the second's break-even",
 };
 
 /** Where a ticker's value came from, as its badge reads (lowest layer first: the order a reset walks back down). */
