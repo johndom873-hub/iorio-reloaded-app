@@ -51,6 +51,8 @@ import { StrategyBadge } from "../components/StrategyBadge";
 import { TooltipSpan } from "../components/TooltipSpan";
 import { FrozenTickerBadge } from "../components/FrozenTickerBadge";
 import { describeFrozenTicker, useFrozenTickers } from "../hooks/useFrozenTickers";
+import { PlutoManagedMark } from "../components/PlutoManagedMark";
+import { usePlutoEnabledSymbols } from "../hooks/usePlutoEnabledSymbols";
 
 function structureSummary(position: Position): string {
   // An open position can carry closed legs from a past roll (they stay
@@ -89,6 +91,7 @@ export function PositionsPage() {
   );
   const [closePosition, setClosePosition] = useState<Position | null>(null);
   const frozenTickers = useFrozenTickers();
+  const plutoEnabledSymbols = usePlutoEnabledSymbols();
   const loadPositions = useCallback(async () => {
     try {
       setError(null);
@@ -279,6 +282,7 @@ export function PositionsPage() {
             onClick={() => openTickerModalAtPosition({ symbol: row.symbol, focusPositionId: row.id })}
           >
             {row.symbol}
+            <PlutoManagedMark symbol={row.symbol} managed={plutoEnabledSymbols.has(row.symbol)} />
             {positionHasLegEnteredTodayEastern(row) && <NewPositionTag />}
           </button>
           <FrozenTickerBadge frozen={frozenTickers.get(row.symbol)} />

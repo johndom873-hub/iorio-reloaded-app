@@ -150,9 +150,9 @@ export const plutoParameterGroups: PlutoParameterGroup[] = [
   {
     key: "triggers",
     title: "Quotes & lines",
-    summary: (settings) => `ladder quotes checked every ${settings.bandQuotePollSeconds} s · bursts of up to ${settings.burstLines} lines · up to ${settings.maxEnabledTickers} tickers`,
+    summary: (settings) => `option quotes checked every ${settings.bandQuotePollSeconds} s · bursts of up to ${settings.burstLines} lines · up to ${settings.maxEnabledTickers} tickers`,
     parameters: [
-      { field: "bandQuotePollSeconds", label: "Ladder quotes poll", unit: "s", kind: "integer", step: "1", help: "How often Pluto checks the market quote loop for ladder quotes received since its last round." },
+      { field: "bandQuotePollSeconds", label: "Option quotes poll", unit: "s", kind: "integer", step: "1", help: "How often Pluto checks the market quote loop for option quotes received since its last round." },
       { field: "burstLines", label: "Burst lines", unit: "lines", kind: "integer", step: "1", help: "Most option contracts Pluto re-quotes live in one short burst before pricing a ladder order. Their IBKR lines are booked only while the burst runs." },
       { field: "burstSettleSeconds", label: "Burst settle", unit: "s", kind: "integer", step: "1", help: "How long a burst waits for quotes before the order is priced." },
       { field: "maxEnabledTickers", label: "Max allowed tickers", unit: "tickers", kind: "integer", step: "1", help: "Cap on Shortlist tickers Pluto may trade; each holds one IBKR market-data line." },
@@ -212,7 +212,7 @@ export const plutoParameterLabelByField: Record<string, string> = {
   maxAbsDayChangePct: "Max day move (old, % of price)",
   maxTickerExposurePct: "Max per ticker (old, % of account)",
   maxSectorExposurePct: "Max per sector (old, % of account)",
-  daySignalsPollSeconds: "Ladder quotes poll",
+  daySignalsPollSeconds: "Option quotes poll",
   maxActionsPerSession: "Max orders per day (retired)",
   executionStrategy: "Active strategy (retired)",
   maxTickerPctOfBudget: "Max per ticker (retired)",

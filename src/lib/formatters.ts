@@ -511,8 +511,10 @@ export function formatNumber(value: number | string | null | undefined, maximumF
 // Compact "k"/"M" volume-style formatting, capped at 3 significant digits
 // (1234 -> "1.23k", 123456 -> "123k", 1234567 -> "1.23M"). Below 1000, the
 // value is shown as-is. Only two magnitudes since callers are share-volume
-// figures, which don't reach billions (Marcelo, 2026-09-09).
-export function formatCompactNumber(value: number | null | undefined): string {
+// figures, which don't reach billions (Marcelo, 2026-09-09). The option chain's
+// bid/ask sizes pass 2 significant digits (4627 -> "4.6k", 10056 -> "10k") so a
+// size never takes more than 4 characters.
+export function formatCompactNumber(value: number | null | undefined, significantDigits = 3): string {
   if (value === null || value === undefined || Number.isNaN(value)) return "—";
   const sign = value < 0 ? "-" : "";
   const absValue = Math.abs(value);
@@ -526,13 +528,18 @@ export function formatCompactNumber(value: number | null | undefined): string {
     const { threshold, suffix } = units[i];
     if (absValue < threshold) continue;
     const scaled = absValue / threshold;
-    const integerDigits = Math.floor(scaled).toString().length;
-    const decimalPlaces = Math.max(0, 3 - integerDigits);
-    const rounded = Number(scaled.toFixed(decimalPlaces));
+    let decimalPlaces = Math.max(0, significantDigits - Math.floor(scaled).toString().length);
+    let rounded = Number(scaled.toFixed(decimalPlaces));
+    // Rounding up can add an integer digit (9.96k -> "10.0k"): drop a decimal to keep the significant digits.
+    const roundedDecimalPlaces = Math.max(0, significantDigits - Math.floor(rounded).toString().length);
+    if (roundedDecimalPlaces < decimalPlaces) {
+      decimalPlaces = roundedDecimalPlaces;
+      rounded = Number(scaled.toFixed(decimalPlaces));
+    }
     // Rounding can carry the value into the next unit's range (e.g. 999.5k -> "1000k")
     if (rounded >= 1000 && i > 0) {
       const bumped = units[i - 1];
-      return `${sign}${(absValue / bumped.threshold).toFixed(2)}${bumped.suffix}`;
+      return `${sign}${(absValue / bumped.threshold).toFixed(significantDigits - 1)}${bumped.suffix}`;
     }
     return `${sign}${rounded.toFixed(decimalPlaces)}${suffix}`;
   }

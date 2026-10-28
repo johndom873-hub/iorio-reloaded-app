@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import { useEffect } from "react";
+import { createPortal } from "react-dom";
 import { Spinner } from "./Spinner";
 
 interface ConfirmModalProps {
@@ -31,6 +32,7 @@ interface ConfirmModalProps {
 // Confirmation modal per the app's convention: does NOT close on backdrop
 // click or ESC, since accidentally dismissing it should never be mistaken
 // for confirming — Cancel is the only way out besides the actual buttons.
+// Portaled to document.body so it never inherits the text styles of where it is rendered (a nowrap table cell).
 export function ConfirmModal({ title, message, confirmLabel = "Confirm", cancelLabel = "Cancel", danger = true, confirming = false, secondaryLabel, onSecondary, size, confirmDisabled = false, stacked = false, onConfirm, onCancel }: ConfirmModalProps) {
   const zIndex = stacked ? 1100 : 1050;
   useEffect(() => {
@@ -43,7 +45,7 @@ export function ConfirmModal({ title, message, confirmLabel = "Confirm", cancelL
     };
   }, [stacked]);
 
-  return (
+  return createPortal(
     <>
       <div className="modal-backdrop show" style={{ zIndex, backgroundColor: "rgba(0,0,0,0.5)", opacity: 1 }} />
       <div className="modal show d-block" style={{ zIndex }}>
@@ -76,6 +78,7 @@ export function ConfirmModal({ title, message, confirmLabel = "Confirm", cancelL
           </div>
         </div>
       </div>
-    </>
+    </>,
+    document.body,
   );
 }

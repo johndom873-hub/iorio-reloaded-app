@@ -1494,6 +1494,17 @@
   /* Phone (measured): header 1.55rem, row 2.8125rem. */
   max-height: calc(1.55rem + 10 * 2.8125rem + 1.35rem);
 }
+/* The two-sided chain's bid/ask columns drop under 70px when the chain is under 844px wide ((844 − 5rem strike) ÷ 2
+   sides, less padding and gaps, ÷ 5 columns), and the sizes move under the prices (.option-chain-quote): the taller rows
+   (measured 2.3625rem) still show ten strikes. */
+.option-chain-scroll-frame {
+  container: option-chain-frame / inline-size;
+}
+@container option-chain-frame (width < 844px) {
+  .option-chain-scroll.is-two-sided {
+    max-height: calc(2.8rem + 10 * 2.3625rem + 1.35rem);
+  }
+}
 .option-chain-table {
   table-layout: fixed;
   font-size: 0.8rem;
@@ -1522,14 +1533,44 @@
 .option-chain-cell.has-strike {
   grid-template-columns: 4rem repeat(5, minmax(0, 1fr));
 }
-/* Buy LEAPS: strike + bid, ask, mid, Δ, IV, breakeven, to breakeven; a phone keeps mid, Δ and breakeven. */
+/* Buy LEAPS: strike + bid, ask, Δ, IV, breakeven, to breakeven; a phone keeps bid, ask, Δ and IV. */
 .option-chain-column-labels.is-leaps,
 .option-chain-cell.is-leaps {
-  grid-template-columns: 4.5rem repeat(4, minmax(0, 0.8fr)) minmax(0, 0.8fr) minmax(0, 1.2fr) minmax(0, 1fr);
+  grid-template-columns: 4.5rem repeat(4, minmax(0, 0.8fr)) minmax(0, 1.2fr) minmax(0, 1fr);
 }
 .option-chain-column-labels.is-leaps.is-compact,
 .option-chain-cell.is-leaps.is-compact {
-  grid-template-columns: 5rem repeat(2, minmax(0, 1fr)) minmax(0, 1.3fr);
+  grid-template-columns: 5rem repeat(4, minmax(0, 1fr));
+}
+/* Bid and ask with the contracts at each (IBKR's bid/ask size). Each price column is its own size container: from 70px
+   wide the size follows the price on one line ("12.80 ×6"); narrower (a phone, a desktop window under ~1335px for the
+   two-sided chain) it sits under the price. A figure too long even for a wide column wraps under the price instead of
+   being cut off. */
+.option-chain-quote-box {
+  container-type: inline-size;
+  min-width: 0;
+}
+.option-chain-quote {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  line-height: 1.2;
+}
+.option-chain-size {
+  font-size: 0.7rem;
+  color: var(--tblr-secondary-color);
+}
+@container (min-width: 70px) {
+  .option-chain-quote {
+    flex-direction: row;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    align-items: baseline;
+    column-gap: 0.25rem;
+  }
+  .option-chain-size::before {
+    content: "×";
+  }
 }
 .option-chain-cell.is-leaps.is-compact {
   min-height: 2.75rem;

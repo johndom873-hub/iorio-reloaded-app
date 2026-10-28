@@ -239,6 +239,9 @@ function VolFarmerV2Explanation({ values }: { values: PlutoHowItWorks }) {
           <p className="pm-how-text">
             The v2 tickers share Pluto's budget. Each ticker's pot is its allocation of the budget, raised by the excess allowance (<Value>{pct(shared.excessAllowancePct)}</Value> now), so the pots can add up to more than the budget: the tickers rarely need their whole pots at once. When the budget's free cash runs short, a new cycle buys only the lots it pays for, and the tickers take turns so the same one is not always last. The LEAPS wait until every ticker has sold its Calls and Puts.
           </p>
+          <p className="pm-how-text">
+            The v2 tickers share Pluto's budget. Each ticker's pot is its allocation of the budget, raised by the excess allowance (<Value>{pct(shared.excessAllowancePct)}</Value> now), so the pots can add up to more than the budget: the tickers rarely need their whole pots at once. When the budget's free cash runs short, a new cycle buys only the lots it pays for, and the tickers take turns so the same one is not always last. The LEAPS wait until every ticker has sold its Calls and Puts.
+          </p>
           <p className="pm-how-text muted">Pluto looks at every v2 ticker at every round, all day. Every order goes at the mid; one that does not fill is planned again at a later round.</p>
         </Card>
         <Card title="A worked example">

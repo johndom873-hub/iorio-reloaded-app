@@ -801,12 +801,13 @@ a.pm-b:hover, button.pm-b.link:hover { text-decoration: underline; }
 
 /* Vol Farmer v2 card (Live tab) */
 .pm-v2-table td { vertical-align: top; }
-.pm-v2-last { min-width: 16rem; max-width: 28rem; }
+.pm-v2-last { min-width: 12rem; max-width: 28rem; }
 .pm-v2-note { white-space: normal; overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
 .pm-v2-leaps { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 0.375rem; }
-.pm-v2-ticker { min-width: 8.5rem; }
-.pm-v2-position { min-width: 15rem; }
-.pm-v2-leaps-cell { min-width: 14rem; }
+.pm-v2-ticker { min-width: 6.5rem; }
+.pm-v2-position { min-width: 12rem; }
+.pm-v2-second { min-width: 10rem; }
+.pm-v2-leaps-cell { min-width: 10rem; }
 .pm-v2-warnings { padding: 0.75rem 1.125rem 0; }
 .pm-v2-warnings .pm-alert-text + .pm-alert-text { margin-top: 0.25rem; }
 .pm-v2-m-head { display: flex; align-items: baseline; justify-content: space-between; gap: 0.5rem; }
