@@ -229,7 +229,7 @@ export function PositionsPage() {
   const totals = computePositionTotals(positions, unrealizedPnlByPositionId, totalAccountValue);
   const totalPnlTitle = totals.positionsWithoutPnl > 0 ? `Excludes ${totals.positionsWithoutPnl} position(s) with no live price or snapshot` : undefined;
   const signedTotal = (value: number) => (
-    <TooltipSpan className={`font-mono ${pnlTextClass(value)}`} text={totalPnlTitle}>
+    <TooltipSpan className={`font-mono text-nowrap ${pnlTextClass(value)}`} text={totalPnlTitle}>
       {formatSignedPnl(value)}
     </TooltipSpan>
   );
@@ -246,7 +246,7 @@ export function PositionsPage() {
   const footerCells: Record<string, ReactNode> = {
     symbol: `Total (${positions.length})`,
     pnlPercent: totals.isLoading ? <Spinner size="sm" label="Loading" /> : totals.pnlPercent === null ? "—" : (
-      <TooltipSpan className={`font-mono ${pnlTextClass(totals.pnlPercent)}`} text={totalPnlTitle}>
+      <TooltipSpan className={`font-mono text-nowrap ${pnlTextClass(totals.pnlPercent)}`} text={totalPnlTitle}>
         {totals.pnlPercent > 0 ? "+" : ""}
         {formatPercentageValue(totals.pnlPercent, 2)}
       </TooltipSpan>
@@ -254,7 +254,7 @@ export function PositionsPage() {
     cyclePnl: cycleResults.some((result) => result.state === "loading") ? (
       <Spinner size="sm" label="Loading" />
     ) : (
-      <TooltipSpan className={`font-mono ${pnlTextClass(cycleTotal)}`} text={cycleTotalTitle}>
+      <TooltipSpan className={`font-mono text-nowrap ${pnlTextClass(cycleTotal)}`} text={cycleTotalTitle}>
         {formatSignedPnl(cycleTotal)}
       </TooltipSpan>
     ),
@@ -336,6 +336,7 @@ export function PositionsPage() {
       headerTitle:
         "Profit and loss of this symbol's whole wheel cycle (every put, call and share since it began), using this row's Price and live option marks. Repeats on every row of the same symbol. Falls back to the last daily close and nightly snapshot when a mark isn't live.",
       align: "right",
+      cellClassName: "text-nowrap",
       render: (row) => {
         const result = resolveCyclePnl(row);
         if (result.state === "loading") return <Spinner size="sm" label="Loading cycle P&L" />;
@@ -357,6 +358,7 @@ export function PositionsPage() {
       key: "pnlPercent",
       header: "P&L %",
       align: "right",
+      cellClassName: "text-nowrap",
       render: (row) => {
         const pnl = positionTotalPnl(row, unrealizedPnlByPositionId);
         if (pnl === "loading") {
@@ -390,6 +392,7 @@ export function PositionsPage() {
       header: "P&L $",
       headerTitle: "Realized + unrealized P&L, net of commissions: opening commissions are already inside entry prices, closing-trade commissions are subtracted once a leg closes",
       align: "right",
+      cellClassName: "text-nowrap",
       render: (row) => {
         const pnl = positionTotalPnl(row, unrealizedPnlByPositionId);
         if (pnl === "loading") {
@@ -421,6 +424,7 @@ export function PositionsPage() {
       header: "Premium P&L",
       headerTitle: "Premium collected vs. current buy-back cost of the option contract(s) — isolated from any stock price movement",
       align: "right",
+      cellClassName: "text-nowrap",
       render: (row) => {
         if (positionIsStockOnly(row))
           return (
@@ -448,6 +452,7 @@ export function PositionsPage() {
       header: "Stock P&L",
       headerTitle: "Stock price movement vs. entry — positions with a stock leg only (covered calls, and unstructured stock-only positions); a cash-secured put never has one",
       align: "right",
+      cellClassName: "text-nowrap",
       render: (row) => {
         if (!positionHasStockLeg(row)) return <span className="text-secondary">—</span>;
         const pnl = positionStockPnl(row, unrealizedPnlByPositionId);

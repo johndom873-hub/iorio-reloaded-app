@@ -381,6 +381,10 @@
 .iorio-pulse-page .flash-changed {
   animation: pulse-flash 1500ms ease-out; /* keep equal to FLASH_DURATION_MS in useFlashOnChange.ts */
 }
+/* Pulse flashes as a glow on the text, without theme.css's amber layer. */
+.iorio-pulse-page .flash-changed::before {
+  content: none;
+}
 @keyframes pulse-flash {
   0%,
   35% {
