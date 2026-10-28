@@ -180,7 +180,7 @@ export function PlutoVolFarmerV2Card({ lastPassAt, isPhone, onOpenTicker }: Plut
               return (
                 <tr key={ticker.symbol}>
                   {visibleColumns.map((column) => (
-                    <td key={column.key} className={"align" in column ? "r num nw" : column.key === "lastRound" ? "pm-v2-last" : column.key === "ticker" ? "pm-v2-ticker" : column.key === "first" || column.key === "second" ? "pm-v2-position" : column.key === "leaps" ? "pm-v2-leaps-cell" : undefined}>
+                    <td key={column.key} className={"align" in column ? "r num nw" : column.key === "lastRound" ? "pm-v2-last" : column.key === "ticker" ? "pm-v2-ticker" : column.key === "first" ? "pm-v2-position" : column.key === "second" ? "pm-v2-second" : column.key === "leaps" ? "pm-v2-leaps-cell" : undefined}>
                       {cells[column.key]}
                     </td>
                   ))}

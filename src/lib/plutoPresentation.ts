@@ -1,6 +1,6 @@
 import type { PlutoAction, PlutoActionContract, PlutoActionKind, PlutoActionOutcome, PlutoEvent, PlutoEventCategory, PlutoPass, PlutoReadinessResult, PlutoState, PlutoStrategy, PlutoSystemCheck, PlutoWorkingOrder } from "../api/pluto";
 import { formatSettingDisplay, plutoParameterLabelByField } from "./plutoParameters";
-import { daysToExpiry, easternIsoDate, formatBrowserClockTime, formatCurrency, formatDayMonth, formatEasternTime, formatOptionContractLabel, formatOrderSize, formatRelativeAge, formatSignedPercentageValue, formatRelativeTime, formatDateTime, formatStrike, pluralize, todayInEasternIso } from "./formatters";
+import { daysToExpiry, easternIsoDate, formatBrowserClockTime, formatCurrency, formatDayMonth, formatEasternTime, formatOptionContractLabel, formatOrderSize, formatRelativeAge, formatSignedPercentageValue, formatRelativeTime, formatDateTime, formatStrike, pluralize, pluralizeCount, todayInEasternIso } from "./formatters";
 
 // Presentation rules for the Pluto screen (redesign approved 2026-10-06): one status at a time, plain-language
 // wording for orders, decisions and the activity feed. Pure functions so the components stay declarative.
@@ -428,14 +428,14 @@ export function describeTopPickFigure(topPick: { edgeDollars: number; calibrated
   return ranking ? `${ranking.label} ${formatSignedPercentageValue(ranking.value * 100, 0)}` : `$${Math.round(topPick.edgeDollars)} per contract`;
 }
 
-/** Why the analysis ran, as a short cell ("Ladder quotes · HOOD") or a clause ("after new ladder quotes on HOOD"). Rounds from before Signals was retired may carry its triggers. */
+/** Why the analysis ran, as a short cell ("Option quotes · HOOD") or a clause ("after new option quotes on HOOD"). Rounds from before Signals was retired may carry its triggers. */
 export function describeTrigger(pass: Pick<PlutoPass, "trigger" | "triggerDetail">, form: "short" | "clause"): string {
   const detail = pass.triggerDetail ?? {};
   const symbols = Array.isArray(detail.symbols) ? (detail.symbols as string[]) : [];
   const list = symbols.join(", ");
   switch (pass.trigger) {
     case "band_quotes_update":
-      return form === "short" ? `Ladder quotes${list ? ` · ${list}` : ""}` : `after new ladder quotes${list ? ` on ${list}` : ""}`;
+      return form === "short" ? `Option quotes${list ? ` · ${list}` : ""}` : `after new option quotes${list ? ` on ${list}` : ""}`;
     case "day_signals_update":
       return form === "short" ? `Day Signals${list ? ` · ${list}` : " update"}` : `after a Day Signals update${list ? ` on ${list}` : ""}`;
     case "grade_crossing":
@@ -688,7 +688,7 @@ export function describeFeedEvent(event: PlutoEvent, context?: PlutoFeedContext)
       return { dot: "ctl", title: "Trading window closed", detail: "stopped analysing new trades", sub: null };
     case "analysis_started": {
       const data = text(payload.data);
-      const detail = data === "incomplete" ? "Ladder quotes not in by 10:30 ET, running on incomplete data" : data === "complete_after_early_start" ? "Ladder quotes in now, after an early start on incomplete data" : "Ladder quotes in";
+      const detail = data === "incomplete" ? "Option quotes not in by 10:30 ET, running on incomplete data" : data === "complete_after_early_start" ? "Option quotes in now, after an early start on incomplete data" : "Option quotes in";
       return { dot: "model", title: "Started analysing new trades", detail, sub: null };
     }
     case "connection_lost":
@@ -697,6 +697,13 @@ export function describeFeedEvent(event: PlutoEvent, context?: PlutoFeedContext)
       return { dot: "ctl", title: "IBKR connection restored", detail: payload.downMinutes ? `after ${text(payload.downMinutes)} min` : null, sub: null };
     case "order_adopted":
       return { dot: "warn", title: "Order adopted after a restart", detail: orderLine(payload, context, null, at), sub: `Still working ${text(payload.ageMinutes)} min after the restart; watch resumed` };
+    case "holdings_adopted": {
+      // A strategy taking over a ticker's shares and open options at its first look, once per ticker.
+      const putContracts = Number(payload.putContracts ?? 0);
+      const held = `${pluralizeCount(Number(payload.shares ?? 0), "share")} at the cycle's break-even ${formatCurrency(Number(payload.breakEvenPerShare ?? 0))}`;
+      const options = `${pluralize(Number(payload.callContracts ?? 0), "Call")} open · ${putContracts === 0 ? "no Puts" : `${pluralize(putContracts, "Put")} open`}`;
+      return { dot: "look", title: "Holdings adopted", detail: `${symbol} · ${plutoStrategyLabels[text(payload.strategy) as PlutoStrategy] ?? text(payload.strategy)}`, sub: `${held} · ${options}` };
+    }
     case "agent_started":
       return { dot: "ctl", title: "Pluto's program started", detail: `version ${shortRelease(payload.release) || "unknown"}`, sub: null };
     case "agent_stopped":
