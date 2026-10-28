@@ -2,7 +2,7 @@ import { Fragment, useEffect, useRef, type ReactNode } from "react";
 import { optionContractKey, type LiveContractQuote, type TickerOptionChain } from "../../api/tickerTrading";
 import { FLASH_DURATION_MS, flashClassName, useFlashOnChange } from "../../hooks/useFlashOnChange";
 import { useMediaQuery } from "../../hooks/useMediaQuery";
-import { formatCurrency, formatCurrencyTrimmed, formatNumber, formatPercentage, formatQuotePrice, formatSignedPercentage } from "../../lib/formatters";
+import { formatCompactNumber, formatCurrency, formatCurrencyTrimmed, formatPercentage, formatQuotePrice, formatSignedPercentage } from "../../lib/formatters";
 import { describeChainExpiryTab, isChainContractInTheMoney } from "../../lib/optionChainPresentation";
 import { computeAnnualizedYield, computeFrictionDollarsPerContract } from "../../lib/payoff";
 import { DottedLabelTooltip } from "../HelpTooltip";
@@ -79,13 +79,14 @@ function ChainColumnLabels({ right, hasLeadingStrike }: { right: "C" | "P"; hasL
   );
 }
 
-/** A bid or ask with the contracts at it: after the price where the column has room, under it where it doesn't (theme.css). */
+/** A bid or ask with the contracts at it, from 1,000 shortened to 2 significant digits ("4.6k", "10k") so it stays one line:
+    after the price where the column has room, under it where it doesn't (theme.css). */
 function QuoteWithSize({ price, size, flashClass }: { price: number | null; size: number | null; flashClass: string }) {
   return (
     <span className="option-chain-quote-box">
       <span className="option-chain-quote">
         <span className={`font-mono ${flashClass}`}>{formatQuotePrice(price)}</span>
-        {price !== null && size !== null && <span className="option-chain-size font-mono">{formatNumber(size)}</span>}
+        {price !== null && size !== null && <span className="option-chain-size font-mono">{formatCompactNumber(size, 2)}</span>}
       </span>
     </span>
   );
