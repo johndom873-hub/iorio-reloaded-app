@@ -228,13 +228,13 @@ function VolFarmerV2Explanation({ values }: { values: PlutoHowItWorks }) {
       <div className="pm-how-pair">
         <Card title="In plain words">
           <p className="pm-how-lead">
-            Vol Farmer v2 earns option premium on a stock in two <b>positions</b>. Half the ticker's pot buys shares, the first position, and sells <b>Calls</b> on them, always at or above what the shares cost after the premiums already collected: the first position's break-even, <b>B-E¹</b>.
+            Vol Farmer v2 earns option premium on a stock in two <b>positions</b>. Half the ticker's pot buys shares, the first position, and sells <b>Calls</b> on them, always at or above what the shares cost after the premiums already collected on them: the first position's break-even, <b>B-E¹</b>.
           </p>
           <p className="pm-how-text">
             When the best such Call pays less than <Value>{pct(v2.putsStartCallYieldPct)}</Value> a year, usually after the stock has fallen, the other half of the pot sells <b>Puts</b> well below B-E¹. If a Put is assigned, its shares become the second position, bought cheaper, which sells Calls of its own at or above its break-even, <b>B-E²</b>.
           </p>
           <p className="pm-how-text">
-            If even the second position finds no Call at or above B-E², Pluto buys a <b>LEAPS</b>: a Call <Value>{v2.leapsMinDte}</Value> or more days out that gains as the stock recovers. It is sold as soon as the second position's shares are called away, even at a loss.
+            Once the stock is half a Step below B-E², Pluto buys a <b>LEAPS</b>: a Call <Value>{v2.leapsMinDte}</Value> or more days out that gains as the stock recovers, one for each time the second position holds shares. It is sold as soon as the second position's shares are called away, even at a loss.
           </p>
           <p className="pm-how-text">
             The v2 tickers share Pluto's budget. Each ticker's pot is its allocation of the budget, raised by the excess allowance (<Value>{pct(shared.excessAllowancePct)}</Value> now), so the pots can add up to more than the budget: the tickers rarely need their whole pots at once. When the budget's free cash runs short, a new cycle buys only the lots it pays for, and the tickers take turns so the same one is not always last. The LEAPS wait until every ticker has sold its Calls and Puts.
@@ -251,7 +251,7 @@ function VolFarmerV2Explanation({ values }: { values: PlutoHowItWorks }) {
             <li>
               {implied ? <>The stock's options price a {pct(example.impliedVolatilityPct)} yearly move, so the Step is {pct(example.impliedVolatilityPct)} × √(21 ÷ 252) = <b>{pct(example.stepPct)}</b></> : <>The Step is a fixed <b>{pct(example.stepPct)}</b></>}: Puts are sold struck at most {formatCurrency(example.firstBreakEven)} × (1 − {pct(example.stepPct)}) = <b>{formatCurrency(example.putStrikeCap)}</b>, with the other {formatCurrency(halfPot, 0)}.
             </li>
-            <li>A LEAPS, if one is bought, spends at most {pct(v2.leapsMaxAllocationPct)} of the pot: <b>{formatCurrency(example.leapsCap, 0)}</b>, from Pluto's budget.</li>
+            <li>If a Put is assigned, a LEAPS is bought once the stock is half that Step, <b>{pct(example.leapsEntryBelowSecondBreakEvenPct)}</b>, below B-E², and spends at most {pct(v2.leapsMaxAllocationPct)} of the pot: <b>{formatCurrency(example.leapsCap, 0)}</b>, from Pluto's budget.</li>
           </ol>
         </Card>
       </div>
@@ -268,8 +268,8 @@ function VolFarmerV2Explanation({ values }: { values: PlutoHowItWorks }) {
             </li>
           </ul>
           <ul className="pm-how-list">
-            <li>LEAPS: the first expiry <Value>{v2.leapsMinDte}</Value> or more days out, |delta| nearest <Value>{formatDelta(v2.leapsAbsDelta)}</Value>, at most <Value>{pct(v2.leapsMaxAllocationPct)}</Value> of the ticker's pot.</li>
-            <li>Short of its count when bought, the LEAPS is topped up with the same contract at the next rounds.</li>
+            <li>LEAPS: bought once the stock is half a Step below B-E², whatever the Calls; the first expiry <Value>{v2.leapsMinDte}</Value> or more days out, |delta| nearest <Value>{formatDelta(v2.leapsAbsDelta)}</Value>, at most <Value>{pct(v2.leapsMaxAllocationPct)}</Value> of the ticker's pot; one per holding of the second position.</li>
+            <li>Short of its count when bought, the LEAPS is topped up with the same contract at the next rounds while the stock is below B-E².</li>
             <li>The caps under the CC + Put Ladder's safety settings count v2's orders too. While SPY is down <Value>{pct(ladder.spyStressBreakerPct)}</Value> or more on the day, v2 opens nothing; a LEAPS sale still goes.</li>
             <li>Every order but a LEAPS is held to the ticker's pot; a LEAPS to Pluto's budget across every ticker.</li>
             <li>A new cycle's lots and a Put's contracts are no more than the free cash pays for: Pluto's budget left, at most the account's free cash.</li>

@@ -639,7 +639,7 @@ export interface PlutoHowItWorks {
     leapsMinDte: number;
     leapsAbsDelta: number;
     leapsMaxAllocationPct: number;
-    example: { accountValue: number; allocationPct: number; pot: number; stockPrice: number; lots: number; firstBreakEven: number; impliedVolatilityPct: number; stepPct: number; putStrikeCap: number; leapsCap: number };
+    example: { accountValue: number; allocationPct: number; pot: number; stockPrice: number; lots: number; firstBreakEven: number; impliedVolatilityPct: number; stepPct: number; putStrikeCap: number; leapsEntryBelowSecondBreakEvenPct: number; leapsCap: number };
   };
 }
 

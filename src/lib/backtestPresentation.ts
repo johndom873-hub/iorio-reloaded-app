@@ -630,6 +630,39 @@ export const volFarmerV2ExcessAllowancePath = "volFarmerV2.excessAllowancePct";
 /** Before allocations (until 2026-10-28) a shared Vol Farmer v2 session sized every ticker from this dollar pot. */
 export const volFarmerV2RetiredTickerPotPath = "volFarmerV2.tickerPotDollars";
 
+/**
+ * Vol Farmer v2's LEAPS and expiry research settings, retired on 2026-10-28 when the LEAPS entry half a Step below B-E2
+ * (one a holding, sold at the call-away) was adopted: how a session that changed one reads.
+ */
+const volFarmerV2RetiredResearchSettings: Record<string, { label: string; valueLabels?: Record<string, string> }> = {
+  "volFarmerV2.leapsEntryRule": {
+    label: "LEAPS entry (retired)",
+    valueLabels: { no_call: "No Call at or above B-E2", step_below_second_break_even: "A Step below B-E2", half_step_below_second_break_even: "Half a Step below B-E2", steps_below_second_break_even: "Steps below B-E2", call_delta_at_second_break_even: "Call delta at B-E2 under the lowest" },
+  },
+  "volFarmerV2.leapsEntryStepShare": { label: "LEAPS entry, Steps below B-E2 (retired)" },
+  "volFarmerV2.leapsEntryNeedsNoCall": { label: "LEAPS entry needs no Call (retired)", valueLabels: { yes: "Yes", no: "No" } },
+  "volFarmerV2.leapsExitRule": {
+    label: "LEAPS exit (retired)",
+    valueLabels: { second_called_away: "When the second position is called away", second_break_even_reached: "When the price reaches B-E2", steps_below_second_break_even: "When the price partly recovers" },
+  },
+  "volFarmerV2.leapsExitStepShare": { label: "LEAPS exit, Steps below B-E2 (retired)" },
+  "volFarmerV2.leapsRebuy": { label: "LEAPS re-buy (retired)", valueLabels: { never: "Never", after_break_even_sale: "After a sale at B-E2", whenever_entry_holds: "Whenever the entry holds" } },
+  "volFarmerV2.laterExpiryMaxDte": { label: "Later expiry, up to (retired)" },
+};
+
+/** "LEAPS exit (retired): When the price reaches B-E2" when the path is a retired research setting the overrides set, else null. */
+function describeRetiredVolFarmerV2Setting(overrides: BacktestSettingsOverrides, path: string): string | null {
+  const retired = volFarmerV2RetiredResearchSettings[path];
+  const value = valueAtSettingsPath(overrides, path);
+  if (!retired || value === undefined) return null;
+  return `${retired.label}: ${typeof value === "string" ? (retired.valueLabels?.[value] ?? value) : formatInputNumber(value, 4)}`;
+}
+
+/** Each retired Vol Farmer v2 research setting a session changed, described. */
+export function describeRetiredVolFarmerV2Research(overrides: BacktestSettingsOverrides): string[] {
+  return overridePaths(overrides).flatMap((path) => describeRetiredVolFarmerV2Setting(overrides, path) ?? []);
+}
+
 /** "Min Edge Yield 15% → 20%" per setting a session changed, or "Roll or hold: Never roll" for a choice (its labels are
  *  sentences, so only the new one is named); labelled from the settings template when it is loaded. Vol Farmer v2's
  *  allocations read "Allocations set: GDX 8%, TQQQ 6%". */
@@ -642,6 +675,10 @@ export function describeOverrideChanges(overrides: BacktestSettingsOverrides, sn
     if (path === volFarmerV2RetiredTickerPotPath) {
       const pot = valueAtSettingsPath(overrides, path);
       return typeof pot === "number" ? [`Ticker pot ${formatCurrencyTrimmed(pot)} each (before allocations)`] : [];
+    }
+    if (volFarmerV2RetiredResearchSettings[path]) {
+      const retiredText = describeRetiredVolFarmerV2Setting(overrides, path);
+      return retiredText === null ? [] : [retiredText];
     }
     const row = rows?.find((candidate) => candidate.path === path);
     const to = valueAtSettingsPath(overrides, path);

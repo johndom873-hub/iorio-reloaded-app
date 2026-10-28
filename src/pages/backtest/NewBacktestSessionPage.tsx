@@ -43,6 +43,7 @@ import {
   buildBacktestOverrides,
   decisionMakerHint,
   describeOverrideChanges,
+  describeRetiredVolFarmerV2Research,
   describeTickerProblem,
   describeUnavailableChoices,
   describeYearOption,
@@ -225,6 +226,7 @@ export function NewBacktestSessionPage() {
   const [allocationTextBySymbol, setAllocationTextBySymbol] = useState<Record<string, string>>({});
   // A copied session sized by a dollar pot per ticker (before allocations): what it came back as.
   const [retiredTickerPotNote, setRetiredTickerPotNote] = useState<string | null>(null);
+  const [retiredResearchNote, setRetiredResearchNote] = useState<string | null>(null);
   const [submitAttempted, setSubmitAttempted] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -339,6 +341,9 @@ export function NewBacktestSessionPage() {
       setAllocationTextBySymbol(copiedAllocations.textBySymbol);
       setRetiredTickerPotNote(copiedAllocations.note);
     }
+    // A Vol Farmer v2 session run with research settings since retired cannot be rerun as it was: say so (2026-10-28).
+    const retiredResearch = source && sessionDecisionMaker(source) === "vol_farmer_v2" ? describeRetiredVolFarmerV2Research(source.overrides) : [];
+    if (retiredResearch.length > 0) setRetiredResearchNote(`This session used research settings the lab no longer has (${retiredResearch.join("; ")}). A rerun uses today's rules: the LEAPS bought once the price is half a Step below B-E2, one per holding, sold when the second position is called away; Calls and Puts on the next expiry only.`);
     const fromAnalysis = !source && !sourceBatch && analysisValues !== null && initialSymbols.includes(analysisValues.symbol) ? analysisValues : null;
     if (fromAnalysis && Object.keys(fromAnalysis.tickerEdits).length > 0) setTickerEdits({ [fromAnalysis.symbol]: fromAnalysis.tickerEdits });
     const editablePaths = new Set(template.rows.filter((row) => row.editable).map((row) => row.path));
@@ -868,6 +873,7 @@ export function NewBacktestSessionPage() {
       <PageHeader title={pageTitle} subtitle={pageSubtitle} />
       {sourceSessionId && !sourceSession && <div className="iorio-note-amber mb-2">The session to copy could not be loaded; the form starts from the lab's settings.</div>}
       {retiredTickerPotNote && <div className="iorio-note-amber mb-2">{retiredTickerPotNote}</div>}
+      {retiredResearchNote && <div className="iorio-note-amber mb-2">{retiredResearchNote}</div>}
       <form onSubmit={handleSubmit} noValidate>
         <BacktestCard title="Session" className="mb-3">
           <div className="card-body">
