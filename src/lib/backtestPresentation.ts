@@ -908,7 +908,8 @@ function noCandidateLines(noCandidate: BacktestNoCandidateDetail): string[] {
 }
 
 /** A No Call reason with its figure: "no Call passed the hedge rule (shares at $324.38)". */
-const describeNoCallReason = (reason: BacktestNoCallReason) => (reason.figure === null ? reason.reason : `${reason.reason} (${reason.figure.kind === "breakEven" ? "shares break even at" : "shares at"} ${formatCurrency(reason.figure.dollars)})`);
+const describeNoCallReason = (reason: BacktestNoCallReason) =>
+  reason.figure === null ? reason.reason : `${reason.reason} (${{ breakEven: "shares break even at ", shareCost: "shares at ", level: "" }[reason.figure.kind]}${formatCurrency(reason.figure.dollars)})`;
 
 /**
  * A No Call row's description (approved by Marcelo 2026-10-27): "No Call on 200 shares for 32 sessions, the hedge Put
