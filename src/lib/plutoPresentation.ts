@@ -1,5 +1,5 @@
-import type { PlutoAction, PlutoActionContract, PlutoActionKind, PlutoActionOutcome, PlutoEvent, PlutoEventCategory, PlutoPass, PlutoReadinessResult, PlutoState, PlutoSystemCheck, PlutoWorkingOrder } from "../api/pluto";
-import { plutoParameterLabelByField } from "./plutoParameters";
+import type { PlutoAction, PlutoActionContract, PlutoActionKind, PlutoActionOutcome, PlutoEvent, PlutoEventCategory, PlutoPass, PlutoReadinessResult, PlutoState, PlutoStrategy, PlutoSystemCheck, PlutoWorkingOrder } from "../api/pluto";
+import { formatSettingDisplay, plutoParameterLabelByField } from "./plutoParameters";
 import { daysToExpiry, easternIsoDate, formatBrowserClockTime, formatCurrency, formatDayMonth, formatEasternTime, formatOptionContractLabel, formatOrderSize, formatRelativeAge, formatSignedPercentageValue, formatRelativeTime, formatDateTime, formatStrike, pluralize, todayInEasternIso } from "./formatters";
 
 // Presentation rules for the Pluto screen (redesign approved 2026-10-06): one status at a time, plain-language
@@ -112,8 +112,8 @@ export function derivePlutoStatus(state: PlutoState, now: Date, crashLoopRestart
   return {
     kind: "running",
     label: "Running",
-    headline: "Running the CC + Put Ladder",
-    subline: `Analyses every new ladder quote on the ${tickers} allowed ${tickers === 1 ? "ticker" : "tickers"} · last analysis ${state.lastPassAt ? formatRelativeAge(state.lastPassAt, now) : "not yet today"}`,
+    headline: "Running its strategies",
+    subline: `Analyses every new quote on the ${tickers} allowed ${tickers === 1 ? "ticker" : "tickers"}, each under its own strategy · last analysis ${state.lastPassAt ? formatRelativeAge(state.lastPassAt, now) : "not yet today"}`,
     holdAlert: null,
   };
 }
@@ -176,21 +176,25 @@ export function orderedChecks(checks: Record<string, PlutoSystemCheck> | null): 
   return Object.entries(checks ?? {}).sort((a, b) => rank(a[0]) - rank(b[0]));
 }
 
+/** Each strategy's name on the screen. */
+export const plutoStrategyLabels: Record<PlutoStrategy, string> = { vol_farmer_v2: "Vol Farmer v2", cc_put_ladder: "CC + Put Ladder" };
+
 // ---------- Orders ----------
 
-export type PlutoStrategyBadge = { className: "cc" | "csp" | "ns"; label: "CC" | "CSP" | "N/S" };
+export type PlutoStrategyBadge = { className: "cc" | "csp" | "leaps" | "ns"; label: "CC" | "CSP" | "LEAPS" | "N/S" };
 
 export function strategyBadgeFor(kind: PlutoActionKind, contract: PlutoActionContract | null): PlutoStrategyBadge {
   const strategy = contract?.strategyKey ?? (kind === "open_covered_call" ? "covered_call" : kind === "open_cash_secured_put" ? "cash_secured_put" : null);
   if (kind === "close_shares") return { className: "ns", label: "N/S" };
   if (strategy === "covered_call") return { className: "cc", label: "CC" };
   if (strategy === "cash_secured_put") return { className: "csp", label: "CSP" };
+  if (strategy === "leaps" || kind === "buy_leaps" || kind === "sell_leaps") return { className: "leaps", label: "LEAPS" };
   return { className: "ns", label: "N/S" };
 }
 
 function contractRight(contract: PlutoActionContract | null): "C" | "P" {
   if (contract?.right) return contract.right;
-  return contract?.strategyKey === "covered_call" ? "C" : "P";
+  return contract?.strategyKey === "covered_call" || contract?.strategyKey === "leaps" ? "C" : "P";
 }
 
 /** One leg of an action's contract, "$46 Call · 9 Oct (2DTE)": the held leg of a roll or the leg it trades; no DTE when asOfIso is null. */
@@ -224,6 +228,8 @@ const actionVerbs: Record<PlutoActionKind, string> = {
   close_position: "Close",
   close_shares: "Sell",
   roll: "Roll",
+  buy_leaps: "Buy",
+  sell_leaps: "Sell",
   no_trade: "",
 };
 
@@ -657,7 +663,14 @@ export function describeFeedEvent(event: PlutoEvent, context?: PlutoFeedContext)
       return { dot: "ctl", title: text(payload.mode) === "on" ? `Switched on by ${by || "an operator"}` : `Switched off by ${by || "an operator"}`, detail: null, sub: null };
     case "settings_changed": {
       const fields = Array.isArray(payload.fields) ? (payload.fields as { field: string; from: unknown; to: unknown }[]) : [];
-      return { dot: "ctl", title: `Settings changed by ${by || "an operator"}`, detail: null, sub: fields.map((change) => `${plutoParameterLabelByField[change.field] ?? humanizeKey(change.field)} ${text(change.from)} → ${text(change.to)}`).join(" · ") || null };
+      // A ticker's own setting (a symbol in the payload) set back to null takes the default again.
+      const shown = (field: string, value: unknown): string => {
+        if (field === "strategy") return value === null || value === undefined ? `${plutoStrategyLabels.vol_farmer_v2} (default)` : plutoStrategyLabels[value as PlutoStrategy] ?? text(value);
+        if ((value === null || value === undefined) && symbol) return "default";
+        return formatSettingDisplay(field, text(value));
+      };
+      const label = (field: string) => (field === "strategy" ? `${symbol} strategy` : plutoParameterLabelByField[field] ?? humanizeKey(field));
+      return { dot: "ctl", title: `Settings changed by ${by || "an operator"}`, detail: null, sub: fields.map((change) => `${label(change.field)} ${shown(change.field, change.from)} → ${shown(change.field, change.to)}`).join(" · ") || null };
     }
     case "ticker_enabled":
       return { dot: "ctl", title: `${symbol} allowed`, detail: `by ${by || "an operator"}`, sub: null };

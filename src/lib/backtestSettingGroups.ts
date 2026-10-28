@@ -195,6 +195,7 @@ export function backtestSettingGroupSummary(group: BacktestSettingGroup, text: (
         `Puts start under ${shown("volFarmerV2.putsStartCallYieldPct")}`,
         `Put |delta| ${text("volFarmerV2.putMaxAbsDelta")}, Step ${text("volFarmerV2.stepRule") === "implied_move_at_put_sale" ? "the one-month implied move at each Put sale" : shown("volFarmerV2.stepBelowFirstBreakEvenPct")} below the first break-even`,
         `LEAPS ${text("volFarmerV2.leapsMinDte")}+ days at |delta| ${text("volFarmerV2.leapsAbsDelta")}${Number(text("volFarmerV2.leapsMaxAccountPct")) > 0 ? `, at most ${shown("volFarmerV2.leapsMaxAccountPct")} of the account` : ""}`,
+        text("volFarmerV2.looks") === "every_look" ? "decides at every look" : "decides at 10:00",
       ].join(" · ");
   }
 }

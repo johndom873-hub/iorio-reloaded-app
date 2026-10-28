@@ -2,12 +2,13 @@ import { useEffect, useState, type ReactNode } from "react";
 import { errorMessage } from "../../api/client";
 import { fetchPlutoHowItWorks, type PlutoHowItWorks } from "../../api/pluto";
 import { formatCurrency, formatCurrencyTrimmed, formatDelta, formatPercentageValueTrimmed } from "../../lib/formatters";
+import { plutoStrategyLabels } from "../../lib/plutoPresentation";
 import { Spinner } from "../Spinner";
 
-// Pluto's "How it works" tab (approved mockup https://claude.ai/artifact/TYdARe8Sa6RuF5Lb1E1s2b; the CC + Put Ladder only
-// since Signals was retired, 2026-10-27): a plain-language explanation for readers who do not read code. Every number
-// comes from GET /pluto/how-it-works (Pluto's live settings and the code's own constants); only the wording lives
-// here, so a change to a rule the text describes must update this file too (API CLAUDE.md).
+// Pluto's "How it works" tab (approved mockups https://claude.ai/artifact/TYdARe8Sa6RuF5Lb1E1s2b and, for Vol Farmer v2,
+// https://claude.ai/artifact/QGwKxNa7orZFFjfeRBnhoU): a plain-language explanation of each strategy for readers who do not
+// read code. Every number comes from GET /pluto/how-it-works (Pluto's live settings and the code's own constants); only
+// the wording lives here, so a change to a rule the text describes must update this file too (API CLAUDE.md).
 
 const pct = (percent: number) => formatPercentageValueTrimmed(percent, 2);
 
@@ -217,9 +218,90 @@ function LadderExplanation({ values }: { values: PlutoHowItWorks }) {
   );
 }
 
+function VolFarmerV2Explanation({ values }: { values: PlutoHowItWorks }) {
+  const { volFarmerV2: v2, shared, ladder } = values;
+  const { example } = v2;
+  const halfPot = example.pot / 2;
+  const implied = v2.stepRule === "implied_move_at_put_sale";
+  return (
+    <>
+      <div className="pm-how-pair">
+        <Card title="In plain words">
+          <p className="pm-how-lead">
+            Vol Farmer v2 earns option premium on a stock in two <b>positions</b>. Half the ticker's pot buys shares, the first position, and sells <b>Calls</b> on them, always at or above what the shares cost after the premiums already collected: the first position's break-even, <b>B-E¹</b>.
+          </p>
+          <p className="pm-how-text">
+            When the best such Call pays less than <Value>{pct(v2.putsStartCallYieldPct)}</Value> a year, usually after the stock has fallen, the other half of the pot sells <b>Puts</b> well below B-E¹. If a Put is assigned, its shares become the second position, bought cheaper, which sells Calls of its own at or above its break-even, <b>B-E²</b>.
+          </p>
+          <p className="pm-how-text">
+            If even the second position finds no Call at or above B-E², Pluto buys a <b>LEAPS</b>: a Call <Value>{v2.leapsMinDte}</Value> or more days out that gains as the stock recovers. It is sold as soon as the second position's shares are called away, even at a loss.
+          </p>
+          <p className="pm-how-text muted">Pluto looks at every v2 ticker at every round, all day. Every order goes at the mid; one that does not fill is planned again at a later round.</p>
+        </Card>
+        <Card title="A worked example">
+          <p className="pm-how-text">
+            A {formatCurrency(example.accountValue, 0)} account, Pluto's budget {pct(shared.capitalBudgetPct)}, the ticker's allocation {pct(example.allocationPct)}: its pot is <b>{formatCurrency(example.pot, 0)}</b>.
+          </p>
+          <ol className="pm-how-list">
+            <li>The stock is at {formatCurrency(example.stockPrice)}. Half the pot, {formatCurrency(halfPot, 0)}, buys <b>{example.lots} lots</b> ({example.lots * 100} shares), with a Call sold on them.</li>
+            <li>After a fall, what the shares cost less their premiums (B-E¹) is {formatCurrency(example.firstBreakEven)}, and no Call at or above {formatCurrency(example.firstBreakEven)} pays {pct(v2.putsStartCallYieldPct)} a year.</li>
+            <li>
+              {implied ? <>The stock's options price a {pct(example.impliedVolatilityPct)} yearly move, so the Step is {pct(example.impliedVolatilityPct)} × √(21 ÷ 252) = <b>{pct(example.stepPct)}</b></> : <>The Step is a fixed <b>{pct(example.stepPct)}</b></>}: Puts are sold struck at most {formatCurrency(example.firstBreakEven)} × (1 − {pct(example.stepPct)}) = <b>{formatCurrency(example.putStrikeCap)}</b>, with the other {formatCurrency(halfPot, 0)}.
+            </li>
+            <li>A LEAPS, if one is bought, spends at most {pct(v2.leapsMaxAllocationPct)} of the pot: <b>{formatCurrency(example.leapsCap, 0)}</b>, from Pluto's budget.</li>
+          </ol>
+        </Card>
+      </div>
+
+      <Card title="The rules and their numbers">
+        <div className="pm-how-pair">
+          <ul className="pm-how-list">
+            <li>Calls: the next listed expiry, |delta| <Value>{formatDelta(v2.callMinAbsDelta)}–{formatDelta(v2.callMaxAbsDelta)}</Value>, at or above the position's break-even, the highest premium yield first.</li>
+            <li>Bid at least <Value>{formatCurrencyTrimmed(v2.minimumBid)}</Value>, spread at most <Value>{pct(v2.maxSpreadPctOfMid)}</Value> of the mid, at most <Value>{pct(v2.maxVolumeSharePct)}</Value> of the contract's volume the session before.</li>
+            <li>Puts start when the first position needs a new Call and the best one pays under <Value>{pct(v2.putsStartCallYieldPct)}</Value> a year.</li>
+            <li>
+              Put |delta| at most <Value>{formatDelta(v2.putMaxAbsDelta)}</Value>;{" "}
+              {implied ? <>the Step from IBKR's latest 30-day IV of the last <Value>{v2.stepLookbackSessions}</Value> sessions, <Value>{pct(v2.stepBelowFirstBreakEvenPct)}</Value> without one.</> : <>the Step a fixed <Value>{pct(v2.stepBelowFirstBreakEvenPct)}</Value> below B-E¹.</>}
+            </li>
+          </ul>
+          <ul className="pm-how-list">
+            <li>LEAPS: the first expiry <Value>{v2.leapsMinDte}</Value> or more days out, |delta| nearest <Value>{formatDelta(v2.leapsAbsDelta)}</Value>, at most <Value>{pct(v2.leapsMaxAllocationPct)}</Value> of the ticker's pot.</li>
+            <li>Short of its count when bought, the LEAPS is topped up with the same contract at the next rounds.</li>
+            <li>The caps under the CC + Put Ladder's safety settings count v2's orders too. While SPY is down <Value>{pct(ladder.spyStressBreakerPct)}</Value> or more on the day, v2 opens nothing; a LEAPS sale still goes.</li>
+            <li>Every order but a LEAPS is held to the ticker's pot; a LEAPS to Pluto's budget across every ticker.</li>
+          </ul>
+        </div>
+        <p className="pm-how-note">A ticker Pluto already held when it switched to v2 keeps its holdings: every share joins the first position at the cycle's break-even, its open Calls stay the first position's, its open Puts the second's. A ticker holding only Puts waits until they expire or are assigned.</p>
+      </Card>
+    </>
+  );
+}
+
+type HowItWorksStrategy = "vol_farmer_v2" | "cc_put_ladder";
+
+const strategyStorageKey = "iorio-pluto-how-it-works-strategy";
+
+function readStoredStrategy(): HowItWorksStrategy {
+  try {
+    return localStorage.getItem(strategyStorageKey) === "cc_put_ladder" ? "cc_put_ladder" : "vol_farmer_v2";
+  } catch {
+    return "vol_farmer_v2";
+  }
+}
+
 export function PlutoHowItWorksTab() {
   const [values, setValues] = useState<PlutoHowItWorks | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [strategy, setStrategy] = useState<HowItWorksStrategy>(readStoredStrategy);
+
+  function choose(next: HowItWorksStrategy) {
+    setStrategy(next);
+    try {
+      localStorage.setItem(strategyStorageKey, next);
+    } catch {
+      // Private window or blocked storage: the choice just isn't remembered.
+    }
+  }
 
   useEffect(() => {
     let cancelled = false;
@@ -240,7 +322,14 @@ export function PlutoHowItWorksTab() {
 
   return (
     <div className="pm-how">
-      <LadderExplanation values={values} />
+      <div className="pm-seg pm-how-strategies" role="tablist" aria-label="Strategy">
+        {(["vol_farmer_v2", "cc_put_ladder"] as const).map((key) => (
+          <button key={key} type="button" role="tab" aria-selected={strategy === key} className={strategy === key ? "on" : ""} onClick={() => choose(key)}>
+            {plutoStrategyLabels[key]}
+          </button>
+        ))}
+      </div>
+      {strategy === "vol_farmer_v2" ? <VolFarmerV2Explanation values={values} /> : <LadderExplanation values={values} />}
     </div>
   );
 }
