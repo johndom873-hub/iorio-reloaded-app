@@ -316,6 +316,10 @@ export function PlutoPage() {
           onPrepRunChange={() => void loadShortlist()}
           settings={settings}
           onOpenSettingsTab={() => selectTab("settings")}
+          onAllocationsSaved={() => {
+            void loadSettings();
+            void loadState();
+          }}
         />
       )}
       {tab === "settings" && (

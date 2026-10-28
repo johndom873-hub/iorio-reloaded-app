@@ -119,6 +119,8 @@ export type PlutoTelegramVerbosity = "actions" | "off";
 
 export interface PlutoSettings {
   capitalBudgetPct: number;
+  /** % every ticker's pot is raised above its allocation: the pots may add up to more than the budget, whose cash they share. */
+  excessAllowancePct: number;
   windowStartEt: string;
   windowEndEt: string;
   dailyLossBreakerPct: number;
@@ -583,7 +585,7 @@ export function fetchPlutoSettings(): Promise<PlutoSettings> {
 
 /** Every number the How it works tab quotes (API src/pluto/howItWorks.ts): percentages in percent, deltas as fractions, money in dollars. */
 export interface PlutoHowItWorks {
-  shared: { windowStartEt: string; windowEndEt: string; windowEndMinutesBeforeCloseAtLeast: number; capitalBudgetPct: number; dailyLossBreakerPct: number; unfilledOrderCancelMinutes: number };
+  shared: { windowStartEt: string; windowEndEt: string; windowEndMinutesBeforeCloseAtLeast: number; capitalBudgetPct: number; excessAllowancePct: number; dailyLossBreakerPct: number; unfilledOrderCancelMinutes: number };
   ladder: {
     minAbsDelta: number;
     maxAbsDelta: number;
@@ -762,6 +764,18 @@ export type PlutoTickerSettingsValues = Record<PlutoTickerSettingsField, number 
 /** Each field a number, or null for the default again; the strategy one of Pluto's, or null for the default. */
 export function savePlutoTickerSettings(symbol: string, input: Partial<Record<PlutoTickerSettingsField, number | null>> & { strategy?: PlutoStrategy | null }): Promise<PlutoTickerSettingsValues> {
   return apiRequest<PlutoTickerSettingsValues>(`/pluto/ticker-settings/${encodeURIComponent(symbol)}`, { method: "PUT", body: JSON.stringify(input) });
+}
+
+/** What PUT /pluto/allocations changed: each ticker's allocation (null: an equal share) and the excess allowance. */
+export interface PlutoAllocationChanges {
+  allocations: { symbol: string; from: number | null; to: number | null }[];
+  excessAllowance: { from: number; to: number } | null;
+}
+
+/** The Tickers tab's save (admin only): the allocations typed, each a % of Pluto's budget or null for an equal share, and
+ *  the excess allowance when it changed, saved together or not at all. */
+export function savePlutoAllocations(input: { allocations: Record<string, number | null>; excessAllowancePct?: number }): Promise<PlutoAllocationChanges> {
+  return apiRequest<PlutoAllocationChanges>("/pluto/allocations", { method: "PUT", body: JSON.stringify(input) });
 }
 
 export interface PlutoTickerSettingsAuditRow {

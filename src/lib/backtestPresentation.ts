@@ -199,17 +199,34 @@ export function describeJobRunTime(status: BacktestJobDisplayStatus, runSeconds:
   return `ran ${duration}`;
 }
 
-/** The job's title in two parts: the symbol, which a job row always shows in full, and the session or analysis name after it
- *  (null for a download), which a tight row cuts to fit. */
-export function describeJobTitleParts(job: Pick<BacktestJobView, "kind" | "symbol" | "sessionName">): { symbol: string; name: string | null } {
-  if (job.kind === "analysis") return { symbol: job.symbol, name: "Analysis" };
-  return { symbol: job.symbol, name: job.kind === "backtest" && job.sessionName ? job.sessionName : null };
+/** How many of a job's tickers its title names before the count of the rest (Marcelo 2026-10-28). */
+const jobTitleTickersShown = 3;
+
+/** A job's tickers ("BABA, BAC, …" as the API joins them) as its title shows them: up to three, then "+21" for the rest. */
+export function describeJobTickers(symbols: string): string {
+  const tickers = symbols.split(", ");
+  return tickers.length <= jobTitleTickersShown ? symbols : `${tickers.slice(0, jobTitleTickersShown).join(", ")} +${tickers.length - jobTitleTickersShown}`;
 }
 
-/** The job's title: the symbol for a download, "SMCI · Edge Yield 20%" for a backtest. */
+/** The job's title in two parts: its tickers (more than three: the first three and the count of the rest), which a job row
+ *  shows whole unless even the name is cut away, and the session or analysis name after it (null for a download), which
+ *  a tight row cuts to fit first. */
+export function describeJobTitleParts(job: Pick<BacktestJobView, "kind" | "symbol" | "sessionName">): { symbol: string; name: string | null } {
+  const symbol = describeJobTickers(job.symbol);
+  if (job.kind === "analysis") return { symbol, name: "Analysis" };
+  return { symbol, name: job.kind === "backtest" && job.sessionName ? job.sessionName : null };
+}
+
+/** The job's title: the symbol for a download, "SMCI · Edge Yield 20%" for a backtest, "BABA, BAC, CSCO +21 · …" for one of 24 tickers. */
 export function describeJobTitle(job: Pick<BacktestJobView, "kind" | "symbol" | "sessionName">): string {
   const { symbol, name } = describeJobTitleParts(job);
   return name ? `${symbol} · ${name}` : symbol;
+}
+
+/** The job row's hover text: its title with every ticker. */
+export function describeJobTitleWithEveryTicker(job: Pick<BacktestJobView, "kind" | "symbol" | "sessionName">): string {
+  const { name } = describeJobTitleParts(job);
+  return name ? `${job.symbol} · ${name}` : job.symbol;
 }
 
 /** A job row's count: "34/322"; for an analysis its step and that step's count, "Scanning the chains 120/1,703" (the count
@@ -606,10 +623,26 @@ function snapshotValueAtPath(snapshot: BacktestSettings, path: string): number |
   return valueAtSettingsPath(snapshot, path) ?? valueAtSettingsPath(defaults as BacktestSettingsOverrides, path);
 }
 
+/** Vol Farmer v2's per-ticker allocations: a map in the overrides, not a settings row (the New session's Tickers card). */
+export const volFarmerV2TickerAllocationPath = "volFarmerV2.tickerAllocationPct";
+/** The lab setting the Tickers card shows beside the starting value, out of the Settings table. */
+export const volFarmerV2ExcessAllowancePath = "volFarmerV2.excessAllowancePct";
+/** Before allocations (until 2026-10-28) a shared Vol Farmer v2 session sized every ticker from this dollar pot. */
+export const volFarmerV2RetiredTickerPotPath = "volFarmerV2.tickerPotDollars";
+
 /** "Min Edge Yield 15% → 20%" per setting a session changed, or "Roll or hold: Never roll" for a choice (its labels are
- *  sentences, so only the new one is named); labelled from the settings template when it is loaded. */
+ *  sentences, so only the new one is named); labelled from the settings template when it is loaded. Vol Farmer v2's
+ *  allocations read "Allocations set: GDX 8%, TQQQ 6%". */
 export function describeOverrideChanges(overrides: BacktestSettingsOverrides, snapshot: BacktestSettings | null, rows: BacktestSettingRow[] | null): string[] {
   return overridePaths(overrides).flatMap((path) => {
+    if (path === volFarmerV2TickerAllocationPath) {
+      const allocations = Object.entries(overrides.volFarmerV2?.tickerAllocationPct ?? {}).sort(([left], [right]) => left.localeCompare(right));
+      return allocations.length === 0 ? [] : [`Allocations set: ${allocations.map(([symbol, pct]) => `${symbol} ${formatInputNumber(pct, 4)}%`).join(", ")}`];
+    }
+    if (path === volFarmerV2RetiredTickerPotPath) {
+      const pot = valueAtSettingsPath(overrides, path);
+      return typeof pot === "number" ? [`Ticker pot ${formatCurrencyTrimmed(pot)} each (before allocations)`] : [];
+    }
     const row = rows?.find((candidate) => candidate.path === path);
     const to = valueAtSettingsPath(overrides, path);
     const from = snapshot ? snapshotValueAtPath(snapshot, path) : undefined;

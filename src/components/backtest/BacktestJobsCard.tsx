@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Link } from "react-router-dom";
 import { errorMessage } from "../../api/client";
 import { cancelBacktestJob, putBacktestDownloadFirst, resumeBacktestJob, type BacktestJobView } from "../../api/backtest";
-import { describeJobRowCount, describeJobRowTiming, describeJobTitle, describeJobTitleParts, type BacktestJobRowTiming } from "../../lib/backtestPresentation";
+import { describeJobRowCount, describeJobRowTiming, describeJobTitle, describeJobTitleParts, describeJobTitleWithEveryTicker, type BacktestJobRowTiming } from "../../lib/backtestPresentation";
 import { formatNumber } from "../../lib/formatters";
 import { useTickingNow } from "../../hooks/useTickingNow";
 import { ConfirmModal } from "../ConfirmModal";
@@ -172,11 +172,11 @@ function BacktestJobList({ title, emptyText, jobs, now, pendingAction, isPending
                 <div className="backtest-job-row-line">
                   <BacktestJobStatusBadge status={status} />
                   {job.kind === "backtest" && job.sessionId ? (
-                    <Link to={`/backtest/sessions/${job.sessionId}`} className="backtest-job-title backtest-job-title-link fw-semibold" title={describeJobTitle(job)}>
+                    <Link to={`/backtest/sessions/${job.sessionId}`} className="backtest-job-title backtest-job-title-link fw-semibold" title={describeJobTitleWithEveryTicker(job)}>
                       {titleParts}
                     </Link>
                   ) : (
-                    <strong className="backtest-job-title" title={describeJobTitle(job)}>
+                    <strong className="backtest-job-title" title={describeJobTitleWithEveryTicker(job)}>
                       {titleParts}
                     </strong>
                   )}

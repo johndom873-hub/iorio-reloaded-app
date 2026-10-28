@@ -666,10 +666,12 @@ export function describeFeedEvent(event: PlutoEvent, context?: PlutoFeedContext)
       // A ticker's own setting (a symbol in the payload) set back to null takes the default again.
       const shown = (field: string, value: unknown): string => {
         if (field === "strategy") return value === null || value === undefined ? `${plutoStrategyLabels.vol_farmer_v2} (default)` : plutoStrategyLabels[value as PlutoStrategy] ?? text(value);
+        if (field === "allocationPct") return value === null || value === undefined ? "equal share" : `${text(value)}%`;
         if ((value === null || value === undefined) && symbol) return "default";
+        if (field === "excessAllowancePct") return `${text(value)}%`;
         return formatSettingDisplay(field, text(value));
       };
-      const label = (field: string) => (field === "strategy" ? `${symbol} strategy` : plutoParameterLabelByField[field] ?? humanizeKey(field));
+      const label = (field: string) => (field === "strategy" ? `${symbol} strategy` : field === "allocationPct" ? `${symbol} allocation` : plutoParameterLabelByField[field] ?? humanizeKey(field));
       return { dot: "ctl", title: `Settings changed by ${by || "an operator"}`, detail: null, sub: fields.map((change) => `${label(change.field)} ${shown(change.field, change.from)} → ${shown(change.field, change.to)}`).join(" · ") || null };
     }
     case "ticker_enabled":

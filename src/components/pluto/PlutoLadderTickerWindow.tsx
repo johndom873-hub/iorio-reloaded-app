@@ -3,7 +3,8 @@ import { ApiError } from "../../api/client";
 import { useIsAdmin } from "../../hooks/useAuth";
 import { fetchPlutoTickerSettingsAudit, savePlutoTickerSettings, type PlutoLadderTickerSettings, type PlutoSettings, type PlutoTickerSettingsAuditRow, type PlutoTickerSettingsField } from "../../api/pluto";
 import { formatBrowserClockTime, formatBrowserDayMonth, formatCurrency, formatDayMonth, formatInputNumber, formatNumber } from "../../lib/formatters";
-import { effectiveAllocationPct, ladderFit, ladderPriceCeilings, tickerFieldLabel, type LadderFit } from "../../lib/plutoLadderPresentation";
+import { ladderFit, ladderPriceCeilings, tickerFieldLabel, type LadderFit } from "../../lib/plutoLadderPresentation";
+import { effectiveAllocationPct, tickerPotDollars } from "../../lib/tickerAllocation";
 import { HelpTooltip } from "../HelpTooltip";
 import { ReadOnlySetting } from "../ReadOnlySetting";
 import { Spinner } from "../Spinner";
@@ -15,9 +16,13 @@ import { CheckIcon, CrossIcon, InfoIcon, ResetIcon, WarningIcon } from "./plutoB
 // the configuration checks recomputed at every keystroke from the last close; Save asks first and allows "Save anyway"
 // when a check fails (Marcelo 2026-10-15). It holds unsaved input, so neither Esc nor a click outside closes it.
 // A trader sees the values printed, without inputs or Save (only an admin may change them): that view closes on both.
+// The ticker's allocation shows in the header; it is set with Edit allocations on the Tickers tab (Marcelo 2026-10-28).
+
+/** The values the window sets: the ladder's, not the allocation. */
+type LadderField = Exclude<PlutoTickerSettingsField, "allocationPct">;
 
 interface FieldSpec {
-  field: PlutoTickerSettingsField;
+  field: LadderField;
   unit: string;
   max: number;
   integer?: boolean;
@@ -26,7 +31,6 @@ interface FieldSpec {
 }
 
 const fieldSpecs: FieldSpec[] = [
-  { field: "allocationPct", unit: "%", max: 100, placeholder: "Equal share" },
   { field: "ladderSharesPct", unit: "%", max: 99, placeholder: "Strategy" },
   { field: "ladderShockOverridePct", unit: "%", max: 99, placeholder: "Recommended" },
   { field: "ladderRungs", unit: "rungs", max: 20, integer: true, placeholder: "Strategy" },
@@ -34,10 +38,8 @@ const fieldSpecs: FieldSpec[] = [
   { field: "ladderMaxAbsDelta", unit: "", max: 1, placeholder: "Strategy" },
 ];
 
-const savedOverride = (ticker: PlutoLadderTickerSettings, field: PlutoTickerSettingsField): number | null => {
+const savedOverride = (ticker: PlutoLadderTickerSettings, field: LadderField): number | null => {
   switch (field) {
-    case "allocationPct":
-      return ticker.allocationPct;
     case "ladderSharesPct":
       return ticker.tickerOverrides.ladderSharesPct;
     case "ladderShockOverridePct":
@@ -102,7 +104,7 @@ interface PlutoLadderTickerWindowProps {
 
 export function PlutoLadderTickerWindow({ ticker, companyName, enabledInPluto, allTickers, settings, onClose, onSaved, onEditStrategyValues }: PlutoLadderTickerWindowProps) {
   const symbol = ticker.symbol;
-  const [drafts, setDrafts] = useState<Record<PlutoTickerSettingsField, string>>(() => Object.fromEntries(fieldSpecs.map((spec) => [spec.field, inputText(savedOverride(ticker, spec.field))])) as Record<PlutoTickerSettingsField, string>);
+  const [drafts, setDrafts] = useState<Record<LadderField, string>>(() => Object.fromEntries(fieldSpecs.map((spec) => [spec.field, inputText(savedOverride(ticker, spec.field))])) as Record<LadderField, string>);
   const [audit, setAudit] = useState<PlutoTickerSettingsAuditRow[] | null>(null);
   const [confirming, setConfirming] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -134,7 +136,7 @@ export function PlutoLadderTickerWindow({ ticker, companyName, enabledInPluto, a
     };
   }, [symbol]);
 
-  const value = (field: PlutoTickerSettingsField) => {
+  const value = (field: LadderField) => {
     const typed = parsed(drafts[field]);
     return typed !== null && Number.isFinite(typed) ? typed : null;
   };
@@ -145,29 +147,26 @@ export function PlutoLadderTickerWindow({ ticker, companyName, enabledInPluto, a
     return after === null ? before !== null : before === null || after !== before;
   });
 
-  // Allocations: the others' set values as saved; this ticker's as typed.
-  const enabledOthers = allTickers.filter((entry) => entry.enabled && entry.settings.symbol !== symbol);
-  const allocationsWith = (own: number | null) => effectiveAllocationPct([...enabledOthers.map((entry) => ({ symbol: entry.settings.symbol, setPct: entry.settings.allocationPct })), ...(enabledInPluto ? [{ symbol, setPct: own }] : [])]);
-  const allocationsNow = allocationsWith(value("allocationPct"));
-  const allocationsSaved = allocationsWith(ticker.allocationPct);
-  const setTotal = enabledOthers.reduce((sum, entry) => sum + (entry.settings.allocationPct ?? 0), 0) + (value("allocationPct") ?? 0);
-  if (setTotal > 100 + 1e-9) problems.push(`The set allocations come to ${percent(setTotal)}: at most 100% in all.`);
+  // The allocation as saved (set, or an equal share among the enabled tickers): the header shows it.
+  const allocationPct = enabledInPluto ? (effectiveAllocationPct(allTickers.filter((entry) => entry.enabled).map((entry) => ({ symbol: entry.settings.symbol, setPct: entry.settings.allocationPct }))).get(symbol) ?? null) : null;
   const strategy = {
-    allocationPct: enabledInPluto ? (allocationsWith(null).get(symbol) ?? 0) : null,
     ladderSharesPct: settings.ladderSharesPct,
     ladderShockOverridePct: ticker.recommendedShockPct,
     ladderRungs: settings.ladderRungs,
     ladderMinAbsDelta: settings.ladderMinAbsDelta,
     ladderMaxAbsDelta: settings.ladderMaxAbsDelta,
-  } satisfies Record<PlutoTickerSettingsField, number | null>;
-  const effective = (field: PlutoTickerSettingsField) => (field === "allocationPct" ? (enabledInPluto ? (allocationsNow.get(symbol) ?? 0) : null) : (value(field) ?? strategy[field]));
+  } satisfies Record<LadderField, number | null>;
+  const effective = (field: LadderField) => value(field) ?? strategy[field];
   const lo = effective("ladderMinAbsDelta")!;
   const hi = effective("ladderMaxAbsDelta")!;
   if (lo > hi) problems.push(`The Calls' |delta| lower limit (${lo.toFixed(2)}) is above the upper limit (${hi.toFixed(2)}).`);
 
   const budget = ticker.capitalBudgetDollars;
-  const allocationNow = effective("allocationPct");
-  const pot = budget !== null && allocationNow !== null ? (budget * allocationNow) / 100 : null;
+  const allowance = settings.excessAllowancePct;
+  // The saved pot: the allocation, raised by the excess allowance, of Pluto's budget.
+  const pot = enabledInPluto ? ticker.potDollars : null;
+  /** The allocation that gives a pot this large: the pot ÷ what 1% of the budget makes with the allowance. */
+  const allocationForPot = (potDollars: number) => potDollars / tickerPotDollars(budget!, 1, allowance);
   const price = ticker.lastClose?.price ?? null;
   const sharesPct = effective("ladderSharesPct")!;
   const rungs = effective("ladderRungs")!;
@@ -177,15 +176,10 @@ export function PlutoLadderTickerWindow({ ticker, companyName, enabledInPluto, a
   const ceilings = pot !== null && shockPct !== null ? ladderPriceCeilings({ pot, sharesPct, rungs, shockPct }) : null;
 
   /** The fit messages under the fields that can fix a failing check. */
-  const fieldMessages = (field: PlutoTickerSettingsField): { tone: "warn" | "info"; text: string }[] => {
-    if (!fit || budget === null || ceilings === null || price === null) return [];
+  const fieldMessages = (field: LadderField): { tone: "warn" | "info"; text: string }[] => {
+    if (!fit || ceilings === null || price === null) return [];
     const failing = !fit.lotFits || !fit.putFits;
     const messages: { tone: "warn" | "info"; text: string }[] = [];
-    if (field === "allocationPct" && failing) {
-      if (!fit.lotFits) messages.push({ tone: "warn", text: `The shares' budget buys a lot only while ${symbol} is under ${formatCurrency(ceilings.lot)}.` });
-      if (!fit.putFits) messages.push({ tone: "warn", text: `A Put at the first cap fits a rung only while ${symbol} is under ${formatCurrency(ceilings.put)}.` });
-      messages.push({ tone: "warn", text: `Smallest pot at ${percent(sharesPct)} shares: ${formatCurrency(fit.smallestPot, 0)}, an allocation of ${percent((fit.smallestPot / budget) * 100)}.` });
-    }
     if (field === "ladderSharesPct" && failing) messages.push({ tone: "warn", text: fit.sharesRangePct ? `Share levels that work at this pot: ${percent(fit.sharesRangePct[0], 1)}–${percent(fit.sharesRangePct[1], 1)}.` : "No share level works at this pot." });
     if (field === "ladderRungs" && !fit.putFits) messages.push({ tone: "warn", text: fit.mostRungs >= 1 ? `At most ${fit.mostRungs} rung${fit.mostRungs === 1 ? "" : "s"} fit this pot.` : "No rung fits this pot." });
     // The shock hint (approved 2026-10-15): the smallest shock at which a Put fits a rung; none at or below 0%.
@@ -194,18 +188,17 @@ export function PlutoLadderTickerWindow({ ticker, companyName, enabledInPluto, a
     return messages;
   };
 
-  const strategyText = (field: PlutoTickerSettingsField): { value: string; note: string } => {
+  const strategyText = (field: LadderField): { value: string; note: string } => {
     const raw = strategy[field];
-    if (raw === null) return { value: "—", note: field === "allocationPct" ? "not enabled" : "unknown" };
+    if (raw === null) return { value: "—", note: "unknown" };
     const shown = field === "ladderMinAbsDelta" || field === "ladderMaxAbsDelta" ? raw.toFixed(2) : field === "ladderRungs" ? String(raw) : percent(raw);
-    return { value: shown, note: field === "allocationPct" ? "equal share" : field === "ladderShockOverridePct" ? "recommended" : "strategy" };
+    return { value: shown, note: field === "ladderShockOverridePct" ? "recommended" : "strategy" };
   };
-  const effectiveText = (field: PlutoTickerSettingsField): { value: string; note: string | null; own: boolean } => {
+  const effectiveText = (field: LadderField): { value: string; note: string | null; own: boolean } => {
     const raw = effective(field);
     const own = value(field) !== null;
     if (raw === null) return { value: "—", note: null, own };
     const shown = field === "ladderMinAbsDelta" || field === "ladderMaxAbsDelta" ? raw.toFixed(2) : field === "ladderRungs" ? String(raw) : percent(raw);
-    if (field === "allocationPct") return { value: shown, note: pot === null ? null : `${formatCurrency(pot, 0)} pot`, own };
     return { value: shown, note: own ? null : field === "ladderShockOverridePct" ? "recommended" : "strategy", own };
   };
 
@@ -216,8 +209,7 @@ export function PlutoLadderTickerWindow({ ticker, companyName, enabledInPluto, a
     const held = ticker.recommendedShockPct !== null && Math.abs(ticker.recommendedShockPct - source.maxDrawdownPct) > 0.005;
     return `How far below the price the ladder reaches. Recommended: ${symbol}'s Max drawdown over ${settings.ladderShockLookbackYears} years, −${percent(source.maxDrawdownPct, 1)}${held ? `, held to the ${ticker.recommendedShockPct! > source.maxDrawdownPct ? "floor" : "ceiling"} of ${percent(ticker.recommendedShockPct!, 0)}` : ""}.`;
   })();
-  const help: Record<PlutoTickerSettingsField, string> = {
-    allocationPct: `% of Pluto's budget${budget !== null ? ` (${formatCurrency(budget, 0)})` : ""}. Empty = an equal share of what the set allocations leave.`,
+  const help: Record<LadderField, string> = {
     ladderSharesPct: "Part of the pot that buys shares; the rest is the Put reserve, split across the rungs.",
     ladderShockOverridePct: shockHelp,
     ladderRungs: "Ladder Puts, each capped below the price.",
@@ -227,17 +219,6 @@ export function PlutoLadderTickerWindow({ ticker, companyName, enabledInPluto, a
 
   const describeValue = (field: PlutoTickerSettingsField, raw: number | null) => (raw === null ? (field === "allocationPct" ? "equal share" : field === "ladderShockOverridePct" ? "recommended" : "strategy") : field === "ladderMinAbsDelta" || field === "ladderMaxAbsDelta" ? raw.toFixed(2) : field === "ladderRungs" ? String(raw) : percent(raw));
   const describeAuditValue = (field: PlutoTickerSettingsField, raw: string | null) => describeValue(field, raw === null ? null : Number(raw));
-  // Who else moves when this ticker's allocation changes: the other enabled tickers on an equal share.
-  const knockOn = changes.some((spec) => spec.field === "allocationPct")
-    ? enabledOthers
-        .filter((entry) => entry.settings.allocationPct === null)
-        .map((entry) => {
-          const before = allocationsSaved.get(entry.settings.symbol) ?? 0;
-          const after = allocationsNow.get(entry.settings.symbol) ?? 0;
-          return { symbol: entry.settings.symbol, before, after };
-        })
-        .filter((entry) => Math.abs(entry.before - entry.after) > 1e-9)
-    : [];
 
   async function save() {
     setSaving(true);
@@ -316,7 +297,7 @@ export function PlutoLadderTickerWindow({ ticker, companyName, enabledInPluto, a
               <span className="v">{formatCurrency(fit.smallestPot, 0)}</span>
               {budget !== null && (
                 <span className="sub">
-                  An allocation of {percent((fit.smallestPot / budget) * 100)}; the pot is {formatCurrency(pot, 0)}.
+                  An allocation of {percent(allocationForPot(fit.smallestPot))}; the pot is {formatCurrency(pot, 0)}.
                 </span>
               )}
             </div>
@@ -369,7 +350,6 @@ export function PlutoLadderTickerWindow({ ticker, companyName, enabledInPluto, a
           const effectiveShown = effectiveText(spec.field);
           const strategyShown = strategyText(spec.field);
           const details = [effectiveShown.own && strategyShown.value !== "—" ? `${strategyShown.note} ${strategyShown.value}` : strategyShown.note];
-          if (spec.field === "allocationPct" && effectiveShown.note) details.push(effectiveShown.note);
           return (
             <ReadOnlySetting
               key={spec.field}
@@ -462,6 +442,11 @@ export function PlutoLadderTickerWindow({ ticker, companyName, enabledInPluto, a
                   ) : (
                     <span>No daily close yet</span>
                   )}
+                  {allocationPct !== null && (
+                    <span>
+                      Allocation <b>{percent(allocationPct)}</b> {ticker.allocationPct !== null ? "set" : "equal share"}
+                    </span>
+                  )}
                   <span>{enabledInPluto ? (ticker.potDollars !== null ? <>Pot <b>{formatCurrency(ticker.potDollars, 0)}</b></> : "No pot yet") : "Not enabled in Pluto"}</span>
                 </div>
               </div>
@@ -544,7 +529,7 @@ export function PlutoLadderTickerWindow({ ticker, companyName, enabledInPluto, a
                       </div>
                     ))}
                     <div className="pm-card-foot">
-                      <span>Empty = the strategy value.</span>
+                      <span>Empty = the strategy value. The allocation is set with Edit allocations on the Tickers tab.</span>
                       <button type="button" className="pm-link ts-edit-strategy" onClick={onEditStrategyValues}>
                         Edit the strategy values on the Settings tab
                       </button>
@@ -603,18 +588,6 @@ export function PlutoLadderTickerWindow({ ticker, companyName, enabledInPluto, a
                       </li>
                     ))}
                   </ul>
-                  {knockOn.length > 0 && budget !== null && (
-                    <>
-                      <div className="confirm-sub">Other tickers on an equal share</div>
-                      <ul className="pm-changes">
-                        {knockOn.map((entry) => (
-                          <li key={entry.symbol}>
-                            {entry.symbol}: {percent(entry.before)} → {percent(entry.after)} ({formatCurrency((budget * entry.before) / 100, 0)} → {formatCurrency((budget * entry.after) / 100, 0)} pot)
-                          </li>
-                        ))}
-                      </ul>
-                    </>
-                  )}
                   {fit && !fits && (
                     <div className="pm-alert warn">
                       <WarningIcon />
@@ -640,12 +613,6 @@ export function PlutoLadderTickerWindow({ ticker, companyName, enabledInPluto, a
       )}
     </>
   );
-}
-
-/** The window's allocation hint for a list row: "28.5% equal share" or "40% set". */
-export function describeAllocation(setPct: number | null, effectivePct: number | null): { value: string; note: string } {
-  if (effectivePct === null) return { value: "—", note: "" };
-  return { value: percent(effectivePct), note: setPct === null ? "equal share" : "set" };
 }
 
 export function useLadderTickerEntries(tickers: PlutoLadderTickerSettings[] | null, enabledSymbols: ReadonlySet<string>) {

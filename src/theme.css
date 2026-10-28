@@ -1796,8 +1796,13 @@
   min-width: 0;
   white-space: nowrap;
 }
+/* The name gives way first; the tickers are cut only when they alone outgrow the title, so it never runs under the count
+   or the buttons. */
 .backtest-job-title-symbol {
   flex-shrink: 0;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .backtest-job-title-name {
   min-width: 0;
@@ -2558,6 +2563,72 @@
   .cycle-card-select { min-height: 2.75rem; }
 }
 
+/* ---- New session: Vol Farmer v2's tickers sharing the account (mockup approved 2026-10-28) ---- */
+/* The strip over the allocations, and its bar: set allocations solid, equal shares lighter (the Pluto Tickers tab's colours). */
+.backtest-allocation-strip {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.375rem 1.25rem;
+  font-size: 0.8125rem;
+}
+.backtest-allocation-strip b {
+  font-weight: 600;
+}
+.backtest-allocation-input {
+  width: auto;
+  flex-wrap: nowrap;
+}
+.backtest-allocation-input .form-control {
+  flex: 0 0 6rem;
+  width: 6rem;
+}
+/* A value that cannot be used keeps the red border without Tabler's ✗ icon, which covers the right-aligned number. */
+.backtest-allocation-input .form-control.is-invalid {
+  background-image: none;
+  padding-right: 0.75rem;
+}
+/* The placeholder is the equal share: secondary text, 4.5:1 or more (Tabler's placeholder grey is 2.5:1 on white). */
+.backtest-allocation-input .form-control::placeholder {
+  color: var(--tblr-secondary);
+  opacity: 1;
+}
+.backtest-allocation-bar {
+  display: flex;
+  height: 0.5rem;
+  width: 13rem;
+  border-radius: 3px;
+  overflow: hidden;
+  background: #e8ecf0;
+  gap: 1px;
+}
+:root[data-bs-theme="dark"] .backtest-allocation-bar {
+  background: #3a4a60;
+}
+.backtest-allocation-bar span {
+  display: block;
+  height: 100%;
+}
+.backtest-allocation-bar .set {
+  background: #0369a1;
+}
+.backtest-allocation-bar .equal {
+  background: #1d6fb8;
+  opacity: 0.55;
+}
+:root[data-bs-theme="dark"] .backtest-allocation-bar .set {
+  background: #0ea5e9;
+}
+:root[data-bs-theme="dark"] .backtest-allocation-bar .equal {
+  background: #7cc4fa;
+}
+.backtest-allocation-bar.over {
+  box-shadow: 0 0 0 2px var(--tblr-danger);
+}
+.backtest-allocation-table .backtest-allocation-symbol {
+  width: 12.5rem;
+}
+
 /* ---- New session: per-ticker pots (mockup approved 2026-10-15) ---- */
 /* Where a ticker's value came from: solid fills, the same in both themes (white on #6c757d 4.7:1, on #0369a1 5.9:1,
    on #0f766e 5.5:1; black on #f59f00 9.8:1). */
@@ -2578,10 +2649,12 @@
   color: #000;
 }
 /* A ticker value changed for this session: the same tint as a changed setting row. */
-.backtest-ticker-values td.backtest-ticker-value-changed {
+.backtest-ticker-values td.backtest-ticker-value-changed,
+.backtest-allocation-table td.backtest-ticker-value-changed {
   --tblr-table-bg: #fff7e8;
 }
-:root[data-bs-theme="dark"] .backtest-ticker-values td.backtest-ticker-value-changed {
+:root[data-bs-theme="dark"] .backtest-ticker-values td.backtest-ticker-value-changed,
+:root[data-bs-theme="dark"] .backtest-allocation-table td.backtest-ticker-value-changed {
   --tblr-table-bg: #4a3517;
 }
 .backtest-ticker-block-changed {

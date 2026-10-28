@@ -371,6 +371,8 @@ a.pm-b:hover, button.pm-b.link:hover { text-decoration: underline; }
 .pm-group-note { padding: 0.75rem 1.125rem 0.25rem; font-size: 0.78rem; color: var(--muted); line-height: 1.4; }
 .pm-group-sum { font-size: 12.5px; color: var(--muted); font-weight: 400; white-space: normal; min-width: 0; }
 .pm-savebar { display: flex; align-items: center; gap: 12px; padding: 12px 18px; border: 1px solid var(--warning-border); background: var(--surface); border-radius: 8px; box-shadow: var(--menu-shadow); position: sticky; top: 16px; z-index: 4; }
+/* From 992px the app's top bar is fixed (theme.css): the save bar sticks below it, not behind it. */
+@media (min-width: 992px) { .pm-savebar { top: calc(var(--iorio-topbar-height) + 1rem); } }
 .pm-savebar .pend { width: 8px; height: 8px; border-radius: 50%; background: #f59f00; flex: none; }
 .pm-savebar .body { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .pm-audit { list-style: none; margin: 0; padding: 0; }
@@ -647,6 +649,37 @@ a.pm-b:hover, button.pm-b.link:hover { text-decoration: underline; }
 .pm-alloc-bar span { display: block; height: 100%; }
 .pm-alloc-bar .set { background: var(--primary); }
 .pm-alloc-bar .eq { background: var(--azure-text); opacity: 0.55; }
+/* The Tickers tab's Edit allocations (mockup approved 2026-10-28): the inputs, the allowance in the strip, the save bar. */
+.pm-alloc-bar.over { box-shadow: 0 0 0 2px var(--danger-border); }
+.pm-alloc-edit { margin-left: auto; }
+.pm-alloc-allowance { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; padding: 0.2rem 0.5rem; border-radius: 6px; background: var(--warning-lt); --muted: var(--text); }
+.pm-alloc-input { width: 7rem; height: 2rem; }
+/* The placeholder is the equal share, so it reads at 4.5:1 (the browser's grey is 3.2:1 on the dark input). */
+.pm-alloc-input input::placeholder { color: var(--muted); opacity: 1; }
+.pm-alloc-allowance .pm-alloc-input { width: 6rem; height: 1.875rem; }
+.pm-alloc-allowance .pm-alloc-input:not(.invalid), .pm-alloc-set .pm-alloc-input:not(.invalid) { border-color: #f59f00; }
+.pm-table td.r .pm-alloc-input { margin-left: auto; }
+/* Above an enabled row's tint and the hover's (.pm-table tbody tr:hover td). */
+.pm-table tbody tr td.pm-alloc-set, .pm-m-alloc.pm-alloc-set { background: var(--warning-lt); --muted: var(--text); }
+.pm-table tbody tr td.pm-alloc-over, .pm-m-alloc.pm-alloc-over { background: var(--danger-lt); }
+.pm-alloc-over .pm-alloc-input { border-color: var(--danger-text); }
+.pm-alloc-savebar { margin: 0.75rem 1.125rem; }
+.pm-alloc-savebar-body { flex: 1; min-width: 0; font-size: 0.8125rem; }
+.pm-alloc-savebar-actions { display: flex; gap: 0.5rem; flex: none; }
+.pm-m-alloc { flex: 1 1 100%; display: flex; align-items: center; gap: 0.625rem; border-radius: 6px; }
+.pm-m-alloc.pm-alloc-set, .pm-m-alloc.pm-alloc-over { padding: 0.375rem 0.5rem; }
+.pm-m-alloc .pm-cell-sub { margin-top: 0; }
+.pm-m-alloc .pm-alloc-input { width: 7.25rem; flex: none; }
+.pm-m-alloc-pot { margin-left: auto; }
+@media (max-width: 767px) {
+  .pm-alloc-input, .pm-alloc-allowance .pm-alloc-input { height: 2.75rem; }
+  .pm-alloc-edit { width: 100%; min-height: 2.75rem; margin-left: 0; }
+  .pm-alloc-savebar { flex-wrap: wrap; margin: 0.625rem 0.75rem; }
+  .pm-alloc-savebar > .pend { align-self: flex-start; margin-top: 0.4rem; }
+  .pm-alloc-savebar > .ic { align-self: flex-start; margin-top: 0.1rem; }
+  .pm-alloc-savebar-actions { flex: 1 1 100%; }
+  .pm-alloc-savebar-actions .pm-btn { flex: 1; min-height: 2.75rem; }
+}
 .pm-m-ladder { grid-column: 1 / -1; display: flex; flex-wrap: wrap; align-items: center; gap: 0.25rem 0.75rem; font-size: 0.8125rem; }
 .pm-m-ladder-fig { display: inline-flex; align-items: baseline; gap: 0.3rem; }
 .pm-m-ladder .pm-tk-settings { margin-left: auto; min-height: 2.75rem; }

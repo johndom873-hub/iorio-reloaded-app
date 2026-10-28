@@ -194,8 +194,9 @@ export function backtestSettingGroupSummary(group: BacktestSettingGroup, text: (
       return [
         `Puts start under ${shown("volFarmerV2.putsStartCallYieldPct")}`,
         `Put |delta| ${text("volFarmerV2.putMaxAbsDelta")}, Step ${text("volFarmerV2.stepRule") === "implied_move_at_put_sale" ? "the one-month implied move at each Put sale" : shown("volFarmerV2.stepBelowFirstBreakEvenPct")} below the first break-even`,
-        `LEAPS ${text("volFarmerV2.leapsMinDte")}+ days at |delta| ${text("volFarmerV2.leapsAbsDelta")}${Number(text("volFarmerV2.leapsMaxAccountPct")) > 0 ? `, at most ${shown("volFarmerV2.leapsMaxAccountPct")} of the account` : ""}`,
+        `LEAPS ${text("volFarmerV2.leapsMinDte")}+ days at |delta| ${text("volFarmerV2.leapsAbsDelta")}${Number(text("volFarmerV2.leapsMaxAccountPct")) > 0 ? `, at most ${shown("volFarmerV2.leapsMaxAccountPct")} of the ticker's pot` : ""}`,
         text("volFarmerV2.looks") === "every_look" ? "decides at every look" : "decides at 10:00",
+        ...(Number(text("volFarmerV2.excessAllowancePct")) > 0 ? [`pots ${shown("volFarmerV2.excessAllowancePct")} over the allocations`] : []),
       ].join(" · ");
   }
 }
@@ -216,7 +217,7 @@ export function labTickersKeepingTheirOwn(path: string, overrides: readonly Back
   return overrides.filter((row) => fields.some((field) => row[field] !== null)).map((row) => row.symbol);
 }
 
-const settingPathPattern = /\b(?:baseline|pluto|trading|policy|model|lab|fixed)\.[A-Za-z]+\b|\bkellyFraction\b|\bdecisionMaker\b/g;
+const settingPathPattern = /\b(?:baseline|pluto|trading|policy|model|lab|fixed|steadyStake|volFarmer|volFarmerV2)\.[A-Za-z]+\b|\bkellyFraction\b|\bdecisionMaker\b/g;
 const labOnlyLabels: Record<string, string> = { "lab.defaultPotDollars": "Default pot" };
 
 /** A refusal from the API with each setting key ("baseline.putsWhenNoCall") written as its label ("Puts when no call is sold"). */
