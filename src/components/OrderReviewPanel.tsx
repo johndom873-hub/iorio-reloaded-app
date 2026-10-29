@@ -40,6 +40,8 @@ import { computeLongCallProbabilityOfProfit } from "../lib/leapsValuation";
 import { LeapsPnlOverTimeModal } from "./LeapsPnlOverTimeModal";
 import { flashClassName, useFlashOnChange } from "../hooks/useFlashOnChange";
 import { useTooltip } from "../hooks/useTooltip";
+import { useTradingSessions } from "../hooks/useTradingSessions";
+import { sessionsHeldToExpiry } from "../lib/tradingSessions";
 
 interface OrderReviewPanelProps {
   order: OrderRequest;
@@ -223,6 +225,7 @@ export function OrderReviewPanel({ order: initialOrder, initialAdaptivePriority,
   const leapsCost = isLeaps && payoff ? payoff.maxLoss : null;
   const cashRequired = leapsCost ?? capitalAtRisk;
   const [showPnlOverTime, setShowPnlOverTime] = useState(false);
+  const tradingSessions = useTradingSessions();
   const optionLeg = order.payload.legs.find((leg) => leg.role === "option");
   const stockLeg = order.payload.legs.find((leg) => leg.role === "stock");
   // Real bug found live-testing the POP addition below, 2026-09-02: this was
@@ -267,10 +270,10 @@ export function OrderReviewPanel({ order: initialOrder, initialAdaptivePriority,
   // the flat commission. Without a two-sided quote there is no half-spread to charge, so no yield is shown.
   const liveFrictionDollarsPerContract = quote && quote.bid !== null && quote.ask !== null ? computeFrictionDollarsPerContract({ bid: quote.bid, ask: quote.ask, spreadShareCharged: quote.spreadShareCharged }) : null;
   const liveYield =
-    isOpeningOrder && !isLeaps && optionLeg?.strike !== undefined && dte !== null && liveFrictionDollarsPerContract !== null
+    isOpeningOrder && !isLeaps && optionLeg?.strike !== undefined && optionLegExpiryIso !== null && tradingSessions !== null && liveFrictionDollarsPerContract !== null
       ? computeAnnualizedYield(order.payload.strategyKey as StrategyKey, {
           premium: liveOptionMid,
-          dte,
+          sessionsHeld: sessionsHeldToExpiry(tradingSessions, optionLegExpiryIso),
           strike: optionLeg.strike,
           spotPrice: stockLeg?.unitPrice ?? optionLeg.strike,
           frictionDollarsPerContract: liveFrictionDollarsPerContract,
@@ -448,7 +451,7 @@ export function OrderReviewPanel({ order: initialOrder, initialAdaptivePriority,
           {liveYield !== null && (
             <div className="col-4">
               <div className="text-secondary text-uppercase" style={{ fontSize: "0.68rem" }}>
-                <DottedLabelTooltip label="Ann. Yield" tooltipHtml="Annualised yield at the live mid after costs: (mid − costs) ÷ exposure × 365 ÷ days to expiry. Costs: the Risk &amp; Limits spread cost share of the half-spread plus $0.68 commission per contract." />
+                <DottedLabelTooltip label="Ann. Yield" tooltipHtml="Annualised yield at the live mid after costs: (mid − costs) ÷ exposure × 252 ÷ the trading sessions it is held, from today's (the next one after the close) to the expiry's, both counted: a Thursday sale for Friday counts 2. Costs: the Risk &amp; Limits spread cost share of the half-spread plus $0.68 commission per contract." />
               </div>
               <div className="fw-semibold text-success">{formatPercentage(liveYield)}</div>
             </div>

@@ -1,4 +1,5 @@
 import { apiRequest, apiStreamedRequest } from "./client";
+import type { TradingSessions } from "../lib/tradingSessions";
 
 // "completed_with_errors": the run did its work but part of it had errors (one ticker of 26 without IV); "failure": nothing usable.
 export type JobRunStatus = "running" | "success" | "failure" | "completed_with_errors";
@@ -52,6 +53,10 @@ export interface MarketStatus {
 
 export function fetchMarketStatus(): Promise<MarketStatus> {
   return apiRequest<MarketStatus>("/system-health/market-status");
+}
+
+export function fetchTradingSessions(): Promise<TradingSessions> {
+  return apiRequest<TradingSessions>("/system-health/trading-sessions");
 }
 
 export interface DbHealth {

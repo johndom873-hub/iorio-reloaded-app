@@ -1,5 +1,6 @@
 import type { OrderLeg } from "../api/positions";
 import type { OpenOrderStrategyKey, StrategyKey } from "../api/strategy";
+import { tradingSessionsPerYear } from "./tradingSessions";
 
 export interface PayoffPoint {
   price: number;
@@ -179,21 +180,23 @@ export function computeFrictionDollarsPerContract(input: { bid: number; ask: num
   return input.spreadShareCharged * ((input.ask - input.bid) / 2) * 100 + flatCommissionPerContractDollars;
 }
 
-// Annualized yield, same as the server's: premium ÷ the exposure net of the premium × 365 ÷ dte. With
-// frictionDollarsPerContract (the chain and its order form, Marcelo 2026-10-12) the premium on top is after costs:
-// (premium − friction ÷ 100) ÷ exposure × 365 ÷ dte; the exposure stays net of the full premium, as EXP $ is.
-// Example: $40 put, bid 0.45 / ask 0.55, 7 DTE, λ 50%: friction $3.18, (0.50 − 0.0318) ÷ 39.50 × 365 ÷ 7 = 62%.
-// Returns null when the inputs can't support a real number (no premium, or dte/exposure <= 0).
+// Annualized yield, same as the server's: premium ÷ the exposure net of the premium × 252 ÷ the trading sessions held
+// (lib/tradingSessions.ts, Marcelo 2026-10-29). With frictionDollarsPerContract (the chain and its order form, Marcelo
+// 2026-10-12) the premium on top is after costs: (premium − friction ÷ 100) ÷ exposure × 252 ÷ sessions; the exposure
+// stays net of the full premium, as EXP $ is.
+// Example: $40 put, bid 0.45 / ask 0.55, sold on a Monday for Friday (5 sessions), λ 50%: friction $3.18,
+// (0.50 − 0.0318) ÷ 39.50 × 252 ÷ 5 = 59.7%.
+// Returns null when the inputs can't support a real number (no premium, or sessions/exposure <= 0).
 export function computeAnnualizedYield(
   strategyKey: StrategyKey,
-  input: { premium: number | null; dte: number; strike: number; spotPrice: number; frictionDollarsPerContract?: number },
+  input: { premium: number | null; sessionsHeld: number; strike: number; spotPrice: number; frictionDollarsPerContract?: number },
 ): number | null {
-  const { premium, dte, strike, spotPrice } = input;
-  if (premium === null || premium <= 0 || dte <= 0) return null;
+  const { premium, sessionsHeld, strike, spotPrice } = input;
+  if (premium === null || premium <= 0 || sessionsHeld <= 0) return null;
   const exposurePerShare = computeExposurePerShare(strategyKey, { strike, spotPrice, premium });
   if (exposurePerShare === null) return null;
   const premiumAfterCosts = premium - (input.frictionDollarsPerContract ?? 0) / 100;
-  return (premiumAfterCosts / exposurePerShare) * (365 / dte);
+  return (premiumAfterCosts / exposurePerShare) * (tradingSessionsPerYear / sessionsHeld);
 }
 
 // Same definition as Positions' capitalAtRisk (EXP $): the shares bought less the call's premium on them for a

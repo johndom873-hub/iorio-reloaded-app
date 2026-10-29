@@ -585,7 +585,7 @@ export function fetchPlutoSettings(): Promise<PlutoSettings> {
 
 /** Every number the How it works tab quotes (API src/pluto/howItWorks.ts): percentages in percent, deltas as fractions, money in dollars. */
 export interface PlutoHowItWorks {
-  shared: { windowStartEt: string; windowEndEt: string; windowEndMinutesBeforeCloseAtLeast: number; capitalBudgetPct: number; excessAllowancePct: number; dailyLossBreakerPct: number; unfilledOrderCancelMinutes: number };
+  shared: { windowStartEt: string; windowEndEt: string; windowEndMinutesBeforeCloseAtLeast: number; capitalBudgetPct: number; excessAllowancePct: number; dailyLossBreakerPct: number; unfilledOrderCancelMinutes: number; premiumYieldSessionsPerYear: number };
   ladder: {
     minAbsDelta: number;
     maxAbsDelta: number;

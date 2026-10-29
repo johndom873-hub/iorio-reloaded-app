@@ -32,7 +32,7 @@ export const volatilityColumnExplanation = {
   ivMinusForecast: "IV − FV 21d in volatility points: how much richer (green) or cheaper (red) options are priced than the stock has recently moved.",
   ivRank: "Where IBKR's 30-day IV at the last close sits between its low (0) and high (100) of the last 252 trading days.",
   ivPercentile: "Share of the last 252 trading days whose IV closed below the last close's.",
-  bestCallYield: "The highest yield a year after costs among Calls inside the delta band above with this many days to expiry: (mid − costs) ÷ (spot − mid) × 365 ÷ days to expiry, a same-day expiry counted as 1 day. Costs: the Risk & Limits spread cost share of the half-spread plus $0.68 commission per contract. Amber when earnings fall before that Call's expiry. Live only while the market is open.",
+  bestCallYield: "The highest yield a year after costs among Calls inside the delta band above with this many days to expiry: (mid − costs) ÷ (spot − mid) × 252 ÷ the trading sessions it is held, from today's (the next one after the close) to the expiry's, both counted: a Thursday sale for Friday counts 2. Costs: the Risk & Limits spread cost share of the half-spread plus $0.68 commission per contract. Amber when earnings fall before that Call's expiry. Live only while the market is open.",
   earnings: "The next earnings report.",
 };
 

@@ -112,6 +112,7 @@ function LadderExplanation({ values }: { values: PlutoHowItWorks }) {
           Pluto owns shares of each enabled ticker and earns income by selling options on them. It sells <b>Calls</b> on the shares it holds, and <b>Puts</b> that may buy more shares at lower prices if the stock falls. The Puts are spread out like the rungs of a ladder, each one lower than the last, so a fall buys shares cheaper and brings the cost of the position down.
         </p>
         <p className="pm-how-text muted">No AI model is involved: every decision follows the fixed rules below. The numbers in <Value>mono</Value> are Pluto's current settings.</p>
+        <p className="pm-how-text muted">A premium yield a year counts the trading sessions an option is held, from the one it is sold in to its expiry's, both counted: the premium's return × <Value>{shared.premiumYieldSessionsPerYear}</Value> ÷ those sessions. Sold on a Thursday for Friday, that is 2 sessions.</p>
       </Card>
 
       <Card title="One cycle, step by step">
@@ -231,7 +232,7 @@ function VolFarmerV2Explanation({ values }: { values: PlutoHowItWorks }) {
             Vol Farmer v2 earns option premium on a stock in two <b>positions</b>. Half the ticker's pot buys shares, the first position, and sells <b>Calls</b> on them, always at or above what the shares cost after the premiums already collected on them: the first position's break-even, <b>B-E¹</b>.
           </p>
           <p className="pm-how-text">
-            When the best such Call pays less than <Value>{pct(v2.putsStartCallYieldPct)}</Value> a year, usually after the stock has fallen, the other half of the pot sells <b>Puts</b> well below B-E¹. If a Put is assigned, its shares become the second position, bought cheaper, which sells Calls of its own at or above its break-even, <b>B-E²</b>.
+            When the best such Call pays less than <Value>{pct(v2.putsStartCallYieldPct)}</Value> a year (the premium's return × <Value>{shared.premiumYieldSessionsPerYear}</Value> ÷ the trading sessions it is held, the one it is sold in and its expiry's both counted), usually after the stock has fallen, the other half of the pot sells <b>Puts</b> well below B-E¹. If a Put is assigned, its shares become the second position, bought cheaper, which sells Calls of its own at or above its break-even, <b>B-E²</b>.
           </p>
           <p className="pm-how-text">
             Once the stock is half a Step below B-E², Pluto buys a <b>LEAPS</b>: a Call <Value>{v2.leapsMinDte}</Value> or more days out that gains as the stock recovers, one for each time the second position holds shares. It is sold as soon as the second position's shares are called away, even at a loss.

@@ -4,8 +4,10 @@ import { buildOpenOrder, type AdaptivePriority, type OrderRequest } from "../../
 import type { OptionStrategyKey } from "../../api/tickerTrading";
 import { checkOrderLimits } from "../../api/orderChecks";
 import { computeAnnualizedYield, computeExposurePerShare, computeFrictionDollarsPerContract, computePayoff } from "../../lib/payoff";
+import { sessionsHeldToExpiry } from "../../lib/tradingSessions";
 import { formatCurrency, formatOptionContractLabel, formatPercentage, formatQuotePrice, formatSignedPnl } from "../../lib/formatters";
 import { useTooltip } from "../../hooks/useTooltip";
+import { useTradingSessions } from "../../hooks/useTradingSessions";
 import { FillPriorityPicker } from "../FillPriorityPicker";
 import { Spinner } from "../Spinner";
 import { OrderCommissionRows } from "../OrderCommissionRows";
@@ -82,13 +84,14 @@ export function OpenOrderSetupForm({ symbol, contract, freeShares, spotPrice, sp
   const [building, setBuilding] = useState(false);
   const [buildError, setBuildError] = useState<string | null>(null);
 
+  const tradingSessions = useTradingSessions();
   const quantity = Math.max(1, Math.floor(Number(contractQty) || 0));
   const limitPrice = Number(limitPriceInput);
   const limitPriceValid = limitPriceInput.trim() !== "" && Number.isFinite(limitPrice) && limitPrice > 0;
   const premiumTotal = limitPriceValid ? limitPrice * 100 * quantity : null;
   // After costs, as the chain cell shows it: the spread cost share of the contract's half-spread plus the flat commission.
   const frictionDollarsPerContract = contract.bid !== null && contract.ask !== null && spreadShareCharged !== null ? computeFrictionDollarsPerContract({ bid: contract.bid, ask: contract.ask, spreadShareCharged }) : null;
-  const annualizedYield = limitPriceValid && spotPrice !== null && frictionDollarsPerContract !== null ? computeAnnualizedYield(contract.strategyKey, { premium: limitPrice, dte: Math.max(contract.dte, 1), strike: contract.strike, spotPrice, frictionDollarsPerContract }) : null;
+  const annualizedYield = limitPriceValid && spotPrice !== null && frictionDollarsPerContract !== null && tradingSessions !== null ? computeAnnualizedYield(contract.strategyKey, { premium: limitPrice, sessionsHeld: sessionsHeldToExpiry(tradingSessions, contract.expiry), strike: contract.strike, spotPrice, frictionDollarsPerContract }) : null;
   // EXP $ at the limit price, net of the premium: the same as Positions will show once it fills.
   const exposurePerShareAtLimit = limitPriceValid ? computeExposurePerShare(contract.strategyKey, { strike: contract.strike, spotPrice: spotPrice ?? 0, premium: limitPrice }) : null;
   const capitalAtRisk = exposurePerShareAtLimit === null ? null : exposurePerShareAtLimit * 100 * quantity;

@@ -5,8 +5,10 @@ import { buildRollOrder, type AdaptivePriority, type OrderRequest } from "../../
 import type { LiveContractQuote, OpenShortLeg } from "../../api/tickerTrading";
 import { toIbkrExpiry, useOrderCommissionPreview } from "../../hooks/useOrderCommissionPreview";
 import { useTooltip } from "../../hooks/useTooltip";
+import { useTradingSessions } from "../../hooks/useTradingSessions";
 import { daysToExpiry, formatCurrency, formatOptionContractLabel, formatPercentage, formatQuotePrice, formatSignedPnl } from "../../lib/formatters";
 import { computeAnnualizedYield, computeExposurePerShare, computeFrictionDollarsPerContract } from "../../lib/payoff";
+import { sessionsHeldToExpiry } from "../../lib/tradingSessions";
 import { FillPriorityPicker } from "../FillPriorityPicker";
 import { OrderCommissionRows } from "../OrderCommissionRows";
 import { Spinner } from "../Spinner";
@@ -77,6 +79,7 @@ export function RollOrderSetupForm({ symbol, held, heldQuote, target, targetQuot
   const netCreditAtMid = heldMid !== null && replacementMid !== null ? replacementMid - heldMid : null;
   const netCreditWorst = (targetQuote?.bid ?? 0) - heldAsk;
   const isDebit = (netCreditAtMid ?? 0) < 0;
+  const tradingSessions = useTradingSessions();
   const netWord = isDebit ? "debit" : "credit";
   const netMoney = (perShare: number | null, decimals?: number) => (perShare === null ? "—" : formatCurrency(isDebit ? -perShare : perShare, decimals));
   // Both legs go out at their mids; the expected fill gives up the Risk & Limits share of both half-spreads (the way from the mid credit to the worst case).
@@ -86,8 +89,8 @@ export function RollOrderSetupForm({ symbol, held, heldQuote, target, targetQuot
   const replacementExposurePerShare = replacementMid === null ? null : computeExposurePerShare(held.strategyKey, { strike: target.strike, spotPrice: spotPrice ?? 0, premium: replacementMid });
   const realisedOnHeldLeg = heldMid === null ? null : (held.entryPrice - heldMid) * 100 * quantity;
   const replacementYield =
-    targetQuote?.bid != null && targetQuote.ask != null && replacementMid !== null && spreadShareCharged !== null
-      ? computeAnnualizedYield(held.strategyKey, { premium: replacementMid, dte: Math.max(target.dte, 1), strike: target.strike, spotPrice: spotPrice ?? 0, frictionDollarsPerContract: computeFrictionDollarsPerContract({ bid: targetQuote.bid, ask: targetQuote.ask, spreadShareCharged }) })
+    targetQuote?.bid != null && targetQuote.ask != null && replacementMid !== null && spreadShareCharged !== null && tradingSessions !== null
+      ? computeAnnualizedYield(held.strategyKey, { premium: replacementMid, sessionsHeld: sessionsHeldToExpiry(tradingSessions, target.expiry), strike: target.strike, spotPrice: spotPrice ?? 0, frictionDollarsPerContract: computeFrictionDollarsPerContract({ bid: targetQuote.bid, ask: targetQuote.ask, spreadShareCharged }) })
       : null;
 
   // One IBKR what-if for the whole two-leg combo (re-asked only when the legs change, never on a price tick).

@@ -2,9 +2,11 @@ import { Fragment, useEffect, useRef, type ReactNode } from "react";
 import { optionContractKey, type LiveContractQuote, type TickerOptionChain } from "../../api/tickerTrading";
 import { FLASH_DURATION_MS, flashClassName, useFlashOnChange } from "../../hooks/useFlashOnChange";
 import { useMediaQuery } from "../../hooks/useMediaQuery";
+import { useTradingSessions } from "../../hooks/useTradingSessions";
 import { formatCompactNumber, formatCurrency, formatCurrencyTrimmed, formatPercentage, formatQuotePrice, formatSignedPercentage } from "../../lib/formatters";
 import { describeChainExpiryTab, isChainContractInTheMoney } from "../../lib/optionChainPresentation";
 import { computeAnnualizedYield, computeFrictionDollarsPerContract } from "../../lib/payoff";
+import { sessionsHeldToExpiry } from "../../lib/tradingSessions";
 import { DottedLabelTooltip } from "../HelpTooltip";
 import { Spinner } from "../Spinner";
 
@@ -66,7 +68,7 @@ const chainColumnLabels: Record<ChainColumn, ReactNode> = {
   ask: <span>Ask</span>,
   delta: <DottedLabelTooltip label="Δ" tooltipHtml="Delta from the contract's own mid price, on the forward (the same delta the CC + Put Ladder uses)." focusable={false} />,
   iv: <DottedLabelTooltip label="IV" tooltipHtml="Implied volatility of the contract's mid price, a year." focusable={false} />,
-  yield: <DottedLabelTooltip label="Yield" tooltipHtml="Annualised yield at the mid price after costs: (mid − costs) ÷ (strike − mid) for a put, ÷ (spot − mid) for a call, × 365 ÷ days to expiry. Costs: the Risk &amp; Limits spread cost share of the half-spread plus $0.68 commission per contract." focusable={false} />,
+  yield: <DottedLabelTooltip label="Yield" tooltipHtml="Annualised yield at the mid price after costs: (mid − costs) ÷ (strike − mid) for a put, ÷ (spot − mid) for a call, × 252 ÷ the trading sessions it is held, from today's (the next one after the close) to the expiry's, both counted: a Thursday sale for Friday counts 2. Costs: the Risk &amp; Limits spread cost share of the half-spread plus $0.68 commission per contract." focusable={false} />,
 };
 
 function ChainColumnLabels({ right, hasLeadingStrike }: { right: "C" | "P"; hasLeadingStrike: boolean }) {
@@ -96,7 +98,7 @@ function formatChainDelta(delta: number | null): string {
   return delta === null ? "—" : `${delta > 0 ? "+" : ""}${delta.toFixed(2)}`;
 }
 
-function ChainCellButton({ contract, quote, dte, spotPrice, spreadShareCharged, selected, disabled, showStrike, onPick }: { contract: ChainContractRef; quote: LiveContractQuote | undefined; dte: number | null; spotPrice: number | null; spreadShareCharged: number | null; selected: boolean; disabled: boolean; showStrike: boolean; onPick: () => void }) {
+function ChainCellButton({ contract, quote, sessionsHeld, spotPrice, spreadShareCharged, selected, disabled, showStrike, onPick }: { contract: ChainContractRef; quote: LiveContractQuote | undefined; sessionsHeld: number | null; spotPrice: number | null; spreadShareCharged: number | null; selected: boolean; disabled: boolean; showStrike: boolean; onPick: () => void }) {
   const bid = quote?.bid ?? null;
   const ask = quote?.ask ?? null;
   const delta = quote?.delta ?? null;
@@ -104,7 +106,7 @@ function ChainCellButton({ contract, quote, dte, spotPrice, spreadShareCharged, 
   const bidFlash = useFlashOnChange(bid, FLASH_DURATION_MS, 2);
   const askFlash = useFlashOnChange(ask, FLASH_DURATION_MS, 2);
   const deltaFlash = useFlashOnChange(delta, FLASH_DURATION_MS, 2);
-  const yieldFraction = bid !== null && ask !== null && dte !== null && spreadShareCharged !== null ? computeAnnualizedYield(contract.right === "C" ? "covered_call" : "cash_secured_put", { premium: (bid + ask) / 2, dte: Math.max(dte, 1), strike: contract.strike, spotPrice: spotPrice ?? 0, frictionDollarsPerContract: computeFrictionDollarsPerContract({ bid, ask, spreadShareCharged }) }) : null;
+  const yieldFraction = bid !== null && ask !== null && sessionsHeld !== null && spreadShareCharged !== null ? computeAnnualizedYield(contract.right === "C" ? "covered_call" : "cash_secured_put", { premium: (bid + ask) / 2, sessionsHeld, strike: contract.strike, spotPrice: spotPrice ?? 0, frictionDollarsPerContract: computeFrictionDollarsPerContract({ bid, ask, spreadShareCharged }) }) : null;
   const yieldFlash = useFlashOnChange(yieldFraction !== null ? yieldFraction * 100 : null, FLASH_DURATION_MS, 0);
   const columnCells: Record<ChainColumn, ReactNode> = {
     bid: <QuoteWithSize price={bid} size={quote?.bidSize ?? null} flashClass={flashClassName(bidFlash)} />,
@@ -198,7 +200,8 @@ export function OptionChainCard({ chain, loading, error, spotPrice, liveQuotes, 
   };
 
   const selectedExpiry = chain?.selectedExpiry ?? null;
-  const selectedExpiryDte = chain?.expiries.find((expiry) => expiry.expiry === selectedExpiry)?.dte ?? null;
+  const tradingSessions = useTradingSessions();
+  const selectedExpirySessionsHeld = tradingSessions !== null && selectedExpiry !== null ? sessionsHeldToExpiry(tradingSessions, selectedExpiry) : null;
   const allStrikes = chain?.strikes ?? [];
   // A phone shows one side at a time, so its in-the-money strikes are dropped as rows; the desktop keeps the shared strike column and blanks the cell.
   // The contract under an open order review stays visible even if the spot has since carried it in the money.
@@ -241,7 +244,7 @@ export function OptionChainCard({ chain, loading, error, spotPrice, liveQuotes, 
     const contract: ChainContractRef = { expiry: selectedExpiry ?? "", strike, right };
     const key = optionContractKey(contract);
     if (isHiddenAsInTheMoney(strike, right)) return <div className="option-chain-cell is-in-the-money" aria-hidden="true" />;
-    return <ChainCellButton contract={contract} quote={liveQuotes[key]} dte={selectedExpiryDte} spotPrice={spotPrice} spreadShareCharged={spreadShareCharged} selected={key === selectedContractKey} disabled={pickingDisabled} showStrike={showStrike} onPick={() => onPickContract(contract)} />;
+    return <ChainCellButton contract={contract} quote={liveQuotes[key]} sessionsHeld={selectedExpirySessionsHeld} spotPrice={spotPrice} spreadShareCharged={spreadShareCharged} selected={key === selectedContractKey} disabled={pickingDisabled} showStrike={showStrike} onPick={() => onPickContract(contract)} />;
   };
 
   const leapsCellFor = (strike: number) => {
