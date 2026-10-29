@@ -108,9 +108,9 @@ export const plutoParameterGroups: PlutoParameterGroup[] = [
         kind: "select",
         options: ["implied_move_at_put_sale", "fixed"],
         optionLabels: { implied_move_at_put_sale: "Implied move", fixed: "Fixed" },
-        help: "How far below B-E¹ the Puts are struck at most: the one-month implied move at each Put sale, IBKR's 30-day IV × √(21 ÷ 252) (an IV of 30% gives a Step of 8.7%), or the fixed Step below.",
+        help: "How far below B-E¹ the Puts are struck at most: the one-month implied move at each Put sale, IBKR's 30-day IV of the session before × √(21 ÷ 252) (an IV of 30% gives a Step of 8.7%; without that IV, no Put and no new LEAPS that day), or the fixed Step below.",
       },
-      { field: "volFarmerV2StepBelowFirstBreakEvenPct", label: "Step", unit: "% below B-E¹", kind: "number", step: "0.5", help: "The fixed Step, and the implied move's when IBKR has no IV for the ticker." },
+      { field: "volFarmerV2StepBelowFirstBreakEvenPct", label: "Step", unit: "% below B-E¹", kind: "number", step: "0.5", help: "The Step with the Fixed rule." },
       { field: "volFarmerV2LeapsMinDte", label: "LEAPS expiry from", unit: "days", kind: "integer", step: "1", help: "The first listed expiry at least this far out." },
       { field: "volFarmerV2LeapsAbsDelta", label: "LEAPS |delta|", kind: "number", step: "0.01", help: "The Call whose absolute delta is nearest this." },
       {

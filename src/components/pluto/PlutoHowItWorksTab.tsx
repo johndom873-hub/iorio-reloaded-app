@@ -265,7 +265,7 @@ function VolFarmerV2Explanation({ values }: { values: PlutoHowItWorks }) {
             <li>Puts start when the first position needs a new Call and the best one pays under <Value>{pct(v2.putsStartCallYieldPct)}</Value> a year.</li>
             <li>
               Put |delta| at most <Value>{formatDelta(v2.putMaxAbsDelta)}</Value>;{" "}
-              {implied ? <>the Step from IBKR's latest 30-day IV of the last <Value>{v2.stepLookbackSessions}</Value> sessions, <Value>{pct(v2.stepBelowFirstBreakEvenPct)}</Value> without one.</> : <>the Step a fixed <Value>{pct(v2.stepBelowFirstBreakEvenPct)}</Value> below B-E¹.</>}
+              {implied ? <>the Step from IBKR's 30-day IV of the session before; without it, no Put and no new LEAPS that day.</> : <>the Step a fixed <Value>{pct(v2.stepBelowFirstBreakEvenPct)}</Value> below B-E¹.</>}
             </li>
           </ul>
           <ul className="pm-how-list">

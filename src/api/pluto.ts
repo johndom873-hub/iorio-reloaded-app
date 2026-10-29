@@ -633,9 +633,8 @@ export interface PlutoHowItWorks {
     putsStartCallYieldPct: number;
     putMaxAbsDelta: number;
     stepRule: PlutoSettings["volFarmerV2StepRule"];
-    /** The fixed Step, and the implied-move Step's fallback. */
+    /** The fixed rule's Step. */
     stepBelowFirstBreakEvenPct: number;
-    stepLookbackSessions: number;
     leapsMinDte: number;
     leapsAbsDelta: number;
     leapsMaxAllocationPct: number;
