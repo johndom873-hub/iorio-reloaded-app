@@ -86,7 +86,7 @@ const tradeGradeBadgeClasses: Record<TradeGrade, string> = { strong: "badge-grad
 export const tradeValuationColumnExplanation = {
   grade: "The valuation model's grade, from the edge margin (1 − fair value ÷ mid, before costs): Strong 20% or more, Good 10% to 20%, Weak 0% to 10%, Avoid below 0%.",
   margin: "Edge margin: how far the price is above the model's fair value, as a share of the price (1 − fair ÷ mid), before costs. It sets the grade.",
-  edgeYield: "Edge Yield: the expected profit as a yearly rate on EXP $, over the calendar days to expiry (weekends count: the capital is tied up).",
+  edgeYield: "Edge Yield: the expected profit as a yearly rate on EXP $, × 252 ÷ the trading sessions held, from the sale's to the expiry's, both counted (sessions run before the switch on 29 Oct 2026: over the calendar days to expiry).",
   histYield: "Hist Yield: the Edge Yield after history's correction, what at-the-money sales with the same margin and time left actually earned.",
 };
 
@@ -326,9 +326,9 @@ export const backtestMetricExplanation = {
   daysWithNoOptions: "Days with no options = the session's trading days with no Call or Put sold open at any time of the day ÷ all of them, every symbol together. An option sold counts from the day it was sold to the day it expired, was bought back or was assigned, both included. LEAPS and hedge Puts are bought, so they don't count. Longest: the most such trading days in a row.",
   worstMonth: "Worst month: the lowest monthly return. A month's return is its daily returns compounded: Π (1 + daily return) − 1.",
   edgeCapture: "Edge capture = Σ trade P&L ÷ Σ Edge $ the model predicted for those trades at entry (1.0 = the model was exactly right on average).",
-  capitalInUse: "Capital in use = mean over days of (Σ EXP $ of open positions ÷ account value). EXP $ is net of premium: a put's (strike − premium) × 100 × contracts. Return on capital in use = Σ trade P&L ÷ Σ (EXP $ × calendar days held) × 365, the same basis as Edge Yield.",
+  capitalInUse: "Capital in use = mean over days of (Σ EXP $ of open positions ÷ account value). EXP $ is net of premium: a put's (strike − premium) × 100 × contracts. Return on capital in use = Σ trade P&L ÷ Σ (EXP $ × calendar days held) × 365.",
   winRate: "Win rate = trades with P&L > 0 ÷ all closed trades.",
-  returnOnCapitalInUse: "Return on capital in use = Σ trade P&L ÷ Σ (EXP $ × calendar days held) × 365, the same basis as Edge Yield.",
+  returnOnCapitalInUse: "Return on capital in use = Σ trade P&L ÷ Σ (EXP $ × calendar days held) × 365.",
   interest: "Interest on idle cash: each day the cash balance earns the 3-month Treasury bill rate (FRED DTB3) × calendar days since the previous trading day ÷ 365.",
   buyAndHold: "Buy and hold: on the first day at 10:00, buy as many whole shares as the starting value allows at the 10:00 stock price; the rest stays in cash and earns the same interest. No dividends in version 1.",
   symbolsBuyAndHold: "Buy and hold of the session's symbols, for comparison only: each symbol's pot (with per-ticker pots), else the starting value in equal parts, one per symbol, each buying whole shares at its symbol's first 10:00 price and never rebalanced; the rest stays in cash at the same interest. Marked at 10:00 every session day and measured with the session's formulas. No dividends.",
@@ -354,7 +354,7 @@ export const backtestCycleMetricExplanation = {
   leaps:
     "The LEAPS' part of the CAGR = CAGR × the LEAPS Calls' P&L ÷ the account's P&L. Their P&L: what they were sold or settled for at expiry, less their cost and commissions, one still held at its last mark. Held on: the session's trading days with a LEAPS at any time of the day ÷ all of them.",
   hedge:
-    "The hedge's part of the CAGR = CAGR × the hedge Puts' P&L ÷ the account's P&L. Their P&L: what they were sold or settled for, less their cost and commissions, a Put still open at its last mark. Quoted at purchase: the median of each purchase's yearly cost, (time value × 100 + commission) ÷ (stock price × 100) ÷ (days ÷ 365), as the Wheel cycle rows show it. Open on: the session's trading days with a hedge Put at any time of the day ÷ all of them.",
+    "The hedge's part of the CAGR = CAGR × the hedge Puts' P&L ÷ the account's P&L. Their P&L: what they were sold or settled for, less their cost and commissions, a Put still open at its last mark. Quoted at purchase: the median of each purchase's yearly cost, (time value × 100 + commission) ÷ (stock price × 100) × 252 ÷ the trading sessions held (sessions run before 29 Oct 2026: ÷ (days ÷ 365)), as the Wheel cycle rows show it. Open on: the session's trading days with a hedge Put at any time of the day ÷ all of them.",
 } as const;
 
 /** Edge capture on a screen that lists sessions of either basis (Sessions, Compare). */
