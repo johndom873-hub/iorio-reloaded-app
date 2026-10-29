@@ -507,7 +507,7 @@ export function OrderReviewPanel({ order: initialOrder, initialAdaptivePriority,
                 style={{ fontSize: "0.68rem" }}
                 tabIndex={0}
               >
-                Return/Risk
+                Return/<wbr />Risk
               </div>
               <div className="fw-semibold">{formatNumber(payoff.maxGain / payoff.maxLoss, 2)}</div>
             </div>
