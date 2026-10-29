@@ -20,7 +20,9 @@ export function useTradingSessions(): TradingSessions | null {
     fetchTradingSessions()
       .then(setSessions)
       .catch(() => {
-        if (isMounted.current) retryTimer.current = setTimeout(refresh, TRADING_SESSIONS_RETRY_MS);
+        if (!isMounted.current) return;
+        if (retryTimer.current !== null) clearTimeout(retryTimer.current);
+        retryTimer.current = setTimeout(refresh, TRADING_SESSIONS_RETRY_MS);
       });
   }, []);
 
