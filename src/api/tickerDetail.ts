@@ -27,6 +27,8 @@ export interface PriceBar {
   low: number;
   close: number;
   volume: number;
+  /** 1D and 5D only: "extended" for a pre-market or after-hours bar (04:00-09:30 and close-20:00 ET). */
+  session?: "regular" | "extended";
 }
 
 export type TickerDetailSection = "overview" | "spot" | "chart" | "technicals";
@@ -56,6 +58,8 @@ export interface TickerTechnicals {
   rsi: number;
   macdSignal: MacdSignal;
   supportResistance: SupportResistanceResult;
+  /** The official close of the newest finished regular session: the chart's pre-market/after-hours change is measured from it. */
+  lastRegularSessionClose: { tradingDate: string; close: number } | null;
 }
 
 // Mirrors the backend's TickerDetailStreamEvent (streamTickerDetail.ts) plus

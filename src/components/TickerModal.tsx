@@ -573,7 +573,7 @@ export function TickerModal({ symbol, initialRollLegId = null, focusPositionId =
                     <Spinner label="Loading chart" />
                   </div>
                 )}
-                {chartBars && <TickerPriceChart symbol={symbol} initialBars={chartBars} technicals={technicals} />}
+                {chartBars && <TickerPriceChart symbol={symbol} initialBars={chartBars} technicals={technicals} livePrice={spotPrice} />}
               </div>
               <div className="mt-3">
                 <IvHistoryChart symbol={symbol} />

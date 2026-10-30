@@ -18,8 +18,11 @@ import { IconChevronDown } from "@tabler/icons-react";
 import { Spinner } from "../Spinner";
 import { useTheme } from "../../hooks/useTheme";
 import { useCollapsibleCard } from "../../hooks/useCollapsibleCard";
+import { useMarketStatus } from "../../hooks/useMarketStatus";
 import { ApiError } from "../../api/client";
 import { fetchTickerChart, type ChartRange, type PriceBar, type TickerTechnicals } from "../../api/tickerDetail";
+import { extendedSessionPriceChange } from "../../lib/priceChange";
+import { formatSignedNumber, formatSignedPercentageValue, todayInEasternIso } from "../../lib/formatters";
 
 // Ported from menaris-admin-app's LwChart.js — same range set, bar
 // granularity, tick formatting, and hover header, stripped of Saxo-specific
@@ -248,6 +251,98 @@ class GridLinePrimitive {
   }
 }
 
+// Shades the 1D/5D chart behind each run of extended-hours bars (pre-market,
+// after hours), from half a bar before its first bar to half a bar after its
+// last, so the regular session stands out without changing candle colours.
+class SessionBandRenderer {
+  private bands: [number, number][] = [];
+  private color: string;
+  constructor(color: string) {
+    this.color = color;
+  }
+  setBands(bands: [number, number][]) {
+    this.bands = bands;
+  }
+  setColor(color: string) {
+    this.color = color;
+  }
+  draw(target: any) {
+    if (!this.bands.length) return;
+    target.useBitmapCoordinateSpace(({ context: ctx, bitmapSize, horizontalPixelRatio }: any) => {
+      ctx.save();
+      ctx.fillStyle = this.color;
+      for (const [left, right] of this.bands) {
+        ctx.fillRect(Math.round(left * horizontalPixelRatio), 0, Math.round((right - left) * horizontalPixelRatio), bitmapSize.height);
+      }
+      ctx.restore();
+    });
+  }
+}
+
+class SessionBandPrimitive {
+  private chart: IChartApi | null = null;
+  private requestUpdate: (() => void) | null = null;
+  private extendedRuns: [number, number][] = [];
+  private renderer: SessionBandRenderer;
+  private onVisibleRangeChange = () => this.requestUpdate?.();
+
+  constructor(color: string) {
+    this.renderer = new SessionBandRenderer(color);
+  }
+
+  setBars(bars: PriceBar[]) {
+    this.extendedRuns = [];
+    let runStart: number | null = null;
+    bars.forEach((bar, index) => {
+      if (bar.session !== "extended") return;
+      if (runStart === null) runStart = bar.time;
+      if (bars[index + 1]?.session !== "extended") {
+        this.extendedRuns.push([runStart, bar.time]);
+        runStart = null;
+      }
+    });
+    this.requestUpdate?.();
+  }
+
+  setColor(color: string) {
+    this.renderer.setColor(color);
+    this.requestUpdate?.();
+  }
+
+  attached({ chart, requestUpdate }: { chart: IChartApi; requestUpdate: () => void }) {
+    this.chart = chart;
+    this.requestUpdate = requestUpdate;
+    chart.timeScale().subscribeVisibleLogicalRangeChange(this.onVisibleRangeChange);
+  }
+
+  detached() {
+    this.chart?.timeScale().unsubscribeVisibleLogicalRangeChange(this.onVisibleRangeChange);
+    this.chart = null;
+    this.requestUpdate = null;
+  }
+
+  updateAllViews() {
+    const chart = this.chart;
+    if (!chart || !this.extendedRuns.length) {
+      this.renderer.setBands([]);
+      return;
+    }
+    const timeScale = chart.timeScale();
+    const halfBarWidth = timeScale.options().barSpacing / 2;
+    const bands: [number, number][] = [];
+    for (const [firstTime, lastTime] of this.extendedRuns) {
+      const left = timeScale.timeToCoordinate(firstTime as Time);
+      const right = timeScale.timeToCoordinate(lastTime as Time);
+      if (left !== null && right !== null) bands.push([left - halfBarWidth, right + halfBarWidth]);
+    }
+    this.renderer.setBands(bands);
+  }
+
+  paneViews() {
+    return [{ zOrder: () => "bottom" as const, renderer: () => this.renderer }];
+  }
+}
+
 // Draws the technical lines' titles (MA7, Support, ...) pinned to the pane's
 // left edge, so they don't cover the most recent candles on the right. The
 // price lines themselves keep their right-axis price tags; only the title
@@ -344,7 +439,7 @@ class LeftEdgeLabelPrimitive {
   }
 }
 
-interface HoveredBar {
+interface DisplayedBar {
   o: number;
   h: number;
   l: number;
@@ -366,6 +461,9 @@ interface TickerPriceChartProps {
   // last-close dashed line below; not a true rolling series recomputed per
   // displayed bar.
   technicals?: TickerTechnicals | null;
+  // The header's live price (extended-hours trades included): shown with its
+  // change against the last official close while the regular session is shut.
+  livePrice?: number | null;
 }
 
 // Color semantics from the source indicator doc this work was adapted from
@@ -389,13 +487,15 @@ const darkLabelTextColor = "#1d273b";
 // (which only ever ran in a light-themed admin panel).
 const textColorByTheme = { light: "#1d273b", dark: "#f9fafb" } as const;
 const gridColorByTheme = { light: "rgba(0,0,0,0.08)", dark: "rgba(255,255,255,0.12)" } as const;
+const sessionBandColorByTheme = { light: "rgba(0,0,0,0.05)", dark: "rgba(255,255,255,0.05)" } as const;
 // Loading overlay wash — a light-on-light tint reads fine in light mode but
 // is invisible against the dark card background, so dark mode needs a
 // lighter-than-background tint instead of the same black wash.
 const loadingOverlayColorByTheme = { light: "rgba(0,0,0,0.05)", dark: "rgba(249,250,251,0.08)" } as const;
 
-export function TickerPriceChart({ symbol, initialBars, technicals }: TickerPriceChartProps) {
+export function TickerPriceChart({ symbol, initialBars, technicals, livePrice }: TickerPriceChartProps) {
   const { theme } = useTheme();
+  const marketStatus = useMarketStatus();
   const containerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
   const candleRef = useRef<ISeriesApi<"Candlestick"> | null>(null);
@@ -403,6 +503,7 @@ export function TickerPriceChart({ symbol, initialBars, technicals }: TickerPric
   const priceLineRef = useRef<ReturnType<ISeriesApi<"Candlestick">["createPriceLine"]> | null>(null);
   const technicalLinesRef = useRef<ReturnType<ISeriesApi<"Candlestick">["createPriceLine"]>[]>([]);
   const gridPrimitiveRef = useRef<GridLinePrimitive | null>(null);
+  const sessionBandPrimitiveRef = useRef<SessionBandPrimitive | null>(null);
   const leftEdgeLabelPrimitiveRef = useRef<LeftEdgeLabelPrimitive | null>(null);
 
   const [range, setRange] = useState<ChartRange>("3M");
@@ -410,7 +511,7 @@ export function TickerPriceChart({ symbol, initialBars, technicals }: TickerPric
   const [status, setStatus] = useState<"loading" | "ok" | "error" | "empty">(
     initialBars ? (initialBars.length ? "ok" : "empty") : "loading",
   );
-  const [hoveredBar, setHoveredBar] = useState<HoveredBar | null>(null);
+  const [hoveredBarTime, setHoveredBarTime] = useState<number | null>(null);
   const [chartHeight, setChartHeight] = useState(desktopChartHeight);
   const [isOpen, setIsOpen] = useCollapsibleCard("ticker-detail-chart", true);
 
@@ -507,12 +608,10 @@ export function TickerPriceChart({ symbol, initialBars, technicals }: TickerPric
 
     chart.subscribeCrosshairMove((param) => {
       if (!param.point || !param.time) {
-        setHoveredBar(null);
+        setHoveredBarTime(null);
         return;
       }
-      const candle = param.seriesData.get(candleSeries) as { open: number; high: number; low: number; close: number } | undefined;
-      const vol = param.seriesData.get(volumeSeries) as { value: number } | undefined;
-      if (candle) setHoveredBar({ o: candle.open, h: candle.high, l: candle.low, c: candle.close, v: vol?.value ?? 0 });
+      if (param.seriesData.get(candleSeries)) setHoveredBarTime(param.time as number);
     });
 
     const resizeObserver = new ResizeObserver((entries) => {
@@ -528,6 +627,9 @@ export function TickerPriceChart({ symbol, initialBars, technicals }: TickerPric
     const gridPrimitive = new GridLinePrimitive(range, gridColorByTheme[theme]);
     chart.panes()[0].attachPrimitive(gridPrimitive as unknown as IPanePrimitive);
 
+    const sessionBandPrimitive = new SessionBandPrimitive(sessionBandColorByTheme[theme]);
+    chart.panes()[0].attachPrimitive(sessionBandPrimitive as unknown as IPanePrimitive);
+
     const leftEdgeLabelPrimitive = new LeftEdgeLabelPrimitive(getComputedStyle(containerRef.current).fontFamily);
     candleSeries.attachPrimitive(leftEdgeLabelPrimitive as unknown as ISeriesPrimitive<Time>);
 
@@ -535,11 +637,14 @@ export function TickerPriceChart({ symbol, initialBars, technicals }: TickerPric
     candleRef.current = candleSeries;
     volumeRef.current = volumeSeries;
     gridPrimitiveRef.current = gridPrimitive;
+    sessionBandPrimitiveRef.current = sessionBandPrimitive;
     leftEdgeLabelPrimitiveRef.current = leftEdgeLabelPrimitive;
 
     return () => {
       resizeObserver.disconnect();
       chart.panes()[0]?.detachPrimitive(gridPrimitive as unknown as IPanePrimitive);
+      chart.panes()[0]?.detachPrimitive(sessionBandPrimitive as unknown as IPanePrimitive);
+      sessionBandPrimitiveRef.current = null;
       candleSeries.detachPrimitive(leftEdgeLabelPrimitive as unknown as ISeriesPrimitive<Time>);
       chart.remove();
     };
@@ -562,6 +667,7 @@ export function TickerPriceChart({ symbol, initialBars, technicals }: TickerPric
       grid: { horzLines: { color: gridColorByTheme[theme] } },
     });
     gridPrimitiveRef.current?.setColor(gridColorByTheme[theme]);
+    sessionBandPrimitiveRef.current?.setColor(sessionBandColorByTheme[theme]);
   }, [theme]);
 
   useEffect(() => {
@@ -582,6 +688,7 @@ export function TickerPriceChart({ symbol, initialBars, technicals }: TickerPric
 
     candleRef.current.setData(candleData);
     volumeRef.current.setData(volumeData);
+    sessionBandPrimitiveRef.current?.setBars(bars);
 
     const last = bars[bars.length - 1];
     const prev = bars.length > 1 ? bars[bars.length - 2] : null;
@@ -635,12 +742,16 @@ export function TickerPriceChart({ symbol, initialBars, technicals }: TickerPric
     leftEdgeLabelPrimitiveRef.current?.setLabels(leftEdgeLabels);
   }, [technicals]);
 
-  const lastBar = bars?.[bars.length - 1];
-  const prevBar = bars && bars.length > 1 ? bars[bars.length - 2] : null;
-  const displayBar: HoveredBar | null =
-    hoveredBar ?? (lastBar ? { o: lastBar.open, h: lastBar.high, l: lastBar.low, c: lastBar.close, v: lastBar.volume } : null);
-  const change = displayBar && prevBar ? displayBar.c - prevBar.close : null;
-  const changePct = change != null && prevBar?.close ? (change / prevBar.close) * 100 : null;
+  // The hovered bar (else the last one), compared with the bar just before it.
+  const hoveredIndex = bars && hoveredBarTime !== null ? bars.findIndex((bar) => bar.time === hoveredBarTime) : -1;
+  const shownIndex = hoveredIndex >= 0 ? hoveredIndex : (bars?.length ?? 0) - 1;
+  const shownBar = bars && shownIndex >= 0 ? bars[shownIndex] : undefined;
+  const barBeforeShown = bars && shownIndex > 0 ? bars[shownIndex - 1] : null;
+  const displayBar: DisplayedBar | null = shownBar ? { o: shownBar.open, h: shownBar.high, l: shownBar.low, c: shownBar.close, v: shownBar.volume } : null;
+  const change = displayBar && barBeforeShown ? displayBar.c - barBeforeShown.close : null;
+  const changePct = change != null && barBeforeShown?.close ? (change / barBeforeShown.close) * 100 : null;
+  const extendedSession = extendedSessionPriceChange(marketStatus?.state ?? null, livePrice ?? null, technicals?.lastRegularSessionClose ?? null, todayInEasternIso());
+  const changeClassName = (value: number) => (value > 0 ? "text-success" : value < 0 ? "text-danger" : "text-secondary");
   const isError = status === "error" || status === "empty";
 
   return (
@@ -672,7 +783,7 @@ export function TickerPriceChart({ symbol, initialBars, technicals }: TickerPric
                 <strong>C</strong> <span >{fmt(displayBar.c)}</span>
               </span>
               {change != null && (
-                <strong className={change > 0 ? "text-success" : change < 0 ? "text-danger" : "text-secondary"}>
+                <strong className={changeClassName(change)}>
                   {change >= 0 ? "+" : ""}
                   {fmt(change)} ({(changePct ?? 0) >= 0 ? "+" : ""}
                   {fmt(changePct)}%)
@@ -681,6 +792,15 @@ export function TickerPriceChart({ symbol, initialBars, technicals }: TickerPric
               <span>
                 <strong>Vol</strong> <span >{fmtVol(displayBar.v)}</span>
               </span>
+              {extendedSession && (
+                <span className="d-inline-flex align-items-center border-start ps-2" style={{ gap: "0.35rem" }}>
+                  <span className="text-secondary">{extendedSession.sessionLabel}</span>
+                  <strong>{fmt(extendedSession.livePrice)}</strong>
+                  <strong className={changeClassName(extendedSession.change)}>
+                    {formatSignedNumber(extendedSession.change)} ({formatSignedPercentageValue(extendedSession.changePercent)})
+                  </strong>
+                </span>
+              )}
             </>
           ) : (
             <span className="text-secondary">—</span>
