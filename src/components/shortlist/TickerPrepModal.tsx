@@ -16,6 +16,8 @@ interface TickerPrepModalProps {
   /** Latest run state, pushed to the parent so the shortlist badge and rows stay current. */
   onRunChange: (run: TickerBackfillRun | null) => void;
   onClose: () => void;
+  /** Opens the ticker modal; the prep modal closes first. */
+  onViewTicker: (symbol: string) => void;
 }
 
 // Shown for the step that is running until the server sends its own message.
@@ -72,7 +74,7 @@ function isFinishedStep(step: BackfillStep): boolean {
 // Informational modal (progress display, no destructive action): closes on
 // backdrop click and Esc, per the app's convention. Closing never stops the
 // run — it lives on the server. Design approved via mockup 2026-09-21.
-export function TickerPrepModal({ tickerId, symbol, companyName, onRunChange, onClose }: TickerPrepModalProps) {
+export function TickerPrepModal({ tickerId, symbol, companyName, onRunChange, onClose, onViewTicker }: TickerPrepModalProps) {
   const [run, setRun] = useState<TickerBackfillRun | null>(null);
   const [streamKey, setStreamKey] = useState(0);
   const [retrying, setRetrying] = useState(false);
@@ -130,6 +132,11 @@ export function TickerPrepModal({ tickerId, symbol, companyName, onRunChange, on
   const progressLabel = isRunning ? `Step ${currentStepNumber} of ${totalSteps || 3}` : isPartial ? `${succeededCount} of ${totalSteps} steps succeeded` : "All steps finished";
   const progressPercent = run?.progressPercent ?? 0;
   const failedChainStep = failedSteps.some((step) => step.key === "chain_warmup");
+
+  function handleViewTicker() {
+    onClose();
+    onViewTicker(symbol);
+  }
 
   return (
     <>
@@ -214,6 +221,9 @@ export function TickerPrepModal({ tickerId, symbol, companyName, onRunChange, on
             </div>
 
             <div className="prep-foot">
+              <button type="button" className="btn btn-outline-primary me-auto" onClick={handleViewTicker}>
+                View {symbol}
+              </button>
               {isPartial ? (
                 <>
                   <button type="button" className="btn btn-outline-secondary d-inline-flex align-items-center gap-1" disabled={retrying} onClick={handleRetry}>

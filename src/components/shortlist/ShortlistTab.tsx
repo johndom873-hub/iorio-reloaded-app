@@ -446,6 +446,7 @@ export function ShortlistTab({ onOpenTickerModal }: ShortlistTabProps) {
           companyName={prepTicker.companyName}
           onRunChange={handlePrepRunChange}
           onClose={() => setPrepTicker(null)}
+          onViewTicker={onOpenTickerModal}
         />
       )}
 

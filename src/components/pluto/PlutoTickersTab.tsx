@@ -538,7 +538,7 @@ export function PlutoTickersTab({ rows, loading, error, state, maxEnabled, isPho
           }}
         />
       )}
-      {prepTicker && <TickerPrepModal tickerId={prepTicker.tickerId} symbol={prepTicker.symbol} companyName={prepTicker.companyName} onRunChange={onPrepRunChange} onClose={() => setPrepTicker(null)} />}
+      {prepTicker && <TickerPrepModal tickerId={prepTicker.tickerId} symbol={prepTicker.symbol} companyName={prepTicker.companyName} onRunChange={onPrepRunChange} onClose={() => setPrepTicker(null)} onViewTicker={onOpenTicker} />}
     </>
   );
 }
