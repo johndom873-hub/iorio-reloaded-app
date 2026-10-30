@@ -21,6 +21,21 @@ interface TickerHeaderStripProps {
   onShortlisted: () => void;
 }
 
+function sumCallAndPut(call: number | null, put: number | null): number | null {
+  return call != null && put != null ? call + put : null;
+}
+
+/** " (C 8.1k · P 4.2k)" after a total; nothing while either side is missing. */
+function CallPutSplit({ call, put }: { call: number | null; put: number | null }) {
+  if (call == null || put == null) return null;
+  return (
+    <>
+      {" "}
+      (C {formatCompactNumber(call)} · P {formatCompactNumber(put)})
+    </>
+  );
+}
+
 export function TickerHeaderStrip({ symbol, overview, spotPrice, nextCalendarEvents, plutoManaged, onShortlisted }: TickerHeaderStripProps) {
   const [isAddingToShortlist, setIsAddingToShortlist] = useState(false);
   const [addToShortlistError, setAddToShortlistError] = useState<string | null>(null);
@@ -33,7 +48,10 @@ export function TickerHeaderStrip({ symbol, overview, spotPrice, nextCalendarEve
   const spotPriceFlash = useFlashOnChange(spotPrice);
   const lowFlash = useFlashOnChange(pricing.low ?? null);
   const highFlash = useFlashOnChange(pricing.high ?? null);
-  const volumeFlash = useFlashOnChange(pricing.volume ?? null);
+  const optionActivity = overview.optionActivity;
+  const totalOptionVolume = sumCallAndPut(optionActivity.callVolume, optionActivity.putVolume);
+  const totalOpenInterest = sumCallAndPut(optionActivity.callOpenInterest, optionActivity.putOpenInterest);
+  const optionVolumeFlash = useFlashOnChange(totalOptionVolume);
 
   async function handleAddToShortlist() {
     setIsAddingToShortlist(true);
@@ -71,7 +89,12 @@ export function TickerHeaderStrip({ symbol, overview, spotPrice, nextCalendarEve
           )}
         </span>
         <span className="text-secondary small">
-          <strong>Volume</strong> <span className={flashClassName(volumeFlash)}>{formatCompactNumber(pricing.volume ?? null)}</span>
+          <strong>Option vol</strong> <span className={flashClassName(optionVolumeFlash)}>{formatCompactNumber(totalOptionVolume)}</span>
+          <CallPutSplit call={optionActivity.callVolume} put={optionActivity.putVolume} />
+        </span>
+        <span className="text-secondary small">
+          <strong>Open int</strong> {formatCompactNumber(totalOpenInterest)}
+          <CallPutSplit call={optionActivity.callOpenInterest} put={optionActivity.putOpenInterest} />
         </span>
         <span className="text-secondary small">
           <strong>Ex-Div</strong> {formatDate(nextCalendarEvents?.nextExDividendDate ?? null)}

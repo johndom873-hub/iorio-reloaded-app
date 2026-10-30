@@ -10,13 +10,21 @@ export interface TickerPricing {
   high: number | null;
   low: number | null;
   previousClose: number | null;
-  volume: number | null;
+}
+
+/** Totals across all of the ticker's options: contracts traded today, and open interest (the previous day's figure). */
+export interface TickerOptionActivity {
+  callVolume: number | null;
+  putVolume: number | null;
+  callOpenInterest: number | null;
+  putOpenInterest: number | null;
 }
 
 export interface TickerOverview {
   companyName: string | null;
   sector: string | null;
   pricing: TickerPricing;
+  optionActivity: TickerOptionActivity;
   isShortlisted: boolean;
 }
 
