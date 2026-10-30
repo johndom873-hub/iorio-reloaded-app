@@ -9,18 +9,21 @@ import { decisionMakerLabel } from "./backtestPresentation";
 export const backtestSettingSectionTitles: Record<BacktestSettingSection, string> = {
   baseline_wheel: "Used by the CC + Put Ladder",
   steady_stake: "Used by the Steady Stake",
-  vol_farmer: "Used by the Vol Farmer",
+  vol_farmer: "Used by the original Vol Farmer (retired)",
   vol_farmer_v2: "Used by Vol Farmer v2",
 };
 
 export const steadyStakeSectionNote = "Used only when the decision maker is the Steady Stake. None of these change a CC + Put Ladder session; the ladder's values don't change a Steady Stake session.";
 
-export const volFarmerSectionNote = "Used only when the decision maker is the Vol Farmer. None of these change a CC + Put Ladder or Steady Stake session.";
+export const volFarmerSectionNote = "Used only by the original Vol Farmer, retired on 30 Oct 2026: its past sessions read them. None of these change any session that can still be run.";
 
-export const volFarmerV2SectionNote = "Used only when the decision maker is Vol Farmer v2, with the Vol Farmer's Calls' |delta| range and spread limit. None of these change any other session.";
+export const volFarmerV2SectionNote = "Used only when the decision maker is Vol Farmer v2. None of these change any other session.";
 
 /** The note under a section's title; the CC + Put Ladder's section opens the table and has none. */
 export const backtestSettingSectionNotes: Record<BacktestSettingSection, string | null> = { baseline_wheel: null, steady_stake: steadyStakeSectionNote, vol_farmer: volFarmerSectionNote, vol_farmer_v2: volFarmerV2SectionNote };
+
+/** The original Vol Farmer's section, retired with it (Marcelo 2026-10-30): no setting there changes a session that can still run. */
+export const isRetiredBacktestSettingSection = (section: BacktestSettingSection) => section === "vol_farmer";
 
 export interface BacktestSettingRowGroup {
   group: BacktestSettingGroup;
@@ -178,7 +181,7 @@ export function backtestSettingGroupSummary(group: BacktestSettingGroup, text: (
         Number(text("steadyStake.putCashPct")) > 0 ? `Puts on ${shown("steadyStake.putCashPct")} of free cash at ${text("steadyStake.putAbsDelta")}` : "no Puts",
         "expiry days only",
       ].join(" · ");
-    case "Vol Farmer":
+    case "Original Vol Farmer (retired)":
       return [
         `Calls |delta| ${text("volFarmer.callMinAbsDelta")}–${text("volFarmer.callMaxAbsDelta")}, ${text("volFarmer.callExpiry") === "next" ? "next expiry" : `${text("volFarmer.callMinDte")}–${text("volFarmer.callMaxDte")} DTE`}`,
         // A session run without a hedge (research) reads none of the Put settings.
@@ -192,6 +195,7 @@ export function backtestSettingGroupSummary(group: BacktestSettingGroup, text: (
       ].join(" · ");
     case "Vol Farmer v2":
       return [
+        `Calls |delta| ${text("volFarmer.callMinAbsDelta")}–${text("volFarmer.callMaxAbsDelta")}`,
         `Puts start under ${shown("volFarmerV2.putsStartCallYieldPct")}`,
         `Put |delta| ${text("volFarmerV2.putMaxAbsDelta")}, Step ${text("volFarmerV2.stepRule") === "implied_move_at_put_sale" ? "the one-month implied move at each Put sale" : shown("volFarmerV2.stepBelowFirstBreakEvenPct")} below the first break-even`,
         `LEAPS ${text("volFarmerV2.leapsMinDte")}+ days at |delta| ${text("volFarmerV2.leapsAbsDelta")}${Number(text("volFarmerV2.leapsMaxAccountPct")) > 0 ? `, at most ${shown("volFarmerV2.leapsMaxAccountPct")} of the ticker's pot` : ""}`,

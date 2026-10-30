@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { Link, useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { errorMessage } from "../../api/client";
-import { labelSettingPaths } from "../../lib/backtestSettingGroups";
+import { isRetiredBacktestSettingSection, labelSettingPaths } from "../../lib/backtestSettingGroups";
 import {
   backtestMaxRunsPerBatch,
   backtestMaxSymbolsPerSession,
@@ -414,7 +414,8 @@ export function NewBacktestSessionPage() {
   };
 
   const startingValue = parseDollarAmountText(startingValueText);
-  const allRows = template?.rows ?? [];
+  // The retired original Vol Farmer's rows change no session that can still run.
+  const allRows = useMemo(() => (template?.rows ?? []).filter((row) => !isRetiredBacktestSettingSection(row.section)), [template]);
   const decisionMakerRow = allRows.find((row) => row.path === decisionMakerPath) ?? null;
   const decisionMaker = (valueByPath[decisionMakerPath] ?? "baseline") as BacktestDecisionMaker;
   // Vol Farmer v2 deciding (mockup approved 2026-10-28): the Tickers card holds each ticker's allocation and, beside the

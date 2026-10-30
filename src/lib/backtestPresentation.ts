@@ -1290,10 +1290,10 @@ export function roundValueAxis(low: number, high: number, maxTicks: number): { m
 
 // ---- Decision maker (the stand-in rules, or the AI model through the Claude subscription) ----
 
-export const decisionMakerLabel: Record<BacktestDecisionMaker, string> = { rules: "Rules", llm: "The AI model", baseline: "Baseline wheel", steady_stake: "Steady Stake", vol_farmer: "Vol Farmer", vol_farmer_v2: "Vol Farmer v2" };
+export const decisionMakerLabel: Record<BacktestDecisionMaker, string> = { rules: "Rules", llm: "The AI model", baseline: "CC + Put Ladder", steady_stake: "Steady Stake", vol_farmer: "Original Vol Farmer (retired)", vol_farmer_v2: "Vol Farmer v2" };
 
 /** "decided by the rules", in a session's subtitle. */
-export const decidedByPhrase: Record<BacktestDecisionMaker, string> = { rules: "the rules", llm: "the AI model", baseline: "the baseline wheel", steady_stake: "the Steady Stake", vol_farmer: "the Vol Farmer", vol_farmer_v2: "Vol Farmer v2" };
+export const decidedByPhrase: Record<BacktestDecisionMaker, string> = { rules: "the rules", llm: "the AI model", baseline: "the CC + Put Ladder", steady_stake: "the Steady Stake", vol_farmer: "the original Vol Farmer", vol_farmer_v2: "Vol Farmer v2" };
 
 /** Who decided a session's choices: its override, else its frozen settings; "rules" on sessions saved before the choice existed. */
 export function sessionDecisionMaker(session: { overrides: BacktestSettingsOverrides; settingsSnapshot: BacktestSettings }): BacktestDecisionMaker {

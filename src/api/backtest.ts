@@ -500,9 +500,9 @@ export interface BacktestSettingChoice {
   unavailableReason?: string;
 }
 
-export type BacktestSettingGroup = "How the session runs" | "Put ladder" | "Calls and Covered Calls" | "Contract choice" | "Entry filters" | "Exits" | "Hedge" | "Steady Stake" | "Vol Farmer" | "Vol Farmer v2";
+export type BacktestSettingGroup = "How the session runs" | "Put ladder" | "Calls and Covered Calls" | "Contract choice" | "Entry filters" | "Exits" | "Hedge" | "Steady Stake" | "Original Vol Farmer (retired)" | "Vol Farmer v2";
 
-/** "baseline_wheel": rows the Baseline wheel (the CC + Put Ladder) reads; the others: rows only that decision maker reads. */
+/** "baseline_wheel": rows the CC + Put Ladder reads; the others: rows only that decision maker reads. */
 export type BacktestSettingSection = "baseline_wheel" | "steady_stake" | "vol_farmer" | "vol_farmer_v2";
 
 /** A row's value against another row's: `oneOf` / `noneOf` its choice values, or a number `above`. */
