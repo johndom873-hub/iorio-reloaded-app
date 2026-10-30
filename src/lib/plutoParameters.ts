@@ -50,51 +50,17 @@ function ladderOverrideNote(context: PlutoParameterContext, overrides: (ticker: 
 
 export const plutoParameterGroups: PlutoParameterGroup[] = [
   {
-    key: "ladder",
-    title: "CC + Put Ladder",
-    summary: (settings) => `share level ${settings.ladderSharesPct}% · ${settings.ladderRungs} rungs · Calls' |delta| ${settings.ladderMinAbsDelta.toFixed(2)}–${settings.ladderMaxAbsDelta.toFixed(2)} · ${settings.ladderMinDte}–${settings.ladderMaxDte} DTE · shock ${settings.ladderShockMinPct}–${settings.ladderShockMaxPct}%`,
+    key: "capital",
+    title: "Capital",
+    summary: (settings) => `budget ${settings.capitalBudgetPct}% of the account`,
     parameters: [
-      { field: "ladderSharesPct", label: "Share level", unit: "% of pot", kind: "number", step: "1", help: (context) => `Part of each ticker's pot that buys shares; the rest is the Put reserve, split across the rungs.${ladderOverrideNote(context, (ticker) => ticker.tickerOverrides.ladderSharesPct !== null)}` },
-      { field: "ladderRungs", label: "Rungs", unit: "rungs", kind: "integer", step: "1", help: (context) => `Ladder Puts per ticker, each capped below the price: the first rung's cap is the price × (1 − shock ÷ rungs).${ladderOverrideNote(context, (ticker) => ticker.tickerOverrides.ladderRungs !== null)}` },
-      { field: "ladderMinAbsDelta", label: "Calls' |delta| range", unit: "min", kind: "number", step: "0.01", help: (context) => `Calls the ladder may sell, by absolute delta. The ladder's Puts have no |delta| range: the rung's cap bounds them. Manual orders keep the platform's range.${ladderOverrideNote(context, (ticker) => ticker.tickerOverrides.minAbsDelta !== null || ticker.tickerOverrides.maxAbsDelta !== null)}` },
-      { field: "ladderMaxAbsDelta", label: "Max |delta|", unit: "max", kind: "number", step: "0.01", help: "Highest absolute delta of a Call the ladder may sell.", pairedWithPrevious: true },
-      { field: "ladderMinDte", label: "Days to expiry", unit: "min", kind: "integer", step: "1", help: "Shortest and longest expiry the ladder may sell." },
-      { field: "ladderMaxDte", label: "Max DTE", unit: "max", kind: "integer", step: "1", help: "Longest expiry, in days.", pairedWithPrevious: true },
-      { field: "ladderMaxSpreadPctOfMid", label: "Max spread", unit: "% of mid", kind: "number", step: "1", help: "Widest bid-ask spread, as a share of the mid, the ladder will sell into." },
-      {
-        field: "ladderShockMinPct",
-        label: "Shock limits",
-        unit: "min %",
-        kind: "number",
-        step: "1",
-        help: (context) => {
-          const example = (context.ladderTickers ?? []).find((ticker) => ticker.recommendedShockPct !== null);
-          return `Each ticker's recommended shock is its Max drawdown over the lookback, kept within these limits${example ? ` (${example.symbol} now: ${example.recommendedShockPct}%)` : ""}.${ladderOverrideNote(context, (ticker) => ticker.overrideShockPct !== null)}`;
-        },
-      },
-      { field: "ladderShockMaxPct", label: "Shock ceiling", unit: "max %", kind: "number", step: "1", help: "Highest recommended shock.", pairedWithPrevious: true },
-      { field: "ladderShockNoHistoryPct", label: "Shock for a new listing", unit: "%", kind: "number", step: "1", help: "Used instead when the lookback holds fewer than 250 daily closes." },
-      { field: "ladderShockLookbackYears", label: "Shock lookback", unit: "years", kind: "integer", step: "1", help: "Years of daily closes the Max drawdown is measured over." },
-    ],
-  },
-  {
-    key: "ladderSafety",
-    title: "Ladder safety",
-    summary: (settings) => `${settings.ladderMaxWorkingOrdersPerTicker} working orders · ${settings.ladderMaxOpenPositionsPerTicker} open positions · ${settings.ladderMaxOrdersPerTickerPerDay} orders a day per ticker · ${settings.ladderMaxOpenPositions} positions · ${settings.ladderMaxOrdersPerDay} orders a day across the book · SPY ${settings.ladderSpyStressBreakerPct}% · ${settings.ladderTickerCooldownMinutes ? `${settings.ladderTickerCooldownMinutes} min cooldown` : "no cooldown"}`,
-    parameters: [
-      { field: "ladderMaxWorkingOrdersPerTicker", label: "Working orders per ticker", unit: "orders", kind: "integer", step: "1", help: "At most this many of a ticker's orders work at once, the ladder's and Vol Farmer v2's alike; the rest go at the next looks." },
-      { field: "ladderMaxOpenPositionsPerTicker", label: "Open positions per ticker", unit: "positions", kind: "integer", step: "1", help: "Neither strategy opens anything new on a ticker holding this many." },
-      { field: "ladderMaxOrdersPerTickerPerDay", label: "Orders per ticker per day", unit: "orders", kind: "integer", step: "1", help: "Every order either strategy sends on a ticker in a day counts, re-prices included." },
-      { field: "ladderMaxOpenPositions", label: "Open positions, all tickers", unit: "positions", kind: "integer", step: "1", help: "Across every Pluto ticker: open positions plus working orders. Sales beyond it wait for a later look." },
-      { field: "ladderMaxOrdersPerDay", label: "Orders per day, all tickers", unit: "orders", kind: "integer", step: "1", help: "Orders both strategies send in a day across every ticker, counted as the per-ticker cap counts them. Sales beyond it wait." },
-      { field: "ladderSpyStressBreakerPct", label: "SPY stress breaker", unit: "% drop", kind: "number", step: "0.1", help: "While SPY is down this much today, the ladder sends nothing and Vol Farmer v2 opens nothing; a LEAPS sale still goes. The daily-loss breaker is under Session & breakers." },
-      { field: "ladderTickerCooldownMinutes", label: "Ticker cooldown", unit: "min", kind: "integer", step: "1", help: "Minutes after a filled Pluto order before either strategy acts on that ticker again. 0 = no cooldown." },
+      { field: "capitalBudgetPct", label: "Capital budget", unit: "% of account", kind: "number", step: "1", help: (context) => `Everything that may be committed at once on the tickers Pluto is enabled on, human positions there included${dollarsOfAccount(context, context.settings.capitalBudgetPct)}. Hedges are not counted.` },
     ],
   },
   {
     key: "volFarmerV2",
-    title: "Vol Farmer v2",
-    note: "Every Vol Farmer v2 ticker. Set from the lab's values of 27 Oct 2026; never synced with the lab. The caps, cooldown and SPY stress breaker under Ladder safety count v2's orders too.",
+    title: "Vol Farmer",
+    note: "Every Vol Farmer v2 ticker. Set from the lab's values of 27 Oct 2026; never synced with the lab. The caps, cooldown and SPY stress breaker under Safety Limits count v2's orders too.",
     summary: (settings) => `Calls' |delta| ${settings.volFarmerV2CallMinAbsDelta.toFixed(2)}–${settings.volFarmerV2CallMaxAbsDelta.toFixed(2)} · Puts under ${settings.volFarmerV2PutsStartCallYieldPct}% a year, |delta| ≤ ${settings.volFarmerV2PutMaxAbsDelta.toFixed(2)} · Step ${settings.volFarmerV2StepRule === "fixed" ? `${settings.volFarmerV2StepBelowFirstBreakEvenPct}% fixed` : "the implied move"} · LEAPS ${settings.volFarmerV2LeapsMinDte}+ DTE, |delta| ${settings.volFarmerV2LeapsAbsDelta.toFixed(2)}, ≤ ${settings.volFarmerV2LeapsMaxAllocationPct}% of the pot · spread ${settings.volFarmerV2MaxSpreadPctOfMid}%`,
     parameters: [
       { field: "volFarmerV2CallMinAbsDelta", label: "Calls' |delta| range", unit: "min", kind: "number", step: "0.01", help: "Calls v2 may sell, by absolute delta. A Call is also struck at or above its position's break-even." },
@@ -128,16 +94,51 @@ export const plutoParameterGroups: PlutoParameterGroup[] = [
     ],
   },
   {
-    key: "capital",
-    title: "Capital",
-    summary: (settings) => `budget ${settings.capitalBudgetPct}% of the account`,
+    key: "ladder",
+    title: "CC + Put Ladder",
+    summary: (settings) => `share level ${settings.ladderSharesPct}% · ${settings.ladderRungs} rungs · Calls' |delta| ${settings.ladderMinAbsDelta.toFixed(2)}–${settings.ladderMaxAbsDelta.toFixed(2)} · ${settings.ladderMinDte}–${settings.ladderMaxDte} DTE · shock ${settings.ladderShockMinPct}–${settings.ladderShockMaxPct}%`,
     parameters: [
-      { field: "capitalBudgetPct", label: "Capital budget", unit: "% of account", kind: "number", step: "1", help: (context) => `Everything that may be committed at once on the tickers Pluto is enabled on, human positions there included${dollarsOfAccount(context, context.settings.capitalBudgetPct)}. Hedges are not counted.` },
+      { field: "ladderSharesPct", label: "Share level", unit: "% of pot", kind: "number", step: "1", help: (context) => `Part of each ticker's pot that buys shares; the rest is the Put reserve, split across the rungs.${ladderOverrideNote(context, (ticker) => ticker.tickerOverrides.ladderSharesPct !== null)}` },
+      { field: "ladderRungs", label: "Rungs", unit: "rungs", kind: "integer", step: "1", help: (context) => `Ladder Puts per ticker, each capped below the price: the first rung's cap is the price × (1 − shock ÷ rungs).${ladderOverrideNote(context, (ticker) => ticker.tickerOverrides.ladderRungs !== null)}` },
+      { field: "ladderMinAbsDelta", label: "Calls' |delta| range", unit: "min", kind: "number", step: "0.01", help: (context) => `Calls the ladder may sell, by absolute delta. The ladder's Puts have no |delta| range: the rung's cap bounds them. Manual orders keep the platform's range.${ladderOverrideNote(context, (ticker) => ticker.tickerOverrides.minAbsDelta !== null || ticker.tickerOverrides.maxAbsDelta !== null)}` },
+      { field: "ladderMaxAbsDelta", label: "Max |delta|", unit: "max", kind: "number", step: "0.01", help: "Highest absolute delta of a Call the ladder may sell.", pairedWithPrevious: true },
+      { field: "ladderMinDte", label: "Days to expiry", unit: "min", kind: "integer", step: "1", help: "Shortest and longest expiry the ladder may sell." },
+      { field: "ladderMaxDte", label: "Max DTE", unit: "max", kind: "integer", step: "1", help: "Longest expiry, in days.", pairedWithPrevious: true },
+      { field: "ladderMaxSpreadPctOfMid", label: "Max spread", unit: "% of mid", kind: "number", step: "1", help: "Widest bid-ask spread, as a share of the mid, the ladder will sell into." },
+      {
+        field: "ladderShockMinPct",
+        label: "Shock limits",
+        unit: "min %",
+        kind: "number",
+        step: "1",
+        help: (context) => {
+          const example = (context.ladderTickers ?? []).find((ticker) => ticker.recommendedShockPct !== null);
+          return `Each ticker's recommended shock is its Max drawdown over the lookback, kept within these limits${example ? ` (${example.symbol} now: ${example.recommendedShockPct}%)` : ""}.${ladderOverrideNote(context, (ticker) => ticker.overrideShockPct !== null)}`;
+        },
+      },
+      { field: "ladderShockMaxPct", label: "Shock ceiling", unit: "max %", kind: "number", step: "1", help: "Highest recommended shock.", pairedWithPrevious: true },
+      { field: "ladderShockNoHistoryPct", label: "Shock for a new listing", unit: "%", kind: "number", step: "1", help: "Used instead when the lookback holds fewer than 250 daily closes." },
+      { field: "ladderShockLookbackYears", label: "Shock lookback", unit: "years", kind: "integer", step: "1", help: "Years of daily closes the Max drawdown is measured over." },
+    ],
+  },
+  {
+    key: "safetyLimits",
+    title: "Safety Limits",
+    note: "They hold both strategies: the CC + Put Ladder's and Vol Farmer v2's orders count together.",
+    summary: (settings) => `${settings.safetyMaxWorkingOrdersPerTicker} working orders · ${settings.safetyMaxOpenPositionsPerTicker} open positions · ${settings.safetyMaxOrdersPerTickerPerDay} orders a day per ticker · ${settings.safetyMaxOpenPositions} positions · ${settings.safetyMaxOrdersPerDay} orders a day across the book · SPY ${settings.safetySpyStressBreakerPct}% · ${settings.safetyTickerCooldownMinutes ? `${settings.safetyTickerCooldownMinutes} min cooldown` : "no cooldown"}`,
+    parameters: [
+      { field: "safetyMaxWorkingOrdersPerTicker", label: "Working orders per ticker", unit: "orders", kind: "integer", step: "1", help: "At most this many of a ticker's orders work at once, the ladder's and Vol Farmer v2's alike; the rest go at the next looks." },
+      { field: "safetyMaxOpenPositionsPerTicker", label: "Open positions per ticker", unit: "positions", kind: "integer", step: "1", help: "Neither strategy opens anything new on a ticker holding this many." },
+      { field: "safetyMaxOrdersPerTickerPerDay", label: "Orders per ticker per day", unit: "orders", kind: "integer", step: "1", help: "Every order either strategy sends on a ticker in a day counts, re-prices included." },
+      { field: "safetyMaxOpenPositions", label: "Open positions, all tickers", unit: "positions", kind: "integer", step: "1", help: "Across every Pluto ticker: open positions plus working orders. Sales beyond it wait for a later look." },
+      { field: "safetyMaxOrdersPerDay", label: "Orders per day, all tickers", unit: "orders", kind: "integer", step: "1", help: "Orders both strategies send in a day across every ticker, counted as the per-ticker cap counts them. Sales beyond it wait." },
+      { field: "safetySpyStressBreakerPct", label: "SPY stress breaker", unit: "% drop", kind: "number", step: "0.1", help: "While SPY is down this much today, the ladder sends nothing and Vol Farmer v2 opens nothing; a LEAPS sale still goes. The daily-loss breaker is under Session & Breakers." },
+      { field: "safetyTickerCooldownMinutes", label: "Ticker cooldown", unit: "min", kind: "integer", step: "1", help: "Minutes after a filled Pluto order before either strategy acts on that ticker again. 0 = no cooldown." },
     ],
   },
   {
     key: "session",
-    title: "Session & breakers",
+    title: "Session & Breakers",
     summary: (settings) => `window ${settings.windowStartEt}–${settings.windowEndEt} ET · daily loss breaker ${settings.dailyLossBreakerPct}% · quotes up to ${settings.maxQuoteAgeMinutes} min old`,
     parameters: [
       { field: "windowStartEt", label: "Window start", unit: "ET", kind: "time", help: "Pluto acts from this Eastern time." },
@@ -149,7 +150,7 @@ export const plutoParameterGroups: PlutoParameterGroup[] = [
   },
   {
     key: "triggers",
-    title: "Quotes & lines",
+    title: "Quotes & Lines",
     summary: (settings) => `option quotes checked every ${settings.bandQuotePollSeconds} s · bursts of up to ${settings.burstLines} lines · up to ${settings.maxEnabledTickers} tickers`,
     parameters: [
       { field: "bandQuotePollSeconds", label: "Option quotes poll", unit: "s", kind: "integer", step: "1", help: "How often Pluto checks the market quote loop for option quotes received since its last round." },
@@ -192,7 +193,6 @@ const parameterAuditLabel: Partial<Record<PlutoSettingsField, string>> = {
   ladderShockMinPct: "Shock floor",
   ladderShockMaxPct: "Shock ceiling",
   ladderMaxSpreadPctOfMid: "Ladder max spread",
-  ladderTickerCooldownMinutes: "Ladder ticker cooldown",
   volFarmerV2CallMinAbsDelta: "Vol Farmer v2 Calls' |delta| lower limit",
   volFarmerV2CallMaxAbsDelta: "Vol Farmer v2 Calls' |delta| upper limit",
   volFarmerV2MaxSpreadPctOfMid: "Vol Farmer v2 max spread",
@@ -213,6 +213,13 @@ export const plutoParameterLabelByField: Record<string, string> = {
   maxTickerExposurePct: "Max per ticker (old, % of account)",
   maxSectorExposurePct: "Max per sector (old, % of account)",
   daySignalsPollSeconds: "Option quotes poll",
+  ladderMaxWorkingOrdersPerTicker: "Working orders per ticker",
+  ladderMaxOpenPositionsPerTicker: "Open positions per ticker",
+  ladderMaxOrdersPerTickerPerDay: "Orders per ticker per day",
+  ladderMaxOpenPositions: "Open positions, all tickers",
+  ladderMaxOrdersPerDay: "Orders per day, all tickers",
+  ladderSpyStressBreakerPct: "SPY stress breaker",
+  ladderTickerCooldownMinutes: "Ticker cooldown",
   maxActionsPerSession: "Max orders per day (retired)",
   executionStrategy: "Active strategy (retired)",
   maxTickerPctOfBudget: "Max per ticker (retired)",

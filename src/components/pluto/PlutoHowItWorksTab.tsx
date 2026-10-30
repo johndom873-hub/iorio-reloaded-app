@@ -87,7 +87,7 @@ function Bar({ label, value, widthPct, tone }: { label: string; value: number; w
 }
 
 function LadderExplanation({ values }: { values: PlutoHowItWorks }) {
-  const { ladder, shared } = values;
+  const { ladder, shared, safetyLimits } = values;
   const { example } = ladder;
   const deltaRange = `${formatDelta(ladder.minAbsDelta)}–${formatDelta(ladder.maxAbsDelta)}`;
   const firstRung = example.rungs[0];
@@ -188,17 +188,17 @@ function LadderExplanation({ values }: { values: PlutoHowItWorks }) {
             <li>Pluto asks IBKR for a fresh price of the contract and checks the contract rules again on it: the bid, the spread, the days to expiry, the opening yield, and the delta for a Call or a Put that opens a cycle. If one fails, nothing is sent and the sale is planned again at a later look; a price without a time is not used.</li>
             <li>The order's price is the middle of the bid and the ask, rounded to the cent: up for a sale, so it is never below the middle.</li>
             <li>An order not filled within <Value>{shared.unfilledOrderCancelMinutes}</Value> minutes is cancelled; Pluto plans afresh at its next look.</li>
-            <li>Per ticker: at most <Value>{ladder.maxWorkingOrdersPerTicker}</Value> orders working at once, <Value>{ladder.maxOrdersPerTickerPerDay}</Value> orders a day and <Value>{ladder.maxOpenPositionsPerTicker}</Value> open positions.</li>
-            <li>All tickers together: at most <Value>{ladder.maxOpenPositions}</Value> open positions and working orders, <Value>{ladder.maxOrdersPerDay}</Value> orders a day, and never more money committed than the capital budget, <Value>{pct(shared.capitalBudgetPct)}</Value> of the account. Sales beyond a limit wait for a later look.</li>
+            <li>Per ticker: at most <Value>{safetyLimits.maxWorkingOrdersPerTicker}</Value> orders working at once, <Value>{safetyLimits.maxOrdersPerTickerPerDay}</Value> orders a day and <Value>{safetyLimits.maxOpenPositionsPerTicker}</Value> open positions.</li>
+            <li>All tickers together: at most <Value>{safetyLimits.maxOpenPositions}</Value> open positions and working orders, <Value>{safetyLimits.maxOrdersPerDay}</Value> orders a day, and never more money committed than the capital budget, <Value>{pct(shared.capitalBudgetPct)}</Value> of the account. Sales beyond a limit wait for a later look.</li>
             <li>The order route checks the ticker's pot, the capital budget across all tickers and the cash reserve one last time.</li>
             <li>A routine order problem (the price moved, no fresh price, or IBKR refusing the price or the margin) only skips that order: it is planned again at the next look. Any other order error pauses Pluto until someone looks.</li>
           </ul>
         </Card>
         <Card title="When Pluto holds back">
           <ul className="pm-how-list">
-            <li>SPY is down <Value>{pct(ladder.spyStressBreakerPct)}</Value> or more on the day: no new orders until it recovers, or someone turns on the override for the day.</li>
+            <li>SPY is down <Value>{pct(safetyLimits.spyStressBreakerPct)}</Value> or more on the day: no new orders until it recovers, or someone turns on the override for the day.</li>
             <li>The account is down <Value>{pct(shared.dailyLossBreakerPct)}</Value> or more on the day. A real loss stops Pluto until someone resets it.</li>
-            {ladder.tickerCooldownMinutes > 0 && <li>A ticker rests <Value>{ladder.tickerCooldownMinutes}</Value> minutes after a fill.</li>}
+            {safetyLimits.tickerCooldownMinutes > 0 && <li>A ticker rests <Value>{safetyLimits.tickerCooldownMinutes}</Value> minutes after a fill.</li>}
             <li>Outside Pluto's window, <Value>{shared.windowStartEt}</Value> to <Value>{shared.windowEndEt}</Value> ET (ending at least {shared.windowEndMinutesBeforeCloseAtLeast} minutes before the close).</li>
             <li>Any of Pluto's usual checks fails: IBKR not connected, the books not matching IBKR.</li>
             <li>Each day's first orders wait for Pluto's opening look, once the day's ladder prices are in: they are quoted from 9:30 ET.</li>
@@ -220,7 +220,7 @@ function LadderExplanation({ values }: { values: PlutoHowItWorks }) {
 }
 
 function VolFarmerV2Explanation({ values }: { values: PlutoHowItWorks }) {
-  const { volFarmerV2: v2, shared, ladder } = values;
+  const { volFarmerV2: v2, shared, safetyLimits } = values;
   const { example } = v2;
   const halfPot = example.pot / 2;
   const implied = v2.stepRule === "implied_move_at_put_sale";
@@ -271,7 +271,7 @@ function VolFarmerV2Explanation({ values }: { values: PlutoHowItWorks }) {
           <ul className="pm-how-list">
             <li>LEAPS: bought once the stock is half a Step below B-E², whatever the Calls; the first expiry <Value>{v2.leapsMinDte}</Value> or more days out, |delta| nearest <Value>{formatDelta(v2.leapsAbsDelta)}</Value>, at most <Value>{pct(v2.leapsMaxAllocationPct)}</Value> of the ticker's pot; one per holding of the second position.</li>
             <li>Short of its count when bought, the LEAPS is topped up with the same contract at the next rounds while the stock is below B-E².</li>
-            <li>The caps under the CC + Put Ladder's safety settings count v2's orders too. While SPY is down <Value>{pct(ladder.spyStressBreakerPct)}</Value> or more on the day, v2 opens nothing; a LEAPS sale still goes.</li>
+            <li>The Safety Limits' caps count v2's orders together with the CC + Put Ladder's. While SPY is down <Value>{pct(safetyLimits.spyStressBreakerPct)}</Value> or more on the day, v2 opens nothing; a LEAPS sale still goes.</li>
             <li>Every order but a LEAPS is held to the ticker's pot; a LEAPS to Pluto's budget across every ticker.</li>
             <li>A new cycle's lots and a Put's contracts are no more than the free cash pays for: Pluto's budget left, at most the account's free cash.</li>
             <li>The v2 tickers take turns at each round in alphabetical order, starting one ticker further each day. A LEAPS is bought or topped up after every ticker's other orders, with the free cash they left.</li>

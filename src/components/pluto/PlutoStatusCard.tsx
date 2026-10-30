@@ -382,7 +382,7 @@ export function PlutoStatusCard({ state, status, settings, now, isPhone, showKpi
               ) : (
                 <>
                   <span className="strong">No new positions while SPY is down {stress.spyDayChangePct === null ? "" : `${Math.abs(stress.spyDayChangePct).toFixed(1)}% `}today</span>{" "}
-                  <span className="muted">(the limit is {settings?.ladderSpyStressBreakerPct ?? "—"}%). The ladder sells nothing new. Lifts by itself if SPY recovers.</span>
+                  <span className="muted">(the limit is {settings?.safetySpyStressBreakerPct ?? "—"}%). Pluto opens nothing new; a LEAPS sale still goes. Lifts by itself if SPY recovers.</span>
                 </>
               )}
             </span>

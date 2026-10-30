@@ -144,13 +144,13 @@ export interface PlutoSettings {
   ladderShockMaxPct: number;
   ladderShockNoHistoryPct: number;
   ladderShockLookbackYears: number;
-  ladderMaxWorkingOrdersPerTicker: number;
-  ladderMaxOpenPositionsPerTicker: number;
-  ladderMaxOrdersPerTickerPerDay: number;
-  ladderMaxOpenPositions: number;
-  ladderMaxOrdersPerDay: number;
-  ladderSpyStressBreakerPct: number;
-  ladderTickerCooldownMinutes: number;
+  safetyMaxWorkingOrdersPerTicker: number;
+  safetyMaxOpenPositionsPerTicker: number;
+  safetyMaxOrdersPerTickerPerDay: number;
+  safetyMaxOpenPositions: number;
+  safetyMaxOrdersPerDay: number;
+  safetySpyStressBreakerPct: number;
+  safetyTickerCooldownMinutes: number;
   // Vol Farmer v2's values, every v2 ticker alike: set once from the lab's of 27 Oct 2026, never synced with the lab.
   volFarmerV2PutsStartCallYieldPct: number;
   volFarmerV2PutMaxAbsDelta: number;
@@ -586,6 +586,8 @@ export function fetchPlutoSettings(): Promise<PlutoSettings> {
 /** Every number the How it works tab quotes (API src/pluto/howItWorks.ts): percentages in percent, deltas as fractions, money in dollars. */
 export interface PlutoHowItWorks {
   shared: { windowStartEt: string; windowEndEt: string; windowEndMinutesBeforeCloseAtLeast: number; capitalBudgetPct: number; excessAllowancePct: number; dailyLossBreakerPct: number; unfilledOrderCancelMinutes: number; premiumYieldSessionsPerYear: number };
+  /** The Safety Limits: they hold every Pluto strategy, both strategies' orders counted together. */
+  safetyLimits: { maxWorkingOrdersPerTicker: number; maxOrdersPerTickerPerDay: number; maxOpenPositionsPerTicker: number; maxOpenPositions: number; maxOrdersPerDay: number; spyStressBreakerPct: number; tickerCooldownMinutes: number };
   ladder: {
     minAbsDelta: number;
     maxAbsDelta: number;
@@ -603,13 +605,6 @@ export interface PlutoHowItWorks {
     putOverCallYieldMarginPct: number;
     minEntryYieldPct: number;
     maxQuoteAgeMinutes: number;
-    maxWorkingOrdersPerTicker: number;
-    maxOrdersPerTickerPerDay: number;
-    maxOpenPositionsPerTicker: number;
-    maxOpenPositions: number;
-    maxOrdersPerDay: number;
-    spyStressBreakerPct: number;
-    tickerCooldownMinutes: number;
     example: {
       accountValue: number;
       allocationPct: number;
