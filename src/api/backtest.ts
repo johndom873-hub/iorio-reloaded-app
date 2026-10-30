@@ -547,7 +547,7 @@ export interface BacktestSettingsTemplate {
 }
 
 /** The most symbols one session runs on its book. */
-export const backtestMaxSymbolsPerSession = 30;
+export const backtestMaxSymbolsPerSession = 60;
 
 /** The API's llm/estimateLlmSession.ts: the model calls and hours of model time a session with the AI model deciding may take. */
 /** What POST /backtest/sessions answers: the session, its job, and what the session will do differently because of what its data files hold (it still runs). */
