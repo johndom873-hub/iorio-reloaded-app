@@ -217,6 +217,8 @@ export interface BacktestVolFarmerSettings {
 
 /** Vol Farmer v2's values (the API's BacktestVolFarmerV2Settings; research). */
 export interface BacktestVolFarmerV2Settings {
+  /** % of the ticker's pot the first position's shares are bought with; the Puts sell on the rest. */
+  firstPositionPct: number;
   putsStartCallYieldPct: number;
   putMaxAbsDelta: number;
   stepBelowFirstBreakEvenPct: number;

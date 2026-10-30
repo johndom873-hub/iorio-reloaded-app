@@ -61,12 +61,13 @@ export const plutoParameterGroups: PlutoParameterGroup[] = [
     key: "volFarmerV2",
     title: "Vol Farmer",
     note: "Every Vol Farmer v2 ticker. Set from the lab's values of 27 Oct 2026; never synced with the lab. The caps, cooldown and SPY stress breaker under Safety Limits count v2's orders too.",
-    summary: (settings) => `Calls' |delta| ${settings.volFarmerV2CallMinAbsDelta.toFixed(2)}–${settings.volFarmerV2CallMaxAbsDelta.toFixed(2)} · Puts under ${settings.volFarmerV2PutsStartCallYieldPct}% a year, |delta| ≤ ${settings.volFarmerV2PutMaxAbsDelta.toFixed(2)} · Step ${settings.volFarmerV2StepRule === "fixed" ? `${settings.volFarmerV2StepBelowFirstBreakEvenPct}% fixed` : "the implied move"} · LEAPS ${settings.volFarmerV2LeapsMinDte}+ DTE, |delta| ${settings.volFarmerV2LeapsAbsDelta.toFixed(2)}, ≤ ${settings.volFarmerV2LeapsMaxAllocationPct}% of the pot · spread ${settings.volFarmerV2MaxSpreadPctOfMid}%`,
+    summary: (settings) => `First position ${settings.volFarmerV2FirstPositionPct}% · Calls' |delta| ${settings.volFarmerV2CallMinAbsDelta.toFixed(2)}–${settings.volFarmerV2CallMaxAbsDelta.toFixed(2)} · Puts under ${settings.volFarmerV2PutsStartCallYieldPct}% a year, |delta| ≤ ${settings.volFarmerV2PutMaxAbsDelta.toFixed(2)} · Step ${settings.volFarmerV2StepRule === "fixed" ? `${settings.volFarmerV2StepBelowFirstBreakEvenPct}% fixed` : "the implied move"} · LEAPS ${settings.volFarmerV2LeapsMinDte}+ DTE, |delta| ${settings.volFarmerV2LeapsAbsDelta.toFixed(2)}, ≤ ${settings.volFarmerV2LeapsMaxAllocationPct}% of the pot · spread ${settings.volFarmerV2MaxSpreadPctOfMid}%`,
     parameters: [
       { field: "volFarmerV2CallMinAbsDelta", label: "Calls' |delta| range", unit: "min", kind: "number", step: "0.01", help: "Calls v2 may sell, by absolute delta. A Call is also struck at or above its position's break-even." },
       { field: "volFarmerV2CallMaxAbsDelta", label: "Calls' max |delta|", unit: "max", kind: "number", step: "0.01", help: "Highest absolute delta of a Call v2 may sell.", pairedWithPrevious: true },
       { field: "volFarmerV2MaxSpreadPctOfMid", label: "Max spread", unit: "% of mid", kind: "number", step: "1", help: "Widest bid-ask spread, as a share of the mid, of every v2 order, the LEAPS' included." },
-      { field: "volFarmerV2PutsStartCallYieldPct", label: "Puts start under", unit: "% a year", kind: "number", step: "0.5", help: "When the first position needs a new Call and the best one pays under this, v2 sells Puts with the other half of the pot." },
+      { field: "volFarmerV2FirstPositionPct", label: "First position", unit: "% of the pot", kind: "number", step: "5", help: "The share of the ticker's pot the first position's shares are bought with, in whole lots; the Puts sell on the rest (10 to 90)." },
+      { field: "volFarmerV2PutsStartCallYieldPct", label: "Puts start under", unit: "% a year", kind: "number", step: "0.5", help: "When the first position needs a new Call and the best one pays under this, v2 sells Puts with the rest of the pot." },
       { field: "volFarmerV2PutMaxAbsDelta", label: "Put |delta|", unit: "max", kind: "number", step: "0.01", help: "The Puts' highest absolute delta." },
       {
         field: "volFarmerV2StepRule",
@@ -196,6 +197,7 @@ const parameterAuditLabel: Partial<Record<PlutoSettingsField, string>> = {
   volFarmerV2CallMinAbsDelta: "Vol Farmer v2 Calls' |delta| lower limit",
   volFarmerV2CallMaxAbsDelta: "Vol Farmer v2 Calls' |delta| upper limit",
   volFarmerV2MaxSpreadPctOfMid: "Vol Farmer v2 max spread",
+  volFarmerV2FirstPositionPct: "Vol Farmer v2 first position",
   volFarmerV2PutsStartCallYieldPct: "Vol Farmer v2 Puts start under",
   volFarmerV2PutMaxAbsDelta: "Vol Farmer v2 Put |delta|",
   volFarmerV2StepRule: "Vol Farmer v2 Step rule",

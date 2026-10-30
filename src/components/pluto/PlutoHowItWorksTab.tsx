@@ -222,17 +222,17 @@ function LadderExplanation({ values }: { values: PlutoHowItWorks }) {
 function VolFarmerV2Explanation({ values }: { values: PlutoHowItWorks }) {
   const { volFarmerV2: v2, shared, safetyLimits } = values;
   const { example } = v2;
-  const halfPot = example.pot / 2;
+  const firstPositionDollars = (example.pot * v2.firstPositionPct) / 100;
   const implied = v2.stepRule === "implied_move_at_put_sale";
   return (
     <>
       <div className="pm-how-pair">
         <Card title="In plain words">
           <p className="pm-how-lead">
-            Vol Farmer v2 earns option premium on a stock in two <b>positions</b>. Half the ticker's pot buys shares, the first position, and sells <b>Calls</b> on them, always at or above what the shares cost after the premiums already collected on them: the first position's break-even, <b>B-E¹</b>.
+            Vol Farmer v2 earns option premium on a stock in two <b>positions</b>. <Value>{pct(v2.firstPositionPct)}</Value> of the ticker's pot buys shares, the first position, and sells <b>Calls</b> on them, always at or above what the shares cost after the premiums already collected on them: the first position's break-even, <b>B-E¹</b>.
           </p>
           <p className="pm-how-text">
-            When the best such Call pays less than <Value>{pct(v2.putsStartCallYieldPct)}</Value> a year (the premium's return × <Value>{shared.premiumYieldSessionsPerYear}</Value> ÷ the trading sessions it is held, the one it is sold in and its expiry's both counted), usually after the stock has fallen, the other half of the pot sells <b>Puts</b> well below B-E¹. If a Put is assigned, its shares become the second position, bought cheaper, which sells Calls of its own at or above its break-even, <b>B-E²</b>.
+            When the best such Call pays less than <Value>{pct(v2.putsStartCallYieldPct)}</Value> a year (the premium's return × <Value>{shared.premiumYieldSessionsPerYear}</Value> ÷ the trading sessions it is held, the one it is sold in and its expiry's both counted), usually after the stock has fallen, the rest of the pot sells <b>Puts</b> well below B-E¹. If a Put is assigned, its shares become the second position, bought cheaper, which sells Calls of its own at or above its break-even, <b>B-E²</b>.
           </p>
           <p className="pm-how-text">
             Once the stock is half a Step below B-E², Pluto buys a <b>LEAPS</b>: a Call <Value>{v2.leapsMinDte}</Value> or more days out that gains as the stock recovers, one for each time the second position holds shares. It is sold as soon as the second position's shares are called away, even at a loss.
@@ -247,10 +247,10 @@ function VolFarmerV2Explanation({ values }: { values: PlutoHowItWorks }) {
             A {formatCurrency(example.accountValue, 0)} account, Pluto's budget {pct(shared.capitalBudgetPct)}, the ticker's allocation {pct(example.allocationPct)}{shared.excessAllowancePct > 0 && <>, the excess allowance {pct(shared.excessAllowancePct)}</>}: its pot is <b>{formatCurrency(example.pot, 0)}</b>.
           </p>
           <ol className="pm-how-list">
-            <li>The stock is at {formatCurrency(example.stockPrice)}. Half the pot, {formatCurrency(halfPot, 0)}, buys <b>{example.lots} lots</b> ({example.lots * 100} shares), with a Call sold on them.</li>
+            <li>The stock is at {formatCurrency(example.stockPrice)}. {pct(v2.firstPositionPct)} of the pot, {formatCurrency(firstPositionDollars, 0)}, buys <b>{example.lots} lots</b> ({example.lots * 100} shares), with a Call sold on them.</li>
             <li>After a fall, what the shares cost less their premiums (B-E¹) is {formatCurrency(example.firstBreakEven)}, and no Call at or above {formatCurrency(example.firstBreakEven)} pays {pct(v2.putsStartCallYieldPct)} a year.</li>
             <li>
-              {implied ? <>The stock's options price a {pct(example.impliedVolatilityPct)} yearly move, so the Step is {pct(example.impliedVolatilityPct)} × √(21 ÷ 252) = <b>{pct(example.stepPct)}</b></> : <>The Step is a fixed <b>{pct(example.stepPct)}</b></>}: Puts are sold struck at most {formatCurrency(example.firstBreakEven)} × (1 − {pct(example.stepPct)}) = <b>{formatCurrency(example.putStrikeCap)}</b>, with the other {formatCurrency(halfPot, 0)}.
+              {implied ? <>The stock's options price a {pct(example.impliedVolatilityPct)} yearly move, so the Step is {pct(example.impliedVolatilityPct)} × √(21 ÷ 252) = <b>{pct(example.stepPct)}</b></> : <>The Step is a fixed <b>{pct(example.stepPct)}</b></>}: Puts are sold struck at most {formatCurrency(example.firstBreakEven)} × (1 − {pct(example.stepPct)}) = <b>{formatCurrency(example.putStrikeCap)}</b>, with the rest of the pot, {formatCurrency(example.pot - firstPositionDollars, 0)}.
             </li>
             <li>If a Put is assigned, a LEAPS is bought once the stock is half that Step, <b>{pct(example.leapsEntryBelowSecondBreakEvenPct)}</b>, below B-E², and spends at most {pct(v2.leapsMaxAllocationPct)} of the pot: <b>{formatCurrency(example.leapsCap, 0)}</b>, from Pluto's budget.</li>
           </ol>

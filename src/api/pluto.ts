@@ -152,6 +152,8 @@ export interface PlutoSettings {
   safetySpyStressBreakerPct: number;
   safetyTickerCooldownMinutes: number;
   // Vol Farmer v2's values, every v2 ticker alike: set once from the lab's of 27 Oct 2026, never synced with the lab.
+  /** % of the ticker's pot the first position's shares are bought with; the Puts sell on the rest. */
+  volFarmerV2FirstPositionPct: number;
   volFarmerV2PutsStartCallYieldPct: number;
   volFarmerV2PutMaxAbsDelta: number;
   volFarmerV2StepBelowFirstBreakEvenPct: number;
@@ -625,6 +627,7 @@ export interface PlutoHowItWorks {
     maxSpreadPctOfMid: number;
     minimumBid: number;
     maxVolumeSharePct: number;
+    firstPositionPct: number;
     putsStartCallYieldPct: number;
     putMaxAbsDelta: number;
     stepRule: PlutoSettings["volFarmerV2StepRule"];
@@ -735,7 +738,8 @@ export interface PlutoVolFarmerV2Ticker {
   lastRoundAt: string | null;
   lastRoundNotes: string[];
   /** What the last round read: the pot, what the ticker commits as the pot check counts it, v2's free cash and the LEAPS cap. */
-  lastRoundFigures: { potDollars: number; committedDollars: number; freeCashDollars: number; leapsCapDollars: number } | null;
+  /** putsDollars: the pot less the First position's share; rounds before 2026-10-30 lack it (half the pot). */
+  lastRoundFigures: { potDollars: number; committedDollars: number; freeCashDollars: number; leapsCapDollars: number; putsDollars?: number } | null;
 }
 
 export function fetchPlutoVolFarmerV2(): Promise<PlutoVolFarmerV2Ticker[]> {

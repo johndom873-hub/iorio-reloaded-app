@@ -30,9 +30,9 @@ export function volFarmerV2LastRoundLines(ticker: PlutoVolFarmerV2Ticker): strin
 
 /**
  * The ticker's warnings, from its last round's figures (Marcelo 2026-10-28):
- * - Puts: v2 sells them on half the pot, and the pot check refuses an order taking what the ticker commits above the
- *   pot, so they would be refused once it commits more than half the pot. COIN commits $40,000 of a $64,007 pot:
- *   $40,000 + $32,004 = $72,004 > $64,007.
+ * - Puts: v2 sells them on the rest of the pot after the First position's share, and the pot check refuses an order
+ *   taking what the ticker commits above the pot, so they would be refused once it commits more than the pot less that
+ *   rest. COIN commits $40,000 of a $64,007 pot with the Puts on half: $40,000 + $32,004 = $72,004 > $64,007.
  * - LEAPS: once both positions hold shares and a LEAPS may still be bought, less free cash than the LEAPS cap buys it
  *   short of its count.
  */
@@ -41,9 +41,9 @@ export function volFarmerV2Warnings(ticker: PlutoVolFarmerV2Ticker): { symbol: s
   if (figures === null) return [];
   // Each text follows the ticker's symbol, which the card shows as its ticker button.
   const warnings: { symbol: string; text: string }[] = [];
-  const halfPot = figures.potDollars / 2;
-  if (figures.committedDollars > halfPot) {
-    warnings.push({ symbol: ticker.symbol, text: ` commits ${formatCurrency(figures.committedDollars, 0)} of its ${formatCurrency(figures.potDollars, 0)} pot: a v2 Put on half the pot (${formatCurrency(halfPot, 0)}) would be refused by the pot check.` });
+  const putsDollars = figures.putsDollars ?? figures.potDollars / 2;
+  if (figures.committedDollars > figures.potDollars - putsDollars) {
+    warnings.push({ symbol: ticker.symbol, text: ` commits ${formatCurrency(figures.committedDollars, 0)} of its ${formatCurrency(figures.potDollars, 0)} pot: a v2 Put on the rest of the pot (${formatCurrency(putsDollars, 0)}) would be refused by the pot check.` });
   }
   const bothPositionsHoldShares = (ticker.first?.shares ?? 0) > 0 && (ticker.second?.shares ?? 0) > 0;
   const leapsComplete = ticker.leaps !== null && ticker.leaps.heldContracts >= ticker.leaps.intendedContracts;
