@@ -10,17 +10,20 @@ export const backtestSettingSectionTitles: Record<BacktestSettingSection, string
   baseline_wheel: "Used by the CC + Put Ladder",
   steady_stake: "Used by the Steady Stake",
   vol_farmer: "Used by the original Vol Farmer (retired)",
-  vol_farmer_v2: "Used by Vol Farmer v2",
+  vol_farmer_v2: "Used by Vol Farmer v2 and v3",
+  vol_farmer_v3: "Used by Vol Farmer v3",
 };
 
 export const steadyStakeSectionNote = "Used only when the decision maker is the Steady Stake. None of these change a CC + Put Ladder session; the ladder's values don't change a Steady Stake session.";
 
 export const volFarmerSectionNote = "Used only by the original Vol Farmer, retired on 30 Oct 2026: its past sessions read them. None of these change any session that can still be run.";
 
-export const volFarmerV2SectionNote = "Used only when the decision maker is Vol Farmer v2. None of these change any other session.";
+export const volFarmerV2SectionNote = "Used only when the decision maker is Vol Farmer v2 or v3. None of these change any other session.";
+
+export const volFarmerV3SectionNote = "Used only when the decision maker is Vol Farmer v3, beside Vol Farmer v2's values. None of these change any other session.";
 
 /** The note under a section's title; the CC + Put Ladder's section opens the table and has none. */
-export const backtestSettingSectionNotes: Record<BacktestSettingSection, string | null> = { baseline_wheel: null, steady_stake: steadyStakeSectionNote, vol_farmer: volFarmerSectionNote, vol_farmer_v2: volFarmerV2SectionNote };
+export const backtestSettingSectionNotes: Record<BacktestSettingSection, string | null> = { baseline_wheel: null, steady_stake: steadyStakeSectionNote, vol_farmer: volFarmerSectionNote, vol_farmer_v2: volFarmerV2SectionNote, vol_farmer_v3: volFarmerV3SectionNote };
 
 /** The original Vol Farmer's section, retired with it (Marcelo 2026-10-30): no setting there changes a session that can still run. */
 export const isRetiredBacktestSettingSection = (section: BacktestSettingSection) => section === "vol_farmer";
@@ -203,6 +206,14 @@ export function backtestSettingGroupSummary(group: BacktestSettingGroup, text: (
         text("volFarmerV2.looks") === "every_look" ? "decides at every look" : "decides at 10:00",
         ...(Number(text("volFarmerV2.excessAllowancePct")) > 0 ? [`pots ${shown("volFarmerV2.excessAllowancePct")} over the allocations`] : []),
       ].join(" · ");
+    case "Vol Farmer v3":
+      return [
+        `${text("volFarmerV3.rebalances") === "both_positions" ? `both positions rebalanced as one (trims ${text("volFarmerV3.trimsSell") === "second_position_first" ? "the second position first" : "the higher break-even first"})` : "first position rebalanced"} beyond ${shown("volFarmerV3.rebalanceBandPct")} of the pot`,
+        text("volFarmerV3.firstPositionAfterCalledAway") === "rebuild" ? "a first position called away first is rebuilt" : "a first position called away first waits for the second",
+        text("volFarmerV3.optionsExpiry") === "today" ? "options expiring at today's close" : Number(text("volFarmerV3.optionsMaxDaysToExpiry")) < 45 ? `options on the next expiry once it is ${text("volFarmerV3.optionsMaxDaysToExpiry")} days or fewer away` : "options on the next expiry",
+        text("volFarmerV3.callStrikeFloor") === "none" ? "Calls anywhere above the price" : "Calls at or above the break-even",
+        `${text("volFarmerV3.putsSold") === "with_every_call" ? "Puts with every Call" : "Puts when the Calls yield little"}, ${text("volFarmerV3.putStrikeCap") === "none" ? "anywhere below the price" : "a Step below the first break-even"}`,
+      ].join(" · ");
   }
 }
 
@@ -222,7 +233,7 @@ export function labTickersKeepingTheirOwn(path: string, overrides: readonly Back
   return overrides.filter((row) => fields.some((field) => row[field] !== null)).map((row) => row.symbol);
 }
 
-const settingPathPattern = /\b(?:baseline|pluto|trading|policy|model|lab|fixed|steadyStake|volFarmer|volFarmerV2)\.[A-Za-z]+\b|\bkellyFraction\b|\bdecisionMaker\b/g;
+const settingPathPattern = /\b(?:baseline|pluto|trading|policy|model|lab|fixed|steadyStake|volFarmer|volFarmerV2|volFarmerV3)\.[A-Za-z]+\b|\bkellyFraction\b|\bdecisionMaker\b/g;
 const labOnlyLabels: Record<string, string> = { "lab.defaultPotDollars": "Default pot" };
 
 /** A refusal from the API with each setting key ("baseline.putsWhenNoCall") written as its label ("Puts when no call is sold"). */

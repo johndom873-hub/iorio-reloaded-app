@@ -13,7 +13,7 @@ export type BacktestJobDisplayStatus = BacktestJobStatus | "stopped";
 export type BacktestTablesMode = "walk_forward" | "current";
 
 /** Who makes the choices the AI model makes live: the stand-in rules (BacktestPolicySettings), or the model itself (Claude through the subscription, src/backtest/llm/). */
-export type BacktestDecisionMaker = "rules" | "llm" | "baseline" | "steady_stake" | "vol_farmer" | "vol_farmer_v2";
+export type BacktestDecisionMaker = "rules" | "llm" | "baseline" | "steady_stake" | "vol_farmer" | "vol_farmer_v2" | "vol_farmer_v3";
 
 /** The baseline wheel (decision maker "baseline"): no Pluto rules and no Signals, everything held to expiry. */
 export interface BacktestBaselineSettings {
@@ -184,6 +184,8 @@ export interface BacktestSettings {
   volFarmer?: BacktestVolFarmerSettings;
   /** Absent on sessions created before Vol Farmer v2 existed. */
   volFarmerV2?: BacktestVolFarmerV2Settings;
+  /** Absent on sessions created before Vol Farmer v3 existed. */
+  volFarmerV3?: BacktestVolFarmerV3Settings;
 }
 
 /** The Vol Farmer's values (the API's BacktestVolFarmerSettings). */
@@ -234,6 +236,28 @@ export interface BacktestVolFarmerV2Settings {
   excessAllowancePct: number;
 }
 
+/** Vol Farmer v3's own values (the API's BacktestVolFarmerV3Settings; research): it runs on Vol Farmer v2's too. */
+export interface BacktestVolFarmerV3Settings {
+  /** % of the ticker's pot: the first position is traded back to its target once its value is off it by more. */
+  rebalanceBandPct: number;
+  /** What the target covers: the first position's shares, or both positions' as one holding. */
+  rebalances: "first_position" | "both_positions";
+  /** A first position called away while the second still holds shares: wait for the second to go, or rebuild it at the next look. */
+  firstPositionAfterCalledAway: "wait" | "rebuild";
+  /** Calls and Puts on the next expiry after today, or expiring at today's close on expiry days. */
+  optionsExpiry: "next" | "today";
+  /** With options on the next expiry: the most calendar days it may be away for a look to sell on it (45: every next expiry). */
+  optionsMaxDaysToExpiry: number;
+  /** The Calls' lowest strike: the position's break-even, or any strike above the price. */
+  callStrikeFloor: "break_even" | "none";
+  /** When the Puts are sold: when the first position's best Call yields little, or with every Call it sells. */
+  putsSold: "calls_yield_little" | "with_every_call";
+  /** The Puts' highest strike: a Step below the first position's break-even, or anywhere below the price. */
+  putStrikeCap: "first_break_even_less_step" | "none";
+  /** With both positions rebalanced as one, which a trim sells first: the higher break-even, or the second position. */
+  trimsSell: "higher_break_even_first" | "second_position_first";
+}
+
 /** The Steady Stake's values (the API's BacktestSteadyStakeSettings). */
 export interface BacktestSteadyStakeSettings {
   stakePct: number;
@@ -256,6 +280,7 @@ export interface BacktestSettingsOverrides {
   steadyStake?: Partial<BacktestSteadyStakeSettings>;
   volFarmer?: Partial<BacktestVolFarmerSettings>;
   volFarmerV2?: Partial<BacktestVolFarmerV2Settings>;
+  volFarmerV3?: Partial<BacktestVolFarmerV3Settings>;
 }
 
 /** A session's settings with its overrides applied and every default filled in: what the engine runs on. */
@@ -502,10 +527,10 @@ export interface BacktestSettingChoice {
   unavailableReason?: string;
 }
 
-export type BacktestSettingGroup = "How the session runs" | "Put ladder" | "Calls and Covered Calls" | "Contract choice" | "Entry filters" | "Exits" | "Hedge" | "Steady Stake" | "Original Vol Farmer (retired)" | "Vol Farmer v2";
+export type BacktestSettingGroup = "How the session runs" | "Put ladder" | "Calls and Covered Calls" | "Contract choice" | "Entry filters" | "Exits" | "Hedge" | "Steady Stake" | "Original Vol Farmer (retired)" | "Vol Farmer v2" | "Vol Farmer v3";
 
 /** "baseline_wheel": rows the CC + Put Ladder reads; the others: rows only that decision maker reads. */
-export type BacktestSettingSection = "baseline_wheel" | "steady_stake" | "vol_farmer" | "vol_farmer_v2";
+export type BacktestSettingSection = "baseline_wheel" | "steady_stake" | "vol_farmer" | "vol_farmer_v2" | "vol_farmer_v3";
 
 /** A row's value against another row's: `oneOf` / `noneOf` its choice values, or a number `above`. */
 export interface BacktestSettingCondition {

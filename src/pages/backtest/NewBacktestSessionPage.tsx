@@ -50,6 +50,7 @@ import {
   formatSettingRowValue,
   isSettingChanged,
   parseDollarAmountText,
+  runsVolFarmerV2Steps,
   sessionDecisionMaker,
   settingInputText,
   settingValueProblem,
@@ -336,13 +337,13 @@ export function NewBacktestSessionPage() {
         })),
       );
     }
-    const copiedAllocations = source && sessionDecisionMaker(source) === "vol_farmer_v2" ? copiedVolFarmerV2Allocations(source, sourceSymbols) : null;
+    const copiedAllocations = source && runsVolFarmerV2Steps(sessionDecisionMaker(source)) ? copiedVolFarmerV2Allocations(source, sourceSymbols) : null;
     if (copiedAllocations) {
       setAllocationTextBySymbol(copiedAllocations.textBySymbol);
       setRetiredTickerPotNote(copiedAllocations.note);
     }
     // A Vol Farmer v2 session run with research settings since retired cannot be rerun as it was: say so (2026-10-28).
-    const retiredResearch = source && sessionDecisionMaker(source) === "vol_farmer_v2" ? describeRetiredVolFarmerV2Research(source.overrides) : [];
+    const retiredResearch = source && runsVolFarmerV2Steps(sessionDecisionMaker(source)) ? describeRetiredVolFarmerV2Research(source.overrides) : [];
     if (retiredResearch.length > 0) setRetiredResearchNote(`This session used research settings the lab no longer has (${retiredResearch.join("; ")}). A rerun uses today's rules: the LEAPS bought once the price is half a Step below B-E2, one per holding, sold when the second position is called away; Calls and Puts on the next expiry only.`);
     const fromAnalysis = !source && !sourceBatch && analysisValues !== null && initialSymbols.includes(analysisValues.symbol) ? analysisValues : null;
     if (fromAnalysis && Object.keys(fromAnalysis.tickerEdits).length > 0) setTickerEdits({ [fromAnalysis.symbol]: fromAnalysis.tickerEdits });
@@ -418,10 +419,10 @@ export function NewBacktestSessionPage() {
   const allRows = useMemo(() => (template?.rows ?? []).filter((row) => !isRetiredBacktestSettingSection(row.section)), [template]);
   const decisionMakerRow = allRows.find((row) => row.path === decisionMakerPath) ?? null;
   const decisionMaker = (valueByPath[decisionMakerPath] ?? "baseline") as BacktestDecisionMaker;
-  // Vol Farmer v2 deciding (mockup approved 2026-10-28): the Tickers card holds each ticker's allocation and, beside the
-  // starting value, the excess allowance, which leaves the Settings table.
+  // Vol Farmer v2 (or v3, on v2's values) deciding (mockup approved 2026-10-28): the Tickers card holds each ticker's
+  // allocation and, beside the starting value, the excess allowance, which leaves the Settings table.
   const allowanceRow = allRows.find((row) => row.path === volFarmerV2ExcessAllowancePath) ?? null;
-  const showVolFarmerV2TickersCard = decisionMaker === "vol_farmer_v2" && selectedFiles.length > 0 && allowanceRow !== null;
+  const showVolFarmerV2TickersCard = runsVolFarmerV2Steps(decisionMaker) && selectedFiles.length > 0 && allowanceRow !== null;
   const settingRows = allRows.filter((row) => row.path !== decisionMakerPath && !(showVolFarmerV2TickersCard && row.path === volFarmerV2ExcessAllowancePath));
   // The Baseline runs per-ticker pots: each ticker its pot and ladder values. The rules and the AI model run one starting value.
   const perTickerPots = decisionMaker === "baseline";
@@ -441,8 +442,8 @@ export function NewBacktestSessionPage() {
   );
   const settingsOverrides = useMemo(() => (template ? buildBacktestOverrides(template.rows, valueByPath) : {}), [template, valueByPath]);
   const allowanceText = valueByPath[volFarmerV2ExcessAllowancePath] ?? (allowanceRow ? String(allowanceRow.now) : "0");
-  // What the session overrides: the settings changed, and with Vol Farmer v2 deciding each allocation typed on the Tickers card.
-  const tickerAllocationPct = useMemo(() => (decisionMaker === "vol_farmer_v2" ? typedAllocationsBySymbol(symbols, allocationTextBySymbol) : {}), [decisionMaker, symbols, allocationTextBySymbol]);
+  // What the session overrides: the settings changed, and with Vol Farmer v2 or v3 deciding each allocation typed on the Tickers card.
+  const tickerAllocationPct = useMemo(() => (runsVolFarmerV2Steps(decisionMaker) ? typedAllocationsBySymbol(symbols, allocationTextBySymbol) : {}), [decisionMaker, symbols, allocationTextBySymbol]);
   const overrides = useMemo<BacktestSettingsOverrides>(
     () => (Object.keys(tickerAllocationPct).length === 0 ? settingsOverrides : { ...settingsOverrides, volFarmerV2: { ...settingsOverrides.volFarmerV2, tickerAllocationPct } }),
     [settingsOverrides, tickerAllocationPct],

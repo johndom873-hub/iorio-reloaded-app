@@ -1290,10 +1290,13 @@ export function roundValueAxis(low: number, high: number, maxTicks: number): { m
 
 // ---- Decision maker (the stand-in rules, or the AI model through the Claude subscription) ----
 
-export const decisionMakerLabel: Record<BacktestDecisionMaker, string> = { rules: "Rules", llm: "The AI model", baseline: "CC + Put Ladder", steady_stake: "Steady Stake", vol_farmer: "Original Vol Farmer (retired)", vol_farmer_v2: "Vol Farmer v2" };
+export const decisionMakerLabel: Record<BacktestDecisionMaker, string> = { rules: "Rules", llm: "The AI model", baseline: "CC + Put Ladder", steady_stake: "Steady Stake", vol_farmer: "Original Vol Farmer (retired)", vol_farmer_v2: "Vol Farmer v2", vol_farmer_v3: "Vol Farmer v3" };
 
 /** "decided by the rules", in a session's subtitle. */
-export const decidedByPhrase: Record<BacktestDecisionMaker, string> = { rules: "the rules", llm: "the AI model", baseline: "the CC + Put Ladder", steady_stake: "the Steady Stake", vol_farmer: "the original Vol Farmer", vol_farmer_v2: "Vol Farmer v2" };
+export const decidedByPhrase: Record<BacktestDecisionMaker, string> = { rules: "the rules", llm: "the AI model", baseline: "the CC + Put Ladder", steady_stake: "the Steady Stake", vol_farmer: "the original Vol Farmer", vol_farmer_v2: "Vol Farmer v2", vol_farmer_v3: "Vol Farmer v3" };
+
+/** Vol Farmer v2 and v3: v3 runs on v2's values (its tickers' allocations and excess allowance too), with its first position rebalanced. */
+export const runsVolFarmerV2Steps = (decisionMaker: BacktestDecisionMaker): boolean => decisionMaker === "vol_farmer_v2" || decisionMaker === "vol_farmer_v3";
 
 /** Who decided a session's choices: its override, else its frozen settings; "rules" on sessions saved before the choice existed. */
 export function sessionDecisionMaker(session: { overrides: BacktestSettingsOverrides; settingsSnapshot: BacktestSettings }): BacktestDecisionMaker {
@@ -1396,6 +1399,7 @@ export const decisionMakerHint: Record<BacktestDecisionMaker, string> = {
   steady_stake: "a steady share of each ticker's pot in its shares, Calls and Puts sold on expiry days; the starting value is split equally across the tickers",
   vol_farmer: "shares, a Covered Call and a long Put that hedges them, all unwound when the stock reaches the Call's strike",
   vol_farmer_v2: "two Covered Calls at different levels: the second from Puts sold on the rest of the pot after a fall, a LEAPS Call once the price is half a Step below the second's break-even",
+  vol_farmer_v3: "Vol Farmer v2 on its values, its first position bought or sold back to its share of the pot between its Calls once off it by more than the Rebalancing band",
 };
 
 /** Where a ticker's value came from, as its badge reads (lowest layer first: the order a reset walks back down). */
