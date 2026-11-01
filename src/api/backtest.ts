@@ -13,7 +13,7 @@ export type BacktestJobDisplayStatus = BacktestJobStatus | "stopped";
 export type BacktestTablesMode = "walk_forward" | "current";
 
 /** Who makes the choices the AI model makes live: the stand-in rules (BacktestPolicySettings), or the model itself (Claude through the subscription, src/backtest/llm/). */
-export type BacktestDecisionMaker = "rules" | "llm" | "baseline" | "steady_stake" | "vol_farmer" | "vol_farmer_v2" | "vol_farmer_v3";
+export type BacktestDecisionMaker = "rules" | "llm" | "baseline" | "steady_stake" | "vol_farmer" | "vol_farmer_v2" | "vol_farmer_v3" | "vol_farmer_v4";
 
 /** The baseline wheel (decision maker "baseline"): no Pluto rules and no Signals, everything held to expiry. */
 export interface BacktestBaselineSettings {
@@ -186,6 +186,8 @@ export interface BacktestSettings {
   volFarmerV2?: BacktestVolFarmerV2Settings;
   /** Absent on sessions created before Vol Farmer v3 existed. */
   volFarmerV3?: BacktestVolFarmerV3Settings;
+  /** Absent on sessions created before Vol Farmer v4 existed. */
+  volFarmerV4?: BacktestVolFarmerV4Settings;
 }
 
 /** The Vol Farmer's values (the API's BacktestVolFarmerSettings). */
@@ -256,7 +258,12 @@ export interface BacktestVolFarmerV3Settings {
   putStrikeCap: "first_break_even_less_step" | "none";
   /** With both positions rebalanced as one, which a trim sells first: the higher break-even, or the second position. */
   trimsSell: "higher_break_even_first" | "second_position_first";
+  /** Top-ups take a ticker's money in (held shares' cost, open Puts' cash) to at most this % of its pot; 0: no cap. */
+  topUpCapPctOfPot: number;
 }
+
+/** Vol Farmer v4's values (the API's BacktestVolFarmerV4Settings; the lab's default): v3 on a copy of every value it reads. */
+export type BacktestVolFarmerV4Settings = Pick<BacktestVolFarmerSettings, "callMinAbsDelta" | "callMaxAbsDelta" | "maxSpreadPctOfMid"> & BacktestVolFarmerV2Settings & BacktestVolFarmerV3Settings;
 
 /** The Steady Stake's values (the API's BacktestSteadyStakeSettings). */
 export interface BacktestSteadyStakeSettings {
@@ -281,6 +288,7 @@ export interface BacktestSettingsOverrides {
   volFarmer?: Partial<BacktestVolFarmerSettings>;
   volFarmerV2?: Partial<BacktestVolFarmerV2Settings>;
   volFarmerV3?: Partial<BacktestVolFarmerV3Settings>;
+  volFarmerV4?: Partial<BacktestVolFarmerV4Settings>;
 }
 
 /** A session's settings with its overrides applied and every default filled in: what the engine runs on. */
@@ -527,10 +535,10 @@ export interface BacktestSettingChoice {
   unavailableReason?: string;
 }
 
-export type BacktestSettingGroup = "How the session runs" | "Put ladder" | "Calls and Covered Calls" | "Contract choice" | "Entry filters" | "Exits" | "Hedge" | "Steady Stake" | "Original Vol Farmer (retired)" | "Vol Farmer v2" | "Vol Farmer v3";
+export type BacktestSettingGroup = "How the session runs" | "Put ladder" | "Calls and Covered Calls" | "Contract choice" | "Entry filters" | "Exits" | "Hedge" | "Steady Stake" | "Original Vol Farmer (retired)" | "Vol Farmer v2" | "Vol Farmer v3" | "Vol Farmer v4";
 
 /** "baseline_wheel": rows the CC + Put Ladder reads; the others: rows only that decision maker reads. */
-export type BacktestSettingSection = "baseline_wheel" | "steady_stake" | "vol_farmer" | "vol_farmer_v2" | "vol_farmer_v3";
+export type BacktestSettingSection = "baseline_wheel" | "steady_stake" | "vol_farmer" | "vol_farmer_v2" | "vol_farmer_v3" | "vol_farmer_v4";
 
 /** A row's value against another row's: `oneOf` / `noneOf` its choice values, or a number `above`. */
 export interface BacktestSettingCondition {

@@ -5,7 +5,7 @@ import { FrozenTickerBadge } from "../FrozenTickerBadge";
 import { useFrozenTickers } from "../../hooks/useFrozenTickers";
 import { useIsAdmin } from "../../hooks/useAuth";
 import { ApiError } from "../../api/client";
-import { fetchPlutoLadderSettings, fetchPlutoVolFarmerV2, savePlutoAllocations, updateShortlistBotEnabled, type PlutoLadderTickerSettings, type PlutoSettings, type PlutoState, type PlutoVolFarmerV2Ticker } from "../../api/pluto";
+import { fetchPlutoLadderSettings, fetchPlutoVolFarmerV4, savePlutoAllocations, updateShortlistBotEnabled, type PlutoLadderTickerSettings, type PlutoSettings, type PlutoState, type PlutoVolFarmerV4Ticker } from "../../api/pluto";
 import type { ShortlistRow, TickerBackfillRun } from "../../api/shortlist";
 import { formatBrowserDayMonth, formatCurrency, formatInputNumber, formatPercentageValueTrimmed, pluralize } from "../../lib/formatters";
 import { allocationDraftOf, allocationPercentText, buildPlutoAllocationView, type PlutoAllocationDraft, type PlutoAllocationTicker } from "../../lib/plutoAllocationEdit";
@@ -45,7 +45,7 @@ type Filter = "all" | "on" | "off";
 const columns = [
   { key: "switch", header: "Pluto may trade" },
   { key: "ticker", header: "Ticker" },
-  { key: "strategy", header: "Strategy", title: "The strategy Pluto runs on the ticker: Vol Farmer v2 unless set to the CC + Put Ladder" },
+  { key: "strategy", header: "Strategy", title: "The strategy Pluto runs on the ticker: Vol Farmer v4 unless set to the CC + Put Ladder" },
   { key: "sector", header: "Sector" },
   { key: "now", header: "Pluto now" },
   { key: "allocation", header: "Allocation", title: "% of Pluto's capital budget: set, or an equal share of what the set allocations leave", align: "right" },
@@ -130,22 +130,22 @@ function TickerSwitch({ row, onToggled, onError, withLabel, locked }: { row: Sho
 }
 
 /** What Pluto does with the ticker now; a frozen ticker (a stock split until its records are rewritten) is skipped. */
-function plutoNowOrFrozen(row: ShortlistRow, state: PlutoState | null, volFarmerV2: PlutoVolFarmerV2Ticker | undefined, frozen: FrozenTicker | undefined, compact = false): { tone: "neutral" | "info" | "bad"; label: string; title?: string } | null {
+function plutoNowOrFrozen(row: ShortlistRow, state: PlutoState | null, volFarmerV4: PlutoVolFarmerV4Ticker | undefined, frozen: FrozenTicker | undefined, compact = false): { tone: "neutral" | "info" | "bad"; label: string; title?: string } | null {
   // The phone list's status column is narrow: the short form there, the split itself is in the Frozen badge's tooltip.
   if (frozen) return { tone: "bad", label: compact ? "Skipped: frozen" : `Skipped: frozen after a ${frozen.reason.replace(/ effective .*$/, "")}` };
-  return plutoNow(row, state, volFarmerV2);
+  return plutoNow(row, state, volFarmerV4);
 }
 
-function plutoNow(row: ShortlistRow, state: PlutoState | null, volFarmerV2: PlutoVolFarmerV2Ticker | undefined): { tone: "neutral" | "info"; label: string; title?: string } | null {
+function plutoNow(row: ShortlistRow, state: PlutoState | null, volFarmerV4: PlutoVolFarmerV4Ticker | undefined): { tone: "neutral" | "info"; label: string; title?: string } | null {
   const working = state?.book.workingOrdersBySymbol[row.symbol] ?? 0;
   const open = state?.book.openPositionsBySymbol[row.symbol] ?? 0;
   const book = working > 0 ? { tone: "info" as const, label: pluralize(working, "working order") } : open > 0 ? { tone: "neutral" as const, label: pluralize(open, "open position") } : null;
-  // A Vol Farmer v2 ticker: whether v2 adopted its holdings, or waits to (the last round says why).
-  if (volFarmerV2?.waiting && volFarmerV2.lastRoundNotes.length > 0) {
-    const why = volFarmerV2.lastRoundNotes[0]!;
-    return { tone: "neutral", label: why.startsWith("holds no shares yet") ? "v2 waits: Puts only" : "v2 waits", title: why };
+  // A Vol Farmer v4 ticker: whether v4 adopted its holdings, or waits to (the last round says why).
+  if (volFarmerV4?.waiting && volFarmerV4.lastRoundNotes.length > 0) {
+    const why = volFarmerV4.lastRoundNotes[0]!;
+    return { tone: "neutral", label: why.startsWith("holds no shares yet") ? "v4 waits: Puts only" : "v4 waits", title: why };
   }
-  if (volFarmerV2?.adoptedAt && book) return { ...book, label: `v2 adopted · ${book.label}` };
+  if (volFarmerV4?.adoptedAt && book) return { ...book, label: `v4 adopted · ${book.label}` };
   return book;
 }
 
@@ -164,7 +164,7 @@ export function PlutoTickersTab({ rows, loading, error, state, maxEnabled, isPho
   const { isColumnVisible, toggleColumn } = useColumnVisibility("pluto-tickers", columns.map((column) => column.key));
   const [ladderTickers, setLadderTickers] = useState<PlutoLadderTickerSettings[] | null>(null);
   const [ladderError, setLadderError] = useState<string | null>(null);
-  const [volFarmerV2Tickers, setVolFarmerV2Tickers] = useState<PlutoVolFarmerV2Ticker[]>([]);
+  const [volFarmerV4Tickers, setVolFarmerV2Tickers] = useState<PlutoVolFarmerV4Ticker[]>([]);
   const [settingsSymbol, setSettingsSymbol] = useState<string | null>(null);
   const [savedNote, setSavedNote] = useState<string | null>(null);
   // Edit allocations (mockup approved 2026-10-28): the allocations and the allowance as typed; null while not editing.
@@ -181,14 +181,14 @@ export function PlutoTickersTab({ rows, loading, error, state, maxEnabled, isPho
     } catch {
       setLadderError("Could not load the tickers' ladder settings.");
     }
-    // What v2 holds on its tickers is an extra for the Pluto now column: the tab works without it.
-    fetchPlutoVolFarmerV2().then(setVolFarmerV2Tickers, () => setVolFarmerV2Tickers([]));
+    // What v4 holds on its tickers is an extra for the Pluto now column: the tab works without it.
+    fetchPlutoVolFarmerV4().then(setVolFarmerV2Tickers, () => setVolFarmerV2Tickers([]));
   }, []);
   useEffect(() => {
     void loadLadder();
   }, [loadLadder, enabledKey]);
   const ladderBySymbol = useMemo(() => new Map((ladderTickers ?? []).map((ticker) => [ticker.symbol, ticker])), [ladderTickers]);
-  const volFarmerV2BySymbol = useMemo(() => new Map(volFarmerV2Tickers.map((ticker) => [ticker.symbol, ticker])), [volFarmerV2Tickers]);
+  const volFarmerV4BySymbol = useMemo(() => new Map(volFarmerV4Tickers.map((ticker) => [ticker.symbol, ticker])), [volFarmerV4Tickers]);
   // Every ticker's allocation as saved (as typed while editing). A ticker off the Shortlist that keeps a set allocation
   // counts as switched off: the API counts every set allocation toward the 100%.
   const allocationTickers = useMemo<PlutoAllocationTicker[]>(
@@ -347,10 +347,10 @@ export function PlutoTickersTab({ rows, loading, error, state, maxEnabled, isPho
           symbol={row.symbol}
           strategy={ladder.effectiveStrategy}
           enabled={row.botEnabled}
-          firstBreakEven={volFarmerV2BySymbol.get(row.symbol)?.first?.breakEvenPerShare ?? null}
+          firstBreakEven={volFarmerV4BySymbol.get(row.symbol)?.first?.breakEvenPerShare ?? null}
           locked={!isAdmin}
           onSaved={(strategy) => {
-            setSavedNote(`${row.symbol} runs ${strategy === "vol_farmer_v2" ? "Vol Farmer v2" : "the CC + Put Ladder"} from Pluto's next round.`);
+            setSavedNote(`${row.symbol} runs ${strategy === "vol_farmer_v4" ? "Vol Farmer v4" : "the CC + Put Ladder"} from Pluto's next round.`);
             void loadLadder();
           }}
           onError={setToggleError}
@@ -375,7 +375,7 @@ export function PlutoTickersTab({ rows, loading, error, state, maxEnabled, isPho
     body = (
       <ul className="pm-mlist">
         {visibleRows.map((row) => {
-          const now = plutoNowOrFrozen(row, state, volFarmerV2BySymbol.get(row.symbol), frozenTickers.get(row.symbol), true);
+          const now = plutoNowOrFrozen(row, state, volFarmerV4BySymbol.get(row.symbol), frozenTickers.get(row.symbol), true);
           return (
             <li key={row.id} className={`pm-m-tk${row.botEnabled ? " on" : ""}${isAdmin ? "" : " locked"}`}>
               <TickerSwitch row={row} withLabel={false} locked={!isAdmin} onToggled={(enabled) => onToggled(row.id, enabled)} onError={setToggleError} />
@@ -434,7 +434,7 @@ export function PlutoTickersTab({ rows, loading, error, state, maxEnabled, isPho
           </thead>
           <tbody>
             {visibleRows.map((row) => {
-              const now = plutoNowOrFrozen(row, state, volFarmerV2BySymbol.get(row.symbol), frozenTickers.get(row.symbol));
+              const now = plutoNowOrFrozen(row, state, volFarmerV4BySymbol.get(row.symbol), frozenTickers.get(row.symbol));
               const who = changedBy(row);
               const cells: Record<string, React.ReactNode> = {
                 switch: (
@@ -483,7 +483,7 @@ export function PlutoTickersTab({ rows, loading, error, state, maxEnabled, isPho
         <div className="pm-card-h">
           <div className="pm-min0">
             <h2 className="pm-card-t">Tickers Pluto may trade</h2>
-            {!isPhone && <div className="pm-card-meta pm-meta-top">{isAdmin ? "Every Shortlist ticker. Switch one on to let Pluto trade it; the same switch is in the Shortlist's Pluto column. Each runs one strategy, Vol Farmer v2 unless set to the CC + Put Ladder." : "Every Shortlist ticker. Only an admin can switch Pluto on or off for a ticker or change its strategy."}</div>}
+            {!isPhone && <div className="pm-card-meta pm-meta-top">{isAdmin ? "Every Shortlist ticker. Switch one on to let Pluto trade it; the same switch is in the Shortlist's Pluto column. Each runs one strategy, Vol Farmer v4 unless set to the CC + Put Ladder." : "Every Shortlist ticker. Only an admin can switch Pluto on or off for a ticker or change its strategy."}</div>}
           </div>
           {isPhone ? (
             <span className="pm-card-meta">

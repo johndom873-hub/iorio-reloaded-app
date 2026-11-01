@@ -623,10 +623,9 @@ function snapshotValueAtPath(snapshot: BacktestSettings, path: string): number |
   return valueAtSettingsPath(snapshot, path) ?? valueAtSettingsPath(defaults as BacktestSettingsOverrides, path);
 }
 
-/** Vol Farmer v2's per-ticker allocations: a map in the overrides, not a settings row (the New session's Tickers card). */
+/** Vol Farmer v2's per-ticker allocations: a map in the overrides, not a settings row (the New session's Tickers card); v4's its own. */
 export const volFarmerV2TickerAllocationPath = "volFarmerV2.tickerAllocationPct";
-/** The lab setting the Tickers card shows beside the starting value, out of the Settings table. */
-export const volFarmerV2ExcessAllowancePath = "volFarmerV2.excessAllowancePct";
+export const volFarmerV4TickerAllocationPath = "volFarmerV4.tickerAllocationPct";
 /** Before allocations (until 2026-10-28) a shared Vol Farmer v2 session sized every ticker from this dollar pot. */
 export const volFarmerV2RetiredTickerPotPath = "volFarmerV2.tickerPotDollars";
 
@@ -668,8 +667,8 @@ export function describeRetiredVolFarmerV2Research(overrides: BacktestSettingsOv
  *  allocations read "Allocations set: GDX 8%, TQQQ 6%". */
 export function describeOverrideChanges(overrides: BacktestSettingsOverrides, snapshot: BacktestSettings | null, rows: BacktestSettingRow[] | null): string[] {
   return overridePaths(overrides).flatMap((path) => {
-    if (path === volFarmerV2TickerAllocationPath) {
-      const allocations = Object.entries(overrides.volFarmerV2?.tickerAllocationPct ?? {}).sort(([left], [right]) => left.localeCompare(right));
+    if (path === volFarmerV2TickerAllocationPath || path === volFarmerV4TickerAllocationPath) {
+      const allocations = Object.entries((path === volFarmerV4TickerAllocationPath ? overrides.volFarmerV4 : overrides.volFarmerV2)?.tickerAllocationPct ?? {}).sort(([left], [right]) => left.localeCompare(right));
       return allocations.length === 0 ? [] : [`Allocations set: ${allocations.map(([symbol, pct]) => `${symbol} ${formatInputNumber(pct, 4)}%`).join(", ")}`];
     }
     if (path === volFarmerV2RetiredTickerPotPath) {
@@ -1290,13 +1289,19 @@ export function roundValueAxis(low: number, high: number, maxTicks: number): { m
 
 // ---- Decision maker (the stand-in rules, or the AI model through the Claude subscription) ----
 
-export const decisionMakerLabel: Record<BacktestDecisionMaker, string> = { rules: "Rules", llm: "The AI model", baseline: "CC + Put Ladder", steady_stake: "Steady Stake", vol_farmer: "Original Vol Farmer (retired)", vol_farmer_v2: "Vol Farmer v2", vol_farmer_v3: "Vol Farmer v3" };
+export const decisionMakerLabel: Record<BacktestDecisionMaker, string> = { rules: "Rules", llm: "The AI model", baseline: "CC + Put Ladder", steady_stake: "Steady Stake", vol_farmer: "Original Vol Farmer (retired)", vol_farmer_v2: "Vol Farmer v2", vol_farmer_v3: "Vol Farmer v3", vol_farmer_v4: "Vol Farmer v4" };
 
 /** "decided by the rules", in a session's subtitle. */
-export const decidedByPhrase: Record<BacktestDecisionMaker, string> = { rules: "the rules", llm: "the AI model", baseline: "the CC + Put Ladder", steady_stake: "the Steady Stake", vol_farmer: "the original Vol Farmer", vol_farmer_v2: "Vol Farmer v2", vol_farmer_v3: "Vol Farmer v3" };
+export const decidedByPhrase: Record<BacktestDecisionMaker, string> = { rules: "the rules", llm: "the AI model", baseline: "the CC + Put Ladder", steady_stake: "the Steady Stake", vol_farmer: "the original Vol Farmer", vol_farmer_v2: "Vol Farmer v2", vol_farmer_v3: "Vol Farmer v3", vol_farmer_v4: "Vol Farmer v4" };
 
-/** Vol Farmer v2 and v3: v3 runs on v2's values (its tickers' allocations and excess allowance too), with its first position rebalanced. */
-export const runsVolFarmerV2Steps = (decisionMaker: BacktestDecisionMaker): boolean => decisionMaker === "vol_farmer_v2" || decisionMaker === "vol_farmer_v3";
+/** Vol Farmer v2, v3 and v4: v3 runs on v2's values (its tickers' allocations and excess allowance too), with its first position rebalanced; v4 as v3 on values of its own. */
+export const runsVolFarmerV2Steps = (decisionMaker: BacktestDecisionMaker): boolean => decisionMaker === "vol_farmer_v2" || decisionMaker === "vol_farmer_v3" || decisionMaker === "vol_farmer_v4";
+
+/** The section holding a Vol Farmer's tickers' allocations and excess allowance: v4's own, else v2's (v3 runs on v2's). */
+export const volFarmerAllocationSection = (decisionMaker: BacktestDecisionMaker): "volFarmerV2" | "volFarmerV4" => (decisionMaker === "vol_farmer_v4" ? "volFarmerV4" : "volFarmerV2");
+
+/** The excess allowance the Tickers card shows beside the starting value, out of the Settings table, for the decision maker. */
+export const volFarmerExcessAllowancePathOf = (decisionMaker: BacktestDecisionMaker): string => `${volFarmerAllocationSection(decisionMaker)}.excessAllowancePct`;
 
 /** Who decided a session's choices: its override, else its frozen settings; "rules" on sessions saved before the choice existed. */
 export function sessionDecisionMaker(session: { overrides: BacktestSettingsOverrides; settingsSnapshot: BacktestSettings }): BacktestDecisionMaker {
@@ -1400,6 +1405,7 @@ export const decisionMakerHint: Record<BacktestDecisionMaker, string> = {
   vol_farmer: "shares, a Covered Call and a long Put that hedges them, all unwound when the stock reaches the Call's strike",
   vol_farmer_v2: "two Covered Calls at different levels: the second from Puts sold on the rest of the pot after a fall, a LEAPS Call once the price is half a Step below the second's break-even",
   vol_farmer_v3: "Vol Farmer v2 on its values, its first position bought or sold back to its share of the pot between its Calls once off it by more than the Rebalancing band",
+  vol_farmer_v4: "Vol Farmer v3 on values of its own, by default the research's best run: 80% of each ticker's pot in shares, rebalanced, with Calls up to |delta| 0.5 expiring at the day's close",
 };
 
 /** Where a ticker's value came from, as its badge reads (lowest layer first: the order a reset walks back down). */

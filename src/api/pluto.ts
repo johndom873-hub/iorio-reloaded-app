@@ -151,19 +151,31 @@ export interface PlutoSettings {
   safetyMaxOrdersPerDay: number;
   safetySpyStressBreakerPct: number;
   safetyTickerCooldownMinutes: number;
-  // Vol Farmer v2's values, every v2 ticker alike: set once from the lab's of 27 Oct 2026, never synced with the lab.
+  // Vol Farmer v4's values, every v4 ticker alike: set from the lab's best run of 30 Oct 2026 (Marcelo 2026-10-31), never synced with the lab.
   /** % of the ticker's pot the first position's shares are bought with; the Puts sell on the rest. */
-  volFarmerV2FirstPositionPct: number;
-  volFarmerV2PutsStartCallYieldPct: number;
-  volFarmerV2PutMaxAbsDelta: number;
-  volFarmerV2StepBelowFirstBreakEvenPct: number;
-  volFarmerV2StepRule: "fixed" | "implied_move_at_put_sale";
-  volFarmerV2LeapsMinDte: number;
-  volFarmerV2LeapsAbsDelta: number;
-  volFarmerV2LeapsMaxAllocationPct: number;
-  volFarmerV2CallMinAbsDelta: number;
-  volFarmerV2CallMaxAbsDelta: number;
-  volFarmerV2MaxSpreadPctOfMid: number;
+  volFarmerV4FirstPositionPct: number;
+  volFarmerV4PutsStartCallYieldPct: number;
+  volFarmerV4PutMaxAbsDelta: number;
+  volFarmerV4StepBelowFirstBreakEvenPct: number;
+  volFarmerV4StepRule: "fixed" | "implied_move_at_put_sale";
+  volFarmerV4LeapsMinDte: number;
+  volFarmerV4LeapsAbsDelta: number;
+  volFarmerV4LeapsMaxAllocationPct: number;
+  volFarmerV4CallMinAbsDelta: number;
+  volFarmerV4CallMaxAbsDelta: number;
+  volFarmerV4MaxSpreadPctOfMid: number;
+  /** v3's rules: the rebalancing band (% of the pot) and how the shares and options are traded. */
+  volFarmerV4RebalanceBandPct: number;
+  volFarmerV4Rebalances: "first_position" | "both_positions";
+  volFarmerV4FirstPositionAfterCalledAway: "wait" | "rebuild";
+  volFarmerV4OptionsExpiry: "next" | "today";
+  volFarmerV4OptionsMaxDaysToExpiry: number;
+  volFarmerV4CallStrikeFloor: "break_even" | "none";
+  volFarmerV4PutsSold: "calls_yield_little" | "with_every_call";
+  volFarmerV4PutStrikeCap: "first_break_even_less_step" | "none";
+  volFarmerV4TrimsSell: "higher_break_even_first" | "second_position_first";
+  /** Top-ups take a ticker's money in (held shares' cost, open Puts' cash) to at most this % of its pot; 0: no cap. */
+  volFarmerV4TopUpCapPct: number;
   updatedAt: string;
   updatedByUserId: string | null;
 }
@@ -195,7 +207,7 @@ export interface PlutoGateResult {
 }
 
 /** close_position: a whole covered call (call bought back, shares sold) closed by code before earnings, never by the model. */
-export type PlutoActionKind = "open_covered_call" | "open_cash_secured_put" | "roll" | "close_shares" | "close_leg" | "close_position" | "buy_leaps" | "sell_leaps" | "no_trade";
+export type PlutoActionKind = "open_covered_call" | "open_cash_secured_put" | "roll" | "close_shares" | "close_leg" | "close_position" | "buy_leaps" | "sell_leaps" | "buy_shares" | "no_trade";
 export type PlutoActionOutcome = "validated" | "blocked" | "order_built" | "confirmed" | "filled" | "partially_filled" | "cancelled" | "cancelled_partially_filled" | "rejected" | "error" | "no_trade";
 
 /** What an action trades: an open's contract, a roll's replacement (plus the held leg it replaces), a close's leg or shares. */
@@ -621,7 +633,7 @@ export interface PlutoHowItWorks {
       rungs: { rung: number; strikeCap: number }[];
     };
   };
-  volFarmerV2: {
+  volFarmerV4: {
     callMinAbsDelta: number;
     callMaxAbsDelta: number;
     maxSpreadPctOfMid: number;
@@ -630,13 +642,47 @@ export interface PlutoHowItWorks {
     firstPositionPct: number;
     putsStartCallYieldPct: number;
     putMaxAbsDelta: number;
-    stepRule: PlutoSettings["volFarmerV2StepRule"];
+    stepRule: PlutoSettings["volFarmerV4StepRule"];
     /** The fixed rule's Step. */
     stepBelowFirstBreakEvenPct: number;
     leapsMinDte: number;
     leapsAbsDelta: number;
     leapsMaxAllocationPct: number;
-    example: { accountValue: number; allocationPct: number; pot: number; stockPrice: number; lots: number; firstBreakEven: number; impliedVolatilityPct: number; stepPct: number; putStrikeCap: number; leapsEntryBelowSecondBreakEvenPct: number; leapsCap: number };
+    rebalanceBandPct: number;
+    rebalances: PlutoSettings["volFarmerV4Rebalances"];
+    firstPositionAfterCalledAway: PlutoSettings["volFarmerV4FirstPositionAfterCalledAway"];
+    optionsExpiry: PlutoSettings["volFarmerV4OptionsExpiry"];
+    optionsMaxDaysToExpiry: number;
+    callStrikeFloor: PlutoSettings["volFarmerV4CallStrikeFloor"];
+    putsSold: PlutoSettings["volFarmerV4PutsSold"];
+    putStrikeCap: PlutoSettings["volFarmerV4PutStrikeCap"];
+    trimsSell: PlutoSettings["volFarmerV4TrimsSell"];
+    topUpCapPct: number;
+    example: {
+      accountValue: number;
+      allocationPct: number;
+      pot: number;
+      stockPrice: number;
+      lots: number;
+      /** The first position's target and the band either side of it, in dollars. */
+      targetDollars: number;
+      bandDollars: number;
+      fallPrice: number;
+      valueAfterFall: number;
+      lotsAfterFallTopUp: number;
+      /** The top-up cap in dollars (null: no cap), and the money in once the fall's top-up is bought. */
+      topUpCapDollars: number | null;
+      moneyInAfterFallTopUp: number;
+      risePrice: number;
+      valueAfterRise: number;
+      lotsAfterRiseTrim: number;
+      firstBreakEven: number;
+      impliedVolatilityPct: number;
+      stepPct: number;
+      putStrikeCap: number;
+      leapsEntryBelowSecondBreakEvenPct: number;
+      leapsCap: number;
+    };
   };
 }
 
@@ -700,50 +746,51 @@ export interface PlutoLadderTickerSettings {
   lastClose: { price: number; date: string } | null;
   capitalBudgetDollars: number | null;
   recommendedShockSource: { maxDrawdownPct: number | null; closesUsed: number; fromIso: string | null; toIso: string | null } | null;
-  /** The strategy set on the ticker (null: the default, Vol Farmer v2) and the one Pluto runs on it. */
+  /** The strategy set on the ticker (null: the default, Vol Farmer v4) and the one Pluto runs on it. */
   strategy: PlutoStrategy | null;
   effectiveStrategy: PlutoStrategy;
 }
 
 /** The strategy Pluto runs on a ticker. */
-export type PlutoStrategy = "vol_farmer_v2" | "cc_put_ladder";
+export type PlutoStrategy = "vol_farmer_v4" | "cc_put_ladder";
 
-/** An option one of v2's positions holds: a leg of the book, or an order still working. */
-export interface PlutoVolFarmerV2Option {
+/** An option one of v4's positions holds: a leg of the book, or an order still working. */
+export interface PlutoVolFarmerV4Option {
   strike: number;
   expiry: string;
   contracts: number;
   working: boolean;
 }
 
-export interface PlutoVolFarmerV2Position {
+export interface PlutoVolFarmerV4Position {
   shares: number;
   costPerShare: number;
   /** B-E¹ / B-E²; null while the second position holds no shares. */
   breakEvenPerShare: number | null;
-  calls: PlutoVolFarmerV2Option[];
-  puts: PlutoVolFarmerV2Option[];
+  calls: PlutoVolFarmerV4Option[];
+  puts: PlutoVolFarmerV4Option[];
 }
 
-/** A Vol Farmer v2 ticker as v2's memory counts it (GET /pluto/vol-farmer-v2). */
-export interface PlutoVolFarmerV2Ticker {
+/** A Vol Farmer v4 ticker as v4's memory counts it (GET /pluto/vol-farmer-v4). */
+export interface PlutoVolFarmerV4Ticker {
   symbol: string;
   adoptedAt: string | null;
-  /** No memory yet: v2 waits to adopt the ticker's holdings (the last round's notes say why), or has not looked yet. */
+  /** No memory yet: v4 waits to adopt the ticker's holdings (the last round's notes say why), or has not looked yet. */
   waiting: boolean;
-  first: PlutoVolFarmerV2Position | null;
-  second: PlutoVolFarmerV2Position | null;
+  first: PlutoVolFarmerV4Position | null;
+  second: PlutoVolFarmerV4Position | null;
   leaps: { strike: number; expiry: string; heldContracts: number; intendedContracts: number } | null;
-  workingOrders: { kind: "covered_call" | "cash_secured_put" | "buy_leaps" | "sell_leaps"; strike: number; expiry: string; contracts: number }[];
+  /** A share order's strike is 0 and expiry "": its shares say what it trades. */
+  workingOrders: { kind: "covered_call" | "cash_secured_put" | "buy_leaps" | "sell_leaps" | "buy_shares" | "sell_shares"; strike: number; expiry: string; contracts: number; shares: number | null }[];
   lastRoundAt: string | null;
   lastRoundNotes: string[];
-  /** What the last round read: the pot, what the ticker commits as the pot check counts it, v2's free cash and the LEAPS cap. */
+  /** What the last round read: the pot, what the ticker commits as the pot check counts it, v4's free cash and the LEAPS cap. */
   /** putsDollars: the pot less the First position's share; rounds before 2026-10-30 lack it (half the pot). */
   lastRoundFigures: { potDollars: number; committedDollars: number; freeCashDollars: number; leapsCapDollars: number; putsDollars?: number } | null;
 }
 
-export function fetchPlutoVolFarmerV2(): Promise<PlutoVolFarmerV2Ticker[]> {
-  return apiRequest<PlutoVolFarmerV2Ticker[]>("/pluto/vol-farmer-v2");
+export function fetchPlutoVolFarmerV4(): Promise<PlutoVolFarmerV4Ticker[]> {
+  return apiRequest<PlutoVolFarmerV4Ticker[]>("/pluto/vol-farmer-v4");
 }
 
 export function fetchPlutoLadderSettings(): Promise<PlutoLadderTickerSettings[]> {

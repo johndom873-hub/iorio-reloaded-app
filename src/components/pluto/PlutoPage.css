@@ -349,6 +349,8 @@ a.pm-b:hover, button.pm-b.link:hover { text-decoration: underline; }
 .pm-snav a .pend { width: 7px; height: 7px; border-radius: 50%; background: #f59f00; display: inline-block; }
 .pm-field { display: grid; grid-template-columns: minmax(0, 1fr) 190px; gap: 20px; padding: 13px 18px; border-top: 1px solid var(--border-soft); align-items: center; }
 .pm-field.first { border-top: 0; }
+/* A choice's labels are sentences ("At today's close, on expiry days"): its column is wider than a number's. */
+@media (min-width: 768px) { .pm-field:has(.pm-input select) { grid-template-columns: minmax(0, 1fr) 290px; } }
 .pm-field label { font-weight: 500; color: var(--strong); display: block; }
 .pm-help { font-size: 12.5px; color: var(--muted); margin-top: 2px; line-height: 1.4; }
 .pm-input { display: flex; border: 1px solid var(--border-strong); border-radius: 6px; overflow: hidden; background: var(--input-bg); height: 36px; }
@@ -799,21 +801,21 @@ a.pm-b:hover, button.pm-b.link:hover { text-decoration: underline; }
   .pm-ro-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.875rem 1rem; padding: 0.875rem 1rem 1rem; }
 }
 
-/* Vol Farmer v2 card (Live tab) */
-.pm-v2-table td { vertical-align: top; }
-.pm-v2-last { min-width: 12rem; max-width: 28rem; }
-.pm-v2-note { white-space: normal; overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
-.pm-v2-leaps { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 0.375rem; }
-.pm-v2-ticker { min-width: 6.5rem; }
-.pm-v2-position { min-width: 12rem; }
-.pm-v2-second { min-width: 10rem; }
-.pm-v2-leaps-cell { min-width: 10rem; }
-.pm-v2-warnings { padding: 0.75rem 1.125rem 0; }
-.pm-v2-warnings .pm-alert-text + .pm-alert-text { margin-top: 0.25rem; }
-.pm-v2-m-head { display: flex; align-items: baseline; justify-content: space-between; gap: 0.5rem; }
-.pm-v2-m-grid { display: grid; grid-template-columns: 7.5rem minmax(0, 1fr); gap: 0.375rem 0.75rem; margin: 0.5rem 0 0; font-size: 0.8rem; }
-.pm-v2-m-grid dt { font-weight: 500; color: var(--muted); }
-.pm-v2-m-grid dd { margin: 0; min-width: 0; overflow-wrap: anywhere; }
-.pm-v2-m-quiet { margin-top: 0.25rem; font-size: 0.8rem; color: var(--muted); overflow-wrap: anywhere; }
+/* Vol Farmer v4 card (Live tab) */
+.pm-v4-table td { vertical-align: top; }
+.pm-v4-last { min-width: 12rem; max-width: 28rem; }
+.pm-v4-note { white-space: normal; overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+.pm-v4-leaps { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 0.375rem; }
+.pm-v4-ticker { min-width: 6.5rem; }
+.pm-v4-position { min-width: 12rem; }
+.pm-v4-second { min-width: 10rem; }
+.pm-v4-leaps-cell { min-width: 10rem; }
+.pm-v4-warnings { padding: 0.75rem 1.125rem 0; }
+.pm-v4-warnings .pm-alert-text + .pm-alert-text { margin-top: 0.25rem; }
+.pm-v4-m-head { display: flex; align-items: baseline; justify-content: space-between; gap: 0.5rem; }
+.pm-v4-m-grid { display: grid; grid-template-columns: 7.5rem minmax(0, 1fr); gap: 0.375rem 0.75rem; margin: 0.5rem 0 0; font-size: 0.8rem; }
+.pm-v4-m-grid dt { font-weight: 500; color: var(--muted); }
+.pm-v4-m-grid dd { margin: 0; min-width: 0; overflow-wrap: anywhere; }
+.pm-v4-m-quiet { margin-top: 0.25rem; font-size: 0.8rem; color: var(--muted); overflow-wrap: anywhere; }
 @media (max-width: 767px) { .pm-strategy .pm-select { height: 44px; } }
-.pm-v2-warnings .pm-tkr { color: inherit; text-decoration: underline; text-underline-offset: 2px; }
+.pm-v4-warnings .pm-tkr { color: inherit; text-decoration: underline; text-underline-offset: 2px; }

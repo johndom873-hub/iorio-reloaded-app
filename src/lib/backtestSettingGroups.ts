@@ -12,6 +12,7 @@ export const backtestSettingSectionTitles: Record<BacktestSettingSection, string
   vol_farmer: "Used by the original Vol Farmer (retired)",
   vol_farmer_v2: "Used by Vol Farmer v2 and v3",
   vol_farmer_v3: "Used by Vol Farmer v3",
+  vol_farmer_v4: "Used by Vol Farmer v4",
 };
 
 export const steadyStakeSectionNote = "Used only when the decision maker is the Steady Stake. None of these change a CC + Put Ladder session; the ladder's values don't change a Steady Stake session.";
@@ -22,8 +23,10 @@ export const volFarmerV2SectionNote = "Used only when the decision maker is Vol 
 
 export const volFarmerV3SectionNote = "Used only when the decision maker is Vol Farmer v3, beside Vol Farmer v2's values. None of these change any other session.";
 
+export const volFarmerV4SectionNote = "Used only when the decision maker is Vol Farmer v4: every value it reads is its own, so Vol Farmer v2's and v3's values don't change it, nor these any other session.";
+
 /** The note under a section's title; the CC + Put Ladder's section opens the table and has none. */
-export const backtestSettingSectionNotes: Record<BacktestSettingSection, string | null> = { baseline_wheel: null, steady_stake: steadyStakeSectionNote, vol_farmer: volFarmerSectionNote, vol_farmer_v2: volFarmerV2SectionNote, vol_farmer_v3: volFarmerV3SectionNote };
+export const backtestSettingSectionNotes: Record<BacktestSettingSection, string | null> = { baseline_wheel: null, steady_stake: steadyStakeSectionNote, vol_farmer: volFarmerSectionNote, vol_farmer_v2: volFarmerV2SectionNote, vol_farmer_v3: volFarmerV3SectionNote, vol_farmer_v4: volFarmerV4SectionNote };
 
 /** The original Vol Farmer's section, retired with it (Marcelo 2026-10-30): no setting there changes a session that can still run. */
 export const isRetiredBacktestSettingSection = (section: BacktestSettingSection) => section === "vol_farmer";
@@ -197,24 +200,40 @@ export function backtestSettingGroupSummary(group: BacktestSettingGroup, text: (
         `${shown("volFarmer.putCashReservePct")} cash kept`,
       ].join(" · ");
     case "Vol Farmer v2":
-      return [
-        `first position ${shown("volFarmerV2.firstPositionPct")}`,
-        `Calls |delta| ${text("volFarmer.callMinAbsDelta")}–${text("volFarmer.callMaxAbsDelta")}`,
-        `Puts start under ${shown("volFarmerV2.putsStartCallYieldPct")}`,
-        `Put |delta| ${text("volFarmerV2.putMaxAbsDelta")}, Step ${text("volFarmerV2.stepRule") === "implied_move_at_put_sale" ? "the one-month implied move at each Put sale" : shown("volFarmerV2.stepBelowFirstBreakEvenPct")} below the first break-even`,
-        `LEAPS ${text("volFarmerV2.leapsMinDte")}+ days at |delta| ${text("volFarmerV2.leapsAbsDelta")}${Number(text("volFarmerV2.leapsMaxAccountPct")) > 0 ? `, at most ${shown("volFarmerV2.leapsMaxAccountPct")} of the ticker's pot` : ""}`,
-        text("volFarmerV2.looks") === "every_look" ? "decides at every look" : "decides at 10:00",
-        ...(Number(text("volFarmerV2.excessAllowancePct")) > 0 ? [`pots ${shown("volFarmerV2.excessAllowancePct")} over the allocations`] : []),
-      ].join(" · ");
+      return volFarmerV2Summary(text, shown, { calls: "volFarmer", own: "volFarmerV2" });
     case "Vol Farmer v3":
-      return [
-        `${text("volFarmerV3.rebalances") === "both_positions" ? `both positions rebalanced as one (trims ${text("volFarmerV3.trimsSell") === "second_position_first" ? "the second position first" : "the higher break-even first"})` : "first position rebalanced"} beyond ${shown("volFarmerV3.rebalanceBandPct")} of the pot`,
-        text("volFarmerV3.firstPositionAfterCalledAway") === "rebuild" ? "a first position called away first is rebuilt" : "a first position called away first waits for the second",
-        text("volFarmerV3.optionsExpiry") === "today" ? "options expiring at today's close" : Number(text("volFarmerV3.optionsMaxDaysToExpiry")) < 45 ? `options on the next expiry once it is ${text("volFarmerV3.optionsMaxDaysToExpiry")} days or fewer away` : "options on the next expiry",
-        text("volFarmerV3.callStrikeFloor") === "none" ? "Calls anywhere above the price" : "Calls at or above the break-even",
-        `${text("volFarmerV3.putsSold") === "with_every_call" ? "Puts with every Call" : "Puts when the Calls yield little"}, ${text("volFarmerV3.putStrikeCap") === "none" ? "anywhere below the price" : "a Step below the first break-even"}`,
-      ].join(" · ");
+      return volFarmerV3Summary(text, shown, "volFarmerV3");
+    // v4 reads a copy of every value, under its own section: v2's summary, then v3's.
+    case "Vol Farmer v4":
+      return `${volFarmerV2Summary(text, shown, { calls: "volFarmerV4", own: "volFarmerV4" })} · ${volFarmerV3Summary(text, shown, "volFarmerV4")}`;
   }
+}
+
+/** Vol Farmer v2's values in one line, read under `sections` (v4 holds a copy of them, its Calls' range too). */
+function volFarmerV2Summary(text: (path: string) => string, shown: (path: string) => string, sections: { calls: "volFarmer" | "volFarmerV4"; own: "volFarmerV2" | "volFarmerV4" }): string {
+  const own = (field: string) => `${sections.own}.${field}`;
+  return [
+    `first position ${shown(own("firstPositionPct"))}`,
+    `Calls |delta| ${text(`${sections.calls}.callMinAbsDelta`)}–${text(`${sections.calls}.callMaxAbsDelta`)}`,
+    `Puts start under ${shown(own("putsStartCallYieldPct"))}`,
+    `Put |delta| ${text(own("putMaxAbsDelta"))}, Step ${text(own("stepRule")) === "implied_move_at_put_sale" ? "the one-month implied move at each Put sale" : shown(own("stepBelowFirstBreakEvenPct"))} below the first break-even`,
+    `LEAPS ${text(own("leapsMinDte"))}+ days at |delta| ${text(own("leapsAbsDelta"))}${Number(text(own("leapsMaxAccountPct"))) > 0 ? `, at most ${shown(own("leapsMaxAccountPct"))} of the ticker's pot` : ""}`,
+    text(own("looks")) === "every_look" ? "decides at every look" : "decides at 10:00",
+    ...(Number(text(own("excessAllowancePct"))) > 0 ? [`pots ${shown(own("excessAllowancePct"))} over the allocations`] : []),
+  ].join(" · ");
+}
+
+/** Vol Farmer v3's own values in one line, read under `section` (v4 holds a copy of them). */
+function volFarmerV3Summary(text: (path: string) => string, shown: (path: string) => string, section: "volFarmerV3" | "volFarmerV4"): string {
+  const own = (field: string) => `${section}.${field}`;
+  return [
+    `${text(own("rebalances")) === "both_positions" ? `both positions rebalanced as one (trims ${text(own("trimsSell")) === "second_position_first" ? "the second position first" : "the higher break-even first"})` : "first position rebalanced"} beyond ${shown(own("rebalanceBandPct"))} of the pot`,
+    text(own("firstPositionAfterCalledAway")) === "rebuild" ? "a first position called away first is rebuilt" : "a first position called away first waits for the second",
+    text(own("optionsExpiry")) === "today" ? "options expiring at today's close" : Number(text(own("optionsMaxDaysToExpiry"))) < 45 ? `options on the next expiry once it is ${text(own("optionsMaxDaysToExpiry"))} days or fewer away` : "options on the next expiry",
+    text(own("callStrikeFloor")) === "none" ? "Calls anywhere above the price" : "Calls at or above the break-even",
+    `${text(own("putsSold")) === "with_every_call" ? "Puts with every Call" : "Puts when the Calls yield little"}, ${text(own("putStrikeCap")) === "none" ? "anywhere below the price" : "a Step below the first break-even"}`,
+    ...(Number(text(own("topUpCapPctOfPot"))) > 0 ? [`top-ups up to ${shown(own("topUpCapPctOfPot"))} of the pot`] : []),
+  ].join(" · ");
 }
 
 /** The lab values each ticker override stands in for (labSettingsStore.ts globalPathsByTickerField): a fixed shock replaces the whole shock rule. */
@@ -233,7 +252,7 @@ export function labTickersKeepingTheirOwn(path: string, overrides: readonly Back
   return overrides.filter((row) => fields.some((field) => row[field] !== null)).map((row) => row.symbol);
 }
 
-const settingPathPattern = /\b(?:baseline|pluto|trading|policy|model|lab|fixed|steadyStake|volFarmer|volFarmerV2|volFarmerV3)\.[A-Za-z]+\b|\bkellyFraction\b|\bdecisionMaker\b/g;
+const settingPathPattern = /\b(?:baseline|pluto|trading|policy|model|lab|fixed|steadyStake|volFarmer|volFarmerV2|volFarmerV3|volFarmerV4)\.[A-Za-z]+\b|\bkellyFraction\b|\bdecisionMaker\b/g;
 const labOnlyLabels: Record<string, string> = { "lab.defaultPotDollars": "Default pot" };
 
 /** A refusal from the API with each setting key ("baseline.putsWhenNoCall") written as its label ("Puts when no call is sold"). */

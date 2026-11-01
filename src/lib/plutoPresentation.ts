@@ -177,7 +177,7 @@ export function orderedChecks(checks: Record<string, PlutoSystemCheck> | null): 
 }
 
 /** Each strategy's name on the screen. */
-export const plutoStrategyLabels: Record<PlutoStrategy, string> = { vol_farmer_v2: "Vol Farmer v2", cc_put_ladder: "CC + Put Ladder" };
+export const plutoStrategyLabels: Record<PlutoStrategy, string> = { vol_farmer_v4: "Vol Farmer v4", cc_put_ladder: "CC + Put Ladder" };
 
 // ---------- Orders ----------
 
@@ -185,7 +185,7 @@ export type PlutoStrategyBadge = { className: "cc" | "csp" | "leaps" | "ns"; lab
 
 export function strategyBadgeFor(kind: PlutoActionKind, contract: PlutoActionContract | null): PlutoStrategyBadge {
   const strategy = contract?.strategyKey ?? (kind === "open_covered_call" ? "covered_call" : kind === "open_cash_secured_put" ? "cash_secured_put" : null);
-  if (kind === "close_shares") return { className: "ns", label: "N/S" };
+  if (kind === "close_shares" || kind === "buy_shares") return { className: "ns", label: "N/S" };
   if (strategy === "covered_call") return { className: "cc", label: "CC" };
   if (strategy === "cash_secured_put") return { className: "csp", label: "CSP" };
   if (strategy === "leaps" || kind === "buy_leaps" || kind === "sell_leaps") return { className: "leaps", label: "LEAPS" };
@@ -214,7 +214,7 @@ type DescribableOrder = { kind: PlutoActionKind; contract: PlutoActionContract |
  */
 function describeActionContracts(action: DescribableOrder): string {
   const asOfIso = easternIsoDate(action.createdAt);
-  if (action.kind === "close_shares") return `${action.quantity ?? "?"} shares`;
+  if (action.kind === "close_shares" || action.kind === "buy_shares") return `${action.quantity ?? "?"} shares`;
   if (action.kind === "roll") return `${actionLegLabel(action.contract, "held", null)} → ${actionLegLabel(action.contract, "traded", asOfIso)}`;
   // A close_position's quantity is its shares.
   if (action.kind === "close_position") return `${actionLegLabel(action.contract, "traded", asOfIso)} + sell ${action.quantity ?? "?"} shares`;
@@ -230,6 +230,7 @@ const actionVerbs: Record<PlutoActionKind, string> = {
   roll: "Roll",
   buy_leaps: "Buy",
   sell_leaps: "Sell",
+  buy_shares: "Buy",
   no_trade: "",
 };
 
@@ -237,6 +238,8 @@ const actionVerbs: Record<PlutoActionKind, string> = {
 export function describeOrderContract(action: DescribableOrder): { title: string; sub: string | null } {
   if (action.kind === "no_trade") return { title: "No order", sub: null };
   if (action.kind === "close_shares") return { title: `Sell ${describeActionContracts(action)}`, sub: "Close unstructured shares" };
+  // Vol Farmer v4's share purchase: its rebalancing, or a first position bought on a day it sells no option.
+  if (action.kind === "buy_shares") return { title: `Buy ${describeActionContracts(action)}`, sub: "Shares alone, held uncovered" };
   if (!action.contract?.expiry) return { title: action.kind === "close_leg" ? "Buy back" : action.kind === "close_position" ? "Close covered Call" : "—", sub: null };
   const title = `${actionVerbs[action.kind]} ${describeActionContracts(action)}`;
   const contracts = action.quantity === null ? null : pluralize(action.kind === "close_position" ? Math.round(action.quantity / 100) : action.quantity, "contract");
@@ -250,7 +253,7 @@ export function describeOrderContract(action: DescribableOrder): { title: string
 /** The platform's order line: "SMCI Sell $46 Call · 9 Oct (2DTE) · 11× @ 0.39"; "SMCI Sell 100 shares @ 45.10"; no price when null. */
 export function describeOrderLine(order: DescribableOrder & { symbol: string }, price: number | null): string {
   const head = `${order.symbol} ${actionVerbs[order.kind]} ${describeActionContracts(order)}`;
-  if (order.kind === "close_shares") return `${head}${price === null ? "" : ` @ ${price.toFixed(2)}`}`;
+  if (order.kind === "close_shares" || order.kind === "buy_shares") return `${head}${price === null ? "" : ` @ ${price.toFixed(2)}`}`;
   if (order.kind === "close_position") return `${head}${order.quantity === null ? "" : ` · ${Math.round(order.quantity / 100)}×`}`;
   return `${head}${order.quantity === null ? "" : formatOrderSize(order.quantity, price)}`;
 }
@@ -499,6 +502,13 @@ const gateLabels: Record<string, string> = {
   automatic_held_share_call: "Call on held shares (code)",
   live_quote: "Live quote",
   break_even: "Break-even",
+  vol_farmer_v4: "Vol Farmer v4",
+  vol_farmer_v4_rules: "v4's bid and spread",
+  vol_farmer_v4_delta: "v4's |delta|",
+  vol_farmer_v2: "Vol Farmer v2",
+  vol_farmer_v2_rules: "v2's bid and spread",
+  vol_farmer_v2_delta: "v2's |delta|",
+  book_capital: "Pluto's budget",
 };
 
 export function gateLabel(name: string): string {
@@ -665,7 +675,7 @@ export function describeFeedEvent(event: PlutoEvent, context?: PlutoFeedContext)
       const fields = Array.isArray(payload.fields) ? (payload.fields as { field: string; from: unknown; to: unknown }[]) : [];
       // A ticker's own setting (a symbol in the payload) set back to null takes the default again.
       const shown = (field: string, value: unknown): string => {
-        if (field === "strategy") return value === null || value === undefined ? `${plutoStrategyLabels.vol_farmer_v2} (default)` : plutoStrategyLabels[value as PlutoStrategy] ?? text(value);
+        if (field === "strategy") return value === null || value === undefined ? `${plutoStrategyLabels.vol_farmer_v4} (default)` : plutoStrategyLabels[value as PlutoStrategy] ?? text(value);
         if (field === "allocationPct") return value === null || value === undefined ? "equal share" : `${text(value)}%`;
         if ((value === null || value === undefined) && symbol) return "default";
         if (field === "excessAllowancePct") return `${text(value)}%`;

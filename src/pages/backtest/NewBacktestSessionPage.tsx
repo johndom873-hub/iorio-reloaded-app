@@ -58,7 +58,8 @@ import {
   tickerValueInputText,
   tickerValueTextProblem,
   valueAtSettingsPath,
-  volFarmerV2ExcessAllowancePath,
+  volFarmerAllocationSection,
+  volFarmerExcessAllowancePathOf,
   wholeYearsContaining,
   wholeYearsDates,
   wholeYearsMatching,
@@ -130,13 +131,14 @@ function initialValueByPath(template: BacktestSettingsTemplate, source: Backtest
 }
 
 /**
- * A copied Vol Farmer v2 session's allocations as the Tickers card types them. A session from before allocations, sized by
- * a dollar pot per ticker (volFarmerV2.tickerPotDollars), comes back as the values that give the same pots: an equal share
- * with the excess allowance (pot × tickers ÷ starting value − 1) when the pots add up to the starting value or more, else
- * every ticker's allocation at pot ÷ starting value. $100,000 × 24 ÷ $1,900,000 − 1 = 26.3158%.
+ * A copied Vol Farmer v2 session's allocations as the Tickers card types them (v3's, and v4's from its own values). A
+ * session from before allocations, sized by a dollar pot per ticker (volFarmerV2.tickerPotDollars), comes back as the
+ * values that give the same pots: an equal share with the excess allowance (pot × tickers ÷ starting value − 1) when the
+ * pots add up to the starting value or more, else every ticker's allocation at pot ÷ starting value.
+ * $100,000 × 24 ÷ $1,900,000 − 1 = 26.3158%.
  */
 function copiedVolFarmerV2Allocations(source: BacktestSessionDetail["session"], symbols: string[]): { textBySymbol: Record<string, string>; allowanceText: string | null; note: string | null } {
-  const volFarmerV2 = source.overrides.volFarmerV2 as (Partial<BacktestVolFarmerV2Settings> & { tickerPotDollars?: number }) | undefined;
+  const volFarmerV2 = source.overrides[volFarmerAllocationSection(sessionDecisionMaker(source))] as (Partial<BacktestVolFarmerV2Settings> & { tickerPotDollars?: number }) | undefined;
   const textBySymbol = Object.fromEntries(
     Object.entries(volFarmerV2?.tickerAllocationPct ?? {})
       .filter(([symbol]) => symbols.includes(symbol))
@@ -349,7 +351,7 @@ export function NewBacktestSessionPage() {
     if (fromAnalysis && Object.keys(fromAnalysis.tickerEdits).length > 0) setTickerEdits({ [fromAnalysis.symbol]: fromAnalysis.tickerEdits });
     const editablePaths = new Set(template.rows.filter((row) => row.editable).map((row) => row.path));
     const analysisSettingValues = Object.fromEntries(Object.entries(fromAnalysis?.settingValues ?? {}).filter(([path]) => editablePaths.has(path)));
-    const copiedAllowance: Record<string, string> = copiedAllocations?.allowanceText != null ? { [volFarmerV2ExcessAllowancePath]: copiedAllocations.allowanceText } : {};
+    const copiedAllowance: Record<string, string> = source && copiedAllocations?.allowanceText != null ? { [volFarmerExcessAllowancePathOf(sessionDecisionMaker(source))]: copiedAllocations.allowanceText } : {};
     setValueByPath({ ...initialValueByPath(template, sourceSession), ...analysisSettingValues, ...copiedAllowance });
     setInitialized(true);
   }, [initialized, overview, template, sourceLoaded, sourceSession, sourceBatch, requestedSymbolsParam, analysisValues]);
@@ -419,11 +421,13 @@ export function NewBacktestSessionPage() {
   const allRows = useMemo(() => (template?.rows ?? []).filter((row) => !isRetiredBacktestSettingSection(row.section)), [template]);
   const decisionMakerRow = allRows.find((row) => row.path === decisionMakerPath) ?? null;
   const decisionMaker = (valueByPath[decisionMakerPath] ?? "baseline") as BacktestDecisionMaker;
-  // Vol Farmer v2 (or v3, on v2's values) deciding (mockup approved 2026-10-28): the Tickers card holds each ticker's
-  // allocation and, beside the starting value, the excess allowance, which leaves the Settings table.
-  const allowanceRow = allRows.find((row) => row.path === volFarmerV2ExcessAllowancePath) ?? null;
+  // Vol Farmer v2 (or v3, on v2's values; v4, on its own) deciding (mockup approved 2026-10-28): the Tickers card holds each
+  // ticker's allocation and, beside the starting value, the excess allowance, which leaves the Settings table.
+  const allocationSection = volFarmerAllocationSection(decisionMaker);
+  const allowancePath = volFarmerExcessAllowancePathOf(decisionMaker);
+  const allowanceRow = allRows.find((row) => row.path === allowancePath) ?? null;
   const showVolFarmerV2TickersCard = runsVolFarmerV2Steps(decisionMaker) && selectedFiles.length > 0 && allowanceRow !== null;
-  const settingRows = allRows.filter((row) => row.path !== decisionMakerPath && !(showVolFarmerV2TickersCard && row.path === volFarmerV2ExcessAllowancePath));
+  const settingRows = allRows.filter((row) => row.path !== decisionMakerPath && !(showVolFarmerV2TickersCard && row.path === allowancePath));
   // The Baseline runs per-ticker pots: each ticker its pot and ladder values. The rules and the AI model run one starting value.
   const perTickerPots = decisionMaker === "baseline";
   // Several runs only with the Baseline deciding (D1): only it has ticker values. Each run's capital is the sum of its pots (D4).
@@ -441,12 +445,12 @@ export function NewBacktestSessionPage() {
     [latestResult],
   );
   const settingsOverrides = useMemo(() => (template ? buildBacktestOverrides(template.rows, valueByPath) : {}), [template, valueByPath]);
-  const allowanceText = valueByPath[volFarmerV2ExcessAllowancePath] ?? (allowanceRow ? String(allowanceRow.now) : "0");
-  // What the session overrides: the settings changed, and with Vol Farmer v2 or v3 deciding each allocation typed on the Tickers card.
+  const allowanceText = valueByPath[allowancePath] ?? (allowanceRow ? String(allowanceRow.now) : "0");
+  // What the session overrides: the settings changed, and with Vol Farmer v2, v3 or v4 deciding each allocation typed on the Tickers card.
   const tickerAllocationPct = useMemo(() => (runsVolFarmerV2Steps(decisionMaker) ? typedAllocationsBySymbol(symbols, allocationTextBySymbol) : {}), [decisionMaker, symbols, allocationTextBySymbol]);
   const overrides = useMemo<BacktestSettingsOverrides>(
-    () => (Object.keys(tickerAllocationPct).length === 0 ? settingsOverrides : { ...settingsOverrides, volFarmerV2: { ...settingsOverrides.volFarmerV2, tickerAllocationPct } }),
-    [settingsOverrides, tickerAllocationPct],
+    () => (Object.keys(tickerAllocationPct).length === 0 ? settingsOverrides : { ...settingsOverrides, [allocationSection]: { ...settingsOverrides[allocationSection], tickerAllocationPct } }),
+    [settingsOverrides, tickerAllocationPct, allocationSection],
   );
   const symbolSettings = useMemo(
     () => (perTickerPots ? buildTickerSymbolSettings(symbols, tickerEdits, latestResolution, capitalMode) : null),
@@ -570,7 +574,7 @@ export function NewBacktestSessionPage() {
   if (showVolFarmerV2TickersCard) problems.push(...typedAllocationProblems(symbols, allocationTextBySymbol, allowanceText));
   for (const row of allRows) {
     // The Tickers card checks the allowance it shows.
-    if (showVolFarmerV2TickersCard && row.path === volFarmerV2ExcessAllowancePath) continue;
+    if (showVolFarmerV2TickersCard && row.path === allowancePath) continue;
     const problem = row.editable ? settingValueProblem(row, valueByPath[row.path] ?? String(row.now)) : null;
     if (problem) problems.push(problem);
   }
@@ -838,7 +842,7 @@ export function NewBacktestSessionPage() {
     setValueByPath((previous) => ({
       ...initialValueByPath(template, null),
       [decisionMakerPath]: previous[decisionMakerPath] ?? String(decisionMakerRow?.now ?? "rules"),
-      ...(showVolFarmerV2TickersCard && previous[volFarmerV2ExcessAllowancePath] !== undefined ? { [volFarmerV2ExcessAllowancePath]: previous[volFarmerV2ExcessAllowancePath] } : {}),
+      ...(showVolFarmerV2TickersCard && previous[allowancePath] !== undefined ? { [allowancePath]: previous[allowancePath] } : {}),
     }));
   const splitShare = startingValue > 0 && selectedFiles.length > 0 ? startingValue / selectedFiles.length : null;
   const unavailableDecisionMakers = decisionMakerRow ? describeUnavailableChoices(decisionMakerRow) : [];
@@ -1198,7 +1202,7 @@ export function NewBacktestSessionPage() {
             onResetAllocations={() => setAllocationTextBySymbol({})}
             allowanceRow={allowanceRow}
             allowanceText={allowanceText}
-            onAllowanceChange={(text) => setValueByPath((previous) => ({ ...previous, [volFarmerV2ExcessAllowancePath]: text }))}
+            onAllowanceChange={(text) => setValueByPath((previous) => ({ ...previous, [allowancePath]: text }))}
           />
         )}
 

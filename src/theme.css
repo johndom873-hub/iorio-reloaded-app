@@ -2951,6 +2951,8 @@
 .lab-settings-modal .pm-savebar { top: 0; box-shadow: 0 -1.25rem 0 0 var(--page), var(--menu-shadow); }
 @media (min-width: 768px) {
   .lab-settings-modal .pm-field { grid-template-columns: minmax(0, 1fr) 210px; }
+  /* A choice's labels are sentences: its column is wider, so the chosen one reads whole ("One-month implied move, at each Put sale"). */
+  .lab-settings-modal .pm-field:has(.pm-input select) { grid-template-columns: minmax(0, 1fr) 320px; }
 }
 .lab-settings-modal .pm-field label.lab-settings-label { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .lab-settings-condition { color: var(--azure-text); }

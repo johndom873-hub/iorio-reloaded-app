@@ -3,7 +3,7 @@ import { ApiError } from "../../api/client";
 import { fetchPlutoLadderSettings, fetchPlutoSettingsVersion, updatePlutoSettings, type PlutoLadderTickerSettings, type PlutoSettings, type PlutoSettingsAuditRow, type PlutoSettingsField, type PlutoSettingsInput, type PlutoSettingsVersion, type PlutoState } from "../../api/pluto";
 import { formatBrowserClockTime, formatBrowserDayMonth, formatCurrency } from "../../lib/formatters";
 import { ladderFit, recommendedShockAt } from "../../lib/plutoLadderPresentation";
-import { applySettingsEdit, changedSettingsFields, describeSettingsChange, formatSettingDisplay, formatSettingRowWithUnit, formStateWithEdits, plutoParameterHelp, plutoParameterGroups, plutoParameterLabelByField, plutoParameterSpecByField, settingsChangedElsewhere, settingsInputValue, type PlutoParameterContext, type PlutoParameterGroup, type PlutoParameterSpec, type PlutoSettingsChange, type PlutoSettingsEdits, type PlutoSettingsFormState } from "../../lib/plutoParameters";
+import { applySettingsEdit, changedSettingsFields, describeSettingsChange, formatSettingDisplay, formatSettingRowWithUnit, formStateWithEdits, plutoParameterHelp, plutoParameterGroups, plutoParameterLabelByField, plutoParameterSpecByField, settingsChangedElsewhere, settingShownAsZeroLabel, settingsInputValue, type PlutoParameterContext, type PlutoParameterGroup, type PlutoParameterSpec, type PlutoSettingsChange, type PlutoSettingsEdits, type PlutoSettingsFormState } from "../../lib/plutoParameters";
 import { useIsAdmin } from "../../hooks/useAuth";
 import { ConfirmModal } from "../ConfirmModal";
 import { HelpTooltip } from "../HelpTooltip";
@@ -73,7 +73,7 @@ function FieldInput({ spec, value, onChange, id }: { spec: PlutoParameterSpec; v
   return (
     <div className="pm-input">
       <input id={id} type={spec.kind === "time" ? "time" : spec.kind === "text" ? "text" : "number"} inputMode={spec.kind === "number" || spec.kind === "integer" ? "decimal" : undefined} step={spec.step} value={value} onChange={(event) => onChange(event.target.value)} aria-label={spec.unit === "min" || spec.unit === "max" ? plutoParameterLabelByField[spec.field] : undefined} />
-      {spec.unit && <span className="unit">{spec.unit}</span>}
+      {spec.unit && <span className="unit">{settingShownAsZeroLabel(spec.field, value) ? spec.zeroLabel : spec.unit}</span>}
     </div>
   );
 }
@@ -322,7 +322,9 @@ export function PlutoSettingsTab({ settings, audit, loading, error, state, isPho
         <ul className="pm-audit">
           {auditRows.map((row) => {
             const spec = plutoParameterSpecByField[row.field];
-            const unit = spec?.unit && spec.unit !== "ET" && spec.unit !== "min" && spec.unit !== "max" ? ` ${spec.unit}` : "";
+            // A change to a zero label reads without the unit: "Top-ups up to 100 → No cap".
+            const toZeroLabel = row.newValue !== null && settingShownAsZeroLabel(row.field, row.newValue);
+            const unit = !toZeroLabel && spec?.unit && spec.unit !== "ET" && spec.unit !== "min" && spec.unit !== "max" ? ` ${spec.unit}` : "";
             return (
               <li key={row.id}>
                 {plutoParameterLabelByField[row.field] ?? row.field} <code>{row.oldValue === null ? "—" : formatSettingDisplay(row.field, row.oldValue)} → {row.newValue === null ? "—" : formatSettingDisplay(row.field, row.newValue)}</code>{unit}
