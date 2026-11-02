@@ -57,6 +57,7 @@ const runFraction = (run: AnalysisRunView) => {
 };
 
 function describeRunStep(run: AnalysisRunView): string {
+  if (run.status === "queued") return "waiting in the queue for a free place";
   if (!run.step) return "starting";
   const label = analysisStepLabels[run.step].toLowerCase();
   if ((run.step === "calls" || run.step === "backtest") && run.progressTotal > 0) return `${label}, day ${formatNumber(run.progressDone)} of ${formatNumber(run.progressTotal)}`;
@@ -433,7 +434,7 @@ export function TickerAnalysisModal({ symbol, onClose, onSuitabilitySaved }: Tic
   /** The cards every state shows: the price chart (with the backtest's marks when there is one) and the file's own figures. */
   const fileCards = (figures: AnalysisFileFigures, backtest: AnalysisBacktestFigures | null, effective: StoredAnalysis["labValues"]["effective"] | null) => {
     const targetShare = effective?.firstPositionShare ?? 0.8;
-    const bandShare = (effective?.v4.rebalanceBandPct ?? 5) / 100;
+    const bandShare = (effective?.v4.rebalanceBandPct ?? 20) / 100;
     const shownRange: HoldingChartRange = range === "Backtest" && !backtest ? "All" : range;
     return {
       holding: <AnalysisHoldingChart symbol={symbol} figures={figures} backtest={backtest} range={shownRange} onRangeChange={setRange} targetShare={targetShare} bandShare={bandShare} missingBars={missingBarsOf(figures)} />,
