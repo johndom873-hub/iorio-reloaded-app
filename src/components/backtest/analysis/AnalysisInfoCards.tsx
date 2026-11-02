@@ -1,16 +1,16 @@
-import { useState, type ReactNode } from "react";
+import { useState } from "react";
 import { IconAlertTriangle, IconX } from "@tabler/icons-react";
-import type { AnalysisCorrelationRow, AnalysisFigures, AnalysisFileFigures, AnalysisProfile } from "../../../api/backtestAnalysis";
+import type { AnalysisCorrelationRow, AnalysisFigures, AnalysisFileFigures } from "../../../api/backtestAnalysis";
 import { analysisSignedClass } from "../../../lib/analysisPresentation";
-import { formatCurrency, formatDayMonth, formatDayMonthYear, formatExpiryDayMonthWithDte, formatFileSize, formatNumber, formatPercentage, formatSignedPercentage, formatStrike } from "../../../lib/formatters";
+import { formatCurrency, formatDayMonth, formatDayMonthYear, formatFileSize, formatNumber, formatPercentage, formatSignedPercentage, formatStrike } from "../../../lib/formatters";
 import { useTickerModal } from "../../../hooks/useTickerModal";
 import { ColumnVisibilityPopover } from "../../DataTable/ColumnVisibilityPopover";
 import { useColumnVisibility } from "../../DataTable/useColumnVisibility";
 import { TooltipSpan } from "../../TooltipSpan";
 import { AnalysisCard, AnalysisNote } from "./analysisBits";
 
-// Earnings and dividends (the two-session move, the implied move with its formula), correlation (daily log returns),
-// the stock profile (information only) and data quality. Mockup approved 2026-10-15.
+// Earnings and dividends (the two-session move, the implied move with its formula), correlation (daily log returns) and
+// data quality. Mockup approved 2026-10-15; the Stock profile card (AnalysisStockProfileCard) replaced the profile in v4.
 
 const dayMilliseconds = 86_400_000;
 const daysBetween = (fromIso: string, toIso: string) => Math.round((Date.parse(`${toIso}T00:00:00Z`) - Date.parse(`${fromIso}T00:00:00Z`)) / dayMilliseconds);
@@ -25,8 +25,7 @@ const earningsColumns = [
 
 interface AnalysisEarningsCardProps {
   symbol: string;
-  /** Before the first analysis there is no chain map: the first expiry after the next report is left out. */
-  figures: AnalysisFileFigures & Partial<Pick<AnalysisFigures, "chains">>;
+  figures: AnalysisFileFigures;
   /** Fetching the earnings history (API Ninjas) then updating the analysis; null when there is nothing to fetch with. */
   onFetchEarnings: (() => void) | null;
   fetching: boolean;
@@ -91,7 +90,6 @@ export function AnalysisEarningsCard({ symbol, figures, onFetchEarnings, fetchin
   const reports = [...earnings.reports].reverse();
   const shown = showAll ? reports : reports.slice(0, 8);
   const next = earnings.next;
-  const firstExpiryAfterNext = next && figures.chains ? ([...new Set(figures.chains.chainMap.map((contract) => contract.expiry))].sort().find((expiry) => expiry > next.date) ?? null) : null;
   const worked = earnings.reports.filter((report) => report.straddle !== null && report.impliedMove !== null).at(-1) ?? null;
   return (
     <AnalysisCard
@@ -122,14 +120,6 @@ export function AnalysisEarningsCard({ symbol, figures, onFetchEarnings, fetchin
           <dd>
             <span className="analysis-sans">{next ? `${weekdayOf(next.date)} ${formatDayMonthYear(next.date)}${next.afterClose === true ? ", after the close" : next.afterClose === false ? ", before the open" : ""}` : "Not known"}</span>
           </dd>
-          {firstExpiryAfterNext && (
-            <>
-              <dt>First expiry after it</dt>
-              <dd>
-                <span className="analysis-sans">{formatExpiryDayMonthWithDte(firstExpiryAfterNext, daysBetween(figures.optionLastDate, firstExpiryAfterNext))}</span>
-              </dd>
-            </>
-          )}
           <dt>Move around a report</dt>
           <dd>
             {formatPercentage(earnings.medianAbsMove)}
@@ -331,94 +321,9 @@ export function AnalysisCorrelationCard({ symbol, figures }: { symbol: string; f
   );
 }
 
-const profileColumns = [
-  { key: "all", header: "All history" },
-  { key: "twoYear", header: "Last 2 years" },
-];
-
-export function AnalysisProfileCard({ figures }: { figures: AnalysisFileFigures }) {
-  const { isColumnVisible, toggleColumn } = useColumnVisibility("analysis-profile", profileColumns.map((column) => column.key));
-  const { all, twoYear } = figures.profile;
-  const label = (value: AnalysisProfile["label"]) => (value === null ? "—" : value.charAt(0).toUpperCase() + value.slice(1));
-  const measures: [string, string, (profile: AnalysisProfile) => ReactNode][] = [
-    [
-      "Trend",
-      "CAGR, and how straight the path is (R² of a straight line through the log price: near 1 a steady climb, near 0 no direction)",
-      (profile) => (
-        <>
-          <span className="font-mono">{formatSignedPercentage(profile.cagr)} a year</span>
-          <span className="analysis-sub">R² {profile.r2.toFixed(2)}</span>
-        </>
-      ),
-    ],
-    [
-      "Swings",
-      "Moves of 20% or more from a turning point that then reverse by 20%",
-      (profile) => (
-        <>
-          <span className="font-mono">{profile.swingsPerYear.toFixed(1)} a year</span>
-          <span className="analysis-sub">
-            {profile.swings} in all · median size {formatPercentage(profile.medianSwing, 0)}
-          </span>
-        </>
-      ),
-    ],
-    [
-      "Jumps",
-      "Days moving more than 3 times the daily volatility known the day before (63-day Yang-Zhang)",
-      (profile) => (
-        <>
-          <span className="font-mono">{profile.jumpsPerYear.toFixed(1)} a year</span>
-          <span className="analysis-sub">
-            {profile.jumps} in all{profile.largestJump ? ` · largest ${formatSignedPercentage(profile.largestJump.move)} (${formatDayMonthYear(profile.largestJump.date)})` : ""} · {profile.jumpsOnReports} on a report's two sessions
-          </span>
-        </>
-      ),
-    ],
-    [
-      "Trending or range-bound",
-      "Variance ratio of 21-session returns: above the band trending, below range-bound, inside close to a random walk",
-      (profile) => (
-        <>
-          <span className="font-mono">{label(profile.label)}</span>
-          <span className="analysis-sub">{profile.varianceRatio === null || profile.standardError === null ? "—" : `VR ${profile.varianceRatio.toFixed(2)}, band ${(1 - 2 * profile.standardError).toFixed(2)}–${(1 + 2 * profile.standardError).toFixed(2)}`}</span>
-        </>
-      ),
-    ],
-  ];
-  return (
-    <AnalysisCard title="Stock profile" description="Information only: the strategy does not use these" actions={<ColumnVisibilityPopover columns={profileColumns} isColumnVisible={isColumnVisible} onToggleColumn={toggleColumn} variant="toolbar" />}>
-      <div className="table-responsive">
-        <table className="table table-sm card-table analysis-profile-table mb-0">
-          <thead className="table-light">
-            <tr>
-              <th>Measure</th>
-              {isColumnVisible("all") && <th>All history{all && <span className="d-block fw-normal text-none" style={{ textTransform: "none", fontSize: "0.7rem" }}>from {formatDayMonthYear(all.from)}</span>}</th>}
-              {isColumnVisible("twoYear") && <th>Last 2 years</th>}
-            </tr>
-          </thead>
-          <tbody>
-            {measures.map(([name, meaning, render]) => (
-              <tr key={name}>
-                <th scope="row">
-                  {name}
-                  <small>{meaning}</small>
-                </th>
-                {isColumnVisible("all") && <td>{all ? render(all) : "—"}</td>}
-                {isColumnVisible("twoYear") && <td>{twoYear ? render(twoYear) : "—"}</td>}
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    </AnalysisCard>
-  );
-}
-
 export function AnalysisDataQualityCard({ figures }: { figures: AnalysisFileFigures | AnalysisFigures }) {
   const quality = figures.dataQuality;
   const optionYears = quality.firstDate && quality.lastDate ? daysBetween(quality.firstDate, quality.lastDate) / 365.25 : 0;
-  const historyYears = quality.bars.firstDate && quality.bars.lastDate ? daysBetween(quality.bars.firstDate, quality.bars.lastDate) / 365.25 : 0;
   const splits = (quality.splits ?? []).filter((segment) => segment.factor !== 1);
   const bigMoves = quality.barChecks.bigMoves;
   return (
@@ -487,33 +392,21 @@ export function AnalysisDataQualityCard({ figures }: { figures: AnalysisFileFigu
             <span className="analysis-sans">{quality.barChecks.flatRuns.length === 0 ? "none" : quality.barChecks.flatRuns.length}</span>
             <span className="analysis-sub">catches placeholder prices</span>
           </dd>
-          <dt>Closes for the shock rule</dt>
-          <dd>
-            {formatNumber(figures.shock.closes)}
-            <span className="analysis-sub">250 needed</span>
-          </dd>
-          {"scannedDays" in quality && (
+          <dt>Days with every 10:00 quote at zero</dt>
+          <dd>{formatNumber(quality.daysWithEveryQuoteAtZero)}</dd>
+          {"sameDayCalls" in figures && (
             <>
-              <dt>Chain scan</dt>
+              <dt>Expiry days scanned</dt>
               <dd>
-                {formatNumber(quality.scannedDays)} days
+                {formatNumber(figures.sameDayCalls.expiryDays)}
                 <span className="analysis-sub">
-                  {quality.daysWithoutPrice > 0 ? `${quality.daysWithoutPrice} without a 10:00 price · ` : ""}
-                  {quality.daysWithNothingPassing.length} with nothing passing{quality.daysWithNothingPassing.length > 0 && quality.daysWithNothingPassing.length <= 3 ? `: ${quality.daysWithNothingPassing.map(formatDayMonthYear).join(", ")}` : ""}
+                  {figures.sameDayCalls.daysWithoutPrice > 0 ? `${figures.sameDayCalls.daysWithoutPrice} without a 10:00 price · ` : ""}
+                  {formatNumber(figures.sameDayCalls.daysWithNoCall.length)} with no Call v4 could sell{figures.sameDayCalls.daysWithNoCall.length > 0 && figures.sameDayCalls.daysWithNoCall.length <= 3 ? `: ${figures.sameDayCalls.daysWithNoCall.map(formatDayMonthYear).join(", ")}` : ""}
                 </span>
               </dd>
             </>
           )}
         </dl>
-        {historyYears > 0 && historyYears < 10 && (
-          <div className="mt-3">
-            <AnalysisNote tone="plain">
-              <p>
-                {historyYears.toFixed(1)} years of prices: less than the 10 years the shock rule reads{figures.shock.closes >= 250 ? ", but over the 250 closes it needs" : ", and under the 250 closes it needs"}.
-              </p>
-            </AnalysisNote>
-          </div>
-        )}
       </div>
     </AnalysisCard>
   );

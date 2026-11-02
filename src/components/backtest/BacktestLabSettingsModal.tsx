@@ -6,7 +6,7 @@ import {
   fetchBacktestLabSettings,
   previewBacktestLabSettings,
   saveBacktestLabSettings,
-  type AnalysisRerunOutcome,
+  type AnalysisLabSaveOutcome,
   type BacktestLabAuditRow,
   type BacktestLabChangePreview,
   type BacktestLabSettingsView,
@@ -24,8 +24,8 @@ import "../pluto/PlutoPage.css";
 
 // The Backtesting screen's Lab settings (mockup approved 2026-10-19): every setting a new session and the Analyse window
 // start from, in Pluto's settings editor (section nav, one group open at a time, unsaved changes highlighted, review before
-// saving). Separate from Pluto's live settings; tickers keep their own overrides. Saving re-runs the stored analyses the
-// change reaches.
+// saving). Separate from Pluto's live settings; tickers keep their own overrides. Saving marks out of date the stored
+// analyses whose values it changes (Vol Farmer v4, Marcelo 2026-11-01); Data files' Re-run out of date runs them again.
 
 const potPath = "lab.defaultPotDollars";
 const spreadCostPath = "trading.spreadCostChargedPct";
@@ -61,10 +61,8 @@ function listSymbols(symbols: readonly string[], shown = 5): string {
   return `${symbols.slice(0, shown).join(", ")} and ${symbols.length - shown} more`;
 }
 
-function describeRerun(change: BacktestLabChangePreview): string {
-  const rerun = change.reruns.length === 0 ? "No stored analysis re-runs." : `Re-runs the stored analyses of ${pluralizeCount(change.reruns.length, "ticker")} that don't override it: ${listSymbols(change.reruns)}.`;
-  const kept = change.keptOverrides.length === 0 ? "" : ` ${listSymbols(change.keptOverrides)} keep${change.keptOverrides.length === 1 ? "s its" : " their"} own value.`;
-  return rerun + kept;
+function describeOutOfDate(change: BacktestLabChangePreview): string {
+  return change.outOfDate.length === 0 ? "No stored analysis goes out of date with it." : `Puts the stored analyses of ${pluralizeCount(change.outOfDate.length, "ticker")} out of date: ${listSymbols(change.outOfDate)}.`;
 }
 
 const unitSuffix: Partial<Record<BacktestSettingRow["unit"], string>> = { percent: "%", days: "days", time: "ET" };
@@ -113,10 +111,10 @@ export function BacktestLabSettingsModal({ onClose, stacked = false }: { onClose
   // Lab defaults open on every opening (Marcelo 2026-10-19), one group at a time.
   const [openGroup, setOpenGroup] = useState<string | null>(labDefaultsKey);
   const [scrollTarget, setScrollTarget] = useState<string | null>(null);
-  const [preview, setPreview] = useState<{ changes: BacktestLabChangePreview[]; reruns: string[] } | null>(null);
+  const [preview, setPreview] = useState<{ changes: BacktestLabChangePreview[]; outOfDate: string[] } | null>(null);
   const [busy, setBusy] = useState<"preview" | "save" | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
-  const [saved, setSaved] = useState<AnalysisRerunOutcome | null>(null);
+  const [saved, setSaved] = useState<AnalysisLabSaveOutcome | null>(null);
   const [confirmingDiscard, setConfirmingDiscard] = useState(false);
   const [showAllAudit, setShowAllAudit] = useState(false);
   const groupRefs = useRef<Record<string, HTMLElement | null>>({});
@@ -443,8 +441,7 @@ export function BacktestLabSettingsModal({ onClose, stacked = false }: { onClose
                 <div className="pm-alert-body">
                   <div className="pm-alert-text">
                     <strong>Saved.</strong>{" "}
-                    {saved.started.length > 0 ? `Re-running ${pluralizeCount(saved.started.length, "stored analysis", "stored analyses")} as background jobs (see Backtests under Background jobs).` : "No stored analysis needed re-running."}
-                    {saved.skipped.length > 0 && ` Not re-run: ${saved.skipped.map((entry) => `${entry.symbol} (${entry.reason})`).join(", ")}.`} Past sessions keep their own settings.
+                    {saved.markedOutOfDate.length > 0 ? `${pluralizeCount(saved.markedOutOfDate.length, "stored analysis is", "stored analyses are")} out of date now (${listSymbols(saved.markedOutOfDate)}): Data files' Re-run out of date runs them again.` : "No stored analysis reads the values changed."} Past sessions keep their own settings.
                   </div>
                 </div>
               </div>
@@ -489,7 +486,7 @@ export function BacktestLabSettingsModal({ onClose, stacked = false }: { onClose
                       </div>
                       <div className="who">
                         {row.userDisplayName ?? "—"} · {formatBrowserDayMonth(row.changedAt)} {formatBrowserClockTime(row.changedAt)}
-                        {row.analysesRerun !== null && ` · re-ran ${pluralizeCount(row.analysesRerun, "analysis", "analyses")}`}
+                        {row.analysesRerun !== null && row.analysesRerun > 0 && ` · re-ran ${pluralizeCount(row.analysesRerun, "analysis", "analyses")}`}
                       </div>
                     </li>
                   ))}
@@ -545,7 +542,7 @@ export function BacktestLabSettingsModal({ onClose, stacked = false }: { onClose
           size="lg"
           danger={false}
           confirming={busy === "save"}
-          confirmLabel={preview.reruns.length > 0 ? "Save and re-run" : "Save"}
+          confirmLabel="Save"
           message={
             <div className="d-flex flex-column gap-2">
               {preview.changes.map((change) => (
@@ -556,12 +553,12 @@ export function BacktestLabSettingsModal({ onClose, stacked = false }: { onClose
                   </div>
                   <div>{`${formatAuditValue(change.field, change.oldValue)} → ${formatAuditValue(change.field, change.newValue)}`}</div>
                   <div className="text-secondary" style={{ fontSize: "0.8rem" }}>
-                    {describeRerun(change)}
+                    {describeOutOfDate(change)}
                   </div>
                 </div>
               ))}
               <div className="text-secondary" style={{ fontSize: "0.8rem" }}>
-                {preview.reruns.length > 0 ? `${pluralizeCount(preview.reruns.length, "stored analysis re-runs", "stored analyses re-run")} as background jobs. ` : ""}New sessions start from these values; past sessions keep their own settings.
+                {preview.outOfDate.length > 0 ? `${pluralizeCount(preview.outOfDate.length, "stored analysis goes", "stored analyses go")} out of date; none re-runs until you choose Re-run out of date on Data files. ` : ""}New sessions start from these values; past sessions keep their own settings.
               </div>
             </div>
           }

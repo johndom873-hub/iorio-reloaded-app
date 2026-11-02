@@ -50,13 +50,22 @@ export function ColumnVisibilityPopover({ columns, isColumnVisible, onToggleColu
     function handleDismiss() {
       setIsOpen(false);
     }
+    // ESC closes the menu only: captured on window, ahead of a modal's
+    // document listener, so the modal around the table stays open.
+    function handleEscape(event: KeyboardEvent) {
+      if (event.key !== "Escape") return;
+      event.stopPropagation();
+      setIsOpen(false);
+    }
     document.addEventListener("mousedown", handleClickOutside);
     window.addEventListener("scroll", handleDismiss, true);
     window.addEventListener("resize", handleDismiss);
+    window.addEventListener("keydown", handleEscape, true);
     return () => {
       document.removeEventListener("mousedown", handleClickOutside);
       window.removeEventListener("scroll", handleDismiss, true);
       window.removeEventListener("resize", handleDismiss);
+      window.removeEventListener("keydown", handleEscape, true);
     };
   }, [isOpen]);
 

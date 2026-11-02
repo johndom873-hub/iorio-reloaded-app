@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
-import { Link, useLocation, useNavigate, useSearchParams } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { errorMessage } from "../../api/client";
 import { isRetiredBacktestSettingSection, labelSettingPaths } from "../../lib/backtestSettingGroups";
 import {
@@ -76,7 +76,6 @@ import {
   tickerEditProblems,
   tickerEditsFromSession,
   tickerValueBelowEdit,
-  type AnalysisSessionValues,
   type BacktestCapitalMode,
   type BacktestTickerEdits,
   type BacktestTickerResolution,
@@ -195,8 +194,6 @@ export function NewBacktestSessionPage() {
   const sourceSessionId = searchParams.get("from");
   const sourceBatchId = searchParams.get("fromBatch");
   const requestedSymbolsParam = searchParams.get("symbols");
-  // From the Analyse window's Backtest button: the values on screen that differ from the ticker's saved ones.
-  const analysisValues = (useLocation().state as { analysisValues?: AnalysisSessionValues } | null)?.analysisValues ?? null;
   const { data: overview, loadError: overviewError } = useBacktestOverview();
 
   const [template, setTemplate] = useState<BacktestSettingsTemplate | null>(null);
@@ -347,14 +344,10 @@ export function NewBacktestSessionPage() {
     // A Vol Farmer v2 session run with research settings since retired cannot be rerun as it was: say so (2026-10-28).
     const retiredResearch = source && runsVolFarmerV2Steps(sessionDecisionMaker(source)) ? describeRetiredVolFarmerV2Research(source.overrides) : [];
     if (retiredResearch.length > 0) setRetiredResearchNote(`This session used research settings the lab no longer has (${retiredResearch.join("; ")}). A rerun uses today's rules: the LEAPS bought once the price is half a Step below B-E2, one per holding, sold when the second position is called away; Calls and Puts on the next expiry only.`);
-    const fromAnalysis = !source && !sourceBatch && analysisValues !== null && initialSymbols.includes(analysisValues.symbol) ? analysisValues : null;
-    if (fromAnalysis && Object.keys(fromAnalysis.tickerEdits).length > 0) setTickerEdits({ [fromAnalysis.symbol]: fromAnalysis.tickerEdits });
-    const editablePaths = new Set(template.rows.filter((row) => row.editable).map((row) => row.path));
-    const analysisSettingValues = Object.fromEntries(Object.entries(fromAnalysis?.settingValues ?? {}).filter(([path]) => editablePaths.has(path)));
     const copiedAllowance: Record<string, string> = source && copiedAllocations?.allowanceText != null ? { [volFarmerExcessAllowancePathOf(sessionDecisionMaker(source))]: copiedAllocations.allowanceText } : {};
-    setValueByPath({ ...initialValueByPath(template, sourceSession), ...analysisSettingValues, ...copiedAllowance });
+    setValueByPath({ ...initialValueByPath(template, sourceSession), ...copiedAllowance });
     setInitialized(true);
-  }, [initialized, overview, template, sourceLoaded, sourceSession, sourceBatch, requestedSymbolsParam, analysisValues]);
+  }, [initialized, overview, template, sourceLoaded, sourceSession, sourceBatch, requestedSymbolsParam]);
 
   /** Picking or dropping a symbol: custom dates become all that the picked files share; years narrowed by hand stay while they
    *  are still inside that period, and otherwise (or when they were all of the old period) become all of it. With no shared

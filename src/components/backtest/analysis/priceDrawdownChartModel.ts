@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type HTMLAttributes, type RefObject } from "react";
 import type { ApexAxisChartSeries, ApexOptions } from "apexcharts";
-import type { AnalysisBacktestFigures, AnalysisBarIndicators, AnalysisFigures, AnalysisMaxDrawdown, AnalysisPriceRange, SessionLeapsEvent } from "../../../api/backtestAnalysis";
+import type { AnalysisBarIndicators, AnalysisFigures, AnalysisMaxDrawdown, AnalysisPriceRange, CashAvailableRow, SessionLadderLevel, SessionLeapsEvent, SessionRungSold } from "../../../api/backtestAnalysis";
 import { analysisChartColors, analysisLadderPutBlockText, maxDrawdownOfBars } from "../../../lib/analysisPresentation";
 import { describeSplitRatio } from "../../../lib/backtestPresentation";
 import { daysToExpiry, formatAxisDollars, formatCurrency, formatDayMonthYear, formatNumber, formatOptionContractLabel, formatOrderSize, formatPercentage } from "../../../lib/formatters";
@@ -192,12 +192,12 @@ export interface PriceDrawdownChartInput {
   smallRuns: [string, string][];
   /** Runs of days an order needed more than one strike. */
   strikeRuns: [string, string][];
-  ladderLevels: NonNullable<AnalysisBacktestFigures["ladderLevels"]>;
-  ladderRungsSold: NonNullable<AnalysisBacktestFigures["ladderRungsSold"]>;
+  ladderLevels: SessionLadderLevel[];
+  ladderRungsSold: SessionRungSold[];
   /** The symbol's splits: a dashed line on the first day after each (the bars before it are the traded prices ÷ its ratio). */
   splits: readonly { firstDayAfter: string; ratio: number }[];
   /** The account's cash available each day at its 10:00 marks: [date, free cash, cash locked in open puts, account value]; null: no panel. */
-  cashAvailable: NonNullable<AnalysisBacktestFigures["cashAvailable"]> | null;
+  cashAvailable: CashAvailableRow[] | null;
   /** IV Percentile, one per bar of `bars` (indicatorsInWindow), for the IV % tooltip; null: none. */
   indicators: AnalysisBarIndicators | null;
   /** Vol Farmer v2 (a session's chart only): [date, B-E, B-E2] after each 10:00 look. */
@@ -229,7 +229,7 @@ const rungBadgeOffsetY = 4;
 export const leapsEventGlyph: Record<SessionLeapsEvent["kind"], string> = { bought: "▲", sold: "▼", expired: "✕" };
 
 /** "LEAPS bought: HOOD $20 Call · 20 Jan 2023 (410DTE) · 22× @ 8.48", "LEAPS expired worthless: …". */
-function describeLeapsEvent(symbol: string, event: SessionLeapsEvent): string {
+export function describeLeapsEvent(symbol: string, event: SessionLeapsEvent): string {
   const contract = `${formatOptionContractLabel({ symbol, strike: event.strike, right: "C", expiry: event.expiry, dte: daysToExpiry(event.expiry, event.date) })}${formatOrderSize(event.contracts, event.kind === "expired" && event.price === 0 ? null : event.price)}`;
   const what = event.kind === "bought" ? "LEAPS bought" : event.kind === "sold" ? "LEAPS sold" : event.price === 0 ? "LEAPS expired worthless" : "LEAPS expired, sold at its intrinsic value";
   return `${what}: ${contract}`;
@@ -253,7 +253,7 @@ export function buildPriceDrawdownChart(input: PriceDrawdownChartInput) {
   // The ladder (approved 2026-10-20): each day's next Put's cap (dashed) and floor (solid), and a dot per rung sold.
   const levelByDate = new Map(input.ladderLevels.map((level) => [level[0], level]));
   const levels = bars.map((bar) => levelByDate.get(bar[0]) ?? null);
-  const rungsByDate = new Map<string, NonNullable<AnalysisBacktestFigures["ladderRungsSold"]>>();
+  const rungsByDate = new Map<string, SessionRungSold[]>();
   for (const rung of input.ladderRungsSold) if (rung[0] >= first && rung[0] <= last) rungsByDate.set(rung[0], [...(rungsByDate.get(rung[0]) ?? []), rung]);
   const lastLevel = levels.findLast((level) => level !== null) ?? null;
   // Cash available (approved 2026-10-21): free cash (not locked in open puts) ÷ the account value at the day's 10:00 marks.

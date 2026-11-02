@@ -784,3 +784,29 @@ export function formatOrdinal(value: number): string {
 export function escapeTooltipHtml(text: string): string {
   return text.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;");
 }
+
+/** "$80,351", "$1.4 million", "$65.6 million": whole dollars under a million, else millions to one decimal. */
+export function formatPotDollars(dollars: number | null | undefined): string {
+  if (dollars === null || dollars === undefined || Number.isNaN(dollars)) return "—";
+  return Math.abs(dollars) >= 1_000_000 ? `$${(dollars / 1_000_000).toFixed(1)} million` : formatCurrency(dollars, 0);
+}
+
+/** Signed thousands of dollars for a chart's labels: 103,860 → "+$104k", −158,626 → "−$159k". */
+export function formatSignedThousands(dollars: number): string {
+  return `${dollars < 0 ? "−" : "+"}$${formatNumber(Math.abs(dollars) / 1000)}k`;
+}
+
+/** Signed whole dollars: 43,257 → "+$43,257", −252,337 → "−$252,337". */
+export function formatSignedWholeDollars(dollars: number): string {
+  return `${dollars < 0 ? "−" : "+"}${formatCurrency(Math.abs(dollars), 0)}`;
+}
+
+/** "6 Oct" in the year of `referenceDate`, "4 Dec 2025" in another (the rule's and the cards' dates). */
+export function formatDayMonthBesideYear(dateIso: string, referenceDate: string): string {
+  return dateIso.slice(0, 4) === referenceDate.slice(0, 4) ? formatDayMonth(dateIso) : formatDayMonthYear(dateIso);
+}
+
+/** Thousands of dollars for a chart's axis and labels: 1,567,571 → "$1,568k", 0 → "$0k". */
+export function formatThousands(dollars: number): string {
+  return `${dollars < 0 ? "−" : ""}$${formatNumber(Math.abs(dollars) / 1000)}k`;
+}

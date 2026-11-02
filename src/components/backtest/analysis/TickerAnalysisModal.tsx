@@ -1,8 +1,8 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { IconChartCandle, IconCircle, IconCircleCheck, IconFlask, IconRefresh } from "@tabler/icons-react";
 import { errorMessage } from "../../../api/client";
-import { createBacktestSession, startBacktestDownload, type BacktestSettingsOverrides } from "../../../api/backtest";
+import { startBacktestDownload } from "../../../api/backtest";
 import {
   analysisStepLabels,
   analysisSteps,
@@ -10,21 +10,18 @@ import {
   fetchAnalysisEarnings,
   fetchAnalysisFileFigures,
   fetchAnalysisSessions,
+  fetchBacktestLabGlobalAudit,
   fetchBacktestLabSettings,
-  fetchLabTickerOverrides,
   fetchTickerAnalysis,
-  saveLabTickerOverrides,
   startTickerAnalysis,
-  type AnalysisBaselineValues,
+  type AnalysisBacktestFigures,
   type AnalysisFileFigures,
   type AnalysisRunView,
   type AnalysisSessionRow,
-  type BacktestLabSettingsView,
-  type BacktestLabTickerOverrides,
   type StoredAnalysis,
 } from "../../../api/backtestAnalysis";
-import { analysisBacktestName, analysisTickerKeys, differingAnalysisKeys, type AnalysisPanelKey, type AnalysisPanelValues } from "../../../lib/analysisPresentation";
-import { formatBrowserClockTime, formatDayMonthYear, formatNumber } from "../../../lib/formatters";
+import { describeLabChangesSince } from "../../../lib/analysisPresentation";
+import { formatBrowserClockTime, formatCurrency, formatDayMonth, formatDayMonthYear, formatNumber, joinWithAnd } from "../../../lib/formatters";
 import { useTickerModal } from "../../../hooks/useTickerModal";
 import { useIsAdmin } from "../../../hooks/useAuth";
 import { TickerSuitabilityModal } from "../TickerSuitabilityModal";
@@ -32,54 +29,22 @@ import { AnalysisTickerIdentity } from "./AnalysisTickerHeader";
 import { Spinner } from "../../Spinner";
 import { usePolledBacktestResource } from "../useBacktestPolling";
 import { AnalysisCard, AnalysisNote, AnalysisProgressBar } from "./analysisBits";
-import { AnalysisBacktestConfirm } from "./AnalysisBacktestConfirm";
-import { AnalysisChainMapCard } from "./AnalysisChainMapCard";
-import { AnalysisFitCard, AnalysisPotCard, AnalysisShockCard, AnalysisTooLargeCard } from "./AnalysisFitCards";
-import { AnalysisCorrelationCard, AnalysisDataQualityCard, AnalysisEarningsCard, AnalysisProfileCard } from "./AnalysisInfoCards";
-import { BacktestLabSettingsModal } from "../BacktestLabSettingsModal";
-import { analysisSessionValues } from "../../../lib/backtestTickerValueEdits";
-import { AnalysisLiquidityCards } from "./AnalysisLiquidityCards";
-import { AnalysisClaudeCards, AnalysisFitTiles, AnalysisKpiTiles } from "./AnalysisOverviewCards";
-import { AnalysisPriceCards } from "./AnalysisPriceCards";
+import { AnalysisBacktestCard, AnalysisMonthByMonthCard, AnalysisWheelCyclesCard } from "./AnalysisBacktestCards";
+import { AnalysisFallsCard } from "./AnalysisFallsCard";
+import { AnalysisHoldingChart } from "./AnalysisHoldingChart";
+import { holdingRangeStart, type HoldingChartRange } from "./analysisHoldingChartModel";
+import { AnalysisCorrelationCard, AnalysisDataQualityCard, AnalysisEarningsCard } from "./AnalysisInfoCards";
 import { AnalysisSessionsCard } from "./AnalysisSessionsCard";
-import { AnalysisSettingsCard, draftFromValues, type AnalysisDraft } from "./AnalysisSettingsCard";
+import { AnalysisSourcesCard } from "./AnalysisSourcesCard";
+import { AnalysisStockProfileCard } from "./AnalysisStockProfileCard";
+import { AnalysisCanTradeCard, AnalysisSizeCard, AnalysisTodayCard } from "./AnalysisTradingCards";
+import { AnalysisRuleCard, AnalysisVerdictBand } from "./AnalysisVerdictCards";
+import { AnalysisVolatilityCard } from "./AnalysisVolatilityCard";
 
-// The Analyse window (Backtesting → Data files; mockup approved 2026-10-15): the stored analysis of one ticker at its
-// backtesting (lab) values, recomputed by Update Analysis or by saving the ticker's values, with a settings panel to try
-// values (Analyse Only, never saved) or save them for the ticker and analyse (Save and Analyse): both run the same analysis. Near full screen like the
-// Signals ticker window; full screen on a phone. Informational: closes on ESC and the backdrop.
-
-/** A run's lab values as the settings panel's values. */
-function panelValuesOf(baseline: AnalysisBaselineValues, potDollars: number): AnalysisPanelValues {
-  return {
-    potDollars,
-    ladderSharesPct: baseline.ladderSharesPct,
-    ladderRungs: baseline.ladderRungs,
-    ladderShockPct: baseline.ladderShock === "fixed" ? baseline.ladderShockPct : null,
-    minAbsDelta: baseline.minAbsDelta,
-    maxAbsDelta: baseline.maxAbsDelta,
-    minDte: baseline.minDte,
-    maxDte: baseline.maxDte,
-    maxSpreadPctOfMid: baseline.maxSpreadPctOfMid,
-  };
-}
-
-function globalPanelValues(lab: BacktestLabSettingsView): AnalysisPanelValues {
-  return panelValuesOf(lab.settings.baseline as unknown as AnalysisBaselineValues, lab.defaultPotDollars);
-}
-
-function configuredPanelValues(global: AnalysisPanelValues, overrides: BacktestLabTickerOverrides | null): AnalysisPanelValues {
-  if (!overrides) return global;
-  return {
-    ...global,
-    potDollars: overrides.potDollars ?? global.potDollars,
-    ladderSharesPct: overrides.ladderSharesPct ?? global.ladderSharesPct,
-    ladderRungs: overrides.ladderRungs ?? global.ladderRungs,
-    ladderShockPct: overrides.ladderShockPct ?? global.ladderShockPct,
-    minAbsDelta: overrides.minAbsDelta ?? global.minAbsDelta,
-    maxAbsDelta: overrides.maxAbsDelta ?? global.maxAbsDelta,
-  };
-}
+// The Analyse window (Backtesting → Data files): one ticker judged for Vol Farmer v4 at the lab's values (mockup approved
+// 2026-11-01). The stored analysis is re-run by Re-run analysis, or marked out of date when the lab's values it read
+// change; a trial runs its backtest at another starting value and is never saved as the ticker's analysis. Near full
+// screen like the Signals ticker window; full screen on a phone. Informational: closes on ESC and the backdrop.
 
 const runFraction = (run: AnalysisRunView) => {
   const index = run.step ? analysisSteps.indexOf(run.step) : 0;
@@ -90,9 +55,14 @@ const runFraction = (run: AnalysisRunView) => {
 function describeRunStep(run: AnalysisRunView): string {
   if (!run.step) return "starting";
   const label = analysisStepLabels[run.step].toLowerCase();
-  if ((run.step === "chains" || run.step === "backtest") && run.progressTotal > 0) return `${label}, day ${formatNumber(run.progressDone)} of ${formatNumber(run.progressTotal)}`;
+  if ((run.step === "calls" || run.step === "backtest") && run.progressTotal > 0) return `${label}, day ${formatNumber(run.progressDone)} of ${formatNumber(run.progressTotal)}`;
   return label;
 }
+
+const backtestOf = (analysis: StoredAnalysis | null): AnalysisBacktestFigures | null => {
+  const backtest = analysis?.figures?.analysisBacktest ?? null;
+  return backtest && "sessionId" in backtest ? backtest : null;
+};
 
 interface TickerAnalysisModalProps {
   symbol: string;
@@ -105,48 +75,19 @@ export function TickerAnalysisModal({ symbol, onClose, onSuitabilitySaved }: Tic
   const navigate = useNavigate();
   const isAdmin = useIsAdmin();
   const [suitabilityOpen, setSuitabilityOpen] = useState(false);
-  // The global lab settings open over this window; closing them comes back here.
-  const [labSettingsOpen, setLabSettingsOpen] = useState(false);
   const signalsTicker = useTickerModal();
   const isActive = useCallback((view: { active: AnalysisRunView[] }) => view.active.length > 0, []);
   const fetchView = useCallback(() => fetchTickerAnalysis(symbol), [symbol]);
   const { data: view, loadError, reload } = usePolledBacktestResource(fetchView, isActive, `Could not load ${symbol}'s analysis.`);
-  const [lab, setLab] = useState<BacktestLabSettingsView | null>(null);
-  const [overrides, setOverrides] = useState<BacktestLabTickerOverrides | null>(null);
-  const [settingsError, setSettingsError] = useState<string | null>(null);
   const [sessions, setSessions] = useState<AnalysisSessionRow[] | null>(null);
   const [sessionsError, setSessionsError] = useState<string | null>(null);
-  const [draft, setDraft] = useState<AnalysisDraft | null>(null);
-  const [settingsOpen, setSettingsOpen] = useState(() => window.matchMedia("(min-width: 576px)").matches);
-  const [putsCapped, setPutsCapped] = useState(false);
   const [trialRunId, setTrialRunId] = useState<string | null>(null);
   const [showTrial, setShowTrial] = useState(false);
-  const [busy, setBusy] = useState<"save" | "run" | "update" | "cancel" | "earnings" | null>(null);
+  const [busy, setBusy] = useState<"rerun" | "trial" | "cancel" | "earnings" | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [earningsMessage, setEarningsMessage] = useState<string | null>(null);
-  const [confirm, setConfirm] = useState<{ values: AnalysisPanelValues } | null>(null);
-  const [confirmError, setConfirmError] = useState<string | null>(null);
-  const [startingBacktest, setStartingBacktest] = useState(false);
-  const [queuedBacktest, setQueuedBacktest] = useState<{ name: string; sessionId: string } | null>(null);
-
-  const loadSettings = useCallback(async () => {
-    try {
-      const [labView, tickerOverrides] = await Promise.all([fetchBacktestLabSettings(), fetchLabTickerOverrides(symbol)]);
-      setLab(labView);
-      setOverrides(tickerOverrides.overrides);
-      setSettingsError(null);
-      return { labView, tickerOverrides: tickerOverrides.overrides };
-    } catch (err) {
-      setSettingsError(errorMessage(err, "Could not load the backtesting settings."));
-      return null;
-    }
-  }, [symbol]);
-
-  useEffect(() => {
-    void loadSettings().then((loaded) => {
-      if (loaded) setDraft(draftFromValues(configuredPanelValues(globalPanelValues(loaded.labView), loaded.tickerOverrides)));
-    });
-  }, [loadSettings]);
+  const [range, setRange] = useState<HoldingChartRange>("Backtest");
+  const [labChanges, setLabChanges] = useState<string[] | null>(null);
 
   const storedId = view?.stored?.id ?? null;
   useEffect(() => {
@@ -195,15 +136,41 @@ export function TickerAnalysisModal({ symbol, onClose, onSuitabilitySaved }: Tic
     if (trialRunId && view?.trial?.id === trialRunId) setShowTrial(true);
   }, [trialRunId, view?.trial?.id]);
 
-  // ESC closes the window, unless the Signals ticker window, the confirmation, the Suitability window or the lab settings
-  // are open over it.
+  const stored = view?.stored ?? null;
+  const savedRun = view?.active.find((run) => run.reason !== "trial") ?? null;
+  const trialRun = view?.active.find((run) => run.reason === "trial") ?? null;
+  const outOfDate = Boolean(view?.outOfDate && stored && !savedRun);
+  const ranWithOlderFormulas = Boolean(view && stored && stored.formulasVersion < view.currentFormulasVersion);
+
+  // What changed in the lab since the stored analysis ran, for the out-of-date note.
+  const storedRanAt = stored ? (stored.finishedAt ?? stored.createdAt) : null;
+  useEffect(() => {
+    if (!outOfDate || !storedRanAt) {
+      setLabChanges(null);
+      return;
+    }
+    let cancelled = false;
+    Promise.all([fetchBacktestLabGlobalAudit(), fetchBacktestLabSettings()]).then(
+      ([audit, lab]) => {
+        if (!cancelled) setLabChanges(describeLabChangesSince(audit, lab.rows, storedRanAt));
+      },
+      () => {
+        if (!cancelled) setLabChanges([]);
+      },
+    );
+    return () => {
+      cancelled = true;
+    };
+  }, [outOfDate, storedRanAt]);
+
+  // ESC closes the window, unless the Signals ticker window or the Suitability window is open over it.
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape" && !confirm && !signalsTicker.symbol && !suitabilityOpen && !labSettingsOpen) onClose();
+      if (event.key === "Escape" && !signalsTicker.symbol && !suitabilityOpen) onClose();
     };
     document.addEventListener("keydown", onKeyDown);
     return () => document.removeEventListener("keydown", onKeyDown);
-  }, [onClose, confirm, signalsTicker.symbol, suitabilityOpen, labSettingsOpen]);
+  }, [onClose, signalsTicker.symbol, suitabilityOpen]);
 
   useEffect(() => {
     const previousOverflow = document.body.style.overflow;
@@ -213,21 +180,12 @@ export function TickerAnalysisModal({ symbol, onClose, onSuitabilitySaved }: Tic
     };
   }, []);
 
-  const global = useMemo(() => (lab ? globalPanelValues(lab) : null), [lab]);
-  const configured = useMemo(() => (global ? configuredPanelValues(global, overrides) : null), [global, overrides]);
-  const overriddenKeys = useMemo<AnalysisPanelKey[]>(() => (overrides ? analysisTickerKeys.filter((key) => overrides[key as keyof BacktestLabTickerOverrides] !== null) : []), [overrides]);
-  const stored = view?.stored ?? null;
   const trial = showTrial && view?.trial ? view.trial : null;
   const shownAnalysis: StoredAnalysis | null = trial ?? stored;
   const shownFigures = shownAnalysis?.figures ?? null;
-  const shown = shownAnalysis ? panelValuesOf(shownAnalysis.labValues.effective.baseline, shownAnalysis.labValues.effective.potDollars) : null;
-  const storedValues = stored ? panelValuesOf(stored.labValues.effective.baseline, stored.labValues.effective.potDollars) : null;
-  const savedRun = view?.active.find((run) => run.reason !== "trial") ?? null;
-  const trialRun = view?.active.find((run) => run.reason === "trial") ?? null;
-  const ruleShock = shownFigures?.shock.shock ?? 0.8;
-  const stale = savedRun !== null && stored !== null;
+  const shownBacktest = backtestOf(shownAnalysis);
 
-  const run = async (kind: "update" | "run" | "cancel" | "earnings", work: () => Promise<void>) => {
+  const run = async (kind: "rerun" | "trial" | "cancel" | "earnings", work: () => Promise<void>) => {
     setBusy(kind);
     setActionError(null);
     try {
@@ -239,118 +197,52 @@ export function TickerAnalysisModal({ symbol, onClose, onSuitabilitySaved }: Tic
       setBusy(null);
     }
   };
-  const updateAnalysis = () => run("update", async () => void (await startTickerAnalysis(symbol)));
-  const runTrial = (values: AnalysisPanelValues) =>
-    run("run", async () => {
-      const started = await startTickerAnalysis(symbol, values);
+  const rerunAnalysis = () => run("rerun", async () => void (await startTickerAnalysis(symbol)));
+  const runTrial = (accountDollars: number) =>
+    run("trial", async () => {
+      const started = await startTickerAnalysis(symbol, { accountDollars });
       setTrialRunId(started.id);
     });
   const cancelRun = (target: AnalysisRunView) => run("cancel", async () => void (await cancelTickerAnalysis(target.id)));
   const fetchEarnings = () =>
     run("earnings", async () => {
       const result = await fetchAnalysisEarnings(symbol);
-      setEarningsMessage(`Fetched ${result.written} report${result.written === 1 ? "" : "s"}; the analysis is updating with them.`);
+      setEarningsMessage(`Fetched ${result.written} report${result.written === 1 ? "" : "s"}; the analysis is re-running with them.`);
     });
 
-  const saveForTicker = async (values: AnalysisPanelValues) => {
-    if (!global) return;
-    setBusy("save");
-    setActionError(null);
-    try {
-      // A ticker value equal to the global one clears the override.
-      const body = Object.fromEntries(analysisTickerKeys.map((key) => [key, values[key] === global[key] ? null : values[key]]));
-      await saveLabTickerOverrides(symbol, body);
-      setShowTrial(false);
-      await Promise.all([loadSettings(), reload()]);
-    } catch (err) {
-      setActionError(errorMessage(err, `Could not save ${symbol}'s values.`));
-    } finally {
-      setBusy(null);
-    }
-  };
-
-  const figuresForDates = stored?.figures ?? shownFigures;
-  const startBacktest = async () => {
-    if (!confirm || !configured || !global || !lab || !figuresForDates?.dataQuality.firstDate || !figuresForDates.dataQuality.lastDate) return;
-    const values = confirm.values;
-    setStartingBacktest(true);
-    setConfirmError(null);
-    try {
-      const sessionBaseline: Partial<Record<"minDte" | "maxDte" | "maxSpreadPctOfMid", number>> = {};
-      for (const key of ["minDte", "maxDte", "maxSpreadPctOfMid"] as const) if (values[key] !== global[key]) sessionBaseline[key] = values[key];
-      const overridesForSession: BacktestSettingsOverrides = {
-        ...(lab.settings.decisionMaker === "baseline" ? {} : { decisionMaker: "baseline" as const }),
-        ...(Object.keys(sessionBaseline).length > 0 ? { baseline: sessionBaseline } : {}),
-      };
-      const name = analysisBacktestName(symbol, values, differingAnalysisKeys(values, configured), ruleShock);
-      const created = await createBacktestSession({
-        name,
-        symbols: [symbol],
-        startDate: figuresForDates.dataQuality.firstDate,
-        endDate: figuresForDates.dataQuality.lastDate,
-        tablesMode: "walk_forward",
-        overrides: overridesForSession,
-        settingsSource: "per_ticker",
-        symbolSettings: {
-          [symbol]: {
-            potDollars: values.potDollars,
-            baseline: {
-              ladderSharesPct: values.ladderSharesPct,
-              ladderRungs: values.ladderRungs,
-              minAbsDelta: values.minAbsDelta,
-              maxAbsDelta: values.maxAbsDelta,
-              ...(values.ladderShockPct === null ? { ladderShock: (lab.settings.baseline?.ladderShock ?? "history") as "history" | "fixed" } : { ladderShock: "fixed" as const, ladderShockPct: values.ladderShockPct }),
-            },
-          },
-        },
-      });
-      setQueuedBacktest({ name, sessionId: created.session.id });
-      setConfirm(null);
-    } catch (err) {
-      setConfirmError(errorMessage(err, "Could not start the backtest."));
-    } finally {
-      setStartingBacktest(false);
-    }
-  };
-
-  // A new session of the ticker on the New session form, with the values on screen (a trial's differ from the saved ones).
-  const openNewSession = () => {
-    const values = shown && configured ? analysisSessionValues(symbol, shown, configured) : { symbol, tickerEdits: {}, settingValues: {} };
-    navigate(`/backtest/new?symbols=${encodeURIComponent(symbol)}`, { state: { analysisValues: values } });
-  };
-  const newSessionButton = (
-    <button
-      type="button"
-      className="btn btn-outline-secondary d-inline-flex align-items-center gap-1"
-      title={trial ? `A new backtest session of ${symbol} with this trial's values` : `A new backtest session of ${symbol} with its saved values`}
-      onClick={openNewSession}
-    >
-      <IconFlask size={16} aria-hidden="true" />
-      Backtest
-    </button>
-  );
+  // A new session on the New session form: the analysis backtest's own (a trial's when one is shown) to start from.
+  const openNewSession = () => navigate(shownBacktest ? `/backtest/new?from=${encodeURIComponent(shownBacktest.sessionId)}` : `/backtest/new?symbols=${encodeURIComponent(symbol)}`);
 
   const statusLine = (
     <div className="analysis-status-line">
       {stored && (
-        <span>
-          Computed {formatDayMonthYear((stored.finishedAt ?? stored.createdAt).slice(0, 10))}, {formatBrowserClockTime(stored.finishedAt ?? stored.createdAt)} · option data to {stored.optionLastDate ? formatDayMonthYear(stored.optionLastDate) : "—"}
-        </span>
+        <>
+          <span>
+            Analysed {formatDayMonthYear((stored.finishedAt ?? stored.createdAt).slice(0, 10))}, {formatBrowserClockTime(stored.finishedAt ?? stored.createdAt)}
+          </span>
+          <span aria-hidden="true">·</span>
+          <span>option data to {stored.optionLastDate ? formatDayMonthYear(stored.optionLastDate) : "—"}</span>
+          <span aria-hidden="true">·</span>
+          <span>{trial ? `a trial at ${formatCurrency(trial.labValues.effective.accountDollars, 0)}` : "the lab's Vol Farmer v4 values"}</span>
+        </>
       )}
       {savedRun ? (
         <button type="button" className="btn btn-outline-secondary d-inline-flex align-items-center gap-1" disabled={busy !== null} onClick={() => void cancelRun(savedRun)}>
           <Spinner size="sm" />
-          Updating · Stop
+          Re-running · Stop
         </button>
       ) : (
         stored && (
-          <button type="button" className="btn btn-outline-primary d-inline-flex align-items-center gap-1" disabled={busy !== null} onClick={() => void updateAnalysis()}>
-            {busy === "update" ? <Spinner size="sm" /> : <IconRefresh size={16} aria-hidden="true" />}
-            Update Analysis
+          <button type="button" className="btn btn-outline-secondary d-inline-flex align-items-center gap-1" disabled={busy !== null} onClick={() => void rerunAnalysis()}>
+            {busy === "rerun" ? <Spinner size="sm" /> : <IconRefresh size={16} aria-hidden="true" />}
+            Re-run analysis
           </button>
         )
       )}
-      {newSessionButton}
+      <button type="button" className="btn btn-outline-primary d-inline-flex align-items-center gap-1" title={shownBacktest ? `A new backtest session starting from ${trial ? "this trial's" : "this analysis's"} backtest` : `A new backtest session of ${symbol}`} onClick={openNewSession}>
+        <IconFlask size={16} aria-hidden="true" />
+        Backtest
+      </button>
     </div>
   );
 
@@ -358,21 +250,30 @@ export function TickerAnalysisModal({ symbol, onClose, onSuitabilitySaved }: Tic
   if (view && stored && view.fileLastDate && stored.optionLastDate && view.fileLastDate > stored.optionLastDate && !savedRun) {
     notices.push(
       <AnalysisNote key="newer" tone="warn">
-        <p>The data file now runs to {formatDayMonthYear(view.fileLastDate)}, past this analysis's last day ({formatDayMonthYear(stored.optionLastDate)}). Update Analysis to include the new days.</p>
+        <p>The data file now runs to {formatDayMonthYear(view.fileLastDate)}, past this analysis's last day ({formatDayMonthYear(stored.optionLastDate)}). Re-run the analysis to include the new days.</p>
       </AnalysisNote>,
     );
   }
-  if (view && stored && !savedRun && stored.labValuesHash !== view.currentHash) {
+  if (outOfDate && view) {
+    const labSaved = view.labSavedAt;
     notices.push(
-      <AnalysisNote key="values" tone="warn">
-        <p>{symbol}'s backtesting settings have changed since this analysis was computed. Update Analysis to recompute it with the current ones.</p>
-      </AnalysisNote>,
-    );
-  }
-  if (view && stored && stored.formulasVersion < view.currentFormulasVersion && !savedRun) {
-    notices.push(
-      <AnalysisNote key="formulas" tone="info">
-        <p>Computed with an older version of the analysis's formulas. Update Analysis for the current figures.</p>
+      <AnalysisNote
+        key="out-of-date"
+        tone="warn"
+        actions={
+          <button type="button" className="btn btn-primary d-inline-flex align-items-center gap-1" disabled={busy !== null} onClick={() => void rerunAnalysis()}>
+            {busy === "rerun" ? <Spinner size="sm" /> : <IconRefresh size={16} aria-hidden="true" />}
+            Re-run analysis
+          </button>
+        }
+      >
+        <p>
+          <b>Out of date.</b>{" "}
+          {ranWithOlderFormulas && stored!.labValuesHash === view.currentHash
+            ? "Computed with an older version of the analysis's formulas."
+            : `The lab's v4 values changed on ${formatDayMonth(labSaved.slice(0, 10))} at ${formatBrowserClockTime(labSaved)}, after this analysis ran${labChanges && labChanges.length > 0 ? `: ${joinWithAnd(labChanges)}` : ""}.${ranWithOlderFormulas ? " Its formulas are an older version too." : ""}`}{" "}
+          Everything below is from the values it ran with.
+        </p>
       </AnalysisNote>,
     );
   }
@@ -382,61 +283,111 @@ export function TickerAnalysisModal({ symbol, onClose, onSuitabilitySaved }: Tic
         <p className="d-inline-flex flex-wrap align-items-center gap-2">
           <Spinner size="sm" />
           <span>
-            <b>Updating{savedRun.reason === "ticker_settings" ? ` with ${symbol}'s saved settings` : savedRun.reason === "global_settings" ? " with the saved global settings" : ""}:</b> {describeRunStep(savedRun)}. Until it finishes, the figures below are the previous analysis's. A background job: closing the window does not stop it.
+            <b>Re-running{savedRun.reason === "global_settings" ? " with the lab's saved values" : ""}:</b> {describeRunStep(savedRun)}. Until it finishes, the figures below are the previous analysis's. A background job: closing the window does not stop it.
           </span>
         </p>
-        <AnalysisProgressBar fraction={runFraction(savedRun)} label="Updating the analysis" />
+        <AnalysisProgressBar fraction={runFraction(savedRun)} label="Re-running the analysis" />
+      </AnalysisNote>,
+    );
+  }
+  if (trialRun) {
+    notices.push(
+      <AnalysisNote
+        key="trial-running"
+        tone="info"
+        icon="progress"
+        live
+        actions={
+          <button type="button" className="btn btn-outline-secondary" disabled={busy !== null} onClick={() => void cancelRun(trialRun)}>
+            Stop the trial
+          </button>
+        }
+      >
+        <p className="d-inline-flex flex-wrap align-items-center gap-2">
+          <Spinner size="sm" />
+          <span>
+            <b>Trial at {formatCurrency(trialRun.labValues.effective.accountDollars, 0)}:</b> {describeRunStep(trialRun)}. It shows here when it finishes; nothing is saved as {symbol}'s analysis.
+          </span>
+        </p>
+        <AnalysisProgressBar fraction={runFraction(trialRun)} label="Running the trial" />
+      </AnalysisNote>,
+    );
+  }
+  if (trial) {
+    notices.push(
+      <AnalysisNote
+        key="trial-shown"
+        tone="info"
+        actions={
+          <button type="button" className="btn btn-outline-primary" onClick={() => setShowTrial(false)}>
+            Back to the analysis
+          </button>
+        }
+      >
+        <p>
+          <b>A trial at {formatCurrency(trial.labValues.effective.accountDollars, 0)}</b> (a {formatCurrency(trial.labValues.effective.potDollars, 0)} pot): the analysis backtest at another starting value. Nothing is saved as {symbol}'s analysis; the figures that don't depend on the backtest are the analysis's own.
+        </p>
+      </AnalysisNote>,
+    );
+  } else if (view?.trial && !trialRun) {
+    notices.push(
+      <AnalysisNote
+        key="trial-available"
+        tone="plain"
+        actions={
+          <button type="button" className="btn btn-outline-secondary" onClick={() => setShowTrial(true)}>
+            Show the trial
+          </button>
+        }
+      >
+        <p>The last trial, at {formatCurrency(view.trial.labValues.effective.accountDollars, 0)}, is kept until the next one.</p>
       </AnalysisNote>,
     );
   }
   if (view?.latestProblem && !savedRun) {
     notices.push(
       <div key="problem" className="alert alert-danger mb-0">
-        The last update {view.latestProblem.status === "stopped" ? "stopped reporting (its process ended)" : "failed"}
+        The last run {view.latestProblem.status === "stopped" ? "stopped reporting (its process ended)" : "failed"}
         {view.latestProblem.error ? `: ${view.latestProblem.error}` : "."} {stored ? "The figures below are from the analysis before it." : ""}
       </div>,
-    );
-  }
-  if (queuedBacktest) {
-    notices.push(
-      <AnalysisNote key="queued" tone="info" icon="done" live>
-        <p>
-          <b>Backtest started:</b> “{queuedBacktest.name}”. It runs as a background job like other backtests.{" "}
-          <button type="button" className="analysis-link" onClick={() => navigate(`/backtest/sessions/${queuedBacktest.sessionId}`)}>
-            Open the session
-          </button>
-        </p>
-      </AnalysisNote>,
     );
   }
 
   // No daily bars: why, and the download that fetches them.
   const missingBarsOf = (figures: AnalysisFileFigures) =>
     figures.bars.length === 0
-      ? { message: `${symbol} has no IBKR daily bars yet. The data file's download writes them at its end; updating the file fetches them.`, action: <button type="button" className="btn btn-outline-primary" onClick={() => void startBacktestDownload({ symbol, startDate: figures.dataQuality.firstDate ?? undefined }).then(() => setActionError(null)).catch((err: unknown) => setActionError(errorMessage(err, "Could not start the download.")))}>Update the data file</button> }
+      ? {
+          message: `${symbol} has no IBKR daily bars yet. The data file's download writes them at its end; updating the file fetches them.`,
+          action: (
+            <button type="button" className="btn btn-outline-primary" onClick={() => void startBacktestDownload({ symbol, startDate: figures.dataQuality.firstDate ?? undefined }).then(() => setActionError(null)).catch((err: unknown) => setActionError(errorMessage(err, "Could not start the download.")))}>
+              Update the data file
+            </button>
+          ),
+        }
       : null;
-  // Before the first analysis and while it runs: the cards the data file gives on its own.
-  const fileCards = fileFiguresError ? (
-    <div className="alert alert-danger mb-0">{fileFiguresError}</div>
-  ) : !fileFigures ? (
-    <div className="d-flex justify-content-center py-4">
-      <Spinner label={`Reading ${symbol}'s data file`} />
-    </div>
-  ) : (
-    <>
-      <AnalysisKpiTiles figures={fileFigures} />
-      <AnalysisPriceCards symbol={symbol} figures={fileFigures} shown={null} showingTrial={false} stale={false} splits={view?.detectedSplits ?? null} missingBars={missingBarsOf(fileFigures)} />
-      <AnalysisSessionsCard symbol={symbol} sessions={sessions} loadError={sessionsError} analysisSessionId={null} />
-      <div className="analysis-two-col">
-        <AnalysisEarningsCard symbol={symbol} figures={fileFigures} onFetchEarnings={() => void fetchEarnings()} fetching={busy === "earnings"} fetchMessage={earningsMessage} />
-        <AnalysisCorrelationCard symbol={symbol} figures={fileFigures} />
-      </div>
-      <div className="analysis-two-col">
-        <AnalysisProfileCard figures={fileFigures} />
-        <AnalysisDataQualityCard figures={fileFigures} />
-      </div>
-    </>
-  );
+
+  /** The cards every state shows: the price chart (with the backtest's marks when there is one) and the file's own figures. */
+  const fileCards = (figures: AnalysisFileFigures, backtest: AnalysisBacktestFigures | null, effective: StoredAnalysis["labValues"]["effective"] | null) => {
+    const targetShare = effective?.firstPositionShare ?? 0.8;
+    const bandShare = (effective?.v4.rebalanceBandPct ?? 5) / 100;
+    const shownRange: HoldingChartRange = range === "Backtest" && !backtest ? "All" : range;
+    return {
+      holding: <AnalysisHoldingChart symbol={symbol} figures={figures} backtest={backtest} range={shownRange} onRangeChange={setRange} targetShare={targetShare} bandShare={bandShare} missingBars={missingBarsOf(figures)} />,
+      falls: <AnalysisFallsCard symbol={symbol} figures={figures} backtest={backtest} />,
+      profile: <AnalysisStockProfileCard figures={figures} backtest={backtest} profile={view?.profile ?? null} splits={view?.detectedSplits ?? null} />,
+      rest: (
+        <>
+          <div className="analysis-two-col">
+            <AnalysisVolatilityCard figures={figures} fromDate={holdingRangeStart(shownRange, figures.bars, backtest?.startDate ?? null)} />
+            <AnalysisCorrelationCard symbol={symbol} figures={figures} />
+            <AnalysisEarningsCard symbol={symbol} figures={figures} onFetchEarnings={() => void fetchEarnings()} fetching={busy === "earnings"} fetchMessage={earningsMessage} />
+            <AnalysisDataQualityCard figures={figures} />
+          </div>
+          <AnalysisSessionsCard symbol={symbol} sessions={sessions} loadError={sessionsError} analysisSessionId={backtest?.sessionId ?? null} />
+        </>
+      ),
+    };
+  };
 
   let body;
   if (loadError) body = <div className="alert alert-danger mb-0">{loadError}</div>;
@@ -447,35 +398,54 @@ export function TickerAnalysisModal({ symbol, onClose, onSuitabilitySaved }: Tic
       </div>
     );
   } else if (!stored) {
+    const fromFile = fileFiguresError ? (
+      <div className="alert alert-danger mb-0">{fileFiguresError}</div>
+    ) : !fileFigures ? (
+      <div className="d-flex justify-content-center py-4">
+        <Spinner label={`Reading ${symbol}'s data file`} />
+      </div>
+    ) : (
+      (() => {
+        const cards = fileCards(fileFigures, null, null);
+        return (
+          <>
+            {cards.holding}
+            {cards.falls}
+            {cards.profile}
+            {cards.rest}
+          </>
+        );
+      })()
+    );
     if (savedRun) {
       const currentIndex = savedRun.step ? analysisSteps.indexOf(savedRun.step) : 0;
       body = (
         <>
-        <AnalysisCard title={`Analysing ${symbol}`} description="First analysis of this ticker. It runs as a background job, so closing this window does not stop it.">
-          <div className="card-body">
-            <ol className="analysis-steps">
-              {analysisSteps.map((step, index) => {
-                const state = index < currentIndex ? "done" : index === currentIndex ? "run" : "wait";
-                return (
-                  <li key={step}>
-                    <span className={state === "done" ? "is-done" : state === "wait" ? "is-wait" : undefined}>{state === "done" ? <IconCircleCheck size={18} aria-hidden="true" /> : state === "run" ? <Spinner size="sm" /> : <IconCircle size={18} aria-hidden="true" />}</span>
-                    <span className={state === "wait" ? "text-secondary" : undefined}>{analysisStepLabels[step]}</span>
-                    <span className="text-secondary" style={{ fontSize: "0.75rem" }}>
-                      {state === "run" && savedRun.progressTotal > 0 ? `day ${formatNumber(savedRun.progressDone)} of ${formatNumber(savedRun.progressTotal)}` : ""}
-                    </span>
-                  </li>
-                );
-              })}
-            </ol>
-            <div className="mt-3">
-              <AnalysisProgressBar fraction={runFraction(savedRun)} label={`Analysing ${symbol}`} />
+          <AnalysisCard title={`Analysing ${symbol}`} description="First analysis of this ticker. It runs as a background job, so closing this window does not stop it.">
+            <div className="card-body">
+              <ol className="analysis-steps">
+                {analysisSteps.map((step, index) => {
+                  const state = index < currentIndex ? "done" : index === currentIndex ? "run" : "wait";
+                  return (
+                    <li key={step}>
+                      <span className={state === "done" ? "is-done" : state === "wait" ? "is-wait" : undefined}>{state === "done" ? <IconCircleCheck size={18} aria-hidden="true" /> : state === "run" ? <Spinner size="sm" /> : <IconCircle size={18} aria-hidden="true" />}</span>
+                      <span className={state === "wait" ? "text-secondary" : undefined}>{analysisStepLabels[step]}</span>
+                      <span className="text-secondary" style={{ fontSize: "0.75rem" }}>
+                        {state === "run" && savedRun.progressTotal > 0 ? `day ${formatNumber(savedRun.progressDone)} of ${formatNumber(savedRun.progressTotal)}` : ""}
+                      </span>
+                    </li>
+                  );
+                })}
+              </ol>
+              <div className="mt-3">
+                <AnalysisProgressBar fraction={runFraction(savedRun)} label={`Analysing ${symbol}`} />
+              </div>
+              <button type="button" className="btn btn-outline-secondary mt-3" disabled={busy !== null} onClick={() => void cancelRun(savedRun)}>
+                Cancel
+              </button>
             </div>
-            <button type="button" className="btn btn-outline-secondary mt-3" disabled={busy !== null} onClick={() => void cancelRun(savedRun)}>
-              Cancel
-            </button>
-          </div>
-        </AnalysisCard>
-        {fileCards}
+          </AnalysisCard>
+          {fromFile}
         </>
       );
     } else {
@@ -486,91 +456,59 @@ export function TickerAnalysisModal({ symbol, onClose, onSuitabilitySaved }: Tic
           <AnalysisNote
             tone="info"
             actions={
-              <button type="button" className="btn btn-primary d-inline-flex align-items-center gap-1" disabled={busy !== null} onClick={() => void updateAnalysis()}>
-                {busy === "update" ? <Spinner size="sm" /> : <IconChartCandle size={16} aria-hidden="true" />}
+              <button type="button" className="btn btn-primary d-inline-flex align-items-center gap-1" disabled={busy !== null} onClick={() => void rerunAnalysis()}>
+                {busy === "rerun" ? <Spinner size="sm" /> : <IconChartCandle size={16} aria-hidden="true" />}
                 Analyse now
               </button>
             }
           >
             <p>
-              <b>{symbol} hasn't been analysed yet.</b> The cards below come straight from the data file. The analysis adds the rest: the fits and the pot size at {symbol}'s backtesting values, the option liquidity, the chain map, a backtest over the whole file and Claude's summary. It runs as a background job, so you can close this window.
+              <b>{symbol} hasn't been analysed yet.</b> The cards below come straight from the data file. The analysis adds the rest: whether it suits Vol Farmer v4 over the last 12, 6 and 3 months, a v4 backtest from the start of steady weeklies, the Calls v4 could sell on each expiry day, the pot that fits and what v4 would do today. It runs as a background job, so you can close this window.
             </p>
           </AnalysisNote>
-          {fileCards}
+          {fromFile}
         </>
       );
     }
-  } else if (!shownFigures || !shown || !storedValues) {
+  } else if (!shownFigures || !shownAnalysis) {
     body = <div className="alert alert-danger mb-0">The stored analysis has no figures.</div>;
   } else {
-    const missingBars = missingBarsOf(shownFigures);
+    const effective = shownAnalysis.labValues.effective;
+    const cards = fileCards(shownFigures, shownBacktest, effective);
+    const backtestProblem = shownFigures.analysisBacktest && "error" in shownFigures.analysisBacktest ? shownFigures.analysisBacktest.error : shownFigures.analysisBacktest === null ? "no backtest ran" : null;
+    const splits = view.detectedSplits ?? [];
     body = (
       <>
         {notices}
-        <AnalysisKpiTiles figures={shownFigures} />
-        {settingsError && <div className="alert alert-danger mb-0">{settingsError}</div>}
-        {draft && configured && global && (
-          <AnalysisSettingsCard
-            symbol={symbol}
-            draft={draft}
-            onDraftChange={setDraft}
-            configured={configured}
-            global={global}
-            overriddenKeys={overriddenKeys}
-            displayed={shown}
-            showingTrial={trial !== null}
-            ruleShock={ruleShock}
-            lastPrice={shownFigures.chains.lastDay?.spot ?? null}
-            lastDate={shownFigures.chains.lastDay?.date ?? null}
-            open={settingsOpen}
-            onToggleOpen={() => setSettingsOpen(!settingsOpen)}
-            updateRunning={savedRun !== null}
-            trialRun={trialRun}
-            busy={busy === "save" || busy === "run" ? busy : null}
-            actionError={actionError}
-            onSave={(values) => void saveForTicker(values)}
-            onRun={(values) => void runTrial(values)}
-            onBackToStored={() => setShowTrial(false)}
-            onEditGlobal={() => setLabSettingsOpen(true)}
-          />
+        {actionError && <div className="alert alert-danger mb-0">{actionError}</div>}
+        {backtestProblem && <div className="alert alert-danger mb-0">The analysis backtest didn't finish ({backtestProblem}), so the verdict and the backtest's cards are missing. Re-run the analysis.</div>}
+        {shownBacktest && (
+          <>
+            <AnalysisVerdictBand symbol={symbol} figures={shownFigures} backtest={shownBacktest} onSetFlag={isAdmin ? () => setSuitabilityOpen(true) : null} />
+            <AnalysisRuleCard backtest={shownBacktest} splits={splits} />
+            <AnalysisSourcesCard symbol={symbol} backtest={shownBacktest} putsStartCallYieldPct={effective.v4.putsStartCallYieldPct} bandFloorShare={effective.firstPositionShare - effective.v4.rebalanceBandPct / 100} bandTopShare={effective.firstPositionShare + effective.v4.rebalanceBandPct / 100} />
+          </>
         )}
-        <AnalysisFitTiles figures={shownFigures} shown={shown} showingTrial={trial !== null} />
-        <AnalysisClaudeCards symbol={symbol} analysis={shownAnalysis!} shown={shown} ruleShock={ruleShock} stale={stale} onTry={(values) => {
-            setDraft(draftFromValues(global ? { ...values, minDte: global.minDte, maxDte: global.maxDte, maxSpreadPctOfMid: global.maxSpreadPctOfMid } : values));
-            // Show where the values went (Marcelo 2026-10-19): the Settings card, opened, scrolled to the top of the window.
-            setSettingsOpen(true);
-            requestAnimationFrame(() =>
-              document
-                .getElementById("analysis-settings-body")
-                ?.closest(".card")
-                ?.scrollIntoView({ behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth", block: "start" }),
-            );
-          }} onBacktest={(values) => setConfirm({ values })} />
-        <AnalysisPriceCards symbol={symbol} figures={shownFigures} shown={shown} showingTrial={trial !== null} stale={stale} splits={view?.detectedSplits ?? null} missingBars={missingBars} />
-        <AnalysisLiquidityCards symbol={symbol} figures={shownFigures} computedWith={shown} putsCapped={putsCapped} onPutsCappedChange={setPutsCapped} stale={stale} />
-        <AnalysisChainMapCard figures={shownFigures} computedWith={shown} putsCapped={putsCapped} onPutsCappedChange={setPutsCapped} stale={stale} />
+        {cards.holding}
+        {shownBacktest && (
+          <>
+            <AnalysisBacktestCard symbol={symbol} backtest={shownBacktest} steadyWeekliesFrom={shownFigures.expiryWeeks.steadyWeekliesFrom} isTrial={trial !== null} onOpenSession={() => navigate(`/backtest/sessions/${shownBacktest.sessionId}`)} />
+            <AnalysisMonthByMonthCard symbol={symbol} backtest={shownBacktest} />
+            <AnalysisWheelCyclesCard symbol={symbol} backtest={shownBacktest} />
+          </>
+        )}
+        {cards.falls}
         <div className="analysis-two-col">
-          <AnalysisFitCard symbol={symbol} figures={shownFigures} shown={shown} showingTrial={trial !== null} stale={stale} />
-          <AnalysisPotCard symbol={symbol} figures={shownFigures} shown={shown} showingTrial={trial !== null} stale={stale} />
+          <AnalysisCanTradeCard symbol={symbol} figures={shownFigures} backtest={shownBacktest} effective={effective} />
+          <AnalysisSizeCard figures={shownFigures} effective={effective} onRunTrial={(accountDollars) => void runTrial(accountDollars)} trialRunning={trialRun !== null} busy={busy !== null} />
         </div>
-        <div className="analysis-two-col">
-          <AnalysisTooLargeCard figures={shownFigures} stale={stale} onOpenSession={(sessionId) => navigate(`/backtest/sessions/${sessionId}`)} />
-          <AnalysisShockCard figures={shownFigures} ladderShockMinPct={shownAnalysis!.labValues.effective.baseline.ladderShockMinPct} ladderShockMaxPct={shownAnalysis!.labValues.effective.baseline.ladderShockMaxPct} lookbackYears={shownAnalysis!.labValues.effective.baseline.ladderShockLookbackYears} />
-        </div>
-        <AnalysisSessionsCard symbol={symbol} sessions={sessions} loadError={sessionsError} analysisSessionId={stored.sessionId} />
-        <div className="analysis-two-col">
-          <AnalysisEarningsCard symbol={symbol} figures={shownFigures} onFetchEarnings={() => void fetchEarnings()} fetching={busy === "earnings"} fetchMessage={earningsMessage} />
-          <AnalysisCorrelationCard symbol={symbol} figures={shownFigures} />
-        </div>
-        <div className="analysis-two-col">
-          <AnalysisProfileCard figures={shownFigures} />
-          <AnalysisDataQualityCard figures={shownFigures} />
-        </div>
+        <AnalysisTodayCard symbol={symbol} figures={shownFigures} />
+        {cards.profile}
+        {cards.rest}
       </>
     );
   }
 
-  const confirmValues = confirm?.values ?? null;
   return (
     <>
       <div className="modal-backdrop show" style={{ zIndex: 1050, backgroundColor: "rgba(0,0,0,0.5)", opacity: 1 }} />
@@ -605,22 +543,6 @@ export function TickerAnalysisModal({ symbol, onClose, onSuitabilitySaved }: Tic
           </div>
         </div>
       </div>
-      {confirmValues && configured && figuresForDates?.dataQuality.firstDate && figuresForDates.dataQuality.lastDate && (
-        <AnalysisBacktestConfirm
-          symbol={symbol}
-          values={confirmValues}
-          changed={differingAnalysisKeys(confirmValues, configured)}
-          ruleShock={ruleShock}
-          name={analysisBacktestName(symbol, confirmValues, differingAnalysisKeys(confirmValues, configured), ruleShock)}
-          firstDate={figuresForDates.dataQuality.firstDate}
-          lastDate={figuresForDates.dataQuality.lastDate}
-          tradingDays={figuresForDates.dataQuality.completeDays}
-          starting={startingBacktest}
-          error={confirmError}
-          onStart={() => void startBacktest()}
-          onCancel={() => setConfirm(null)}
-        />
-      )}
       {suitabilityOpen && view && (
         <TickerSuitabilityModal
           symbol={symbol}
@@ -630,16 +552,6 @@ export function TickerAnalysisModal({ symbol, onClose, onSuitabilitySaved }: Tic
             await Promise.all([reload(), onSuitabilitySaved?.()]);
           }}
           onClose={() => setSuitabilityOpen(false)}
-        />
-      )}
-      {labSettingsOpen && (
-        <BacktestLabSettingsModal
-          stacked
-          onClose={() => {
-            setLabSettingsOpen(false);
-            // A global save changes the values shown here and may start this analysis's update.
-            void Promise.all([loadSettings(), reload()]);
-          }}
         />
       )}
     </>

@@ -2303,6 +2303,9 @@
   --analysis-good-ink: #217d30;
   --analysis-fair-ink: #ad5b00;
   --analysis-poor-ink: #c62828;
+  /* The verdict badges' text on the good and poor tints (the inks above are for plain surfaces): 5.75:1 and 5.85:1. */
+  --analysis-good-badge-ink: #1a6a27;
+  --analysis-poor-badge-ink: #a61f1f;
   --analysis-warn-bg: #fdf0d6;
   --analysis-warn-border: #f59f00;
   --analysis-info-bg: #e8f2f9;
@@ -2319,6 +2322,26 @@
   --analysis-implied-volatility: #eb6834;
   --price-navigator-window: rgba(42, 120, 214, 0.12);
   --price-navigator-dim: rgba(29, 39, 59, 0.08);
+  /* The Vol Farmer v4 Analyse window's charts (mockup approved 2026-11-01). */
+  --analysis-v4-account: #2a78d6;
+  --analysis-v4-hold: #1f2937;
+  --analysis-v4-spy: #6b7280;
+  --analysis-v4-price: #1f2937;
+  --analysis-v4-call-away: #2a78d6;
+  --analysis-v4-top-up: #6f42c1;
+  --analysis-v4-trim: #eb6834;
+  --analysis-v4-iv: #eb6834;
+  --analysis-v4-call-iv: #6f42c1;
+  --analysis-v4-source-calls: #2a78d6;
+  --analysis-v4-source-puts: #eb6834;
+  --analysis-v4-source-interest: #6f42c1;
+  --analysis-v4-source-leaps: #b88a00;
+  --analysis-v4-source-shares: #8a919c;
+  --analysis-v4-drawdown-band: rgba(214, 57, 57, 0.1);
+  --analysis-v4-falls: rgba(107, 114, 128, 0.14);
+  --analysis-v4-target-band: rgba(42, 120, 214, 0.14);
+  --analysis-v4-pass: #1f7a3a;
+  --analysis-v4-fail: #b42318;
 }
 :root[data-bs-theme="dark"] {
   --analysis-ladder: #3987e5;
@@ -2328,12 +2351,33 @@
   --analysis-implied-volatility: #d95926;
   --price-navigator-window: rgba(57, 135, 229, 0.18);
   --price-navigator-dim: rgba(0, 0, 0, 0.25);
+  --analysis-v4-account: #3987e5;
+  --analysis-v4-hold: #f9fafb;
+  --analysis-v4-spy: #8b95a7;
+  --analysis-v4-price: #e5e7eb;
+  --analysis-v4-call-away: #3987e5;
+  --analysis-v4-top-up: #b18cf0;
+  --analysis-v4-trim: #d95926;
+  --analysis-v4-iv: #d95926;
+  --analysis-v4-call-iv: #b18cf0;
+  --analysis-v4-source-calls: #3987e5;
+  --analysis-v4-source-puts: #d95926;
+  --analysis-v4-source-interest: #9f78ea;
+  --analysis-v4-source-leaps: #b8890c;
+  --analysis-v4-source-shares: #9ca3af;
+  --analysis-v4-drawdown-band: rgba(214, 57, 57, 0.16);
+  --analysis-v4-falls: rgba(156, 163, 175, 0.16);
+  --analysis-v4-target-band: rgba(57, 135, 229, 0.2);
+  --analysis-v4-pass: #4ade80;
+  --analysis-v4-fail: #f87171;
   --analysis-good: #2b5247;
   --analysis-fair: #574d38;
   --analysis-poor: #503745;
   --analysis-good-ink: #4cc866;
   --analysis-fair-ink: #f5b458;
   --analysis-poor-ink: #f78f8f;
+  --analysis-good-badge-ink: #7ee09a;
+  --analysis-poor-badge-ink: #f78f8f;
   --analysis-warn-bg: #4a4232;
   --analysis-warn-border: #f5b458;
   --analysis-info-bg: #1e3a52;
@@ -2373,7 +2417,7 @@
 .analysis-card-title-row { display: flex; flex-wrap: wrap; align-items: baseline; column-gap: 0.75rem; row-gap: 0.25rem; min-width: 0; flex: 1 1 auto; }
 .analysis-card-title-row h3 { margin: 0; }
 .analysis-card-desc { color: var(--tblr-secondary-color); font-size: 0.78rem; }
-.analysis-card-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; }
+.analysis-card-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; margin-left: auto; }
 .analysis-prev-tag { display: inline-flex; align-items: center; gap: 0.25rem; font-size: 0.72rem; font-weight: 600; color: var(--analysis-fair-ink); }
 .analysis-two-col { display: grid; grid-template-columns: minmax(0, 1fr); gap: 1rem; }
 .analysis-kpi-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.75rem; }
@@ -3060,3 +3104,89 @@
   font-size: 1rem;
   font-weight: 600;
 }
+
+/* The Vol Farmer v4 Analyse window (mockup approved 2026-11-01): layout grids, the rule's icons, the source tiles, and the
+   SVG charts' lines, marks and bands on the --analysis-v4-* tokens. */
+.analysis-band-grid { display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr) minmax(0, 0.85fr); gap: 1.75rem; align-items: start; }
+.analysis-source-tiles { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 0.75rem; }
+.analysis-sources-grid { display: grid; grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.3fr); gap: 1.5rem; align-items: start; }
+.analysis-backtest-grid { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr); gap: 1.5rem; align-items: start; }
+.analysis-profile-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 1.25rem 1.5rem; }
+.analysis-stat-grid-2 { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.9rem 1.5rem; }
+.analysis-stat-grid-3 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0.9rem 1.5rem; }
+.analysis-scroll-table { max-height: 26rem; overflow-y: auto; }
+.analysis-scroll-table thead { position: sticky; top: 0; z-index: 1; }
+.analysis-bordered-table { border: 1px solid var(--tblr-border-color); border-radius: var(--tblr-border-radius); }
+/* Headers that wrap, so a table of short figures fits its column (Tabler keeps thead text on one line). */
+.analysis-wrap-head thead th { white-space: normal; vertical-align: bottom; }
+.analysis-wrap-head tbody td { white-space: nowrap; }
+/* A long engine note in a table cell: two lines, the rest in the cell's title. */
+.analysis-clamp-2 { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+@media (max-width: 1199.98px) {
+  .analysis-band-grid, .analysis-sources-grid, .analysis-backtest-grid { grid-template-columns: minmax(0, 1fr); }
+  .analysis-source-tiles, .analysis-profile-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+.analysis-verdict-badge { font-size: 0.72rem; }
+.analysis-verdict-badge.is-good { background: var(--analysis-good); color: var(--analysis-good-badge-ink); }
+.analysis-verdict-badge.is-poor { background: var(--analysis-poor); color: var(--analysis-poor-badge-ink); }
+.analysis-check-icon { vertical-align: -2px; margin-right: 0.3rem; fill: none; stroke-width: 2.5; stroke-linecap: round; stroke-linejoin: round; }
+.analysis-check-icon.is-pass { stroke: var(--analysis-v4-pass); }
+.analysis-check-icon.is-fail { stroke: var(--analysis-v4-fail); }
+.analysis-source-tile { border-top: 3px solid var(--analysis-v4-source-shares); }
+.analysis-source-tile.is-calls { border-top-color: var(--analysis-v4-source-calls); }
+.analysis-source-tile.is-puts { border-top-color: var(--analysis-v4-source-puts); }
+.analysis-source-tile.is-interest { border-top-color: var(--analysis-v4-source-interest); }
+.analysis-source-tile.is-leaps { border-top-color: var(--analysis-v4-source-leaps); }
+.analysis-svg { display: block; width: 100%; height: auto; }
+.analysis-svg-text { fill: var(--tblr-secondary-color); font-size: 11px; }
+.analysis-svg-text.is-body { fill: var(--tblr-body-color); }
+.analysis-svg-text.is-strong { fill: var(--tblr-body-color); font-weight: 600; }
+.analysis-svg-text.is-pane { font-weight: 600; }
+.analysis-svg-grid { stroke: var(--tblr-border-color); stroke-width: 1; }
+.analysis-svg-zero { stroke: var(--tblr-secondary-color); stroke-width: 1.5; }
+.analysis-svg-line { fill: none; stroke-width: 1.5; stroke-linejoin: round; }
+.analysis-svg-line.is-account { stroke: var(--analysis-v4-account); stroke-width: 2; }
+.analysis-svg-line.is-hold { stroke: var(--analysis-v4-hold); }
+.analysis-svg-line.is-spy { stroke: var(--analysis-v4-spy); }
+.analysis-svg-line.is-price { stroke: var(--analysis-v4-price); }
+.analysis-svg-line.is-shares { stroke: var(--analysis-v4-account); }
+.analysis-svg-line.is-iv { stroke: var(--analysis-v4-iv); }
+.analysis-svg-line.is-iv-realised { stroke: var(--analysis-v4-iv); stroke-dasharray: 4 3; }
+.analysis-svg-line.is-navigator { stroke: var(--tblr-secondary-color); stroke-width: 1; }
+.analysis-svg-dot.is-call-iv { fill: var(--analysis-v4-call-iv); }
+.analysis-svg-mark.is-call-away { fill: var(--tblr-bg-surface); stroke: var(--analysis-v4-call-away); stroke-width: 1.5; }
+.analysis-svg-mark.is-top-up { fill: var(--analysis-v4-top-up); stroke: var(--tblr-bg-surface); stroke-width: 1; }
+.analysis-svg-mark.is-trim { fill: var(--analysis-v4-trim); stroke: var(--tblr-bg-surface); stroke-width: 1; }
+.analysis-svg-area.is-cash { fill: var(--analysis-cash-available); fill-opacity: 0.28; stroke: var(--analysis-cash-available); stroke-width: 1.5; }
+.analysis-svg-area.is-drawdown { fill: var(--analysis-v4-account); fill-opacity: 0.25; stroke: var(--analysis-v4-account); stroke-width: 1.5; }
+.analysis-svg-band.is-target { fill: var(--analysis-v4-target-band); }
+.analysis-svg-band.is-drawdown { fill: var(--analysis-v4-drawdown-band); }
+.analysis-svg-band.is-falls { fill: var(--analysis-v4-falls); }
+.analysis-svg-dashed { stroke-width: 1; stroke-dasharray: 4 4; }
+.analysis-svg-dashed.is-target { stroke: var(--analysis-v4-account); }
+.analysis-svg-dashed.is-start { stroke: var(--tblr-secondary-color); }
+.analysis-svg-segment { stroke: var(--tblr-bg-surface); stroke-width: 2; }
+.analysis-svg-segment.is-calls { fill: var(--analysis-v4-source-calls); }
+.analysis-svg-segment.is-puts { fill: var(--analysis-v4-source-puts); }
+.analysis-svg-segment.is-interest { fill: var(--analysis-v4-source-interest); }
+.analysis-svg-segment.is-leaps { fill: var(--analysis-v4-source-leaps); }
+.analysis-svg-segment.is-shares { fill: var(--analysis-v4-source-shares); }
+.analysis-svg-total { stroke: var(--tblr-body-color); stroke-width: 2; }
+.analysis-svg-tooltip { fill: var(--tblr-bg-surface); stroke: var(--tblr-border-color); }
+.analysis-svg-cursor { stroke: var(--tblr-secondary-color); stroke-width: 1; }
+.analysis-svg-cursor-dot { stroke: var(--tblr-bg-surface); stroke-width: 2; }
+.analysis-svg-cursor-dot.is-account { fill: var(--analysis-v4-account); }
+.analysis-svg-cursor-dot.is-hold { fill: var(--analysis-v4-hold); }
+.analysis-svg-cursor-dot.is-spy { fill: var(--analysis-v4-spy); }
+.analysis-svg-cursor-dot.is-price { fill: var(--analysis-v4-price); }
+.analysis-svg-navigator { fill: var(--tblr-bg-surface-tertiary); }
+.analysis-svg-navigator-window { fill: var(--price-navigator-window); stroke: var(--analysis-ladder); stroke-width: 1.5; }
+.analysis-svg-hit { fill: transparent; }
+.analysis-svg-line.is-break-even { stroke: var(--analysis-break-even); }
+.analysis-svg-line.is-break-even-2 { stroke: var(--analysis-break-even-2); }
+.analysis-svg-line.is-step { stroke: var(--analysis-v4-iv); }
+.analysis-svg-line.is-step-realised { stroke: var(--analysis-v4-iv); stroke-dasharray: 4 3; }
+.analysis-svg-leaps-badge { fill: var(--iorio-leaps); stroke: var(--tblr-bg-surface); stroke-width: 1; }
+.analysis-svg-leaps-glyph { fill: var(--iorio-leaps-fg); font-size: 10px; font-weight: 700; }
+.analysis-svg-swatch.is-falls { fill: var(--analysis-v4-falls); }
+.analysis-svg-swatch.is-cash { fill: var(--analysis-cash-available); fill-opacity: 0.4; }

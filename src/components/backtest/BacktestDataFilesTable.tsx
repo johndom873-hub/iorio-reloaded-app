@@ -1,9 +1,11 @@
-import { useState, type FormEvent } from "react";
+import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { useNavigate } from "react-router-dom";
 import { errorMessage } from "../../api/client";
 import { backtestMaxSymbolsPerSession, deleteBacktestDataFile, resumeBacktestJob, startBacktestDownload, type BacktestDataFileSummary, type BacktestJobView, type BacktestTickerSuitability } from "../../api/backtest";
+import { fetchAnalysesForTable, rerunOutOfDateAnalyses, type AnalysesForTable, type AnalysisTableRow } from "../../api/backtestAnalysis";
 import { useIsAdmin } from "../../hooks/useAuth";
-import { formatFileSize, formatNumber } from "../../lib/formatters";
+import { describeFailedChecks } from "../../lib/analysisPresentation";
+import { formatBrowserClockTime, formatCurrency, formatDayMonth, formatFileSize, formatNumber, formatPercentage, formatRatio } from "../../lib/formatters";
 import { describeDataFileIssues, describeDetectedSplits, splitsNotAnalysedExplanation } from "../../lib/backtestPresentation";
 import { ConfirmModal } from "../ConfirmModal";
 import { DataTable, type DataTableColumn } from "../DataTable/DataTable";
@@ -20,11 +22,21 @@ interface BacktestDataFilesTableProps {
   /** The tickers marked Suitable or Unsuitable; the rest are Pending. */
   suitabilityBySymbol: Record<string, BacktestTickerSuitability>;
   onFilesChanged: () => Promise<void>;
+  /** Changes when the analyses may have changed elsewhere (the lab settings closed): the table reads them again. */
+  analysesReloadKey: number;
 }
 
 /** The From, To and Days columns' headings: the file's option days, and the IBKR daily spot (stock) prices in the local DB. */
 const optionsGroup = { label: "Options", className: "text-center", title: "Days with option prices stored in the file (ThetaData)" };
 const spotGroup = { label: "Spot", className: "text-center", title: "IBKR daily spot prices of the stock, in the local database: the forecast and the settlement prices come from them" };
+
+/** The columns of each ticker's latest Vol Farmer v4 analysis (mockup approved 2026-11-01). */
+const analysisGroup = { label: "VF", className: "text-center", title: "Each ticker's latest analysis for Vol Farmer v4 at the lab's values; open it from the symbol" };
+/** While an analysis runs, the table's analyses are read again this often. */
+const analysesPollMilliseconds = 15_000;
+
+const analysisRunning = (row: AnalysisTableRow | undefined) => row?.status === "queued" || row?.status === "running";
+const analysedAt = (iso: string) => `${formatDayMonth(iso.slice(0, 10))}, ${formatBrowserClockTime(iso)}`;
 
 /** The ThetaData history starts in 2020; a new symbol downloads from here unless another date is chosen. */
 const defaultDownloadStartDate = "2020-01-01";
@@ -35,7 +47,7 @@ function latestDownloadJob(jobs: BacktestJobView[], symbol: string): BacktestJob
 }
 
 /** Data files: one SQLite file per symbol with every contract's 10:00 ET quote; Update downloads only the missing days. */
-export function BacktestDataFilesTable({ files, jobs, suitabilityBySymbol, onFilesChanged }: BacktestDataFilesTableProps) {
+export function BacktestDataFilesTable({ files, jobs, suitabilityBySymbol, onFilesChanged, analysesReloadKey }: BacktestDataFilesTableProps) {
   const [newSymbol, setNewSymbol] = useState("");
   const [newStartDate, setNewStartDate] = useState(defaultDownloadStartDate);
   const [pendingSymbol, setPendingSymbol] = useState<string | null>(null);
@@ -50,6 +62,40 @@ export function BacktestDataFilesTable({ files, jobs, suitabilityBySymbol, onFil
   const isAdmin = useIsAdmin();
   const navigate = useNavigate();
   const downloadRequestRunning = pendingSymbol !== null || bulkUpdateRunning;
+  const [analyses, setAnalyses] = useState<AnalysesForTable | null>(null);
+  const [rerunRunning, setRerunRunning] = useState(false);
+
+  const loadAnalyses = useCallback(async () => {
+    try {
+      setAnalyses(await fetchAnalysesForTable());
+    } catch (err) {
+      setRowError(errorMessage(err, "Could not load the analyses."));
+    }
+  }, []);
+  useEffect(() => {
+    void loadAnalyses();
+  }, [loadAnalyses, analysesReloadKey]);
+  const anyAnalysisRunning = analyses ? Object.values(analyses.bySymbol).some(analysisRunning) : false;
+  useEffect(() => {
+    if (!anyAnalysisRunning) return;
+    const timer = window.setInterval(() => void loadAnalyses(), analysesPollMilliseconds);
+    return () => window.clearInterval(timer);
+  }, [anyAnalysisRunning, loadAnalyses]);
+
+  /** Re-run out of date: a saved analysis of every ticker whose stored one read lab values that have changed since. */
+  const rerunOutOfDate = async () => {
+    setRerunRunning(true);
+    setRowError(null);
+    try {
+      const outcome = await rerunOutOfDateAnalyses();
+      if (outcome.skipped.length > 0) setRowError(`Not re-run: ${outcome.skipped.map((entry) => `${entry.symbol} (${entry.reason})`).join(", ")}.`);
+      await loadAnalyses();
+    } catch (err) {
+      setRowError(errorMessage(err, "Could not re-run the analyses."));
+    } finally {
+      setRerunRunning(false);
+    }
+  };
 
   const selectedFiles = files.filter((file) => selectedSymbols.has(file.symbol)).sort((a, b) => a.symbol.localeCompare(b.symbol));
   const allFilesSelected = files.length > 0 && selectedFiles.length === files.length;
@@ -205,7 +251,7 @@ export function BacktestDataFilesTable({ files, jobs, suitabilityBySymbol, onFil
       // The symbol opens the Analyse window (not the ticker modal): plain text until the file has a complete day.
       render: (file) =>
         file.firstDate ? (
-          <button type="button" className="btn btn-link p-0 text-decoration-none fw-bold iorio-symbol-link" title={`Analyse ${file.symbol} for the CC + Put Ladder`} onClick={() => setAnalysedSymbol(file.symbol)}>
+          <button type="button" className="btn btn-link p-0 text-decoration-none fw-bold iorio-symbol-link" title={`Analyse ${file.symbol} for Vol Farmer v4`} onClick={() => setAnalysedSymbol(file.symbol)}>
             {file.symbol}
           </button>
         ) : (
@@ -216,11 +262,101 @@ export function BacktestDataFilesTable({ files, jobs, suitabilityBySymbol, onFil
       key: "suitability",
       header: "Suitability",
       headerTitle: isAdmin
-        ? "Whether the ticker suits the CC + Put Ladder: Pending until marked. Click a badge to mark it or edit its note."
-        : "Whether the ticker suits the CC + Put Ladder: Pending until an admin marks it. Point at a badge for its note.",
+        ? "Whether the ticker suits Vol Farmer v4: Pending until marked. Click a badge to mark it or edit its note."
+        : "Whether the ticker suits Vol Farmer v4: Pending until an admin marks it. Point at a badge for its note.",
       render: (file) => (
         <TickerSuitabilityBadge symbol={file.symbol} suitability={suitabilityBySymbol[file.symbol] ?? null} onOpen={isAdmin ? () => setSuitabilitySymbol(file.symbol) : null} />
       ),
+    },
+    {
+      key: "verdict",
+      header: "Verdict",
+      headerTitle: "The rule's verdict: suits v4 when its four checks pass over the analysis backtest's last 12, 6 and 3 months",
+      group: analysisGroup,
+      render: (file) => {
+        const row = analyses?.bySymbol[file.symbol];
+        const figures = row?.tableFigures ?? null;
+        if (figures) {
+          return (
+            <span className={`badge analysis-verdict-badge ${figures.verdict === "suits" ? "is-good" : "is-poor"}`}>{figures.verdict === "suits" ? "Suits v4" : "Doesn't suit"}</span>
+          );
+        }
+        if (analysisRunning(row)) {
+          return (
+            <span className="d-inline-flex align-items-center gap-1 text-secondary" style={{ fontSize: "0.8rem" }}>
+              <Spinner size="sm" />
+              Analysing
+            </span>
+          );
+        }
+        return (
+          <span className="badge bg-secondary-lt" style={{ fontSize: "0.72rem" }}>
+            Not analysed
+          </span>
+        );
+      },
+    },
+    {
+      key: "checksFailed",
+      header: "Checks failed",
+      group: analysisGroup,
+      render: (file) => {
+        const figures = analyses?.bySymbol[file.symbol]?.tableFigures ?? null;
+        if (!figures) return "—";
+        return <span style={{ fontSize: "0.8125rem" }}>{figures.failedChecks.length === 0 && figures.uncoveredWindows.length === 0 ? "None" : describeFailedChecks(figures)}</span>;
+      },
+    },
+    {
+      key: "optionsIncome",
+      header: "Options' income",
+      headerTitle: "The Calls' and Puts' P&L a year over the last 12 months ÷ the account at their start (the rule's first check)",
+      group: analysisGroup,
+      align: "right",
+      render: (file) => {
+        const figures = analyses?.bySymbol[file.symbol]?.tableFigures ?? null;
+        return figures ? `${formatPercentage(figures.optionsIncomeTwelveMonths)} a year` : "—";
+      },
+    },
+    { key: "v4Cagr", header: "VF CAGR", group: analysisGroup, align: "right", render: (file) => formatPercentage(analyses?.bySymbol[file.symbol]?.tableFigures?.v4Cagr) },
+    { key: "holdCagr", header: "B&H CAGR", group: analysisGroup, align: "right", render: (file) => formatPercentage(analyses?.bySymbol[file.symbol]?.tableFigures?.holdCagr) },
+    {
+      key: "excessCalmar",
+      header: "Excess Calmar",
+      headerTitle: "VF v4's · buy and hold's: (CAGR − the period's T-bill CAGR) ÷ |Max drawdown|",
+      group: analysisGroup,
+      align: "right",
+      cellClassName: "text-nowrap",
+      render: (file) => {
+        const figures = analyses?.bySymbol[file.symbol]?.tableFigures ?? null;
+        if (!figures) return "—";
+        const better = figures.v4ExcessCalmar !== null && figures.holdExcessCalmar !== null ? (figures.v4ExcessCalmar >= figures.holdExcessCalmar ? "analysis-ink-good" : "analysis-ink-poor") : "";
+        return <span className={better}>{`${formatRatio(figures.v4ExcessCalmar)} · ${formatRatio(figures.holdExcessCalmar)}`}</span>;
+      },
+    },
+    {
+      key: "smallestPot",
+      header: "Smallest pot",
+      headerTitle: "One lot at the last 12 months' highest 10:00 price ÷ 80%",
+      group: analysisGroup,
+      align: "right",
+      render: (file) => formatCurrency(analyses?.bySymbol[file.symbol]?.tableFigures?.smallestPotDollars, 0),
+    },
+    {
+      key: "analysed",
+      header: "Analysed",
+      group: analysisGroup,
+      cellClassName: "text-nowrap",
+      render: (file) => {
+        const row = analyses?.bySymbol[file.symbol];
+        if (!row?.figuresFinishedAt) return <span className="text-secondary">Never</span>;
+        return (
+          <span style={{ fontSize: "0.8rem" }}>
+            {analysedAt(row.figuresFinishedAt)}
+            {row.outOfDate && !analysisRunning(row) && <span className="analysis-prev-tag ms-1">out of date</span>}
+            {row.status === "failed" && <span className="iorio-note-amber ms-1">last run failed</span>}
+          </span>
+        );
+      },
     },
     { key: "from", header: "From", group: optionsGroup, cellClassName: "font-mono text-nowrap", render: (file) => file.firstDate ?? "—" },
     { key: "to", header: "To", group: optionsGroup, cellClassName: "font-mono text-nowrap", render: (file) => file.lastDate ?? "—" },
@@ -278,6 +414,11 @@ export function BacktestDataFilesTable({ files, jobs, suitabilityBySymbol, onFil
         }
         return (
           <div className="d-flex justify-content-end gap-2">
+            {file.firstDate && (
+              <button type="button" className="btn btn-outline-primary" onClick={() => setAnalysedSymbol(file.symbol)}>
+                Analyse
+              </button>
+            )}
             <button
               type="button"
               className={`btn ${status === "stopped" ? "btn-outline-primary" : "btn-outline-secondary"} d-inline-flex align-items-center gap-1`}
@@ -331,6 +472,7 @@ export function BacktestDataFilesTable({ files, jobs, suitabilityBySymbol, onFil
     </form>
   );
 
+  const outOfDate = analyses?.outOfDate ?? [];
   const selectionActions = (
     <div className="d-flex flex-column align-items-end gap-1">
       <div className="d-flex align-items-center gap-2">
@@ -353,7 +495,27 @@ export function BacktestDataFilesTable({ files, jobs, suitabilityBySymbol, onFil
   // The title on its own row; under it the add-a-symbol form on the left and, with files to tick, the selection's actions on the right.
   const header = (
     <div className="d-flex flex-column gap-2 w-100">
-      <BacktestCardTitle title="Data files" />
+      <div className="d-flex flex-wrap align-items-center justify-content-between gap-2">
+        <BacktestCardTitle title="Data files" />
+        {analyses === null ? (
+          <span className="d-inline-flex align-items-center gap-1 text-secondary" style={{ fontSize: "0.8125rem" }}>
+            <Spinner size="sm" />
+            Loading the analyses
+          </span>
+        ) : (
+          outOfDate.length > 0 && (
+            <div className="d-flex flex-wrap align-items-center gap-2">
+              <span className="text-secondary" style={{ fontSize: "0.8125rem" }}>
+                {outOfDate.length === 1 ? "1 analysis is" : `${formatNumber(outOfDate.length)} analyses are`} out of date after the lab save of {analysedAt(analyses.labSavedAt)}
+              </span>
+              <button type="button" className="btn btn-primary d-inline-flex align-items-center gap-1" disabled={rerunRunning} title={outOfDate.join(", ")} onClick={() => void rerunOutOfDate()}>
+                {rerunRunning && <Spinner size="sm" />}
+                Re-run out of date ({formatNumber(outOfDate.length)})
+              </button>
+            </div>
+          )
+        )}
+      </div>
       <div className="d-flex flex-wrap align-items-end justify-content-between gap-2">
         {addSymbolForm}
         {files.length > 0 && selectionActions}
@@ -415,7 +577,10 @@ export function BacktestDataFilesTable({ files, jobs, suitabilityBySymbol, onFil
       {analysedSymbol && (
         <TickerAnalysisModal
           symbol={analysedSymbol}
-          onClose={() => setAnalysedSymbol(null)}
+          onClose={() => {
+            setAnalysedSymbol(null);
+            void loadAnalyses();
+          }}
           onSuitabilitySaved={onFilesChanged}
         />
       )}

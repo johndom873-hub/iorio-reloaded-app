@@ -1,165 +1,11 @@
-import type { AnalysisFigures, AnalysisLadderPutBlock, AnalysisMaxDrawdown } from "../api/backtestAnalysis";
-import { formatCurrency } from "./formatters";
+import type { AnalysisFigures, AnalysisLadderPutBlock, AnalysisMaxDrawdown, BacktestLabAuditRow, SuitabilityCheck, SuitabilityVerdict } from "../api/backtestAnalysis";
+import type { BacktestSettingRow } from "../api/backtest";
+import { formatSettingRowValue } from "./backtestPresentation";
+import { formatCurrency, formatSignedNumber } from "./formatters";
 
-// The Analyse window's formulas the browser recomputes as values change (approved 2026-10-15; the API computes the same
-// in src/backtest/analysis/analysisPotSizing.ts) and its shared presentation: the settings panel's values, their
-// descriptions, the liquidity colours and the backtest's name.
-
-/** The engine's fixed rules (not settings): the minimum bid, the volume share and the option fee. */
-export const analysisFixedRulesText = "bid at least $0.05 · up to 20% of the previous complete session's volume · $0.68 fee per contract";
-
-/** The settings panel's values, as numbers. ladderShockPct null = the shock rule (from the stock's Max drawdown). */
-export interface AnalysisPanelValues {
-  potDollars: number;
-  ladderSharesPct: number;
-  ladderRungs: number;
-  ladderShockPct: number | null;
-  minAbsDelta: number;
-  maxAbsDelta: number;
-  minDte: number;
-  maxDte: number;
-  maxSpreadPctOfMid: number;
-}
-
-export type AnalysisPanelKey = keyof AnalysisPanelValues;
-export const analysisPanelKeys: readonly AnalysisPanelKey[] = ["potDollars", "ladderSharesPct", "ladderRungs", "ladderShockPct", "minAbsDelta", "maxAbsDelta", "minDte", "maxDte", "maxSpreadPctOfMid"];
-/** The values a ticker can save as its own; the rest are the lab's global values only. */
-export const analysisTickerKeys: readonly AnalysisPanelKey[] = ["potDollars", "ladderSharesPct", "ladderRungs", "ladderShockPct", "minAbsDelta", "maxAbsDelta"];
-
-/** Ratios at or above 80% of days are good, 50–80% fair, under 50% poor (liquidity cells, fit history). */
-export type AnalysisLevel = "good" | "fair" | "poor";
-export function liquidityLevel(shareOfDays: number): AnalysisLevel {
-  if (shareOfDays >= 0.8) return "good";
-  if (shareOfDays >= 0.5) return "fair";
-  return "poor";
-}
-
-/** The first rung's cap: the 10:00 price × (1 − S ÷ rungs). */
-export const firstRungCap = (price: number, shock: number, rungs: number) => price * (1 - shock / rungs);
-
-/** A lot fits while the price is at most pot × p ÷ 100. */
-export const lotPriceCeiling = (values: AnalysisPanelValues) => (values.potDollars * values.ladderSharesPct) / 100 / 100;
-
-/** A Put at the first cap fits a rung while the price is at most pot × (1 − p) ÷ (100 × (n − S)). */
-export const rungPriceCeiling = (values: AnalysisPanelValues, shock: number) => (values.potDollars * (1 - values.ladderSharesPct / 100)) / (100 * (values.ladderRungs - shock));
-
-/** The day's smallest pot: max(100 × P ÷ p, 100 × P × (n − S) ÷ (1 − p)). */
-export function smallestPotOfDay(price: number, shock: number, values: Pick<AnalysisPanelValues, "ladderSharesPct" | "ladderRungs">): number {
-  const share = values.ladderSharesPct / 100;
-  return Math.max((100 * price) / share, (100 * price * (values.ladderRungs - shock)) / (1 - share));
-}
-
-/** The shock a day uses at these values: the entered one, else the rule's for that day. */
-export const shockFor = (values: Pick<AnalysisPanelValues, "ladderShockPct">, ruleShock: number) => (values.ladderShockPct === null ? ruleShock : values.ladderShockPct / 100);
-
-export interface AnalysisFitYear {
-  days: number;
-  lotFails: number;
-  rungFails: number;
-}
-
-/**
- * The pot on a day from the analysis backtest's pot path (approved 2026-10-15): that day's value, else the latest before it
- * (carried forward past the backtest's last day); the first value before its first day. Null without a path.
- */
-export function potOnDayFrom(path: readonly [string, number][] | null | undefined): ((date: string) => number) | null {
-  if (!path || path.length === 0) return null;
-  const byDate = new Map(path);
-  return (date) => {
-    const exact = byDate.get(date);
-    if (exact !== undefined) return exact;
-    let value = path[0]![1];
-    for (const [pathDate, pot] of path) {
-      if (pathDate > date) break;
-      value = pot;
-    }
-    return value;
-  };
-}
-
-/** Whether that day's pot bought a lot and a Put at the first cap fit a rung. */
-function dayFits(price: number, shock: number, pot: number, values: AnalysisPanelValues): { lot: boolean; rung: boolean } {
-  const share = values.ladderSharesPct / 100;
-  return { lot: pot * share >= price * 100, rung: (pot * (1 - share)) / values.ladderRungs >= firstRungCap(price, shock, values.ladderRungs) * 100 };
-}
-
-/** Fit over the history: each day at that day's 10:00 price as traded and shock, against that day's pot. */
-export function fitHistoryByYear(fitDays: AnalysisFigures["fitDays"], values: AnalysisPanelValues, potOnDay: (date: string) => number): Record<string, AnalysisFitYear> {
-  const byYear: Record<string, AnalysisFitYear> = {};
-  for (const [date, price, ruleShock] of fitDays) {
-    const fits = dayFits(price, shockFor(values, ruleShock), potOnDay(date), values);
-    const year = (byYear[date.slice(0, 4)] ??= { days: 0, lotFails: 0, rungFails: 0 });
-    year.days++;
-    if (!fits.lot) year.lotFails++;
-    if (!fits.rung) year.rungFails++;
-  }
-  return byYear;
-}
-
-/** The Backtesting fit tile's bar, the verdict's for the configured pot (analysisVerdictThresholds.configuredPotFitsShare in the API): lot and rungs each fit on 95% of days. */
-export const analysisConfiguredPotFitsShare = 0.95;
-
-/**
- * Over the last 12 months to `lastDate`, at each day's 10:00 price and shock: the share of days that day's pot bought a lot,
- * and the share a Put at the first cap fit a rung (then every rung fits: each gets the same cash, and the lower rungs' Puts
- * cost less). Null without days.
- */
-export function fitSharesLastTwelveMonths(fitDays: AnalysisFigures["fitDays"], values: AnalysisPanelValues, potOnDay: (date: string) => number, lastDate: string): { days: number; lotShare: number; rungShare: number } | null {
-  const from = oneYearBefore(lastDate);
-  const days = fitDays.filter(([date]) => date > from && date <= lastDate);
-  if (days.length === 0) return null;
-  const fits = days.map(([date, price, ruleShock]) => dayFits(price, shockFor(values, ruleShock), potOnDay(date), values));
-  return { days: days.length, lotShare: fits.filter((fit) => fit.lot).length / days.length, rungShare: fits.filter((fit) => fit.rung).length / days.length };
-}
-
-/** The Put sales tile's window, in calendar days. */
-export const singleContractPutWindowDays = 30;
-
-/**
- * Put sales over the last 30 calendar days to `lastDate`, volume only (Marcelo 2026-10-19): each day, a rung of the
- * configured pot sells floor(rung ÷ (strike × 100)) contracts of the day's ladder Put (the best yield under the first cap),
- * at least one (the price is not the question); the day counts when that is within the Put's volume limit (20% of the
- * previous session's volume), so one contract series takes the whole rung. A day with no qualifying Put counts as not sold.
- * The sale's share of the previous session's volume is its median over the days with a Put. Null on analyses without the
- * previous-session volumes (before 2026-10-19).
- */
-export function singleContractPutSales(fitDays: AnalysisFigures["fitDays"], values: AnalysisPanelValues, lastDate: string): { days: number; singleDays: number; noPutDays: number; medianContracts: number | null; medianVolumeShare: number | null } | null {
-  const from = new Date(Date.parse(`${lastDate}T00:00:00Z`) - singleContractPutWindowDays * 86_400_000).toISOString().slice(0, 10);
-  const days = fitDays.filter(([date]) => date > from && date <= lastDate);
-  if (days.length === 0 || days.some((day) => day.length < 7)) return null;
-  const rung = (values.potDollars * (1 - values.ladderSharesPct / 100)) / values.ladderRungs;
-  let singleDays = 0;
-  let noPutDays = 0;
-  const contracts: number[] = [];
-  const shares: number[] = [];
-  for (const [, , , volumeCap, strike, , previousVolume] of days) {
-    if (volumeCap == null || strike == null) {
-      noPutDays++;
-      continue;
-    }
-    const wanted = Math.max(1, Math.floor(rung / (strike * 100)));
-    contracts.push(wanted);
-    if (previousVolume != null && previousVolume > 0) shares.push(wanted / previousVolume);
-    if (wanted <= volumeCap) singleDays++;
-  }
-  const median = (list: number[]) => {
-    if (list.length === 0) return null;
-    const sorted = [...list].sort((a, b) => a - b);
-    const middle = sorted.length >> 1;
-    return sorted.length % 2 ? sorted[middle]! : (sorted[middle - 1]! + sorted[middle]!) / 2;
-  };
-  return { days: days.length, singleDays, noPutDays, medianContracts: median(contracts), medianVolumeShare: median(shares) };
-}
-
-/** The days a lot or a rung did not fit that day's pot: the price chart's "pot too small" shading. */
-export function tooSmallDates(fitDays: AnalysisFigures["fitDays"], values: AnalysisPanelValues, potOnDay: (date: string) => number): string[] {
-  return fitDays
-    .filter(([date, price, ruleShock]) => {
-      const fits = dayFits(price, shockFor(values, ruleShock), potOnDay(date), values);
-      return !fits.lot || !fits.rung;
-    })
-    .map(([date]) => date);
-}
+// The Analyse window's shared presentation (Vol Farmer v4, mockup approved 2026-11-01): the session price chart's colours
+// and date runs, the header's categories, the bars' Max drawdown, the rule's checks, the sources, and the window's numbers
+// and dates as its cards write them.
 
 /** Consecutive dates (in `allDates`' order) joined into [from, to] ranges. */
 export function dateRuns(dates: readonly string[], allDates: readonly string[]): [string, string][] {
@@ -178,138 +24,6 @@ export function dateRuns(dates: readonly string[], allDates: readonly string[]):
   }
   if (start !== null) runs.push([start, previous!]);
   return runs;
-}
-
-/**
- * The day's largest pot (approved 2026-10-15): the smaller of the Put side, limit × strike × 100 × n ÷ (1 − p), from the best
- * Put under the first rung's cap, and the Call side, limit × 100 × P ÷ p, from the best Call for a new Covered Call entry.
- * Null when a side has no qualifying contract: the day is left out and counted apart (Marcelo 2026-10-15).
- */
-export function largestPotOfDay(day: AnalysisFigures["fitDays"][number], values: Pick<AnalysisPanelValues, "ladderSharesPct" | "ladderRungs">): { pot: number; right: "C" | "P" } | null {
-  const [, price, , putVolumeCap, putStrike, callVolumeCap] = day;
-  const share = values.ladderSharesPct / 100;
-  const putSide = putVolumeCap != null && putStrike != null ? (putVolumeCap * putStrike * 100 * values.ladderRungs) / (1 - share) : null;
-  const callSide = callVolumeCap != null ? (callVolumeCap * 100 * price) / share : null;
-  if (putSide === null || callSide === null) return null;
-  return putSide <= callSide ? { pot: putSide, right: "P" } : { pot: callSide, right: "C" };
-}
-
-const pointFromBelow = (values: readonly number[], fraction: number) => {
-  const sorted = [...values].sort((a, b) => a - b);
-  return sorted[Math.min(sorted.length - 1, Math.max(0, Math.ceil(fraction * sorted.length) - 1))]!;
-};
-const pointFromAbove = (values: readonly number[], fraction: number) => {
-  const sorted = [...values].sort((a, b) => b - a);
-  return sorted[Math.min(sorted.length - 1, Math.max(0, Math.ceil(fraction * sorted.length) - 1))]!;
-};
-
-export const oneYearBefore = (dateIso: string) => `${Number(dateIso.slice(0, 4)) - 1}${dateIso.slice(4)}`;
-
-export interface AnalysisPotRange {
-  smallest: number | null;
-  largest: number | null;
-  /** A range exists: smallest ≤ largest. */
-  suits: boolean;
-  days: number;
-  /** Days counted in the largest pot's point. */
-  largestDays: number;
-  /** Days left out of the largest pot's point: no qualifying Put, no qualifying Call (a day can lack both). */
-  daysWithoutPut: number;
-  daysWithoutCall: number;
-  /** Days whose largest pot the Call side set. */
-  callBinding: number;
-  /** The year whose median day allowed the smallest largest pot: [year, median pot]. */
-  thinnestYear: [string, number] | null;
-  /** The window's first day (exclusive); null for all history. */
-  from: string | null;
-}
-
-/**
- * The pot that fits on at least `percent`% of days: smallest = the point of the daily smallest pots from below, largest =
- * the point of the daily largest pots from above, days with no qualifying Put or Call left out. Without `everyDayLargest`
- * (figures before the every-day largest pot) `largest` is null.
- */
-export function potRange(input: { fitDays: AnalysisFigures["fitDays"]; values: AnalysisPanelValues; percent: number; window: "12m" | "all"; lastDate: string; everyDayLargest: boolean }): AnalysisPotRange {
-  const from = input.window === "12m" ? oneYearBefore(input.lastDate) : null;
-  const days = input.fitDays.filter(([date]) => from === null || date > from);
-  const smallestPots = days.map(([, price, ruleShock]) => smallestPotOfDay(price, shockFor(input.values, ruleShock), input.values));
-  const largestDays = input.everyDayLargest ? days : [];
-  const largestByDay = largestDays.map((day) => ({ date: day[0], largest: largestPotOfDay(day, input.values) }));
-  const counted = largestByDay.flatMap((row) => (row.largest === null ? [] : [{ date: row.date, ...row.largest }]));
-  const fraction = input.percent / 100;
-  const smallest = smallestPots.length > 0 ? pointFromBelow(smallestPots, fraction) : null;
-  const largest = counted.length > 0 ? pointFromAbove(counted.map((day) => day.pot), fraction) : null;
-  const byYear = new Map<string, number[]>();
-  for (const day of counted) (byYear.get(day.date.slice(0, 4)) ?? byYear.set(day.date.slice(0, 4), []).get(day.date.slice(0, 4))!).push(day.pot);
-  const median = (values: number[]) => {
-    const sorted = [...values].sort((a, b) => a - b);
-    const middle = sorted.length >> 1;
-    return sorted.length % 2 ? sorted[middle]! : (sorted[middle - 1]! + sorted[middle]!) / 2;
-  };
-  const thinnestYear = [...byYear.entries()].map(([year, pots]) => [year, median(pots)] as [string, number]).sort((a, b) => a[1] - b[1])[0] ?? null;
-  return {
-    smallest,
-    largest,
-    suits: smallest !== null && largest !== null && smallest <= largest,
-    days: smallestPots.length,
-    largestDays: counted.length,
-    daysWithoutPut: largestDays.filter((day) => day[3] == null).length,
-    daysWithoutCall: largestDays.filter((day) => day[5] == null).length,
-    callBinding: counted.filter((day) => day.right === "C").length,
-    thinnestYear,
-    from,
-  };
-}
-
-/** Pots shown to the nearest $100. */
-export const roundPot = (dollars: number) => Math.round(dollars / 100) * 100;
-
-const groups: AnalysisPanelKey[][] = [["potDollars"], ["ladderSharesPct"], ["ladderRungs"], ["ladderShockPct"], ["minAbsDelta", "maxAbsDelta"], ["minDte", "maxDte"], ["maxSpreadPctOfMid"]];
-
-function groupText(key: AnalysisPanelKey, values: AnalysisPanelValues, ruleShock: number, compact: boolean): string {
-  switch (key) {
-    case "potDollars":
-      return compact ? `$${Math.round(values.potDollars / 1000)}k pot` : `pot ${formatCurrency(values.potDollars, 0)}`;
-    case "ladderSharesPct":
-      return compact ? `${values.ladderSharesPct}% shares` : `shares ${values.ladderSharesPct}%`;
-    case "ladderRungs":
-      return `${values.ladderRungs} rung${values.ladderRungs === 1 ? "" : "s"}`;
-    case "ladderShockPct":
-      return values.ladderShockPct === null ? `shock ${Math.round(ruleShock * 100)}%${compact ? "" : " (the rule's)"}` : `shock ${values.ladderShockPct}%`;
-    case "minAbsDelta":
-    case "maxAbsDelta":
-      return `|delta| ${values.minAbsDelta.toFixed(2)}–${values.maxAbsDelta.toFixed(2)}`;
-    case "minDte":
-    case "maxDte":
-      return compact ? `${values.minDte}–${values.maxDte} DTE` : `${values.minDte}–${values.maxDte} days to expiry`;
-    case "maxSpreadPctOfMid":
-      return compact ? `spread ≤ ${values.maxSpreadPctOfMid}%` : `spread limit ${values.maxSpreadPctOfMid}% of the mid`;
-  }
-}
-
-/** "shares 30%, 4 rungs": the groups any of `keys` belongs to, in the panel's order. */
-export function describeAnalysisValues(values: AnalysisPanelValues, keys: readonly AnalysisPanelKey[], ruleShock: number, compact = false): string {
-  const wanted = new Set(keys);
-  return groups.filter((group) => group.some((key) => wanted.has(key))).map((group) => groupText(group[0]!, values, ruleShock, compact)).join(", ");
-}
-
-/** Every group, each marked when one of its keys is in `changed`. */
-export function describeAllAnalysisValues(values: AnalysisPanelValues, changed: readonly AnalysisPanelKey[], ruleShock: number): { text: string; changed: boolean }[] {
-  const set = new Set(changed);
-  return groups.map((group) => ({ text: groupText(group[0]!, values, ruleShock, false), changed: group.some((key) => set.has(key)) }));
-}
-
-/** The keys whose values differ. */
-export function differingAnalysisKeys(a: AnalysisPanelValues, b: AnalysisPanelValues): AnalysisPanelKey[] {
-  return analysisPanelKeys.filter((key) => a[key] !== b[key]);
-}
-
-/** "Analyse · HOOD · 30% shares · 5 rungs · |delta| 0.05–0.30 · $200k" (≤ 120 characters), with the shock, days to expiry or spread when they differ from the ticker's. */
-export function analysisBacktestName(symbol: string, values: AnalysisPanelValues, changed: readonly AnalysisPanelKey[], ruleShock: number): string {
-  const extra = changed.filter((key) => key === "ladderShockPct" || key === "minDte" || key === "maxDte" || key === "maxSpreadPctOfMid");
-  const parts = [`${values.ladderSharesPct}% shares`, `${values.ladderRungs} rung${values.ladderRungs === 1 ? "" : "s"}`, `|delta| ${values.minAbsDelta.toFixed(2)}–${values.maxAbsDelta.toFixed(2)}`];
-  const more = extra.length > 0 ? describeAnalysisValues(values, extra, ruleShock, true) : "";
-  return `Analyse · ${symbol} · ${parts.join(" · ")}${more ? ` · ${more}` : ""} · $${Math.round(values.potDollars / 1000)}k`.slice(0, 120);
 }
 
 /** The window's chart colours per theme (mockup approved 2026-10-15, contrast checked in both). */
@@ -333,19 +47,6 @@ export function analysisSignedClass(value: number | null | undefined): string {
 }
 
 // ---- The window's header (Marcelo 2026-10-19) ----
-
-type AnalysisBar = AnalysisFigures["bars"][number];
-
-/**
- * IV percentile (approved 2026-10-19): the share of the last 252 sessions with an implied volatility whose IV is at or below
- * the last session's. Null when the last session has none.
- */
-export function impliedVolatilityPercentile(bars: readonly AnalysisBar[]): { impliedVolatility: number; percentile: number; sessions: number } | null {
-  const window = bars.slice(-252).flatMap((bar) => (bar[5] === null ? [] : [bar[5]]));
-  const today = bars.at(-1)?.[5] ?? null;
-  if (today === null || window.length === 0) return null;
-  return { impliedVolatility: today, percentile: window.filter((value) => value <= today).length / window.length, sessions: window.length };
-}
 
 const tickerKindLabel = { stock: "Stock", adr: "ADR", etf: "ETF", other: "Other" } as const;
 
@@ -372,4 +73,77 @@ export function maxDrawdownOfBars(bars: AnalysisFigures["bars"], allBars: Analys
   const trough = bars[best.troughIndex]!;
   const recovered = allBars.find((bar) => bar[0] > trough[0] && bar[4] >= peak[4]) ?? null;
   return { depth: best.depth, peakDate: peak[0], peak: peak[4], troughDate: trough[0], trough: trough[4], recoveredOn: recovered?.[0] ?? null };
+}
+
+// The Vol Farmer v4 Analyse window's shared wording (mockup approved 2026-11-01).
+
+export const suitabilityCheckLabels: Record<SuitabilityCheck, string> = {
+  options_income: "Options' income",
+  expiry_days_sold: "Expiry days sold",
+  weeks_with_expiry: "Weeks with an expiry",
+  lot_fits: "A lot fits",
+};
+
+/** The checks a verdict failed, and the windows it couldn't measure: "Options' income · Expiry days sold"; "" when none. */
+export function describeFailedChecks(verdict: Pick<SuitabilityVerdict, "failedChecks" | "uncoveredWindows">): string {
+  const parts = verdict.failedChecks.map((check) => suitabilityCheckLabels[check]);
+  if (verdict.uncoveredWindows.length > 0) parts.push(`${verdict.uncoveredWindows.map((months) => `${months} months`).join(" and ")} not covered`);
+  return parts.join(" · ");
+}
+
+export type AnalysisSourceKey = "calls" | "puts" | "leaps" | "interest" | "shares";
+export const analysisSourceKeys: readonly AnalysisSourceKey[] = ["calls", "puts", "leaps", "interest", "shares"];
+export const analysisSourceLabels: Record<AnalysisSourceKey, string> = {
+  calls: "Covered Calls",
+  puts: "Cash-Secured Puts",
+  leaps: "LEAPS",
+  interest: "T-bill interest",
+  shares: "Shares' price moves",
+};
+
+/** Expiry days sold tinted as the rule reads them: 70% or more, 50 to 70%, under 50%. */
+export function expiryDaysSoldTint(share: number | null): string {
+  if (share === null) return "";
+  return share >= 0.7 ? "analysis-cell-good" : share >= 0.5 ? "analysis-cell-fair" : "analysis-cell-poor";
+}
+
+/** A source's part of the CAGR in percentage points, unsigned: 0.371 → "37.1" (as "37.1 of the 49.7 points"). */
+export function formatCagrPoints(fraction: number | null | undefined): string {
+  if (fraction === null || fraction === undefined || Number.isNaN(fraction)) return "—";
+  return (fraction * 100).toFixed(1);
+}
+
+/** A source's part of a return in percentage points, signed: 0.433 → "+43.3", −0.102 → "-10.2". */
+export function formatSignedCagrPoints(fraction: number | null | undefined): string {
+  if (fraction === null || fraction === undefined || Number.isNaN(fraction)) return "—";
+  return formatSignedNumber(fraction * 100, 1);
+}
+
+/** The lab's global values an analysis reads (the API's labSettingsStore.ts analysisReadsLabPath): v4's, the spread's share, the looks' window and the starting account. */
+const analysisReadsLabPath = (path: string) => path.startsWith("volFarmerV4.") || ["lab.defaultPotDollars", "trading.spreadCostChargedPct", "pluto.windowStartEt", "pluto.windowEndEt"].includes(path);
+
+/**
+ * The out-of-date note's changes: the lab's audit rows since the analysis ran, on values it reads, each field once from its
+ * first old value to its last new one: "Calls' |delta| to 0.4 instead of 0.5".
+ */
+export function describeLabChangesSince(audit: readonly BacktestLabAuditRow[], rows: readonly BacktestSettingRow[], sinceIso: string): string[] {
+  const byField = new Map<string, { oldValue: string | null; newValue: string | null }>();
+  for (const change of [...audit].filter((entry) => entry.symbol === null && entry.changedAt > sinceIso && analysisReadsLabPath(entry.field)).sort((a, b) => a.changedAt.localeCompare(b.changedAt))) {
+    const seen = byField.get(change.field);
+    byField.set(change.field, { oldValue: seen ? seen.oldValue : change.oldValue, newValue: change.newValue });
+  }
+  // As the lab settings window shows an audit value.
+  const shown = (row: BacktestSettingRow | undefined, field: string, value: string | null) => {
+    if (value === null) return "—";
+    if (field === "lab.defaultPotDollars") return formatCurrency(Number(value), 0);
+    if (!row) return value;
+    return formatSettingRowValue(row, row.unit === "choice" || row.unit === "grade" || row.unit === "time" ? value : Number(value));
+  };
+  return [...byField.entries()]
+    .filter(([, change]) => change.oldValue !== change.newValue)
+    .map(([field, change]) => {
+      const row = rows.find((entry) => entry.path === field);
+      const label = field === "lab.defaultPotDollars" ? "Starting account" : (row?.label ?? field);
+      return `${label} ${shown(row, field, change.newValue)} instead of ${shown(row, field, change.oldValue)}`;
+    });
 }

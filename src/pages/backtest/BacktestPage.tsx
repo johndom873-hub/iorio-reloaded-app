@@ -17,6 +17,8 @@ const pageSubtitle = "Replay the valuation model and Pluto's rules on ThetaData 
 export function BacktestPage() {
   const { data: overview, loadError, refreshFailing, reload } = useBacktestOverview();
   const [labSettingsOpen, setLabSettingsOpen] = useState(false);
+  // Bumped when the lab settings close: a save may have put stored analyses out of date, so Data files reads them again.
+  const [labSettingsClosings, setLabSettingsClosings] = useState(0);
 
   if (loadError) {
     return (
@@ -67,9 +69,16 @@ export function BacktestPage() {
         </div>
       )}
       <BacktestJobsCard jobs={overview.jobs} onJobsChanged={reload} />
-      <BacktestDataFilesTable files={overview.files} jobs={overview.jobs} suitabilityBySymbol={overview.suitabilityBySymbol} onFilesChanged={reload} />
+      <BacktestDataFilesTable files={overview.files} jobs={overview.jobs} suitabilityBySymbol={overview.suitabilityBySymbol} onFilesChanged={reload} analysesReloadKey={labSettingsClosings} />
       <BacktestSessionsTable />
-      {labSettingsOpen && <BacktestLabSettingsModal onClose={() => setLabSettingsOpen(false)} />}
+      {labSettingsOpen && (
+        <BacktestLabSettingsModal
+          onClose={() => {
+            setLabSettingsOpen(false);
+            setLabSettingsClosings((count) => count + 1);
+          }}
+        />
+      )}
     </>
   );
 }
