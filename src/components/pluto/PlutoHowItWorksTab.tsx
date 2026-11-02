@@ -1,11 +1,12 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { errorMessage } from "../../api/client";
 import { fetchPlutoHowItWorks, type PlutoHowItWorks } from "../../api/pluto";
-import { formatCurrency, formatCurrencyTrimmed, formatDelta, formatPercentageValueTrimmed } from "../../lib/formatters";
+import { formatCurrency, formatCurrencyTrimmed, formatDelta, formatNumber, formatPercentageValueTrimmed } from "../../lib/formatters";
 import { Spinner } from "../Spinner";
 
 // Pluto's "How it works" tab (approved mockups https://claude.ai/artifact/TYdARe8Sa6RuF5Lb1E1s2b and, for Vol Farmer v4,
-// https://claude.ai/artifact/QGwKxNa7orZFFjfeRBnhoU; the CC + Put Ladder's part retired 2026-11-02): a plain-language
+// https://claude.ai/artifact/QGwKxNa7orZFFjfeRBnhoU, its buyback https://claude.ai/artifact/HwdnZHFFzJpktyUBJkjBVR; the CC
+// + Put Ladder's part retired 2026-11-02): a plain-language
 // explanation of Vol Farmer v4 for readers who do not read code. Every number comes from GET /pluto/how-it-works (Pluto's live settings and the code's own constants); only
 // the wording lives here, so a change to a rule the text describes must update this file too (API CLAUDE.md).
 
@@ -37,6 +38,9 @@ function VolFarmerV4Explanation({ values }: { values: PlutoHowItWorks }) {
   const fallLots = example.lotsAfterFallTopUp - example.lots;
   const fallOutsideBand = Math.abs(example.valueAfterFall - example.targetDollars) > example.bandDollars;
   const riseLots = example.lots - example.lotsAfterRiseTrim;
+  const buysBack = v4.callsInTheMoneyAtLastLook !== "assigned";
+  const beforeWeekendsOnly = v4.callsInTheMoneyAtLastLook === "bought_back_before_weekends";
+  const buyBackMinutes = `${v4.buyBackMinutesBeforeWindowEnd} minutes`;
   return (
     <>
       <div className="pm-how-pair">
@@ -45,6 +49,11 @@ function VolFarmerV4Explanation({ values }: { values: PlutoHowItWorks }) {
             Vol Farmer v4 holds a stock and earns option premium on it. <Value>{pct(v4.firstPositionPct)}</Value> of the ticker's pot buys shares, the first position, and sells <b>Calls</b> on them {callFloor}
             {sameDay ? <>, expiring at <b>that day's close</b>, on the days an expiry ends then: the Calls never cover a night.</> : <>, on the next expiry.</>}
           </p>
+          {buysBack && (
+            <p className="pm-how-text">
+              {beforeWeekendsOnly ? "Before a weekend" : "Every day"}, a Call {sameDay ? null : "expiring that day "}still in the money in the last {buyBackMinutes} before the window closes is bought back at the mid, and the shares are kept {beforeWeekendsOnly ? "over the weekend" : "overnight"} instead of being called away at the close and bought again {beforeWeekendsOnly ? "on Monday" : "the next day"}. A buyback that doesn't fill, or that the settled cash can't pay for, leaves the Call to be assigned as usual.
+            </p>
+          )}
           <p className="pm-how-text">
             The shares are kept near their share of the pot. Between Calls, when their value is more than <Value>{pct(v4.rebalanceBandPct)}</Value> of the pot away from {pct(v4.firstPositionPct)} of it, Pluto buys or sells whole lots to bring them back{bothPositions ? <>, counting the second position's shares too</> : null}{v4.topUpCapPct > 0 ? <>; it never buys past the point where the ticker has <Value>{pct(v4.topUpCapPct)}</Value> of its pot in shares and Puts' cash, so a stock that keeps falling is not chased all the way down</> : null}. A share order goes on its own: the ticker's option orders wait until it ends{sameDay ? <>, and on a day no expiry ends Pluto only rebalances, a new cycle buying its shares alone</> : null}.
           </p>
@@ -65,7 +74,12 @@ function VolFarmerV4Explanation({ values }: { values: PlutoHowItWorks }) {
             A {formatCurrency(example.accountValue, 0)} account, Pluto's budget {pct(shared.capitalBudgetPct)}, the ticker's allocation {pct(example.allocationPct)}{shared.excessAllowancePct > 0 && <>, the excess allowance {pct(shared.excessAllowancePct)}</>}: its pot is <b>{formatCurrency(example.pot, 0)}</b>.
           </p>
           <ol className="pm-how-list">
-            <li>The stock is at {formatCurrency(example.stockPrice)}. {pct(v4.firstPositionPct)} of the pot, {formatCurrency(firstPositionDollars, 0)}, buys <b>{example.lots} lots</b> ({example.lots * 100} shares), with a Call sold on them.</li>
+            <li>The stock is at {formatCurrency(example.stockPrice)}. {pct(v4.firstPositionPct)} of the pot, {formatCurrency(firstPositionDollars, 0)}, buys <b>{example.lots} lots</b> ({formatNumber(example.lots * 100)} shares), with a Call sold on them.</li>
+            {buysBack && (
+              <li>
+                On a {beforeWeekendsOnly ? "Friday" : "Tuesday"} at {example.buyBackTimeEt} the stock is at {formatCurrency(example.buyBackStockPrice)}, above the {example.lots} {formatCurrency(example.stockPrice, 0)} Calls sold that morning: Pluto buys them back at the mid, {formatCurrency(example.buyBackMid)}, for <b>{formatCurrency(example.buyBackCostDollars, 0)}</b> plus {formatCurrency(example.buyBackCommissionDollars)} commission, and keeps the {formatNumber(example.lots * 100)} shares instead of selling them at {formatCurrency(example.stockPrice, 0)} at the close and buying them again {beforeWeekendsOnly ? "on Monday" : "on Wednesday"}.
+              </li>
+            )}
             <li>
               The shares are kept within {formatCurrency(example.bandDollars, 0)} of {formatCurrency(example.targetDollars, 0)}. A fall to {formatCurrency(example.fallPrice)} leaves them worth {formatCurrency(example.valueAfterFall, 0)}
               {fallLots > 0 ? <>: Pluto buys <b>{fallLots} lots</b>, back to {example.lotsAfterFallTopUp}</> : fallOutsideBand ? <>, under the band, but the top-up cap leaves no room: nothing is bought</> : <>, still inside the band: nothing is bought</>}
@@ -87,6 +101,15 @@ function VolFarmerV4Explanation({ values }: { values: PlutoHowItWorks }) {
           <ul className="pm-how-list">
             <li>
               Calls: {sameDay ? <>the expiry ending at today's close, on the days one does</> : <>the next listed expiry, if it is <Value>{v4.optionsMaxDaysToExpiry}</Value> days or fewer away</>}, |delta| <Value>{formatDelta(v4.callMinAbsDelta)}–{formatDelta(v4.callMaxAbsDelta)}</Value>, {callFloor}, the highest premium yield first.
+            </li>
+            <li>
+              {buysBack ? (
+                <>
+                  A Call {sameDay ? null : "expiring that day "}in the money in the last {buyBackMinutes} before the window closes (<Value>{v4.buyBackStartsEt}–{shared.windowEndEt}</Value>): bought back {beforeWeekendsOnly ? <>on the last session before a weekend (a Friday, or the Thursday before a Friday holiday), </> : null}at the mid, the shares kept, if the settled cash left pays for it. One still unfilled at <Value>{v4.buyBackCancelledAtEt}</Value>, or after resting <Value>{shared.unfilledOrderCancelMinutes}</Value> minutes unfilled, is left to be assigned at the close. In those {buyBackMinutes} v4 places no other order for the ticker{beforeWeekendsOnly ? <>, so no new Call is sold on the shares it keeps. On other days, assigned at the close.</> : <>.</>}
+                </>
+              ) : (
+                <>A Call in the money at the close is assigned: its shares are sold at the strike and bought again at the next round.</>
+              )}
             </li>
             <li>Bid at least <Value>{formatCurrencyTrimmed(v4.minimumBid)}</Value>, spread at most <Value>{pct(v4.maxSpreadPctOfMid)}</Value> of the mid, at most <Value>{pct(v4.maxVolumeSharePct)}</Value> of the contract's volume the session before.</li>
             <li>

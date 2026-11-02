@@ -243,7 +243,7 @@ function volFarmerV3Summary(text: (path: string) => string, shown: (path: string
     text(own("callStrikeFloor")) === "none" ? "Calls anywhere above the price" : "Calls at or above the break-even",
     `${text(own("putsSold")) === "with_every_call" ? "Puts with every Call" : "Puts when the Calls yield little"}, ${text(own("putStrikeCap")) === "none" ? "anywhere below the price" : "a Step below the first break-even"}`,
     ...(Number(text(own("topUpCapPctOfPot"))) > 0 ? [`top-ups up to ${shown(own("topUpCapPctOfPot"))} of the pot`] : []),
-    ...(text(own("callsInTheMoneyAtLastLook")) === "bought_back" ? ["Calls in the money at the last look bought back"] : []),
+    ...(text(own("callsInTheMoneyAtLastLook")) === "bought_back" ? ["Calls in the money at the last look bought back"] : text(own("callsInTheMoneyAtLastLook")) === "bought_back_before_weekends" ? ["Calls in the money at the last look bought back before weekends"] : []),
   ].join(" · ");
 }
 

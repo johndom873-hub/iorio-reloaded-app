@@ -164,6 +164,8 @@ export interface PlutoSettings {
   volFarmerV4TrimsSell: "higher_break_even_first" | "second_position_first";
   /** Top-ups take a ticker's money in (held shares' cost, open Puts' cash) to at most this % of its pot; 0: no cap. */
   volFarmerV4TopUpCapPct: number;
+  /** A Call expiring today still in the money in the window's last minutes: assigned at the close, or bought back (every day, or before weekends only). */
+  volFarmerV4CallsInTheMoneyAtLastLook: "assigned" | "bought_back" | "bought_back_before_weekends";
   updatedAt: string;
   updatedByUserId: string | null;
 }
@@ -615,6 +617,11 @@ export interface PlutoHowItWorks {
     putStrikeCap: PlutoSettings["volFarmerV4PutStrikeCap"];
     trimsSell: PlutoSettings["volFarmerV4TrimsSell"];
     topUpCapPct: number;
+    callsInTheMoneyAtLastLook: PlutoSettings["volFarmerV4CallsInTheMoneyAtLastLook"];
+    /** The buyback's minutes before the window's end, from buyBackStartsEt (HH:MM ET); one still working is cancelled at buyBackCancelledAtEt on a regular day. */
+    buyBackMinutesBeforeWindowEnd: number;
+    buyBackStartsEt: string;
+    buyBackCancelledAtEt: string;
     example: {
       accountValue: number;
       allocationPct: number;
@@ -639,6 +646,12 @@ export interface PlutoHowItWorks {
       putStrikeCap: number;
       leapsEntryBelowSecondBreakEvenPct: number;
       leapsCap: number;
+      /** The buyback: at buyBackTimeEt the stock is at buyBackStockPrice, above the lots' Calls struck at stockPrice, bought back at buyBackMid. */
+      buyBackTimeEt: string;
+      buyBackStockPrice: number;
+      buyBackMid: number;
+      buyBackCostDollars: number;
+      buyBackCommissionDollars: number;
     };
   };
 }

@@ -62,6 +62,7 @@ const strategyLabels: Record<string, string> = {
 
 const unstructuredReasonLabels: Record<string, string> = {
   cc_expired_leftover_stock: "covered call expired without assignment, shares remain",
+  cc_call_bought_back_stock: "covered call's Call bought back, shares kept",
   csp_assigned_stock: "cash-secured put assigned, shares received",
   pluto_share_buy: "shares Pluto bought on their own",
   unknown: "cause unclear — flagged for review",

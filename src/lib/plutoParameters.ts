@@ -1,5 +1,5 @@
 import type { PlutoSettings, PlutoSettingsField, PlutoTickerAllocation } from "../api/pluto";
-import { formatCurrency, formatInputNumber } from "./formatters";
+import { formatCurrency, formatInputNumber, hhmmMinutesBefore } from "./formatters";
 
 // Every Pluto parameter the Settings tab edits, grouped as on the approved redesign (2026-10-06). Labels, units
 // and help are the only presentation the screen carries; validation lives in the API's settingsStore.
@@ -39,6 +39,16 @@ export interface PlutoParameterGroup {
   note?: string;
 }
 
+/** v4's buyback runs in the window's last minutes (the API's volFarmerV4BuyBackMinutesBeforeWindowEnd). */
+const volFarmerV4BuyBackMinutes = 2;
+
+/** The summary line's buyback segment: nothing while a Call in the money is left to be assigned. */
+const volFarmerV4BuyBackSummary: Record<PlutoSettings["volFarmerV4CallsInTheMoneyAtLastLook"], string> = {
+  assigned: "",
+  bought_back: " · ITM Calls bought back",
+  bought_back_before_weekends: " · ITM Calls bought back before weekends",
+};
+
 function dollarsOfAccount(context: PlutoParameterContext, pct: number): string {
   return context.netLiquidationValue === null ? "" : ` (${formatCurrency((context.netLiquidationValue * pct) / 100, 0)} now)`;
 }
@@ -57,7 +67,7 @@ export const plutoParameterGroups: PlutoParameterGroup[] = [
     title: "Vol Farmer",
     note: "Every Vol Farmer v4 ticker. Set from the lab's best run of 30 Oct 2026; never synced with the lab. The caps, cooldown and SPY stress breaker under Safety Limits count v4's orders too.",
     summary: (settings) =>
-      `First position ${settings.volFarmerV4FirstPositionPct}% ± ${settings.volFarmerV4RebalanceBandPct}%${settings.volFarmerV4TopUpCapPct > 0 ? `, top-ups up to ${settings.volFarmerV4TopUpCapPct}%` : ""} · ${settings.volFarmerV4OptionsExpiry === "today" ? "options expiring today" : "options on the next expiry"} · Calls' |delta| ${settings.volFarmerV4CallMinAbsDelta.toFixed(2)}–${settings.volFarmerV4CallMaxAbsDelta.toFixed(2)} · Puts under ${settings.volFarmerV4PutsStartCallYieldPct}% a year, |delta| ≤ ${settings.volFarmerV4PutMaxAbsDelta.toFixed(2)} · Step ${settings.volFarmerV4StepRule === "fixed" ? `${settings.volFarmerV4StepBelowFirstBreakEvenPct}% fixed` : "the implied move"} · LEAPS ${settings.volFarmerV4LeapsMinDte}+ DTE, |delta| ${settings.volFarmerV4LeapsAbsDelta.toFixed(2)}, ≤ ${settings.volFarmerV4LeapsMaxAllocationPct}% of the pot · spread ${settings.volFarmerV4MaxSpreadPctOfMid}%`,
+      `First position ${settings.volFarmerV4FirstPositionPct}% ± ${settings.volFarmerV4RebalanceBandPct}%${settings.volFarmerV4TopUpCapPct > 0 ? `, top-ups up to ${settings.volFarmerV4TopUpCapPct}%` : ""} · ${settings.volFarmerV4OptionsExpiry === "today" ? "options expiring today" : "options on the next expiry"} · Calls' |delta| ${settings.volFarmerV4CallMinAbsDelta.toFixed(2)}–${settings.volFarmerV4CallMaxAbsDelta.toFixed(2)} · Puts under ${settings.volFarmerV4PutsStartCallYieldPct}% a year, |delta| ≤ ${settings.volFarmerV4PutMaxAbsDelta.toFixed(2)} · Step ${settings.volFarmerV4StepRule === "fixed" ? `${settings.volFarmerV4StepBelowFirstBreakEvenPct}% fixed` : "the implied move"} · LEAPS ${settings.volFarmerV4LeapsMinDte}+ DTE, |delta| ${settings.volFarmerV4LeapsAbsDelta.toFixed(2)}, ≤ ${settings.volFarmerV4LeapsMaxAllocationPct}% of the pot · spread ${settings.volFarmerV4MaxSpreadPctOfMid}%${volFarmerV4BuyBackSummary[settings.volFarmerV4CallsInTheMoneyAtLastLook] ?? ""}`,
     parameters: [
       { field: "volFarmerV4CallMinAbsDelta", label: "Calls' |delta| range", unit: "min", kind: "number", step: "0.01", help: "Calls v4 may sell, by absolute delta, struck where Calls struck at least says." },
       { field: "volFarmerV4CallMaxAbsDelta", label: "Calls' max |delta|", unit: "max", kind: "number", step: "0.01", help: "Highest absolute delta of a Call v4 may sell.", pairedWithPrevious: true },
@@ -113,6 +123,15 @@ export const plutoParameterGroups: PlutoParameterGroup[] = [
         help: "Today's close: sold only on the days an expiry ends at the close, so they cover no night; on other days v4 only rebalances, and a new cycle buys its shares alone. Or the next expiry after today.",
       },
       { field: "volFarmerV4OptionsMaxDaysToExpiry", label: "Next expiry within", unit: "days", kind: "integer", step: "1", help: "With the next expiry: the most calendar days it may be away for v4 to sell on it; further away, it only rebalances. 45: every next expiry (1 to 45)." },
+      {
+        field: "volFarmerV4CallsInTheMoneyAtLastLook",
+        label: "Calls in the money at the window's end",
+        kind: "select",
+        options: ["assigned", "bought_back", "bought_back_before_weekends"],
+        optionLabels: { assigned: "Left to be assigned", bought_back: "Bought back, the shares kept", bought_back_before_weekends: "Bought back before weekends only" },
+        help: (context) =>
+          `A Call expiring at today's close still in the money in the last ${volFarmerV4BuyBackMinutes} minutes before the window closes (${hhmmMinutesBefore(context.settings.windowEndEt, volFarmerV4BuyBackMinutes)}–${context.settings.windowEndEt}): left to be assigned at the close; bought back at the mid, the shares kept; or bought back only on the last session before a weekend (a Friday, or the Thursday before a Friday holiday). A buyback the settled cash can't pay for, or one still unfilled at 15:58, leaves the Call to be assigned.`,
+      },
       {
         field: "volFarmerV4CallStrikeFloor",
         label: "Calls struck at least",

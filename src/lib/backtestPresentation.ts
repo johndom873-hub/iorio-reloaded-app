@@ -1162,6 +1162,7 @@ export function describePositionEnding(position: Pick<BacktestPosition, "status"
 
 const unstructuredReasonLabel: Record<string, string> = {
   cc_expired_leftover_stock: "a covered call expired and the shares stayed",
+  cc_call_bought_back_stock: "a covered call's Call was bought back and the shares stayed",
   csp_assigned_stock: "a cash-secured put was assigned",
   unknown: "cause unclear",
 };

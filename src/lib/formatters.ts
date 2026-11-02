@@ -257,6 +257,13 @@ export function easternMinutesOfDay(isoTimestamp: string): number {
   return part("hour") * 60 + part("minute");
 }
 
+/** An HH:MM time less `minutes`, HH:MM: "15:30" less 2 is "15:28" (never before midnight). */
+export function hhmmMinutesBefore(hhmm: string, minutes: number): string {
+  const [hour, minute] = hhmm.split(":").map(Number);
+  const total = Math.max(0, (hour ?? 0) * 60 + (minute ?? 0) - minutes);
+  return `${String(Math.floor(total / 60)).padStart(2, "0")}:${String(total % 60).padStart(2, "0")}`;
+}
+
 /** Clock time in US/Eastern (market time) regardless of the viewer's timezone, e.g. "09:31 ET". */
 export function formatEasternTime(isoTimestamp: string): string {
   const time = new Intl.DateTimeFormat("en-US", { timeZone: "America/New_York", hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).format(new Date(isoTimestamp));
