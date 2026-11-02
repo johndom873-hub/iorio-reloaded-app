@@ -1,8 +1,10 @@
 import { useEffect, useId, useRef, useState } from "react";
 import { errorMessage } from "../../api/client";
 import { saveTickerSuitability, type BacktestTickerSuitability } from "../../api/backtest";
+import type { SuitabilityVerdict } from "../../api/backtestAnalysis";
+import { describeFailedChecks } from "../../lib/analysisPresentation";
 import { formatDateTime } from "../../lib/formatters";
-import { tickerSuitabilityBadgeClass, tickerSuitabilityLabel } from "../../lib/backtestPresentation";
+import { suggestedSuitabilityLabel, tickerSuitabilityBadgeClass, tickerSuitabilityLabel } from "../../lib/backtestPresentation";
 import { Spinner } from "../Spinner";
 
 interface TickerSuitabilityModalProps {
@@ -11,6 +13,8 @@ interface TickerSuitabilityModalProps {
   suitability: BacktestTickerSuitability | null;
   onSaved: () => Promise<void>;
   onClose: () => void;
+  /** The analysis rule's verdict, shown as the suggested flag; null when the ticker has no analysis. */
+  ruleVerdict: SuitabilityVerdict | null;
   /** Open over another window (the Analyse window): the stacked layer, 1100. */
   stacked?: boolean;
 }
@@ -21,7 +25,7 @@ const noteMaxLength = 5000;
  * A ticker's suitability window (Marcelo 2026-10-19, approved mockup): the note to type or edit, saved with Mark suitable or
  * Mark unsuitable. ESC and Cancel close without saving; a click outside does nothing, so a stray click never loses the text.
  */
-export function TickerSuitabilityModal({ symbol, suitability, onSaved, onClose, stacked = false }: TickerSuitabilityModalProps) {
+export function TickerSuitabilityModal({ symbol, suitability, onSaved, onClose, ruleVerdict, stacked = false }: TickerSuitabilityModalProps) {
   const zIndex = stacked ? 1100 : 1050;
   const [note, setNote] = useState(suitability?.note ?? "");
   const [saving, setSaving] = useState<"suitable" | "unsuitable" | null>(null);
@@ -77,6 +81,15 @@ export function TickerSuitabilityModal({ symbol, suitability, onSaved, onClose, 
                 <span className={`badge ${tickerSuitabilityBadgeClass[status]}`}>{tickerSuitabilityLabel[status]}</span>
                 <span>{suitability ? `Last changed by ${suitability.updatedByName ?? "a deleted user"} on ${formatDateTime(suitability.updatedAt)}` : "Not marked yet"}</span>
               </div>
+              <p className="mb-0" style={{ fontSize: "0.8125rem" }}>
+                {ruleVerdict === null ? (
+                  <span className="text-secondary">No analysis yet, so the rule suggests nothing.</span>
+                ) : (
+                  <>
+                    The rule suggests <b>{suggestedSuitabilityLabel(ruleVerdict.suits)}</b>: {ruleVerdict.suits ? "it passes all four checks over the last 12, 6 and 3 months." : `it fails ${describeFailedChecks(ruleVerdict)}.`}
+                  </>
+                )}
+              </p>
               <label htmlFor={`${titleId}-note`} className="form-label fw-bold mb-0">
                 Explanation
               </label>
@@ -86,7 +99,7 @@ export function TickerSuitabilityModal({ symbol, suitability, onSaved, onClose, 
                 className="form-control"
                 rows={6}
                 maxLength={noteMaxLength}
-                placeholder="Why this ticker suits the CC + Put Ladder, or why it doesn't."
+                placeholder="Why this ticker suits Vol Farmer v4, or why it doesn't."
                 value={note}
                 onChange={(event) => setNote(event.target.value)}
                 disabled={saving !== null}

@@ -95,7 +95,7 @@ export const tradeValuationColumnExplanation = {
 
 // ---- Data files ----
 
-/** A ticker's suitability for the CC + Put Ladder: "pending" until an admin marks it. */
+/** A ticker's suitability for Vol Farmer v4: "pending" until an admin marks it. */
 export type TickerSuitabilityStatus = BacktestTickerSuitability["status"];
 
 export const tickerSuitabilityLabel: Record<TickerSuitabilityStatus, string> = {
@@ -109,6 +109,9 @@ export const tickerSuitabilityBadgeClass: Record<TickerSuitabilityStatus, string
   suitable: "bg-success",
   unsuitable: "bg-danger",
 };
+
+/** The flag the rule's verdict suggests: "Suitable" when the analysis passes its four checks. */
+export const suggestedSuitabilityLabel = (suits: boolean) => tickerSuitabilityLabel[suits ? "suitable" : "unsuitable"];
 
 // ---- Jobs ----
 

@@ -547,6 +547,7 @@ export function TickerAnalysisModal({ symbol, onClose, onSuitabilitySaved }: Tic
         <TickerSuitabilityModal
           symbol={symbol}
           suitability={view.suitability}
+          ruleVerdict={shownBacktest?.rule.verdict ?? null}
           stacked
           onSaved={async () => {
             await Promise.all([reload(), onSuitabilitySaved?.()]);

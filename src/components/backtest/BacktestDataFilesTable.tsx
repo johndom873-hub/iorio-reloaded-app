@@ -2,11 +2,10 @@ import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { useNavigate } from "react-router-dom";
 import { errorMessage } from "../../api/client";
 import { backtestMaxSymbolsPerSession, deleteBacktestDataFile, resumeBacktestJob, startBacktestDownload, type BacktestDataFileSummary, type BacktestJobView, type BacktestTickerSuitability } from "../../api/backtest";
-import { fetchAnalysesForTable, rerunOutOfDateAnalyses, type AnalysesForTable, type AnalysisTableRow } from "../../api/backtestAnalysis";
+import { fetchAnalysesForTable, rerunOutOfDateAnalyses, type AnalysesForTable, type AnalysisTableRow, type SuitabilityVerdict } from "../../api/backtestAnalysis";
 import { useIsAdmin } from "../../hooks/useAuth";
-import { describeFailedChecks } from "../../lib/analysisPresentation";
 import { formatBrowserClockTime, formatCurrency, formatDayMonth, formatFileSize, formatNumber, formatPercentage, formatRatio } from "../../lib/formatters";
-import { describeDataFileIssues, describeDetectedSplits, splitsNotAnalysedExplanation } from "../../lib/backtestPresentation";
+import { describeDataFileIssues, describeDetectedSplits, splitsNotAnalysedExplanation, suggestedSuitabilityLabel } from "../../lib/backtestPresentation";
 import { ConfirmModal } from "../ConfirmModal";
 import { DataTable, type DataTableColumn } from "../DataTable/DataTable";
 import { Spinner } from "../Spinner";
@@ -37,6 +36,11 @@ const analysesPollMilliseconds = 15_000;
 
 const analysisRunning = (row: AnalysisTableRow | undefined) => row?.status === "queued" || row?.status === "running";
 const analysedAt = (iso: string) => `${formatDayMonth(iso.slice(0, 10))}, ${formatBrowserClockTime(iso)}`;
+/** The latest analysis's rule verdict; null when the ticker has none. */
+function ruleVerdictOf(row: AnalysisTableRow | undefined): SuitabilityVerdict | null {
+  const figures = row?.tableFigures ?? null;
+  return figures ? { suits: figures.verdict === "suits", failedChecks: figures.failedChecks, uncoveredWindows: figures.uncoveredWindows } : null;
+}
 
 /** The ThetaData history starts in 2020; a new symbol downloads from here unless another date is chosen. */
 const defaultDownloadStartDate = "2020-01-01";
@@ -262,48 +266,25 @@ export function BacktestDataFilesTable({ files, jobs, suitabilityBySymbol, onFil
       key: "suitability",
       header: "Suitability",
       headerTitle: isAdmin
-        ? "Whether the ticker suits Vol Farmer v4: Pending until marked. Click a badge to mark it or edit its note."
-        : "Whether the ticker suits Vol Farmer v4: Pending until an admin marks it. Point at a badge for its note.",
-      render: (file) => (
-        <TickerSuitabilityBadge symbol={file.symbol} suitability={suitabilityBySymbol[file.symbol] ?? null} onOpen={isAdmin ? () => setSuitabilitySymbol(file.symbol) : null} />
-      ),
-    },
-    {
-      key: "verdict",
-      header: "Verdict",
-      headerTitle: "The rule's verdict: suits v4 when its four checks pass over the analysis backtest's last 12, 6 and 3 months",
-      group: analysisGroup,
+        ? "Whether the ticker suits Vol Farmer v4, as you mark it. While Pending, the latest analysis's rule suggests a flag beside it. Click a badge to mark it or edit its note."
+        : "Whether the ticker suits Vol Farmer v4, as an admin marks it. While Pending, the latest analysis's rule suggests a flag beside it. Point at a badge for its note.",
+      cellClassName: "text-nowrap",
+      // The flag; while Pending, the rule's suggested flag beside it, and a spinner while an analysis runs.
       render: (file) => {
+        const suitability = suitabilityBySymbol[file.symbol] ?? null;
         const row = analyses?.bySymbol[file.symbol];
-        const figures = row?.tableFigures ?? null;
-        if (figures) {
-          return (
-            <span className={`badge analysis-verdict-badge ${figures.verdict === "suits" ? "is-good" : "is-poor"}`}>{figures.verdict === "suits" ? "Suits v4" : "Doesn't suit"}</span>
-          );
-        }
-        if (analysisRunning(row)) {
-          return (
-            <span className="d-inline-flex align-items-center gap-1 text-secondary" style={{ fontSize: "0.8rem" }}>
-              <Spinner size="sm" />
-              Analysing
-            </span>
-          );
-        }
+        const verdict = ruleVerdictOf(row);
         return (
-          <span className="badge bg-secondary-lt" style={{ fontSize: "0.72rem" }}>
-            Not analysed
+          <span className="d-inline-flex align-items-center gap-2">
+            <TickerSuitabilityBadge symbol={file.symbol} suitability={suitability} onOpen={isAdmin ? () => setSuitabilitySymbol(file.symbol) : null} />
+            {(suitability?.status ?? "pending") === "pending" && verdict && (
+              <span className="text-secondary" style={{ fontSize: "0.75rem" }}>
+                suggests {suggestedSuitabilityLabel(verdict.suits)}
+              </span>
+            )}
+            {analysisRunning(row) && <Spinner size="sm" label={`Analysing ${file.symbol}`} />}
           </span>
         );
-      },
-    },
-    {
-      key: "checksFailed",
-      header: "Checks failed",
-      group: analysisGroup,
-      render: (file) => {
-        const figures = analyses?.bySymbol[file.symbol]?.tableFigures ?? null;
-        if (!figures) return "—";
-        return <span style={{ fontSize: "0.8125rem" }}>{figures.failedChecks.length === 0 && figures.uncoveredWindows.length === 0 ? "None" : describeFailedChecks(figures)}</span>;
       },
     },
     {
@@ -322,16 +303,10 @@ export function BacktestDataFilesTable({ files, jobs, suitabilityBySymbol, onFil
     {
       key: "excessCalmar",
       header: "Excess Calmar",
-      headerTitle: "VF v4's · buy and hold's: (CAGR − the period's T-bill CAGR) ÷ |Max drawdown|",
+      headerTitle: "VF v4's over the analysis backtest: (CAGR − the period's T-bill CAGR) ÷ |Max drawdown|",
       group: analysisGroup,
       align: "right",
-      cellClassName: "text-nowrap",
-      render: (file) => {
-        const figures = analyses?.bySymbol[file.symbol]?.tableFigures ?? null;
-        if (!figures) return "—";
-        const better = figures.v4ExcessCalmar !== null && figures.holdExcessCalmar !== null ? (figures.v4ExcessCalmar >= figures.holdExcessCalmar ? "analysis-ink-good" : "analysis-ink-poor") : "";
-        return <span className={better}>{`${formatRatio(figures.v4ExcessCalmar)} · ${formatRatio(figures.holdExcessCalmar)}`}</span>;
-      },
+      render: (file) => formatRatio(analyses?.bySymbol[file.symbol]?.tableFigures?.v4ExcessCalmar),
     },
     {
       key: "smallestPot",
@@ -340,23 +315,6 @@ export function BacktestDataFilesTable({ files, jobs, suitabilityBySymbol, onFil
       group: analysisGroup,
       align: "right",
       render: (file) => formatCurrency(analyses?.bySymbol[file.symbol]?.tableFigures?.smallestPotDollars, 0),
-    },
-    {
-      key: "analysed",
-      header: "Analysed",
-      group: analysisGroup,
-      cellClassName: "text-nowrap",
-      render: (file) => {
-        const row = analyses?.bySymbol[file.symbol];
-        if (!row?.figuresFinishedAt) return <span className="text-secondary">Never</span>;
-        return (
-          <span style={{ fontSize: "0.8rem" }}>
-            {analysedAt(row.figuresFinishedAt)}
-            {row.outOfDate && !analysisRunning(row) && <span className="analysis-prev-tag ms-1">out of date</span>}
-            {row.status === "failed" && <span className="iorio-note-amber ms-1">last run failed</span>}
-          </span>
-        );
-      },
     },
     { key: "from", header: "From", group: optionsGroup, cellClassName: "font-mono text-nowrap", render: (file) => file.firstDate ?? "—" },
     { key: "to", header: "To", group: optionsGroup, cellClassName: "font-mono text-nowrap", render: (file) => file.lastDate ?? "—" },
@@ -414,11 +372,6 @@ export function BacktestDataFilesTable({ files, jobs, suitabilityBySymbol, onFil
         }
         return (
           <div className="d-flex justify-content-end gap-2">
-            {file.firstDate && (
-              <button type="button" className="btn btn-outline-primary" onClick={() => setAnalysedSymbol(file.symbol)}>
-                Analyse
-              </button>
-            )}
             <button
               type="button"
               className={`btn ${status === "stopped" ? "btn-outline-primary" : "btn-outline-secondary"} d-inline-flex align-items-center gap-1`}
@@ -572,7 +525,13 @@ export function BacktestDataFilesTable({ files, jobs, suitabilityBySymbol, onFil
         />
       )}
       {suitabilitySymbol && (
-        <TickerSuitabilityModal symbol={suitabilitySymbol} suitability={suitabilityBySymbol[suitabilitySymbol] ?? null} onSaved={onFilesChanged} onClose={() => setSuitabilitySymbol(null)} />
+        <TickerSuitabilityModal
+          symbol={suitabilitySymbol}
+          suitability={suitabilityBySymbol[suitabilitySymbol] ?? null}
+          ruleVerdict={ruleVerdictOf(analyses?.bySymbol[suitabilitySymbol])}
+          onSaved={onFilesChanged}
+          onClose={() => setSuitabilitySymbol(null)}
+        />
       )}
       {analysedSymbol && (
         <TickerAnalysisModal
