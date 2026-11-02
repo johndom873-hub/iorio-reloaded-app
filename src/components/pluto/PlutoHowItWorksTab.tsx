@@ -136,7 +136,7 @@ function VolFarmerV4Explanation({ values }: { values: PlutoHowItWorks }) {
             <li>{v4.firstPositionAfterCalledAway === "wait" ? <>A first position called away while the second still holds shares is not rebuilt: the next cycle waits for the second to go.</> : <>A first position called away while the second still holds shares is rebuilt at the next round, its shares bought with its Call.</>}</li>
             <li>The Safety Limits cap v4's orders and positions. While SPY is down <Value>{pct(safetyLimits.spyStressBreakerPct)}</Value> or more on the day, v4 opens nothing; a sale of a LEAPS or of shares still goes.</li>
             <li>Every order but a LEAPS is held to the ticker's pot; a LEAPS to Pluto's budget across every ticker.</li>
-            <li>A purchase and a Put are no more than the free cash pays for: the smallest of Pluto's budget left, the account's free cash and the settled cash left (IBKR's settled cash less the cash the open Puts hold and the orders working). With no settled cash reported, nothing is bought.</li>
+            <li>A purchase and a Put are no more than the free cash pays for: the smallest of Pluto's budget left, the account's free cash and the settled cash left (IBKR's settled cash less the cash the open Puts hold and the orders working). With no settled cash reported, nothing is bought, except on the paper account, which reports none and uses its total cash instead.</li>
             <li>The v4 tickers take turns at each round in alphabetical order, starting one ticker further each day. A LEAPS is bought or topped up after every ticker's other orders, with the free cash they left.</li>
           </ul>
         </div>
