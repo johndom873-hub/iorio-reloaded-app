@@ -386,12 +386,6 @@ a.pm-b:hover, button.pm-b.link:hover { text-decoration: underline; }
 .pm-check-row input { margin-top: 3px; width: 16px; height: 16px; accent-color: #0369a1; flex: none; }
 .pm-changes { margin: 10px 0 0; padding-left: 18px; }
 .pm-changes li { margin: 3px 0; }
-/* The Settings tab's Ticker checks card and the save dialog's "Ticker checks" list (Pluto Ladder Settings mockup, 2026-10-15). */
-.pm-tk-checks { list-style: none; margin: 0; padding: 0; }
-.pm-tk-checks li { display: grid; grid-template-columns: 4.5rem minmax(0, 1fr) auto; gap: 0.5rem; align-items: center; padding: 0.55rem 1.125rem; border-top: 1px solid var(--border-soft); font-size: 0.8125rem; }
-.pm-tk-checks li:first-child { border-top: 0; }
-.confirm-sub { margin-top: 0.75rem; font-size: 0.72rem; font-weight: 600; letter-spacing: 0.05em; text-transform: uppercase; color: var(--muted); }
-.confirm-sub + .pm-changes { margin-top: 0.25rem; }
 
 /* Decisions list */
 .pm-dec { border-top: 1px solid var(--border-soft); }
@@ -591,56 +585,23 @@ a.pm-b:hover, button.pm-b.link:hover { text-decoration: underline; }
 .pm-date { height: 34px; border: 1px solid var(--border-strong); border-radius: 6px; background: var(--input-bg); color: var(--strong); font: inherit; font-size: 0.8rem; padding: 0 0.6rem; }
 :root[data-bs-theme="dark"] .pm-date { color-scheme: dark; }
 .pm-session-filter { display: inline-flex; align-items: center; gap: 0.5rem; }
-/* How it works tab (mockup approved 2026-10-15): each strategy's rules in plain language, numbers from the live settings. */
+/* How it works tab (mockup approved 2026-10-15): Vol Farmer v4's rules in plain language, numbers from the live settings. */
 .pm-how { display: flex; flex-direction: column; gap: 1rem; }
 .pm-how-body { display: flex; flex-direction: column; gap: 0.75rem; }
 .pm-how-lead { margin: 0; font-size: 0.95rem; line-height: 1.6; color: var(--strong); max-width: 62rem; }
 .pm-how-text { margin: 0; font-size: 0.85rem; line-height: 1.55; max-width: 62rem; }
 .pm-how-note { margin: 0; font-size: 0.78rem; line-height: 1.5; color: var(--muted); max-width: 62rem; }
 .pm-how-v { font-family: var(--tblr-font-monospace); font-size: 0.8rem; color: var(--strong); white-space: nowrap; }
-.pm-how-steps { display: flex; flex-wrap: wrap; gap: 0.75rem; }
-.pm-how-step { flex: 1 1 15rem; min-width: 0; border: 1px solid var(--border); border-radius: 8px; padding: 0.875rem; display: flex; flex-direction: column; gap: 0.5rem; }
-.pm-how-step-h { margin: 0; display: flex; align-items: center; gap: 0.5rem; font-size: 0.9rem; font-weight: 600; color: var(--strong); }
-.pm-how-step-n { flex: none; width: 1.75rem; height: 1.75rem; border-radius: 999px; display: inline-flex; align-items: center; justify-content: center; font-size: 0.8rem; font-weight: 600; color: var(--strong); background: var(--primary-lt); }
-.pm-how-step-n.put { background: var(--warning-lt); }
-.pm-how-figures { display: flex; flex-wrap: wrap; gap: 0.75rem; }
-.pm-how-figure { flex: 1 1 12.5rem; min-width: 0; border-radius: 8px; padding: 0.75rem 1rem; background: var(--surface-2); }
-.pm-how-figure.call { background: var(--primary-lt); }
-.pm-how-figure.put { background: var(--warning-lt); }
-.pm-how-figure-l, .pm-how-figure-s { font-size: 0.75rem; color: var(--text); }
-.pm-how-figure-v { font-family: var(--tblr-font-monospace); font-size: 1.25rem; font-weight: 600; color: var(--strong); }
-.pm-how-bars { display: flex; flex-direction: column; gap: 0.6rem; }
-.pm-how-bar { display: grid; grid-template-columns: 7.5rem minmax(0, 1fr) 5.5rem; align-items: center; gap: 0.75rem; font-size: 0.8rem; color: var(--strong); }
-.pm-how-bar-track { height: 0.75rem; border-radius: 3px; background: var(--track); overflow: hidden; }
-.pm-how-bar-fill { height: 100%; border-radius: 3px; background: var(--primary); }
-.pm-how-bar-fill.put { background: var(--warning-text); }
-.pm-how-bar-v { text-align: right; font-family: var(--tblr-font-monospace); }
-.pm-how-table-wrap { border: 1px solid var(--border); border-radius: 8px; }
-.pm-how-table { min-width: 34rem; }
-.pm-how-table td.pm-how-meaning { line-height: 1.5; min-width: 16rem; }
-.pm-how-table tbody tr:hover td { background: transparent; }
 .pm-how-pair { display: flex; flex-wrap: wrap; gap: 1rem; align-items: stretch; }
 .pm-how-pair > .pm-card { flex: 1 1 22.5rem; min-width: 0; }
 .pm-how-list { margin: 0; padding-left: 1.1rem; display: flex; flex-direction: column; gap: 0.5rem; font-size: 0.85rem; line-height: 1.5; }
 .pm-how-pair > .pm-how-list { flex: 1 1 18rem; min-width: 0; }
-.pm-how-strategies { align-self: flex-start; }
-.pm-how-formula { border-top: 1px solid var(--border); }
-.pm-how-formula summary { cursor: pointer; font-size: 0.85rem; font-weight: 600; color: var(--strong); min-height: 44px; display: flex; align-items: center; }
-.pm-how-formula-body { display: flex; flex-direction: column; gap: 0.4rem; font-size: 0.8rem; line-height: 1.55; padding-bottom: 0.25rem; }
-.pm-how-formula-line { font-family: var(--tblr-font-monospace); font-size: 0.85rem; font-weight: 600; color: var(--strong); overflow-wrap: anywhere; }
 @media (max-width: 767px) {
-  .pm-how-bar { grid-template-columns: 5.5rem minmax(0, 1fr) 4.5rem; gap: 0.5rem; }
   /* A rule table stacks on a phone: name and value on one line, the plain words under them, no sideways scroll. */
-  .pm-how-table { min-width: 0; }
-  .pm-how-table thead { display: none; }
-  .pm-how-table tbody tr { display: grid; grid-template-columns: minmax(0, 1fr) auto; column-gap: 0.75rem; padding: 0.6rem 1rem; border-bottom: 1px solid var(--border-soft); }
-  .pm-how-table tbody tr:last-child { border-bottom: 0; }
-  .pm-how-table td, .pm-how-table td:first-child, .pm-how-table td:last-child { display: block; padding: 0; border: 0; }
-  .pm-how-table td.pm-how-meaning { grid-column: 1 / -1; min-width: 0; margin-top: 0.25rem; }
 }
 
-/* ---- CC + Put Ladder: the Tickers tab's allocation strip and columns, and the ticker window (Pluto Ladder Settings
-   mockup, approved 2026-10-15) ---- */
+/* ---- The Tickers tab's allocation strip and columns (Pluto Ladder Settings mockup, approved 2026-10-15; kept for Vol
+   Farmer v4) ---- */
 .pm-alert.ok { border-color: rgba(47, 179, 68, 0.45); background: var(--success-lt); }
 .pm-saved-note { margin: 10px 18px 0; }
 .pm-input.invalid { border-color: var(--danger-border); }
@@ -682,9 +643,8 @@ a.pm-b:hover, button.pm-b.link:hover { text-decoration: underline; }
   .pm-alloc-savebar-actions { flex: 1 1 100%; }
   .pm-alloc-savebar-actions .pm-btn { flex: 1; min-height: 2.75rem; }
 }
-.pm-m-ladder { grid-column: 1 / -1; display: flex; flex-wrap: wrap; align-items: center; gap: 0.25rem 0.75rem; font-size: 0.8125rem; }
-.pm-m-ladder-fig { display: inline-flex; align-items: baseline; gap: 0.3rem; }
-.pm-m-ladder .pm-tk-settings { margin-left: auto; min-height: 2.75rem; }
+.pm-m-figs { grid-column: 1 / -1; display: flex; flex-wrap: wrap; align-items: center; gap: 0.25rem 0.75rem; font-size: 0.8125rem; }
+.pm-m-fig { display: inline-flex; align-items: baseline; gap: 0.3rem; }
 .ts-modal .ts-dialog { max-width: 72rem; }
 .ts-modal .modal-content { background: var(--page); color: var(--text); container-type: inline-size; container-name: modal; }
 .ts-modal .modal-header { background: var(--surface); align-items: flex-start; }
@@ -795,7 +755,6 @@ a.pm-b:hover, button.pm-b.link:hover { text-decoration: underline; }
 .pm-ro-grid .pm-help { margin-top: 0.25rem; }
 /* Model ids and other long values wrap inside a narrow phone column instead of widening it. */
 .pm-ro-grid .read-only-setting-value { overflow-wrap: anywhere; }
-.pm-ro-sub { display: block; font-size: 0.75rem; font-weight: 400; color: var(--muted); margin-top: 2px; }
 @media (max-width: 767px) {
   .pm-m-tk.locked { grid-template-columns: auto minmax(0, 1fr) auto; }
   .pm-ro-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.875rem 1rem; padding: 0.875rem 1rem 1rem; }
@@ -817,5 +776,4 @@ a.pm-b:hover, button.pm-b.link:hover { text-decoration: underline; }
 .pm-v4-m-grid dt { font-weight: 500; color: var(--muted); }
 .pm-v4-m-grid dd { margin: 0; min-width: 0; overflow-wrap: anywhere; }
 .pm-v4-m-quiet { margin-top: 0.25rem; font-size: 0.8rem; color: var(--muted); overflow-wrap: anywhere; }
-@media (max-width: 767px) { .pm-strategy .pm-select { height: 44px; } }
 .pm-v4-warnings .pm-tkr { color: inherit; text-decoration: underline; text-underline-offset: 2px; }

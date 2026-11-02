@@ -315,7 +315,6 @@ export function PlutoPage() {
           }}
           onPrepRunChange={() => void loadShortlist()}
           settings={settings}
-          onOpenSettingsTab={() => selectTab("settings")}
           onAllocationsSaved={() => {
             void loadSettings();
             void loadState();
@@ -330,7 +329,6 @@ export function PlutoPage() {
           error={settingsError}
           state={state}
           isPhone={isPhone}
-          onOpenTickersTab={() => selectTab("tickers")}
           onSaved={(saved) => {
             setSettings(saved);
             void loadSettings();

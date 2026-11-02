@@ -1,4 +1,4 @@
-import type { PlutoAction, PlutoActionContract, PlutoActionKind, PlutoActionOutcome, PlutoEvent, PlutoEventCategory, PlutoPass, PlutoReadinessResult, PlutoState, PlutoStrategy, PlutoSystemCheck, PlutoWorkingOrder } from "../api/pluto";
+import type { PlutoAction, PlutoActionContract, PlutoActionKind, PlutoActionOutcome, PlutoEvent, PlutoEventCategory, PlutoPass, PlutoReadinessResult, PlutoState, PlutoSystemCheck, PlutoWorkingOrder } from "../api/pluto";
 import { formatSettingDisplay, plutoParameterLabelByField } from "./plutoParameters";
 import { daysToExpiry, easternIsoDate, formatBrowserClockTime, formatCurrency, formatDayMonth, formatEasternTime, formatOptionContractLabel, formatOrderSize, formatRelativeAge, formatSignedPercentageValue, formatRelativeTime, formatDateTime, formatStrike, pluralize, pluralizeCount, todayInEasternIso } from "./formatters";
 
@@ -112,8 +112,8 @@ export function derivePlutoStatus(state: PlutoState, now: Date, crashLoopRestart
   return {
     kind: "running",
     label: "Running",
-    headline: "Running its strategies",
-    subline: `Analyses every new quote on the ${tickers} allowed ${tickers === 1 ? "ticker" : "tickers"}, each under its own strategy · last analysis ${state.lastPassAt ? formatRelativeAge(state.lastPassAt, now) : "not yet today"}`,
+    headline: "Running Vol Farmer v4",
+    subline: `Analyses every new quote on the ${tickers} allowed ${tickers === 1 ? "ticker" : "tickers"} · last analysis ${state.lastPassAt ? formatRelativeAge(state.lastPassAt, now) : "not yet today"}`,
     holdAlert: null,
   };
 }
@@ -176,8 +176,8 @@ export function orderedChecks(checks: Record<string, PlutoSystemCheck> | null): 
   return Object.entries(checks ?? {}).sort((a, b) => rank(a[0]) - rank(b[0]));
 }
 
-/** Each strategy's name on the screen. */
-export const plutoStrategyLabels: Record<PlutoStrategy, string> = { vol_farmer_v4: "Vol Farmer v4", cc_put_ladder: "CC + Put Ladder" };
+/** Each strategy's name on the screen, the retired CC + Put Ladder's still named in older events. */
+export const plutoStrategyLabels: Readonly<Record<string, string>> = { vol_farmer_v4: "Vol Farmer v4", cc_put_ladder: "CC + Put Ladder" };
 
 // ---------- Orders ----------
 
@@ -675,13 +675,13 @@ export function describeFeedEvent(event: PlutoEvent, context?: PlutoFeedContext)
       const fields = Array.isArray(payload.fields) ? (payload.fields as { field: string; from: unknown; to: unknown }[]) : [];
       // A ticker's own setting (a symbol in the payload) set back to null takes the default again.
       const shown = (field: string, value: unknown): string => {
-        if (field === "strategy") return value === null || value === undefined ? `${plutoStrategyLabels.vol_farmer_v4} (default)` : plutoStrategyLabels[value as PlutoStrategy] ?? text(value);
+        if (field === "strategy") return value === null || value === undefined ? `${plutoStrategyLabels.vol_farmer_v4} (default)` : plutoStrategyLabels[text(value)] ?? text(value);
         if (field === "allocationPct") return value === null || value === undefined ? "equal share" : `${text(value)}%`;
         if ((value === null || value === undefined) && symbol) return "default";
         if (field === "excessAllowancePct") return `${text(value)}%`;
         return formatSettingDisplay(field, text(value));
       };
-      const label = (field: string) => (field === "strategy" ? `${symbol} strategy` : field === "allocationPct" ? `${symbol} allocation` : plutoParameterLabelByField[field] ?? humanizeKey(field));
+      const label = (field: string) => (field === "strategy" ? `${symbol} strategy (retired)` : field === "allocationPct" ? `${symbol} allocation` : plutoParameterLabelByField[field] ?? humanizeKey(field));
       return { dot: "ctl", title: `Settings changed by ${by || "an operator"}`, detail: null, sub: fields.map((change) => `${label(change.field)} ${shown(change.field, change.from)} → ${shown(change.field, change.to)}`).join(" · ") || null };
     }
     case "ticker_enabled":
@@ -712,7 +712,7 @@ export function describeFeedEvent(event: PlutoEvent, context?: PlutoFeedContext)
       const putContracts = Number(payload.putContracts ?? 0);
       const held = `${pluralizeCount(Number(payload.shares ?? 0), "share")} at the cycle's break-even ${formatCurrency(Number(payload.breakEvenPerShare ?? 0))}`;
       const options = `${pluralize(Number(payload.callContracts ?? 0), "Call")} open · ${putContracts === 0 ? "no Puts" : `${pluralize(putContracts, "Put")} open`}`;
-      return { dot: "look", title: "Holdings adopted", detail: `${symbol} · ${plutoStrategyLabels[text(payload.strategy) as PlutoStrategy] ?? text(payload.strategy)}`, sub: `${held} · ${options}` };
+      return { dot: "look", title: "Holdings adopted", detail: `${symbol} · ${plutoStrategyLabels[text(payload.strategy)] ?? text(payload.strategy)}`, sub: `${held} · ${options}` };
     }
     case "agent_started":
       return { dot: "ctl", title: "Pluto's program started", detail: `version ${shortRelease(payload.release) || "unknown"}`, sub: null };

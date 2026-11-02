@@ -95,7 +95,7 @@ export interface PlutoState extends PlutoStateCore {
   workingOrders: PlutoWorkingOrder[];
   /** The platform's unfilled-order sweep cancels an order resting this long at IBKR (0 = never). */
   unfilledCancelMinutes: number;
-  /** The ladder's orders sent today, as its daily cap across the book counts them, and that cap. */
+  /** Pluto's orders sent today, as its daily cap across the book counts them, and that cap. */
   counters: { ordersToday: number; maxOrdersPerDay: number };
   enabledTickers: { count: number; max: number };
   session: PlutoSession;
@@ -132,18 +132,6 @@ export interface PlutoSettings {
   maxEnabledTickers: number;
   crashLoopRestartsPerHour: number;
   telegramVerbosity: PlutoTelegramVerbosity;
-  // The CC + Put Ladder's strategy-wide values (a ticker may override shares, rungs and the |delta| range).
-  ladderSharesPct: number;
-  ladderRungs: number;
-  ladderMinAbsDelta: number;
-  ladderMaxAbsDelta: number;
-  ladderMinDte: number;
-  ladderMaxDte: number;
-  ladderMaxSpreadPctOfMid: number;
-  ladderShockMinPct: number;
-  ladderShockMaxPct: number;
-  ladderShockNoHistoryPct: number;
-  ladderShockLookbackYears: number;
   safetyMaxWorkingOrdersPerTicker: number;
   safetyMaxOpenPositionsPerTicker: number;
   safetyMaxOrdersPerTickerPerDay: number;
@@ -600,39 +588,8 @@ export function fetchPlutoSettings(): Promise<PlutoSettings> {
 /** Every number the How it works tab quotes (API src/pluto/howItWorks.ts): percentages in percent, deltas as fractions, money in dollars. */
 export interface PlutoHowItWorks {
   shared: { windowStartEt: string; windowEndEt: string; windowEndMinutesBeforeCloseAtLeast: number; capitalBudgetPct: number; excessAllowancePct: number; dailyLossBreakerPct: number; unfilledOrderCancelMinutes: number; premiumYieldSessionsPerYear: number };
-  /** The Safety Limits: they hold every Pluto strategy, both strategies' orders counted together. */
+  /** The Safety Limits: they hold Vol Farmer v4's orders. */
   safetyLimits: { maxWorkingOrdersPerTicker: number; maxOrdersPerTickerPerDay: number; maxOpenPositionsPerTicker: number; maxOpenPositions: number; maxOrdersPerDay: number; spyStressBreakerPct: number; tickerCooldownMinutes: number };
-  ladder: {
-    minAbsDelta: number;
-    maxAbsDelta: number;
-    minDte: number;
-    maxDte: number;
-    maxSpreadPctOfMid: number;
-    minimumBid: number;
-    maxVolumeSharePct: number;
-    rungs: number;
-    sharesPct: number;
-    shockMinPct: number;
-    shockMaxPct: number;
-    shockNoHistoryPct: number;
-    shockLookbackYears: number;
-    putOverCallYieldMarginPct: number;
-    minEntryYieldPct: number;
-    maxQuoteAgeMinutes: number;
-    example: {
-      accountValue: number;
-      allocationPct: number;
-      pot: number;
-      sharesBudget: number;
-      reserve: number;
-      rungCollateral: number;
-      averageCost: number;
-      breakEven: number;
-      shockPct: number;
-      floor: number;
-      rungs: { rung: number; strikeCap: number }[];
-    };
-  };
   volFarmerV4: {
     callMinAbsDelta: number;
     callMaxAbsDelta: number;
@@ -711,49 +668,6 @@ export function fetchPlutoSettingsVersion(): Promise<PlutoSettingsVersion> {
   return apiRequest<PlutoSettingsVersion>("/pluto/settings/version");
 }
 
-/** The CC + Put Ladder's values in the backtest's names (API ladderSettings.ts LadderBaselineSettings, tunable part). */
-export interface PlutoLadderBaseline {
-  minAbsDelta: number;
-  maxAbsDelta: number;
-  minDte: number;
-  maxDte: number;
-  maxSpreadPctOfMid: number;
-  ladderRungs: number;
-  ladderSharesPct: number;
-  ladderShockMinPct: number;
-  ladderShockMaxPct: number;
-  ladderShockNoHistoryPct: number;
-  ladderShockLookbackYears: number;
-}
-
-/** A ticker's ladder settings as the Pluto screen shows them (GET /pluto/ladder-settings[/:symbol]). */
-export interface PlutoLadderTickerSettings {
-  symbol: string;
-  /** Enabled in Pluto while the CC + Put Ladder is the active strategy. */
-  enabled: boolean;
-  settingsVersionId: string | null;
-  /** Effective: the ticker's override where it has one, else the strategy's. */
-  baseline: PlutoLadderBaseline;
-  strategyBaseline: PlutoLadderBaseline;
-  tickerOverrides: { ladderSharesPct: number | null; ladderRungs: number | null; minAbsDelta: number | null; maxAbsDelta: number | null };
-  /** % of Pluto's capital budget; null = an equal share of what the set allocations leave. */
-  allocationPct: number | null;
-  /** The pot in dollars while the ticker is enabled in Pluto; null otherwise or with no account value. */
-  potDollars: number | null;
-  overrideShockPct: number | null;
-  recommendedShockPct: number | null;
-  /** The fit checks' price: the last daily close and its date. */
-  lastClose: { price: number; date: string } | null;
-  capitalBudgetDollars: number | null;
-  recommendedShockSource: { maxDrawdownPct: number | null; closesUsed: number; fromIso: string | null; toIso: string | null } | null;
-  /** The strategy set on the ticker (null: the default, Vol Farmer v4) and the one Pluto runs on it. */
-  strategy: PlutoStrategy | null;
-  effectiveStrategy: PlutoStrategy;
-}
-
-/** The strategy Pluto runs on a ticker. */
-export type PlutoStrategy = "vol_farmer_v4" | "cc_put_ladder";
-
 /** An option one of v4's positions holds: a leg of the book, or an order still working. */
 export interface PlutoVolFarmerV4Option {
   strike: number;
@@ -793,22 +707,20 @@ export function fetchPlutoVolFarmerV4(): Promise<PlutoVolFarmerV4Ticker[]> {
   return apiRequest<PlutoVolFarmerV4Ticker[]>("/pluto/vol-farmer-v4");
 }
 
-export function fetchPlutoLadderSettings(): Promise<PlutoLadderTickerSettings[]> {
-  return apiRequest<PlutoLadderTickerSettings[]>("/pluto/ladder-settings");
+/** A shortlisted ticker's allocation and pot (GET /pluto/ticker-allocations): the Tickers tab's columns. */
+export interface PlutoTickerAllocation {
+  symbol: string;
+  enabled: boolean;
+  /** % of Pluto's capital budget; null = an equal share of what the set allocations leave. */
+  allocationPct: number | null;
+  /** The pot in dollars while the ticker is enabled in Pluto; null otherwise or with no account value. */
+  potDollars: number | null;
+  /** Pluto's capital budget at last night's account value; null with no account value. */
+  capitalBudgetDollars: number | null;
 }
 
-export function fetchPlutoLadderTickerSettings(symbol: string): Promise<PlutoLadderTickerSettings> {
-  return apiRequest<PlutoLadderTickerSettings>(`/pluto/ladder-settings/${encodeURIComponent(symbol)}`);
-}
-
-export type PlutoTickerSettingsField = "allocationPct" | "ladderSharesPct" | "ladderShockOverridePct" | "ladderRungs" | "ladderMinAbsDelta" | "ladderMaxAbsDelta";
-
-/** A ticker's own values (pluto_ticker_settings); null = the default. */
-export type PlutoTickerSettingsValues = Record<PlutoTickerSettingsField, number | null> & { symbol: string; strategy: PlutoStrategy | null; updatedAt: string | null };
-
-/** Each field a number, or null for the default again; the strategy one of Pluto's, or null for the default. */
-export function savePlutoTickerSettings(symbol: string, input: Partial<Record<PlutoTickerSettingsField, number | null>> & { strategy?: PlutoStrategy | null }): Promise<PlutoTickerSettingsValues> {
-  return apiRequest<PlutoTickerSettingsValues>(`/pluto/ticker-settings/${encodeURIComponent(symbol)}`, { method: "PUT", body: JSON.stringify(input) });
+export function fetchPlutoTickerAllocations(): Promise<PlutoTickerAllocation[]> {
+  return apiRequest<PlutoTickerAllocation[]>("/pluto/ticker-allocations");
 }
 
 /** What PUT /pluto/allocations changed: each ticker's allocation (null: an equal share) and the excess allowance. */
@@ -821,20 +733,6 @@ export interface PlutoAllocationChanges {
  *  the excess allowance when it changed, saved together or not at all. */
 export function savePlutoAllocations(input: { allocations: Record<string, number | null>; excessAllowancePct?: number }): Promise<PlutoAllocationChanges> {
   return apiRequest<PlutoAllocationChanges>("/pluto/allocations", { method: "PUT", body: JSON.stringify(input) });
-}
-
-export interface PlutoTickerSettingsAuditRow {
-  id: number;
-  changedAt: string;
-  userDisplayName: string | null;
-  symbol: string;
-  field: PlutoTickerSettingsField;
-  oldValue: string | null;
-  newValue: string | null;
-}
-
-export function fetchPlutoTickerSettingsAudit(symbol: string, limit = 20): Promise<PlutoTickerSettingsAuditRow[]> {
-  return apiRequest<PlutoTickerSettingsAuditRow[]>(`/pluto/ticker-settings/audit?symbol=${encodeURIComponent(symbol)}&limit=${limit}`);
 }
 
 export function fetchPlutoActions(limit = 100): Promise<PlutoAction[]> {
