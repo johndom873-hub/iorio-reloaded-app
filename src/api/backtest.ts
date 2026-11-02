@@ -529,6 +529,15 @@ export interface BacktestOverview {
   jobs: BacktestJobView[];
   /** How many backtests run at once (BACKTEST_MAX_PARALLEL_SESSIONS); the rest wait in the queue. */
   maxParallelSessions: number;
+  /** The VIX and VIX3M files; null while either is missing. */
+  marketIndexFiles: BacktestMarketIndexFiles | null;
+}
+
+/** The days both market index files hold, and when the older of them was fetched. */
+export interface BacktestMarketIndexFiles {
+  firstDateIso: string;
+  lastDateIso: string;
+  fetchedAtIso: string;
 }
 
 /** One value a "choice" row can take. */
@@ -1349,6 +1358,11 @@ export async function cancelBacktestJob(jobId: string): Promise<void> {
 
 export async function resumeBacktestJob(jobId: string): Promise<void> {
   await apiRequest<unknown>(`/backtest/jobs/${encodeURIComponent(jobId)}/resume`, { method: "POST" });
+}
+
+/** Refresh VIX: the VIX and VIX3M files fetched again from IBKR (about 15 s); what they hold now. */
+export function refreshBacktestMarketIndices(): Promise<BacktestMarketIndexFiles | null> {
+  return apiRequest<BacktestMarketIndexFiles | null>("/backtest/market-indices/refresh", { method: "POST" });
 }
 
 /** Marks the ticker Suitable or Unsuitable with its note (admin only; 403 for a trader). */
