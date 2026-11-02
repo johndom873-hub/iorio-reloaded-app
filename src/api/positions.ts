@@ -513,6 +513,9 @@ export interface UnrealizedPnlResult {
   // was captured. null when unrealizedPnl is live, or when neither a live
   // price nor a snapshot is available.
   asOfDate: string | null;
+  // With asOfDate: the stock's close on that snapshot's session, the price the
+  // fallback P&L was measured at. null without asOfDate or without that day's bar.
+  underlyingCloseAsOf?: number | null;
 }
 
 // Unrealized P&L for open positions only, live-priced on demand — mirrors

@@ -17,6 +17,7 @@ import {
   formatCurrency,
   formatTransactionPrice,
   formatCurrencyTrimmed,
+  formatAsOfClose,
   formatDate,
   formatDateTime,
   formatDaysAgo,
@@ -314,6 +315,7 @@ export function PositionCard({
                   {formatPercentageValue(pct, 2)}
                 </TooltipSpan>
               )}
+              {asOfDate && <span className="small text-secondary">{formatAsOfClose(asOfDate)}</span>}
             </>
           );
         })()}

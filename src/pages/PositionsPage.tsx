@@ -25,6 +25,7 @@ import {
   todayInEasternIso,
   formatCurrency,
   formatCurrencyTrimmed,
+  formatAsOfClose,
   formatDate,
   formatDaysToExpiry,
   formatPercentageValue,
@@ -39,6 +40,7 @@ import {
   positionHasStockLeg,
   strategyAbbrev,
   positionPnlAsOfDate,
+  positionPnlUnderlyingCloseAsOf,
   positionHasLegEnteredTodayEastern,
   positionIsStockOnly,
   positionPremiumPnl,
@@ -299,10 +301,29 @@ export function PositionsPage() {
     {
       key: "price",
       header: "Price",
-      headerTitle: "Current stock price. Greyed out when the market is closed: the last daily close (hover for its date)",
+      headerTitle:
+        "Current stock price. Greyed out when the market is closed: the last daily close (hover for its date). When the row's P&L comes from the nightly snapshot, the close it was measured at, with the latest price below it",
       align: "right",
       render: (row) => {
         const { price, failed } = resolvePrice(row);
+        const pnlAsOfDate = positionPnlAsOfDate(row, unrealizedPnlByPositionId);
+        const closeAsOf = positionPnlUnderlyingCloseAsOf(row, unrealizedPnlByPositionId);
+        // P&L from the nightly snapshot: show the close it was measured at, so Price and P&L agree; the latest price goes below.
+        if (pnlAsOfDate && closeAsOf !== null) {
+          return (
+            <>
+              <TooltipSpan text={`Close on ${formatDate(pnlAsOfDate)}, the price this row's P&L is measured at`}>{formatCurrency(closeAsOf, 2)}</TooltipSpan>
+              {price !== null && (
+                <div className="small text-secondary text-nowrap">
+                  latest{" "}
+                  <FlashingNumber value={price} precision={2}>
+                    {formatCurrency(price, 2)}
+                  </FlashingNumber>
+                </div>
+              )}
+            </>
+          );
+        }
         if (price === null) {
           if (!failed) return <Spinner size="sm" label="Loading price" />;
           // No live price (market closed): show the last daily close, greyed (text-secondary: text-muted fails AA in dark), the same stored mark Cycle P&L falls back to.
@@ -417,9 +438,12 @@ export function PositionsPage() {
           );
         const asOfDate = positionPnlAsOfDate(row, unrealizedPnlByPositionId);
         return (
-          <FlashingNumber value={pnl} className={pnlTextClass(pnl)} title={asOfDate ? `As of ${formatDate(asOfDate)} close` : undefined}>
-            {formatSignedPnl(pnl)}
-          </FlashingNumber>
+          <>
+            <FlashingNumber value={pnl} className={pnlTextClass(pnl)} title={asOfDate ? `As of ${formatDate(asOfDate)} close` : undefined}>
+              {formatSignedPnl(pnl)}
+            </FlashingNumber>
+            {asOfDate && <div className="small text-secondary">{formatAsOfClose(asOfDate)}</div>}
+          </>
         );
       },
     },

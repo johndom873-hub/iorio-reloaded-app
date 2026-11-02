@@ -174,6 +174,13 @@ export function positionPnlAsOfDate(position: Position, unrealizedByPositionId: 
   return unrealizedByPositionId[position.id]?.asOfDate ?? null;
 }
 
+// The stock's close on the fallback snapshot's session (the price that P&L was
+// measured at), or null when the P&L is live or that day's bar is missing.
+export function positionPnlUnderlyingCloseAsOf(position: Position, unrealizedByPositionId: Record<string, UnrealizedPnlResult>): number | null {
+  const result = unrealizedByPositionId[position.id];
+  return result?.asOfDate ? (result.underlyingCloseAsOf ?? null) : null;
+}
+
 // P&L % divides by the capital the position's whole P&L was earned on (approved 2026-10-01): the shares still
 // held plus those already sold in closed slices, not just Exp $ (the capital exposed now). `?? capitalAtRisk`
 // covers the minutes between this app deploying and the API that sends capitalDeployed.

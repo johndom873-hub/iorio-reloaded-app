@@ -320,6 +320,11 @@ export function formatDayMonth(dateIso: string): string {
   return `${day} ${new Intl.DateTimeFormat("en-US", { month: "short" }).format(new Date(year, month - 1, day))}`;
 }
 
+/** The marker beside a figure taken from a session's close instead of a live quote: "as of 30 Oct close". */
+export function formatAsOfClose(dateIso: string): string {
+  return `as of ${formatDayMonth(dateIso)} close`;
+}
+
 /** A plain "YYYY-MM-DD" as day, short month and year: "7 Oct 2026". */
 export function formatDayMonthYear(dateIso: string): string {
   if (!plainIsoDatePattern.test(dateIso)) return "—";
