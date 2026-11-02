@@ -260,6 +260,8 @@ export interface BacktestVolFarmerV3Settings {
   trimsSell: "higher_break_even_first" | "second_position_first";
   /** Top-ups take a ticker's money in (held shares' cost, open Puts' cash) to at most this % of its pot; 0: no cap. */
   topUpCapPctOfPot: number;
+  /** A Call expiring today still in the money at the day's last look: left to be assigned, or bought back with the shares kept. */
+  callsInTheMoneyAtLastLook: "assigned" | "bought_back";
 }
 
 /** Vol Farmer v4's values (the API's BacktestVolFarmerV4Settings; the lab's default): v3 on a copy of every value it reads. */
