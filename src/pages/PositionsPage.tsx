@@ -190,17 +190,33 @@ export function PositionsPage() {
     return { price, failed: price === null && (dataArrived || streamsFailed), latestPrice: null, closeAsOfDate: null };
   }
 
-  // Cycle P&L for a row: the ticker's cycle with THIS row's price and each open option position's live unrealized premium
-  // P&L swapped in (see liveCyclePnl). Any mark that isn't available stays at the stored value (last daily close / nightly
-  // snapshot), shown with an "As of" date when the row has no price at all or its price is the snapshot's close -- the same
-  // fallback the other P&L columns use.
+  // The one stock price a symbol's Cycle P&L uses, so every row of the symbol shows the same figure: the snapshot's close
+  // when any of the symbol's positions has its P&L from the nightly snapshot (the cycle's option marks are snapshot values
+  // then, so shares and options are valued at the same close; the newest snapshot if they differ), else the row's live price.
+  function resolveCycleStockPrice(row: Position): { price: number | null; closeAsOfDate: string | null } {
+    let newestClose: { price: number; closeAsOfDate: string } | null = null;
+    for (const position of positions) {
+      if (position.symbol !== row.symbol) continue;
+      const closeAsOf = positionPnlUnderlyingCloseAsOf(position, unrealizedPnlByPositionId);
+      const closeAsOfDate = positionPnlAsOfDate(position, unrealizedPnlByPositionId);
+      if (closeAsOf === null || closeAsOfDate === null) continue;
+      if (newestClose === null || closeAsOfDate > newestClose.closeAsOfDate) newestClose = { price: closeAsOf, closeAsOfDate };
+    }
+    if (newestClose !== null) return newestClose;
+    return { price: resolvePrice(row).price, closeAsOfDate: null };
+  }
+
+  // Cycle P&L for a row: the ticker's cycle with the symbol's stock price (resolveCycleStockPrice) and each open option
+  // position's live unrealized premium P&L swapped in (see liveCyclePnl). Any mark that isn't available stays at the stored
+  // value (last daily close / nightly snapshot), shown with an "As of" date when there is no price at all or the price is the
+  // snapshot's close -- the same fallback the other P&L columns use.
   function resolveCyclePnl(row: Position): { state: "loading" } | { state: "unavailable"; reason: string } | { state: "ready"; value: number; storedAsOf: string | null } {
     if (cycleMarksFetchFailed) return { state: "unavailable", reason: "Failed to load cycle data" };
     if (cycleMarksBySymbol === null) return { state: "loading" };
     const marks = cycleMarksBySymbol[row.symbol];
     if (!marks) return { state: "unavailable", reason: "No open cycle for this symbol" };
     if (marks.dataFlags.length > 0) return { state: "unavailable", reason: `Cycle data is inconsistent: ${marks.dataFlags.join("; ")}` };
-    const { price, closeAsOfDate } = resolvePrice(row);
+    const { price, closeAsOfDate } = resolveCycleStockPrice(row);
     const liveUnrealizedPremiumByPositionId: Record<string, number> = {};
     for (const position of positions) {
       if (position.symbol !== row.symbol || !(position.id in marks.optionMarks)) continue;
@@ -361,7 +377,7 @@ export function PositionsPage() {
       key: "cyclePnl",
       header: "Cycle P&L",
       headerTitle:
-        "Profit and loss of this symbol's whole wheel cycle (every put, call and share since it began), using this row's Price and live option marks. Repeats on every row of the same symbol. Falls back to the last daily close and nightly snapshot when a mark isn't live.",
+        "Profit and loss of this symbol's whole wheel cycle (every put, call and share since it began), using the stock's live price and live option marks. Repeats on every row of the same symbol. When any of the symbol's rows has its P&L from the nightly snapshot, the whole cycle is valued at that snapshot's close. Falls back to the last daily close and nightly snapshot when a mark isn't live.",
       align: "right",
       cellClassName: "text-nowrap",
       render: (row) => {
