@@ -334,7 +334,8 @@ export function PositionsPage() {
               {latestPrice !== null && (
                 <div className="small text-secondary text-nowrap">
                   latest{" "}
-                  <FlashingNumber value={latestPrice} precision={2}>
+                  {/* Green/red vs the close above, compared in cents so two equal-looking figures stay uncoloured. */}
+                  <FlashingNumber value={latestPrice} precision={2} className={pnlTextClass(Math.round(latestPrice * 100) - Math.round(price * 100))}>
                     {formatCurrency(latestPrice, 2)}
                   </FlashingNumber>
                 </div>
