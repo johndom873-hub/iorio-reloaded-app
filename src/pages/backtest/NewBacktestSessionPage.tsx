@@ -1,9 +1,8 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { errorMessage } from "../../api/client";
-import { isRetiredBacktestSettingSection, labelSettingPaths } from "../../lib/backtestSettingGroups";
+import { isRetiredBacktestSettingSection, labelSettingPaths, sessionSettingSectionOf } from "../../lib/backtestSettingGroups";
 import {
-  backtestMaxRunsPerBatch,
   backtestMaxSymbolsPerSession,
   createBacktestBatch,
   estimateBacktestSession,
@@ -16,10 +15,8 @@ import {
   type BacktestSessionDetail,
   type BacktestSessionEstimateResponse,
   type BacktestSettingsOverrides,
-  type BacktestSettingsSource,
   type BacktestSettingsTemplate,
   type BacktestTablesMode,
-  type BacktestTickerValueKey,
   type BacktestVolFarmerV2Settings,
   type CreateBacktestBatchRequest,
   type CreateBacktestBatchResponse,
@@ -30,21 +27,20 @@ import { PageHeader } from "../../components/layout/PageHeader";
 import { Spinner } from "../../components/Spinner";
 import { BacktestBackLink, BacktestCard, BacktestSegmentedSwitch } from "../../components/backtest/backtestBits";
 import { BacktestSettingsTable } from "../../components/backtest/BacktestSettingsTable";
-import { BacktestRunsCard, type BacktestRunView } from "../../components/backtest/BacktestRunsCard";
-import { BacktestStartBatchConfirmBody } from "../../components/backtest/BacktestStartBatchConfirmBody";
 import { BacktestStartSessionConfirmBody } from "../../components/backtest/BacktestStartSessionConfirmBody";
 import { BacktestSymbolPicker } from "../../components/backtest/BacktestSymbolPicker";
-import { BacktestTickerValuesCard } from "../../components/backtest/BacktestTickerValuesCard";
 import { BacktestVolFarmerV2TickersCard } from "../../components/backtest/BacktestVolFarmerV2TickersCard";
 import { useBacktestOverview } from "../../components/backtest/useBacktestPolling";
 import { useDebouncedValue } from "../../hooks/useDebouncedValue";
 import { formatCurrency, formatInputNumber, formatNumber, pluralizeCount } from "../../lib/formatters";
 import {
   buildBacktestOverrides,
+  decidedByPhrase,
+  decisionMakerCanRun,
   decisionMakerHint,
+  decisionMakerLabel,
   describeOverrideChanges,
   describeRetiredVolFarmerV2Research,
-  describeTickerProblem,
   describeUnavailableChoices,
   describeYearOption,
   formatSettingRowValue,
@@ -54,9 +50,6 @@ import {
   sessionDecisionMaker,
   settingInputText,
   settingValueProblem,
-  tickerValueGroupAllKeys,
-  tickerValueInputText,
-  tickerValueTextProblem,
   valueAtSettingsPath,
   volFarmerAllocationSection,
   volFarmerExcessAllowancePathOf,
@@ -65,21 +58,7 @@ import {
   wholeYearsMatching,
   yearsInPeriod,
   type BacktestPeriodMode,
-  type BacktestTickerValueGroup,
 } from "../../lib/backtestPresentation";
-import { batchVaryTargets, describeRunDifferences, describeVaryPreview, parseVaryValues, type BatchRunValues, type BatchVary } from "../../lib/backtestBatchPresentation";
-import {
-  buildTickerRowModels,
-  buildTickerSymbolSettings,
-  hasTickerEdits,
-  isTickerEditActive,
-  tickerEditProblems,
-  tickerEditsFromSession,
-  tickerValueBelowEdit,
-  type BacktestCapitalMode,
-  type BacktestTickerEdits,
-  type BacktestTickerResolution,
-} from "../../lib/backtestTickerValueEdits";
 import { typedAllocationProblems, typedAllocationsBySymbol } from "../../lib/tickerAllocation";
 
 const pageTitle = "New session";
@@ -93,11 +72,6 @@ const decisionMakerPath = "decisionMaker";
 const periodModeOptions: { value: BacktestPeriodMode; label: string }[] = [
   { value: "years", label: "Whole years" },
   { value: "custom", label: "Custom dates" },
-];
-
-const capitalModeOptions: { value: BacktestCapitalMode; label: string }[] = [
-  { value: "pots", label: "Each ticker's pot" },
-  { value: "split", label: "Split a starting value equally" },
 ];
 
 function usableFiles(files: BacktestDataFileSummary[]): BacktestDataFileSummary[] {
@@ -120,10 +94,12 @@ function describeLooks(template: BacktestSettingsTemplate): string | null {
   return `${String(from.now)} – ${formatSettingRowValue(until, until.now)}`;
 }
 
+/** The form's values: the lab's, with a copied session's own changes when its decision maker can still run. */
 function initialValueByPath(template: BacktestSettingsTemplate, source: BacktestSessionDetail | null): Record<string, string> {
   const values: Record<string, string> = {};
+  const copied = source && decisionMakerCanRun(sessionDecisionMaker(source.session)) ? source : null;
   for (const row of template.rows) {
-    const fromSource = row.editable && source ? valueAtSettingsPath(source.session.overrides, row.path) : undefined;
+    const fromSource = row.editable && copied ? valueAtSettingsPath(copied.session.overrides, row.path) : undefined;
     values[row.path] = settingInputText(fromSource ?? row.now);
   }
   return values;
@@ -155,39 +131,11 @@ function copiedVolFarmerV2Allocations(source: BacktestSessionDetail["session"], 
   return { textBySymbol: Object.fromEntries(symbols.map((symbol) => [symbol, allocationText])), allowanceText: "0", note: `${retired} It comes back as each ticker's allocation, ${allocationText}%: the same pots.` };
 }
 
-/** A run of a batch on the form (mockup approved 2026-10-17): its tickers and the values typed for them; `key` stays with the
- *  run while runs are added, duplicated or removed. */
-interface BacktestRunDraft {
-  key: string;
-  symbols: string[];
-  edits: BacktestTickerEdits;
-}
-
-type BacktestRunsMode = "one" | "several";
-
-const runsModeOptions: { value: BacktestRunsMode; label: string }[] = [
-  { value: "one", label: "One run" },
-  { value: "several", label: "Several runs" },
-];
-
-/** The overrides without some paths (the decision maker, or the per-ticker baseline values). */
-function overridesWithout(overrides: BacktestSettingsOverrides, keep: (path: string) => boolean): BacktestSettingsOverrides {
-  const result: Record<string, unknown> = {};
-  for (const [root, value] of Object.entries(overrides)) {
-    if (value !== null && typeof value === "object") {
-      const kept = Object.fromEntries(Object.entries(value).filter(([field]) => keep(`${root}.${field}`)));
-      if (Object.keys(kept).length > 0) result[root] = kept;
-    } else if (keep(root)) result[root] = value;
-  }
-  return result as BacktestSettingsOverrides;
-}
-
-// New session (mockups approved 2026-10-12, for per-ticker pots 2026-10-15, for several runs 2026-10-17): the period, the
-// decision maker, the capital, each ticker's pot and values with the Baseline deciding, the history tables, and the lab's
-// settings with the session's own changes. With the Baseline deciding, Several runs starts up to 9 runs on the same period and
-// settings, each with its own tickers and values (a batch). Every start is a batch: one run is a batch of one. "Run again with
-// changes" opens it with ?from=<sessionId> or ?fromBatch=<batchId>, prefilled from it; the Data files card's Backtest opens it
-// with ?symbols=<SYMBOL,SYMBOL>, those symbols picked.
+// New session (mockups approved 2026-10-12, without the CC + Put Ladder 2026-11-02): the period, the decision maker (the
+// Steady Stake or Vol Farmer v4), the starting value, the history tables, and the lab's settings with the session's own
+// changes: the rows every session reads and the decision maker's own group. Every start is a batch of one run. "Run again
+// with changes" opens it with ?from=<sessionId> or ?fromBatch=<batchId>, prefilled from it; the Data files card's Backtest
+// opens it with ?symbols=<SYMBOL,SYMBOL>, those symbols picked.
 export function NewBacktestSessionPage() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
@@ -216,10 +164,6 @@ export function NewBacktestSessionPage() {
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
   const [startingValueText, setStartingValueText] = useState(formatNumber(defaultStartingValue));
-  // The Baseline deciding: each ticker's pot (the capital their sum), or one starting value split equally.
-  const [capitalMode, setCapitalMode] = useState<BacktestCapitalMode>("pots");
-  const [settingsSource, setSettingsSource] = useState<BacktestSettingsSource>("per_ticker");
-  const [tickerEdits, setTickerEdits] = useState<BacktestTickerEdits>({});
   const [tablesMode, setTablesMode] = useState<BacktestTablesMode>("walk_forward");
   const [valueByPath, setValueByPath] = useState<Record<string, string>>({});
   // Vol Farmer v2 deciding: each ticker's allocation as typed on the Tickers card (empty: an equal share).
@@ -227,18 +171,13 @@ export function NewBacktestSessionPage() {
   // A copied session sized by a dollar pot per ticker (before allocations): what it came back as.
   const [retiredTickerPotNote, setRetiredTickerPotNote] = useState<string | null>(null);
   const [retiredResearchNote, setRetiredResearchNote] = useState<string | null>(null);
+  // A copied session whose decision maker was retired: its period and tickers come back, its settings from the lab.
+  const [retiredDecisionMakerNote, setRetiredDecisionMakerNote] = useState<string | null>(null);
   const [submitAttempted, setSubmitAttempted] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [created, setCreated] = useState<CreateBacktestBatchResponse | null>(null);
-  // Several runs (the Baseline deciding): each run's tickers and typed values; the other fields are every run's.
-  const [runsMode, setRunsMode] = useState<BacktestRunsMode>("one");
-  const [runs, setRuns] = useState<BacktestRunDraft[]>([]);
-  const [vary, setVary] = useState<BatchVary>({ key: "ladderSharesPct", ticker: "*", text: "" });
-  const nextRunKey = useRef(1);
-  const newRunKey = () => `run-${nextRunKey.current++}`;
-
   useEffect(() => {
     let cancelled = false;
     fetchBacktestSettingsTemplate()
@@ -290,8 +229,7 @@ export function NewBacktestSessionPage() {
     if (initialized || !overview || !template || !sourceLoaded) return;
     const candidates = usableFiles(overview.files);
     const source = sourceSession?.session ?? null;
-    const sourceRuns = sourceBatch && sourceBatch.runs.length > 1 ? sourceBatch.runs : null;
-    const sourceSymbols = (sourceRuns ? [...new Set(sourceRuns.flatMap((run) => run.session.symbols))] : source ? (source.symbols.length > 0 ? source.symbols : [source.symbol]) : []).filter((picked) =>
+    const sourceSymbols = (source ? (source.symbols.length > 0 ? source.symbols : [source.symbol]) : []).filter((picked) =>
       candidates.some((candidate) => candidate.symbol === picked),
     );
     const requestedSymbols = [...new Set((requestedSymbolsParam ?? "").split(",").map((picked) => picked.trim().toUpperCase()))].filter((picked) =>
@@ -313,36 +251,17 @@ export function NewBacktestSessionPage() {
       setName(source.name);
       setStartingValueText(formatNumber(source.startingValue));
       setTablesMode(source.tablesMode);
-      // A session of per-ticker pots comes back with how it was asked for: its ticker values' source, its capital (a starting
-      // value split equally, or each ticker's pot) and the values it gave its tickers itself; the rest come from the lab again.
-      if (source.bookMode === "pots") {
-        const potsFromStartingValue = source.potsFromStartingValue === true;
-        setSettingsSource(source.settingsSource ?? "per_ticker");
-        setCapitalMode(potsFromStartingValue ? "split" : "pots");
-        setTickerEdits(tickerEditsFromSession(source.symbolSettings, !potsFromStartingValue));
-      } else if (sessionDecisionMaker(source) === "baseline") {
-        // A Baseline session from before per-ticker pots ran on one starting value.
-        setCapitalMode("split");
-      }
     }
     if (sourceBatch) setName(sourceBatch.batch.name);
-    if (sourceRuns) {
-      setRunsMode("several");
-      setRuns(
-        sourceRuns.map((run) => ({
-          key: `run-${nextRunKey.current++}`,
-          symbols: run.session.symbols.filter((picked) => sourceSymbols.includes(picked)),
-          edits: tickerEditsFromSession(run.symbolSettings, true),
-        })),
-      );
-    }
-    const copiedAllocations = source && runsVolFarmerV2Steps(sessionDecisionMaker(source)) ? copiedVolFarmerV2Allocations(source, sourceSymbols) : null;
+    const runnable = source !== null && decisionMakerCanRun(sessionDecisionMaker(source));
+    if (source && !runnable) setRetiredDecisionMakerNote(`This session was decided by ${decidedByPhrase[sessionDecisionMaker(source)]}, since retired: its period and tickers come back, its settings from the lab.`);
+    const copiedAllocations = source && runnable && runsVolFarmerV2Steps(sessionDecisionMaker(source)) ? copiedVolFarmerV2Allocations(source, sourceSymbols) : null;
     if (copiedAllocations) {
       setAllocationTextBySymbol(copiedAllocations.textBySymbol);
       setRetiredTickerPotNote(copiedAllocations.note);
     }
     // A Vol Farmer v2 session run with research settings since retired cannot be rerun as it was: say so (2026-10-28).
-    const retiredResearch = source && runsVolFarmerV2Steps(sessionDecisionMaker(source)) ? describeRetiredVolFarmerV2Research(source.overrides) : [];
+    const retiredResearch = source && runnable && runsVolFarmerV2Steps(sessionDecisionMaker(source)) ? describeRetiredVolFarmerV2Research(source.overrides) : [];
     if (retiredResearch.length > 0) setRetiredResearchNote(`This session used research settings the lab no longer has (${retiredResearch.join("; ")}). A rerun uses today's rules: the LEAPS bought once the price is half a Step below B-E2, one per holding, sold when the second position is called away; Calls and Puts on the next expiry only.`);
     const copiedAllowance: Record<string, string> = source && copiedAllocations?.allowanceText != null ? { [volFarmerExcessAllowancePathOf(sessionDecisionMaker(source))]: copiedAllocations.allowanceText } : {};
     setValueByPath({ ...initialValueByPath(template, sourceSession), ...copiedAllowance });
@@ -356,18 +275,6 @@ export function NewBacktestSessionPage() {
     setSymbols(nextSymbols);
     // A dropped symbol takes its allocation with it (the API refuses one for a symbol not in the session).
     setAllocationTextBySymbol((previous) => Object.fromEntries(Object.entries(previous).filter(([symbol]) => nextSymbols.includes(symbol))));
-    // With several runs, a symbol picked goes into every run and one dropped leaves every run (D6).
-    if (several) {
-      const added = nextSymbols.filter((picked) => !symbols.includes(picked));
-      const removed = symbols.filter((picked) => !nextSymbols.includes(picked));
-      setRuns((previous) =>
-        previous.map((run) => ({
-          ...run,
-          symbols: [...run.symbols.filter((picked) => !removed.includes(picked)), ...added.filter((picked) => !run.symbols.includes(picked))],
-          edits: Object.fromEntries(Object.entries(run.edits).filter(([symbol]) => !removed.includes(symbol))),
-        })),
-      );
-    }
     const nextCoverage = sharedCoverage(nextSymbols.map((picked) => files.find((file) => file.symbol === picked)).filter((file): file is BacktestDataFileSummary => file !== undefined));
     setStartDate(nextCoverage?.firstDate ?? "");
     setEndDate(nextCoverage?.lastDate ?? "");
@@ -410,33 +317,23 @@ export function NewBacktestSessionPage() {
   };
 
   const startingValue = parseDollarAmountText(startingValueText);
-  // The retired original Vol Farmer's rows change no session that can still run.
+  // The retired decision makers' rows change no session that can still run.
   const allRows = useMemo(() => (template?.rows ?? []).filter((row) => !isRetiredBacktestSettingSection(row.section)), [template]);
   const decisionMakerRow = allRows.find((row) => row.path === decisionMakerPath) ?? null;
-  const decisionMaker = (valueByPath[decisionMakerPath] ?? "baseline") as BacktestDecisionMaker;
+  const decisionMaker = (valueByPath[decisionMakerPath] ?? "vol_farmer_v4") as BacktestDecisionMaker;
   // Vol Farmer v2 (or v3, on v2's values; v4, on its own) deciding (mockup approved 2026-10-28): the Tickers card holds each
   // ticker's allocation and, beside the starting value, the excess allowance, which leaves the Settings table.
   const allocationSection = volFarmerAllocationSection(decisionMaker);
   const allowancePath = volFarmerExcessAllowancePathOf(decisionMaker);
   const allowanceRow = allRows.find((row) => row.path === allowancePath) ?? null;
   const showVolFarmerV2TickersCard = runsVolFarmerV2Steps(decisionMaker) && selectedFiles.length > 0 && allowanceRow !== null;
-  const settingRows = allRows.filter((row) => row.path !== decisionMakerPath && !(showVolFarmerV2TickersCard && row.path === allowancePath));
-  // The Baseline runs per-ticker pots: each ticker its pot and ladder values. The rules and the AI model run one starting value.
-  const perTickerPots = decisionMaker === "baseline";
-  // Several runs only with the Baseline deciding (D1): only it has ticker values. Each run's capital is the sum of its pots (D4).
-  const several = perTickerPots && runsMode === "several";
-  const showTickersCard = perTickerPots && !several && selectedFiles.length > 0;
-  const showRunsCard = several && selectedFiles.length > 0;
-  const usesStartingValue = !perTickerPots || (!several && capitalMode === "split");
+  // The Settings card (Marcelo 2026-11-02): the rows every session reads and the decision maker's own group only.
+  const decisionMakerSection = sessionSettingSectionOf(decisionMaker);
+  const settingRows = allRows.filter((row) => row.path !== decisionMakerPath && (row.section === "every_session" || row.section === decisionMakerSection) && !(showVolFarmerV2TickersCard && row.path === allowancePath));
 
-  // The estimate: what the session will do differently because of its files, each ticker's values with the Baseline deciding,
-  // and the model's calls with the AI model. The latest answer stays on screen while the next is worked out.
+  // The estimate: what the session will do differently because of its files. The latest answer stays on screen while the
+  // next is worked out.
   const [estimate, setEstimate] = useState<{ requestText: string; result: BacktestSessionEstimateResponse | null; error: string | null } | null>(null);
-  const [latestResult, setLatestResult] = useState<BacktestSessionEstimateResponse | null>(null);
-  const latestResolution = useMemo<BacktestTickerResolution | null>(
-    () => (latestResult?.resolvedBySymbol ? { capital: latestResult.capital, bySymbol: latestResult.resolvedBySymbol } : null),
-    [latestResult],
-  );
   const settingsOverrides = useMemo(() => (template ? buildBacktestOverrides(template.rows, valueByPath) : {}), [template, valueByPath]);
   const allowanceText = valueByPath[allowancePath] ?? (allowanceRow ? String(allowanceRow.now) : "0");
   // What the session overrides: the settings changed, and with Vol Farmer v2, v3 or v4 deciding each allocation typed on the Tickers card.
@@ -445,22 +342,12 @@ export function NewBacktestSessionPage() {
     () => (Object.keys(tickerAllocationPct).length === 0 ? settingsOverrides : { ...settingsOverrides, [allocationSection]: { ...settingsOverrides[allocationSection], tickerAllocationPct } }),
     [settingsOverrides, tickerAllocationPct, allocationSection],
   );
-  const symbolSettings = useMemo(
-    () => (perTickerPots ? buildTickerSymbolSettings(symbols, tickerEdits, latestResolution, capitalMode) : null),
-    [perTickerPots, symbols, tickerEdits, latestResolution, capitalMode],
-  );
   const requestText = useMemo(() => {
-    if (!template || symbols.length === 0 || !sessionStartDate || !sessionEndDate) return null;
-    if (usesStartingValue && !(startingValue > 0)) return null;
+    if (!template || symbols.length === 0 || !sessionStartDate || !sessionEndDate || !(startingValue > 0)) return null;
     // The endpoint needs no name (an unnamed form still gets its estimate).
-    const request: CreateBacktestSessionRequest = { name: name.trim(), symbols, startDate: sessionStartDate, endDate: sessionEndDate, tablesMode, overrides };
-    if (usesStartingValue) request.startingValue = startingValue;
-    if (perTickerPots) {
-      request.settingsSource = settingsSource;
-      if (symbolSettings && Object.keys(symbolSettings).length > 0) request.symbolSettings = symbolSettings;
-    }
+    const request: CreateBacktestSessionRequest = { name: name.trim(), symbols, startDate: sessionStartDate, endDate: sessionEndDate, startingValue, tablesMode, overrides };
     return JSON.stringify(request);
-  }, [template, name, symbols, sessionStartDate, sessionEndDate, usesStartingValue, startingValue, tablesMode, overrides, perTickerPots, settingsSource, symbolSettings]);
+  }, [template, name, symbols, sessionStartDate, sessionEndDate, startingValue, tablesMode, overrides]);
   // The name does not change the estimate: it is asked again only when something else changes.
   const estimateRequestText = useMemo(() => (requestText === null ? null : JSON.stringify({ ...JSON.parse(requestText), name: "" })), [requestText]);
   const debouncedEstimateRequestText = useDebouncedValue(estimateRequestText, estimateDebounceMs);
@@ -471,7 +358,6 @@ export function NewBacktestSessionPage() {
       .then((result) => {
         if (cancelled) return;
         setEstimate({ requestText: debouncedEstimateRequestText, result, error: null });
-        setLatestResult(result);
       })
       .catch((err) => !cancelled && setEstimate({ requestText: debouncedEstimateRequestText, result: null, error: refusalText(err, "Could not estimate the session.") }));
     return () => {
@@ -482,73 +368,6 @@ export function NewBacktestSessionPage() {
   const currentResult = estimateIsCurrent ? estimate.result : null;
   const estimatePending = estimateRequestText !== null && !estimateIsCurrent;
   const changedCount = settingRows.filter((row) => row.editable && isSettingChanged(row, valueByPath[row.path] ?? String(row.now))).length;
-  const orderedSymbols = [...symbols].sort();
-
-  // ---- Several runs: each run estimated on its own, as a session request of its tickers and values ----
-  const [runEstimates, setRunEstimates] = useState<Record<string, { requestText: string; result: BacktestSessionEstimateResponse | null; error: string | null }>>({});
-  const [runLatestResults, setRunLatestResults] = useState<Record<string, BacktestSessionEstimateResponse>>({});
-  const runResolutions = useMemo<Record<string, BacktestTickerResolution | null>>(
-    () => Object.fromEntries(Object.entries(runLatestResults).map(([key, result]) => [key, result.resolvedBySymbol ? { capital: result.capital, bySymbol: result.resolvedBySymbol } : null])),
-    [runLatestResults],
-  );
-  const runRequestTexts = useMemo<Record<string, string | null>>(() => {
-    if (!several || !template || !sessionStartDate || !sessionEndDate) return {};
-    return Object.fromEntries(
-      runs.map((run) => {
-        if (run.symbols.length === 0) return [run.key, null];
-        const runSymbolSettings = buildTickerSymbolSettings(run.symbols, run.edits, runResolutions[run.key] ?? null, "pots");
-        const request: CreateBacktestSessionRequest = { name: "", symbols: run.symbols, startDate: sessionStartDate, endDate: sessionEndDate, tablesMode, overrides, settingsSource };
-        if (Object.keys(runSymbolSettings).length > 0) request.symbolSettings = runSymbolSettings;
-        return [run.key, JSON.stringify(request)];
-      }),
-    );
-  }, [several, template, sessionStartDate, sessionEndDate, runs, runResolutions, tablesMode, overrides, settingsSource]);
-  const debouncedRunRequests = useDebouncedValue(JSON.stringify(runRequestTexts), estimateDebounceMs);
-  const askedRunTexts = useRef<Record<string, string>>({});
-  useEffect(() => {
-    const texts = JSON.parse(debouncedRunRequests) as Record<string, string | null>;
-    for (const [key, text] of Object.entries(texts)) {
-      if (text === null || askedRunTexts.current[key] === text) continue;
-      askedRunTexts.current[key] = text;
-      estimateBacktestSession(JSON.parse(text) as CreateBacktestSessionRequest)
-        .then((result) => {
-          setRunEstimates((previous) => ({ ...previous, [key]: { requestText: text, result, error: null } }));
-          // An older answer arriving after a newer request does not replace the newer one.
-          if (askedRunTexts.current[key] === text) setRunLatestResults((previous) => ({ ...previous, [key]: result }));
-        })
-        .catch((err) => setRunEstimates((previous) => ({ ...previous, [key]: { requestText: text, result: null, error: refusalText(err, "Could not estimate the run.") } })));
-    }
-  }, [debouncedRunRequests]);
-  const runEstimateIsCurrent = (key: string) => runRequestTexts[key] !== null && runRequestTexts[key] !== undefined && runEstimates[key]?.requestText === runRequestTexts[key];
-  const runsEstimatePending = several && runs.some((run) => runRequestTexts[run.key] !== null && !runEstimateIsCurrent(run.key));
-
-  // Each run's rows and values as shown, what makes it different (D7), and its problems.
-  const runRows = runs.map((run) => buildTickerRowModels({ symbols: run.symbols, edits: run.edits, resolution: runResolutions[run.key] ?? null, capitalMode: "pots", splitStartingValue: Number.NaN, settingRows: allRows }));
-  const runValues: BatchRunValues[] = runs.map((run, index) => ({
-    symbols: run.symbols,
-    values: Object.fromEntries(runRows[index]!.map((row) => [row.symbol, Object.fromEntries(Object.entries(row.display).map(([key, shown]) => [key, shown.value]))])),
-  }));
-  const runDescriptions = describeRunDifferences(runValues);
-  // The Start confirmation lists each run's tickers in their own column.
-  const runDescriptionsBesideTickers = describeRunDifferences(runValues, { includeTickers: false });
-  const runProblems = (runIndex: number): string[] => {
-    const run = runs[runIndex]!;
-    const label = `Run ${runIndex + 1}`;
-    const estimate = runEstimates[run.key];
-    return [
-      ...(run.symbols.length === 0 ? [`${label} has no tickers: add one or remove the run.`] : []),
-      ...tickerEditProblems(run.symbols, run.edits, "pots").map((problem) => `${label} · ${problem.symbol}: ${problem.message}`),
-      ...[...run.symbols].sort().flatMap((symbol) => (runResolutions[run.key]?.bySymbol[symbol]?.problems ?? []).map((problem) => `${label} · ${describeTickerProblem(symbol, problem, allRows)}`)),
-      ...(estimate?.error && runEstimateIsCurrent(run.key) ? [`${label}: ${estimate.error}`] : []),
-    ];
-  };
-  const varyPreview = describeVaryPreview(runValues, vary, backtestMaxRunsPerBatch);
-
-  /** A ticker's problems as the page lists them: values typed that cannot be sent, then what the estimate found. */
-  const tickerProblemsOf = (resolution: BacktestTickerResolution | null): string[] => [
-    ...tickerEditProblems(symbols, tickerEdits, capitalMode).map((problem) => `${problem.symbol}: ${problem.message}`),
-    ...orderedSymbols.flatMap((symbol) => (resolution?.bySymbol[symbol]?.problems ?? []).map((problem) => describeTickerProblem(symbol, problem, allRows))),
-  ];
 
   const problems: string[] = [];
   if (name.trim() === "") problems.push("Name the session.");
@@ -561,155 +380,20 @@ export function NewBacktestSessionPage() {
   else if (coverage && (sessionStartDate < coverage.firstDate || sessionEndDate > coverage.lastDate)) {
     problems.push(`The period must fall within every picked file: ${coverage.firstDate} → ${coverage.lastDate}.`);
   }
-  if (usesStartingValue && !(startingValue > 0)) problems.push("The starting account value must be a positive dollar amount.");
-  if (showTickersCard) problems.push(...tickerProblemsOf(latestResolution));
-  if (showRunsCard) runs.forEach((_, runIndex) => problems.push(...runProblems(runIndex)));
+  if (!(startingValue > 0)) problems.push("The starting account value must be a positive dollar amount.");
   if (showVolFarmerV2TickersCard) problems.push(...typedAllocationProblems(symbols, allocationTextBySymbol, allowanceText));
-  for (const row of allRows) {
+  for (const row of settingRows) {
     // The Tickers card checks the allowance it shows.
     if (showVolFarmerV2TickersCard && row.path === allowancePath) continue;
     const problem = row.editable ? settingValueProblem(row, valueByPath[row.path] ?? String(row.now)) : null;
     if (problem) problems.push(problem);
   }
 
-  // ---- The Tickers card's edits ----
-  const resolutionOf = (symbol: string) => latestResolution?.bySymbol[symbol];
-  const changeTickerValue = (symbol: string, key: BacktestTickerValueKey, text: string) => {
-    setTickerEdits((previous) => {
-      const symbolEdits = { ...previous[symbol] };
-      // A choice back on the value under it is no edit at once; a typed number waits for the field to be left.
-      if (key === "ladderShock" && !isTickerEditActive(resolutionOf(symbol), key, text)) delete symbolEdits[key];
-      else symbolEdits[key] = text;
-      return { ...previous, [symbol]: symbolEdits };
-    });
-  };
-  /** Leaving a field: a value equal to the one under it stops being an edit; a pot takes its separators. */
-  const settleTickerValue = (symbol: string, key: BacktestTickerValueKey) => {
-    setTickerEdits((previous) => {
-      const text = previous[symbol]?.[key];
-      if (text === undefined) return previous;
-      const symbolEdits = { ...previous[symbol] };
-      const below = tickerValueBelowEdit(resolutionOf(symbol), key);
-      if (below !== undefined && tickerValueTextProblem(key, text) === null && !isTickerEditActive(resolutionOf(symbol), key, text)) delete symbolEdits[key];
-      else if (key === "potDollars" && parseDollarAmountText(text) > 0) symbolEdits[key] = tickerValueInputText(key, parseDollarAmountText(text));
-      else return previous;
-      return { ...previous, [symbol]: symbolEdits };
-    });
-  };
-  const resetTickerGroup = (symbol: string, group: BacktestTickerValueGroup) => {
-    setTickerEdits((previous) => {
-      const symbolEdits = { ...previous[symbol] };
-      for (const key of tickerValueGroupAllKeys(group)) delete symbolEdits[key];
-      return { ...previous, [symbol]: symbolEdits };
-    });
-  };
-  /** Switching to a split starting value fills it with the pots' sum, so switching changes no dollar figure. */
-  const changeCapitalMode = (nextMode: BacktestCapitalMode) => {
-    if (nextMode === capitalMode) return;
-    if (nextMode === "split" && latestResolution?.capital) setStartingValueText(formatNumber(latestResolution.capital));
-    setCapitalMode(nextMode);
-  };
-
-  // ---- Several runs: the Runs switch, each run's edits (as the Tickers card's), its band's actions, Make runs ----
-  /** One run → several: the form's tickers and values become Run 1 (runs from before come back, Run 1 taking the values). */
-  const changeRunsMode = (nextMode: BacktestRunsMode) => {
-    if (nextMode === runsMode) return;
-    if (nextMode === "several") setRuns((previous) => (previous.length > 0 ? previous.map((run, index) => (index === 0 ? { ...run, edits: tickerEdits } : run)) : [{ key: newRunKey(), symbols: [...symbols], edits: tickerEdits }]));
-    else if (runs[0]) setTickerEdits(runs[0].edits);
-    setRunsMode(nextMode);
-  };
-  const updateRun = (runKey: string, update: (run: BacktestRunDraft) => BacktestRunDraft) => setRuns((previous) => previous.map((run) => (run.key === runKey ? update(run) : run)));
-  const withSymbolEdits = (run: BacktestRunDraft, symbol: string, symbolEdits: BacktestTickerEdits[string]): BacktestRunDraft => ({ ...run, edits: { ...run.edits, [symbol]: symbolEdits } });
-  const changeRunValue = (runKey: string, symbol: string, key: BacktestTickerValueKey, text: string) =>
-    updateRun(runKey, (run) => {
-      const symbolEdits = { ...run.edits[symbol] };
-      if (key === "ladderShock" && !isTickerEditActive(runResolutions[runKey]?.bySymbol[symbol], key, text)) delete symbolEdits[key];
-      else symbolEdits[key] = text;
-      return withSymbolEdits(run, symbol, symbolEdits);
-    });
-  const settleRunValue = (runKey: string, symbol: string, key: BacktestTickerValueKey) =>
-    updateRun(runKey, (run) => {
-      const text = run.edits[symbol]?.[key];
-      if (text === undefined) return run;
-      const resolution = runResolutions[runKey]?.bySymbol[symbol];
-      const symbolEdits = { ...run.edits[symbol] };
-      if (tickerValueBelowEdit(resolution, key) !== undefined && tickerValueTextProblem(key, text) === null && !isTickerEditActive(resolution, key, text)) delete symbolEdits[key];
-      else if (key === "potDollars" && parseDollarAmountText(text) > 0) symbolEdits[key] = tickerValueInputText(key, parseDollarAmountText(text));
-      else return run;
-      return withSymbolEdits(run, symbol, symbolEdits);
-    });
-  const resetRunGroup = (runKey: string, symbol: string, group: BacktestTickerValueGroup) =>
-    updateRun(runKey, (run) => {
-      const symbolEdits = { ...run.edits[symbol] };
-      for (const key of tickerValueGroupAllKeys(group)) delete symbolEdits[key];
-      return withSymbolEdits(run, symbol, symbolEdits);
-    });
-  const duplicateRun = (runKey: string) => {
-    const key = newRunKey();
-    setRuns((previous) => {
-      const index = previous.findIndex((run) => run.key === runKey);
-      if (index === -1 || previous.length >= backtestMaxRunsPerBatch) return previous;
-      const source = previous[index]!;
-      const copy: BacktestRunDraft = { key, symbols: [...source.symbols], edits: Object.fromEntries(Object.entries(source.edits).map(([symbol, symbolEdits]) => [symbol, { ...symbolEdits }])) };
-      return [...previous.slice(0, index + 1), copy, ...previous.slice(index + 1)];
-    });
-  };
-  const removeRun = (runKey: string) => setRuns((previous) => (previous.length > 1 ? previous.filter((run) => run.key !== runKey) : previous));
-  const removeRunTicker = (runKey: string, symbol: string) =>
-    updateRun(runKey, (run) => ({ ...run, symbols: run.symbols.filter((held) => held !== symbol), edits: Object.fromEntries(Object.entries(run.edits).filter(([held]) => held !== symbol)) }));
-  const addRunTicker = (runKey: string, symbol: string) => updateRun(runKey, (run) => (run.symbols.includes(symbol) ? run : { ...run, symbols: [...run.symbols, symbol] }));
-  /** Make runs (D5): each run holding the chosen ticker becomes one run per value, the value typed for that ticker (or every ticker). */
-  const applyVary = () => {
-    const parsed = parseVaryValues(vary.key, vary.text);
-    if ("error" in parsed || !varyPreview.ok) return;
-    const next: BacktestRunDraft[] = [];
-    runs.forEach((run, runIndex) => {
-      const targets = batchVaryTargets(runValues[runIndex]!, vary);
-      if (targets.length === 0) {
-        next.push(run);
-        return;
-      }
-      parsed.values.forEach((value, valueIndex) => {
-        const edits: BacktestTickerEdits = Object.fromEntries(Object.entries(run.edits).map(([symbol, symbolEdits]) => [symbol, { ...symbolEdits }]));
-        for (const symbol of targets) edits[symbol] = { ...edits[symbol], [vary.key]: tickerValueInputText(vary.key, value) };
-        next.push({ key: valueIndex === 0 ? run.key : newRunKey(), symbols: [...run.symbols], edits });
-      });
-    });
-    if (next.length > backtestMaxRunsPerBatch) return;
-    setRuns(next);
-    // The list is used: cleared, so its preview does not read as a new one.
-    setVary((previous) => ({ ...previous, text: "" }));
-  };
-
-  /** What Start sends: one run (the form as it was) or every run; every start is a batch. Null while a run cannot be asked for yet. */
+  /** What Start sends: every start is a batch of one run. Null while the session cannot be asked for yet. */
   const batchRequest = ((): CreateBacktestBatchRequest | null => {
-    if (!several) {
-      if (requestText === null) return null;
-      const { symbols: runSymbols, symbolSettings: runSymbolSettings, startingValue: runStartingValue, settingsSource: runSettingsSource, name: runName, startDate: runStart, endDate: runEnd, tablesMode: runTables, overrides: runOverrides } = JSON.parse(requestText) as CreateBacktestSessionRequest;
-      return {
-        name: runName,
-        startDate: runStart,
-        endDate: runEnd,
-        tablesMode: runTables,
-        overrides: runOverrides,
-        ...(runSettingsSource ? { settingsSource: runSettingsSource } : {}),
-        ...(runStartingValue !== undefined ? { startingValue: runStartingValue } : {}),
-        runs: [{ symbols: runSymbols, ...(runSymbolSettings ? { symbolSettings: runSymbolSettings } : {}) }],
-      };
-    }
-    if (runs.length === 0 || runs.some((run) => !runRequestTexts[run.key])) return null;
-    return {
-      name: name.trim(),
-      startDate: sessionStartDate,
-      endDate: sessionEndDate,
-      tablesMode,
-      overrides,
-      settingsSource,
-      runs: runs.map((run, runIndex) => {
-        const { symbolSettings: runSymbolSettings } = JSON.parse(runRequestTexts[run.key]!) as CreateBacktestSessionRequest;
-        return { label: runDescriptions[runIndex], symbols: run.symbols, ...(runSymbolSettings ? { symbolSettings: runSymbolSettings } : {}) };
-      }),
-    };
+    if (requestText === null) return null;
+    const { symbols: runSymbols, startingValue: runStartingValue, name: runName, startDate: runStart, endDate: runEnd, tablesMode: runTables, overrides: runOverrides } = JSON.parse(requestText) as CreateBacktestSessionRequest;
+    return { name: runName, startDate: runStart, endDate: runEnd, tablesMode: runTables, overrides: runOverrides, startingValue: runStartingValue, runs: [{ symbols: runSymbols }] };
   })();
 
   const handleSubmit = (event: FormEvent) => {
@@ -740,7 +424,7 @@ export function NewBacktestSessionPage() {
       }
     } catch (err) {
       setConfirmOpen(false);
-      setSubmitError(refusalText(err, several ? "Could not start the runs." : "Could not start the session."));
+      setSubmitError(refusalText(err, "Could not start the session."));
       setSubmitting(false);
     }
   };
@@ -834,25 +518,14 @@ export function NewBacktestSessionPage() {
   const resetAllSettings = () =>
     setValueByPath((previous) => ({
       ...initialValueByPath(template, null),
-      [decisionMakerPath]: previous[decisionMakerPath] ?? String(decisionMakerRow?.now ?? "rules"),
+      [decisionMakerPath]: previous[decisionMakerPath] ?? String(decisionMakerRow?.now ?? "vol_farmer_v4"),
       ...(showVolFarmerV2TickersCard && previous[allowancePath] !== undefined ? { [allowancePath]: previous[allowancePath] } : {}),
     }));
-  const splitShare = startingValue > 0 && selectedFiles.length > 0 ? startingValue / selectedFiles.length : null;
   const unavailableDecisionMakers = decisionMakerRow ? describeUnavailableChoices(decisionMakerRow) : [];
 
-  // The confirmation: what changed for the whole session (the decision maker is a fact of its own), the per-ticker rows
-  // marked as reaching every ticker.
-  const perTickerPaths = new Set(allRows.filter((row) => row.perTicker).map((row) => row.path));
-  const changes = [
-    ...describeOverrideChanges(
-      overridesWithout(overrides, (path) => path !== decisionMakerPath && !(perTickerPots && perTickerPaths.has(path))),
-      template.settings,
-      template.rows,
-    ),
-    ...(perTickerPots ? describeOverrideChanges(overridesWithout(overrides, (path) => perTickerPaths.has(path)), template.settings, template.rows).map((change) => `${change} · every ticker`) : []),
-  ];
-  const currentResolution: BacktestTickerResolution | null = currentResult?.resolvedBySymbol ? { capital: currentResult.capital, bySymbol: currentResult.resolvedBySymbol } : null;
-  const confirmProblems = perTickerPots && currentResolution ? tickerProblemsOf(currentResolution) : [];
+  // The confirmation: what changed for the session (the decision maker is a fact of its own).
+  const { decisionMaker: _decisionMaker, ...overridesBesideDecisionMaker } = overrides;
+  const changes = describeOverrideChanges(overridesBesideDecisionMaker, template.settings, template.rows);
   const positionsField = (
     <div className="col-12 col-lg-6">
       <label htmlFor="backtest-session-positions" className="form-label">
@@ -873,6 +546,7 @@ export function NewBacktestSessionPage() {
       {sourceSessionId && !sourceSession && <div className="iorio-note-amber mb-2">The session to copy could not be loaded; the form starts from the lab's settings.</div>}
       {retiredTickerPotNote && <div className="iorio-note-amber mb-2">{retiredTickerPotNote}</div>}
       {retiredResearchNote && <div className="iorio-note-amber mb-2">{retiredResearchNote}</div>}
+      {retiredDecisionMakerNote && <div className="iorio-note-amber mb-2">{retiredDecisionMakerNote}</div>}
       <form onSubmit={handleSubmit} noValidate>
         <BacktestCard title="Session" className="mb-3">
           <div className="card-body">
@@ -889,11 +563,6 @@ export function NewBacktestSessionPage() {
                   value={name}
                   onChange={(event) => setName(event.target.value)}
                 />
-                {several && (
-                  <div className="text-secondary mt-1" style={{ fontSize: "0.75rem" }}>
-                    the batch's name; each run's session is named "{name.trim() || "…"} · Run 1 · …"
-                  </div>
-                )}
               </div>
               <div className="col-12 col-lg-6">
                 <label htmlFor="backtest-session-decision-maker" className="form-label">
@@ -919,109 +588,30 @@ export function NewBacktestSessionPage() {
                   ))}
                 </div>
               </div>
-              {perTickerPots && (
-                <div className="col-12 col-lg-6">
-                  <div className="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-2">
-                    <span className="form-label mb-0" id="backtest-session-runs-label">
-                      Runs
-                    </span>
-                    <BacktestSegmentedSwitch options={runsModeOptions} value={runsMode} onChange={changeRunsMode} ariaLabel="Runs" className="backtest-switch-wrap" />
-                  </div>
-                  <div className="text-secondary" style={{ fontSize: "0.75rem" }}>
-                    {several
-                      ? `up to ${backtestMaxRunsPerBatch} runs, each its own account: every run shares the period and the Settings, each has its own tickers and ticker values`
-                      : "one account with every picked ticker"}
-                  </div>
-                </div>
-              )}
               <div className="col-12 col-lg-6">
-                {several ? (
-                  <>
-                    <span className="form-label" id="backtest-session-capital-label">
-                      Capital
-                    </span>
-                    <input id="backtest-session-capital" type="text" className="form-control" aria-labelledby="backtest-session-capital-label" value="Each run: the sum of its pots" disabled readOnly />
-                    <div className="text-secondary mt-1" style={{ fontSize: "0.75rem" }}>
-                      each run's capital shows on its band (Runs, below)
-                    </div>
-                  </>
-                ) : perTickerPots ? (
-                  <>
-                    <div className="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-2">
-                      <span className="form-label mb-0" id="backtest-session-capital-label">
-                        Capital
-                      </span>
-                      <BacktestSegmentedSwitch options={capitalModeOptions} value={capitalMode} onChange={changeCapitalMode} ariaLabel="Capital" className="backtest-switch-wrap" />
-                    </div>
-                    <div className="input-group">
-                      <span className="input-group-text">$</span>
-                      {capitalMode === "split" ? (
-                        <input
-                          id="backtest-session-capital"
-                          type="text"
-                          inputMode="numeric"
-                          className={`form-control font-mono${submitAttempted && !(startingValue > 0) ? " is-invalid" : ""}`}
-                          aria-labelledby="backtest-session-capital-label"
-                          aria-describedby="backtest-session-capital-hint"
-                          value={startingValueText}
-                          onChange={(event) => setStartingValueText(event.target.value)}
-                          onBlur={() => startingValue > 0 && setStartingValueText(formatNumber(startingValue))}
-                        />
-                      ) : (
-                        <input
-                          id="backtest-session-capital"
-                          type="text"
-                          className="form-control font-mono"
-                          aria-labelledby="backtest-session-capital-label"
-                          aria-describedby="backtest-session-capital-hint"
-                          value={latestResolution?.capital ? formatNumber(latestResolution.capital) : ""}
-                          placeholder="—"
-                          disabled
-                          readOnly
-                        />
-                      )}
-                    </div>
-                    <div id="backtest-session-capital-hint" className="text-secondary mt-1" style={{ fontSize: "0.75rem" }}>
-                      {capitalMode === "split"
-                        ? `split equally: ${splitShare !== null ? `${formatCurrency(splitShare, 0)} for each of ${pluralizeCount(selectedFiles.length, "ticker")}` : "a dollar amount above 0"}`
-                        : latestResolution?.capital
-                          ? "the sum of the tickers' pots (Tickers, below); each ticker's weight is its pot ÷ this"
-                          : "the sum of the tickers' pots, once every ticker has one"}
-                    </div>
-                  </>
-                ) : (
-                  <>
-                    <label htmlFor="backtest-session-capital" className="form-label">
-                      Starting account value
-                    </label>
-                    <div className="input-group">
-                      <span className="input-group-text">$</span>
-                      <input
-                        id="backtest-session-capital"
-                        type="text"
-                        inputMode="numeric"
-                        className={`form-control font-mono${submitAttempted && !(startingValue > 0) ? " is-invalid" : ""}`}
-                        value={startingValueText}
-                        onChange={(event) => setStartingValueText(event.target.value)}
-                        onBlur={() => startingValue > 0 && setStartingValueText(formatNumber(startingValue))}
-                      />
-                    </div>
-                  </>
-                )}
+                <label htmlFor="backtest-session-capital" className="form-label">
+                  Starting account value
+                </label>
+                <div className="input-group">
+                  <span className="input-group-text">$</span>
+                  <input
+                    id="backtest-session-capital"
+                    type="text"
+                    inputMode="numeric"
+                    className={`form-control font-mono${submitAttempted && !(startingValue > 0) ? " is-invalid" : ""}`}
+                    value={startingValueText}
+                    onChange={(event) => setStartingValueText(event.target.value)}
+                    onBlur={() => startingValue > 0 && setStartingValueText(formatNumber(startingValue))}
+                  />
+                </div>
               </div>
-              {!perTickerPots && positionsField}
+              {positionsField}
               <div className="col-12 col-lg-6">
                 <BacktestSymbolPicker files={files} selected={symbols} onChange={changeSymbols} invalid={submitAttempted && (selectedFiles.length === 0 || !coverage)} />
-                {several ? (
+                {selectedFiles.length > 1 && (
                   <div className="text-secondary mt-1" style={{ fontSize: "0.75rem" }}>
-                    the tickers the runs can use: a symbol picked here goes into every run, and can be removed from a run on its band
+                    {symbols.join(", ")} share one book: one cash balance, one account.
                   </div>
-                ) : (
-                  selectedFiles.length > 1 && (
-                    <div className="text-secondary mt-1" style={{ fontSize: "0.75rem" }}>
-                      {symbols.join(", ")} share one book: one cash balance, one account.
-                    </div>
-                  )
                 )}
               </div>
               <div className="col-12 col-lg-6">
@@ -1136,8 +726,6 @@ export function NewBacktestSessionPage() {
                   )}
                 </div>
               </div>
-              {/* With the Baseline deciding, Runs takes Positions' place beside Capital (mockup 2026-10-17); Positions moves here. */}
-              {perTickerPots && positionsField}
             </div>
             <fieldset className="row g-3 mt-1">
               <legend className="visually-hidden">History tables</legend>
@@ -1167,25 +755,6 @@ export function NewBacktestSessionPage() {
           </div>
         </BacktestCard>
 
-        {showTickersCard && (
-          <BacktestTickerValuesCard
-            symbols={symbols}
-            settingsSource={settingsSource}
-            onSettingsSourceChange={setSettingsSource}
-            capitalMode={capitalMode}
-            splitStartingValue={startingValue}
-            resolution={latestResolution}
-            resolving={estimatePending}
-            resolutionError={estimateIsCurrent ? estimate.error : null}
-            edits={tickerEdits}
-            onEditChange={changeTickerValue}
-            onEditBlur={settleTickerValue}
-            onResetGroup={resetTickerGroup}
-            onResetAll={() => setTickerEdits({})}
-            settingRows={allRows}
-          />
-        )}
-
         {showVolFarmerV2TickersCard && allowanceRow && (
           <BacktestVolFarmerV2TickersCard
             symbols={symbols}
@@ -1199,47 +768,9 @@ export function NewBacktestSessionPage() {
           />
         )}
 
-        {showRunsCard && (
-          <BacktestRunsCard
-            runs={runs.map(
-              (run, runIndex): BacktestRunView => ({
-                key: run.key,
-                runNumber: runIndex + 1,
-                rows: runRows[runIndex]!,
-                description: runDescriptions[runIndex]!,
-                capital: runResolutions[run.key]?.capital ?? null,
-                missingSymbols: orderedSymbols.filter((symbol) => !run.symbols.includes(symbol)),
-                resolving: runRequestTexts[run.key] !== null && runRequestTexts[run.key] !== undefined && !runEstimateIsCurrent(run.key),
-                error: runEstimateIsCurrent(run.key) ? (runEstimates[run.key]?.error ?? null) : null,
-                runProblems: run.symbols.length === 0 ? [`Run ${runIndex + 1} has no tickers: add one or remove the run.`] : [],
-              }),
-            )}
-            maxRuns={backtestMaxRunsPerBatch}
-            settingsSource={settingsSource}
-            onSettingsSourceChange={setSettingsSource}
-            vary={vary}
-            varyTickers={orderedSymbols}
-            varyPreview={varyPreview}
-            onVaryChange={setVary}
-            onApplyVary={applyVary}
-            onEditChange={changeRunValue}
-            onEditBlur={settleRunValue}
-            onResetGroup={resetRunGroup}
-            onDuplicate={duplicateRun}
-            onRemove={removeRun}
-            onRemoveTicker={removeRunTicker}
-            onAddTicker={addRunTicker}
-            anyEdit={runs.some((run) => hasTickerEdits(run.edits))}
-            onResetAll={() => setRuns((previous) => previous.map((run) => ({ ...run, edits: {} })))}
-            settingRows={allRows}
-          />
-        )}
-
         <BacktestCard
           title="Settings"
-          description={
-            changedCount === 0 ? `the lab's settings as they are now${several ? " · for every run" : ""}` : `${pluralizeCount(changedCount, "setting")} changed for ${several ? "every run" : "this session"}`
-          }
+          description={changedCount === 0 ? `the lab's settings as they are now: every session's, then ${decisionMakerLabel[decisionMaker]}'s own` : `${pluralizeCount(changedCount, "setting")} changed for this session`}
           actions={
             changedCount > 0 && (
               <button type="button" className="btn btn-outline-secondary" onClick={resetAllSettings}>
@@ -1252,7 +783,6 @@ export function NewBacktestSessionPage() {
           <BacktestSettingsTable
             rows={settingRows}
             valueByPath={valueByPath}
-            showPerTicker={showTickersCard || showRunsCard}
             onValueChange={(path, value) => setValueByPath((previous) => ({ ...previous, [path]: value }))}
             onReset={(path) => {
               const row = template.rows.find((candidate) => candidate.path === path);
@@ -1286,50 +816,21 @@ export function NewBacktestSessionPage() {
             Cancel
           </Link>
           <button type="submit" className="btn btn-primary">
-            {several && runs.length > 1 ? `Start ${runs.length} runs` : "Start session"}
+            Start session
           </button>
         </div>
         <div className="text-secondary text-end mt-2" style={{ fontSize: "0.78rem" }}>
-          {several && runs.length > 1 ? "The runs queue and run in the background; their progress shows on the batch's page." : "Runs in the background; its progress shows under Background jobs."}
+          Runs in the background; its progress shows under Background jobs.
         </div>
       </form>
-      {confirmOpen && several && (
-        <ConfirmModal
-          title={runs.length > 1 ? `Start ${runs.length} runs?` : "Start this session?"}
-          size="lg"
-          danger={false}
-          confirmLabel={runs.length > 1 ? `Start ${runs.length} runs` : "Start session"}
-          confirming={submitting}
-          confirmDisabled={runsEstimatePending || runs.some((_, runIndex) => runProblems(runIndex).length > 0)}
-          onConfirm={() => void startSession()}
-          onCancel={() => setConfirmOpen(false)}
-          message={
-            <BacktestStartBatchConfirmBody
-              name={name.trim()}
-              startDate={sessionStartDate}
-              endDate={sessionEndDate}
-              periodNote={periodNote}
-              decisionMakerLabel={decisionMakerRow?.choices?.find((choice) => choice.value === decisionMaker)?.label ?? decisionMaker}
-              settingsSource={settingsSource}
-              tablesMode={tablesMode}
-              runs={runs.map((run, runIndex) => ({ runNumber: runIndex + 1, symbols: run.symbols, description: runDescriptionsBesideTickers[runIndex]!, capital: runResolutions[run.key]?.capital ?? null }))}
-              maxParallel={overview?.maxParallelSessions ?? null}
-              estimatePending={runsEstimatePending}
-              changes={changes}
-              warnings={runs.flatMap((run, runIndex) => (runEstimateIsCurrent(run.key) ? (runEstimates[run.key]?.result?.warnings ?? []).map((warning) => `Run ${runIndex + 1}: ${warning}`) : []))}
-              problems={runs.flatMap((_, runIndex) => runProblems(runIndex))}
-            />
-          }
-        />
-      )}
-      {confirmOpen && !several && (
+      {confirmOpen && (
         <ConfirmModal
           title="Start this session?"
           size="lg"
           danger={false}
           confirmLabel="Start session"
           confirming={submitting}
-          confirmDisabled={estimatePending || confirmProblems.length > 0}
+          confirmDisabled={estimatePending}
           onConfirm={() => void startSession()}
           onCancel={() => setConfirmOpen(false)}
           message={
@@ -1339,18 +840,12 @@ export function NewBacktestSessionPage() {
               endDate={sessionEndDate}
               periodNote={periodNote}
               decisionMakerLabel={decisionMakerRow?.choices?.find((choice) => choice.value === decisionMaker)?.label ?? decisionMaker}
-              perTickerPots={perTickerPots}
-              capitalMode={capitalMode}
               startingValue={startingValue}
               symbolCount={selectedFiles.length}
-              settingsSource={settingsSource}
               tablesMode={tablesMode}
-              resolution={currentResolution}
-              estimatePending={estimatePending}
               estimateError={estimateIsCurrent ? estimate.error : null}
               changes={changes}
               warnings={currentResult?.warnings ?? []}
-              problems={confirmProblems}
             />
           }
         />

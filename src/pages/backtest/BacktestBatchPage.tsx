@@ -16,7 +16,7 @@ import { useTickingNow } from "../../hooks/useTickingNow";
 import { useMediaQuery } from "../../hooks/useMediaQuery";
 import { useTheme } from "../../hooks/useTheme";
 import { pluralizeCount } from "../../lib/formatters";
-import { decidedByPhrase, spyBuyAndHoldColorByTheme, tablesModeLabel } from "../../lib/backtestPresentation";
+import { decidedByPhrase, decisionMakerCanRun, spyBuyAndHoldColorByTheme, tablesModeLabel } from "../../lib/backtestPresentation";
 import { batchBuyAndHoldColor, batchBuyAndHoldLineStyles, batchRunColor, batchSpyBaseline, buyAndHoldGroups, describeRunDifferences, parseTickedRuns, storedRunValues } from "../../lib/backtestBatchPresentation";
 
 const pageTitle = "Backtest batch";
@@ -102,9 +102,11 @@ export function BacktestBatchPage() {
 
   const headerActions = (
     <div className="d-flex flex-wrap align-items-center justify-content-end gap-2">
-      <Link to={`/backtest/new?fromBatch=${batch.id}`} className="btn btn-outline-secondary">
-        Run again with changes
-      </Link>
+      {decisionMakerCanRun(batch.decisionMaker) && (
+        <Link to={`/backtest/new?fromBatch=${batch.id}`} className="btn btn-outline-secondary">
+          Run again with changes
+        </Link>
+      )}
       <button type="button" className="btn btn-outline-danger" onClick={() => setConfirmingDelete(true)}>
         Delete batch
       </button>

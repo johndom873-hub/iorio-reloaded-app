@@ -37,20 +37,6 @@ export interface AnalysisVolFarmerV4Values {
   [key: string]: unknown;
 }
 
-export interface BacktestLabTickerOverrides {
-  symbol: string;
-  potDollars: number | null;
-  ladderSharesPct: number | null;
-  ladderRungs: number | null;
-  /** A fixed shock instead of the global shock rule. */
-  ladderShockPct: number | null;
-  minAbsDelta: number | null;
-  maxAbsDelta: number | null;
-  updatedAt: string;
-}
-
-export type BacktestLabTickerField = Exclude<keyof BacktestLabTickerOverrides, "symbol" | "updatedAt">;
-
 export interface AnalysisLabValues {
   settings: { volFarmerV4?: AnalysisVolFarmerV4Values; trading: { spreadCostChargedPct: number } & Record<string, unknown> } & Record<string, unknown>;
   defaultPotDollars: number;
@@ -621,17 +607,4 @@ export function previewBacktestLabSettings(body: { overrides?: unknown; defaultP
 /** The global values' history (the lab's own changes), newest first. */
 export function fetchBacktestLabGlobalAudit(): Promise<BacktestLabAuditRow[]> {
   return apiRequest<BacktestLabAuditRow[]>("/backtest/lab-settings/audit?symbol=");
-}
-
-export function fetchAllLabTickerOverrides(): Promise<BacktestLabTickerOverrides[]> {
-  return apiRequest<BacktestLabTickerOverrides[]>("/backtest/lab-ticker-overrides");
-}
-
-export function fetchLabTickerOverrides(symbol: string): Promise<{ symbol: string; overrides: BacktestLabTickerOverrides | null }> {
-  return apiRequest(`/backtest/lab-ticker-overrides/${encoded(symbol)}`);
-}
-
-/** Each field a number, or null for the global value again. */
-export function saveLabTickerOverrides(symbol: string, values: Partial<Record<BacktestLabTickerField, number | null>>): Promise<{ overrides: BacktestLabTickerOverrides | null; changes: BacktestLabChange[] }> {
-  return apiRequest(`/backtest/lab-ticker-overrides/${encoded(symbol)}`, { method: "PUT", body: JSON.stringify(values) });
 }

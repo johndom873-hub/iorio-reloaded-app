@@ -36,6 +36,7 @@ import {
   isBacktestJobActive,
   sessionDecisionMaker,
   decidedByPhrase,
+  decisionMakerCanRun,
   sessionSplitsNotePrefix,
   summarizeCycleTotals,
   tablesModeLabel,
@@ -140,9 +141,12 @@ export function BacktestSessionPage() {
               </span>
             ))}
             {changes.length === 0 && <span className="text-secondary" style={{ fontSize: "0.8rem" }}>Pluto's settings, unchanged</span>}
-            <Link to={`/backtest/new?from=${session.id}`} className="btn btn-outline-secondary">
-              Run again with changes
-            </Link>
+            {/* A retired decision maker's session stays readable, never run again. */}
+            {decisionMakerCanRun(decisionMaker) && (
+              <Link to={`/backtest/new?from=${session.id}`} className="btn btn-outline-secondary">
+                Run again with changes
+              </Link>
+            )}
             <button type="button" className="btn btn-outline-danger" disabled={displayStatus === "running" || displayStatus === "queued"} onClick={() => setConfirmingDelete(true)}>
               Delete
             </button>

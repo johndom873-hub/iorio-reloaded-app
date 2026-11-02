@@ -8,11 +8,7 @@ interface BacktestSettingsTableProps {
   valueByPath: Record<string, string>;
   onValueChange: (path: string, value: string) => void;
   onReset: (path: string) => void;
-  /** The Baseline deciding with per-ticker pots: the per-ticker rows say so, with a line on how they meet the Tickers card. */
-  showPerTicker?: boolean;
 }
-
-const perTickerExplanation = "A change here goes to every ticker, over its lab value; a value set under Tickers still wins.";
 
 /** What is off in a choice row (a choice that cannot be picked yet), under its select so it shows without opening the list. */
 function UnavailableChoicesHint({ row }: { row: BacktestSettingRow }) {
@@ -85,22 +81,6 @@ function ResetButton({ onReset }: { onReset: () => void }) {
   );
 }
 
-function PerTickerMark() {
-  return (
-    <div className="text-secondary fw-normal" style={{ fontSize: "0.75rem" }}>
-      per ticker
-    </div>
-  );
-}
-
-function PerTickerIntro() {
-  return (
-    <>
-      Rows marked <strong>per ticker</strong> can differ by ticker. {perTickerExplanation}
-    </>
-  );
-}
-
 function rowState(row: BacktestSettingRow, valueByPath: Record<string, string>, valueOf: (path: string) => string | undefined) {
   const value = valueByPath[row.path] ?? String(row.now);
   return {
@@ -118,16 +98,15 @@ function rowState(row: BacktestSettingRow, valueByPath: Record<string, string>, 
 /** "Lab now" vs "This session": rows, groups, labels, choices and notes come from the API's settings template (the backtesting
  *  lab's values). A table on wider screens; on a phone each setting stacks (label and note, then the lab's value and the
  *  session's input). */
-export function BacktestSettingsTable({ rows, valueByPath, onValueChange, onReset, showPerTicker = false }: BacktestSettingsTableProps) {
+export function BacktestSettingsTable({ rows, valueByPath, onValueChange, onReset }: BacktestSettingsTableProps) {
   const isPhone = useMediaQuery("(max-width: 767px)");
   const groups = groupBacktestSettingRows(rows);
   const nowByPath = new Map(rows.map((row) => [row.path, settingInputText(row.now)]));
   const valueOf = (path: string) => valueByPath[path] ?? nowByPath.get(path);
-  const perTickerGroup = groups.find((entry) => entry.rows.some((row) => row.perTicker))?.group;
-  /** The Steady Stake's and Pluto's sections each start at their first group, under the section's title and note. */
+  /** Each decision maker's section starts at its first group, under the section's title and note; the rows every session reads open the table. */
   const sectionStartingAt = (group: string) => {
     const entry = groups.find((candidate) => candidate.group === group);
-    if (!entry || entry.section === "baseline_wheel" || groups.find((candidate) => candidate.section === entry.section)?.group !== group) return null;
+    if (!entry || entry.section === "every_session" || groups.find((candidate) => candidate.section === entry.section)?.group !== group) return null;
     return entry.section;
   };
 
@@ -147,11 +126,6 @@ export function BacktestSettingsTable({ rows, valueByPath, onValueChange, onRese
             <div className="backtest-settings-group-band px-3 py-1">
               <h4 className="subheader mb-0">{group}</h4>
             </div>
-            {showPerTicker && group === perTickerGroup && (
-              <div className="px-3 py-2 border-bottom text-secondary" style={{ fontSize: "0.78rem" }}>
-                <PerTickerIntro />
-              </div>
-            )}
             {groupRows.map((row) => {
               const { value, changed, invalid, note, notAppliedNote, isChoice } = rowState(row, valueByPath, valueOf);
               const control = row.editable ? (
@@ -164,7 +138,6 @@ export function BacktestSettingsTable({ rows, valueByPath, onValueChange, onRese
               return (
                 <div key={row.path} className={`px-3 py-2 border-bottom${changed ? " backtest-setting-changed-block" : ""}`}>
                   <div className="fw-medium">{row.label}</div>
-                  {showPerTicker && row.perTicker && <PerTickerMark />}
                   {note && (
                     <div className="text-secondary" style={{ fontSize: "0.75rem", lineHeight: 1.35 }}>
                       {note}
@@ -240,13 +213,6 @@ export function BacktestSettingsTable({ rows, valueByPath, onValueChange, onRese
                 <span className="subheader">{group}</span>
               </td>
             </tr>,
-            showPerTicker && group === perTickerGroup && (
-              <tr key={`group-${group}-per-ticker`}>
-                <td colSpan={5} className="text-secondary" style={{ fontSize: "0.78rem", whiteSpace: "normal" }}>
-                  <PerTickerIntro />
-                </td>
-              </tr>
-            ),
             ...groupRows.map((row) => {
               const { value, changed, invalid, note, notAppliedNote, isChoice } = rowState(row, valueByPath, valueOf);
               const nowClassName = isChoice ? "text-secondary backtest-setting-choice-now" : "font-mono text-secondary text-nowrap";
@@ -254,8 +220,7 @@ export function BacktestSettingsTable({ rows, valueByPath, onValueChange, onRese
                 <tr key={row.path} className={changed ? "backtest-setting-changed" : undefined}>
                   <td className="fw-medium">
                     {row.label}
-                    {showPerTicker && row.perTicker && <PerTickerMark />}
-                  </td>
+                    </td>
                   <td className={nowClassName}>{formatSettingRowValue(row, row.now)}</td>
                   <td>
                     {row.editable ? (

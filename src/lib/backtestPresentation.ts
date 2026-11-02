@@ -1294,6 +1294,9 @@ export const decisionMakerLabel: Record<BacktestDecisionMaker, string> = { rules
 /** "decided by the rules", in a session's subtitle. */
 export const decidedByPhrase: Record<BacktestDecisionMaker, string> = { rules: "the rules", llm: "the AI model", baseline: "the CC + Put Ladder", steady_stake: "the Steady Stake", vol_farmer: "the original Vol Farmer", vol_farmer_v2: "Vol Farmer v2", vol_farmer_v3: "Vol Farmer v3", vol_farmer_v4: "Vol Farmer v4" };
 
+/** The decision makers a session can still run (the others retired: the rules and the AI model, the original Vol Farmer on 30 Oct 2026, the CC + Put Ladder, v2 and v3 on 2 Nov 2026). */
+export const decisionMakerCanRun = (decisionMaker: BacktestDecisionMaker): boolean => decisionMaker === "steady_stake" || decisionMaker === "vol_farmer_v4";
+
 /** Vol Farmer v2, v3 and v4: v3 runs on v2's values (its tickers' allocations and excess allowance too), with its first position rebalanced; v4 as v3 on values of its own. */
 export const runsVolFarmerV2Steps = (decisionMaker: BacktestDecisionMaker): boolean => decisionMaker === "vol_farmer_v2" || decisionMaker === "vol_farmer_v3" || decisionMaker === "vol_farmer_v4";
 
@@ -1405,7 +1408,7 @@ export const decisionMakerHint: Record<BacktestDecisionMaker, string> = {
   vol_farmer: "shares, a Covered Call and a long Put that hedges them, all unwound when the stock reaches the Call's strike",
   vol_farmer_v2: "two Covered Calls at different levels: the second from Puts sold on the rest of the pot after a fall, a LEAPS Call once the price is half a Step below the second's break-even",
   vol_farmer_v3: "Vol Farmer v2 on its values, its first position bought or sold back to its share of the pot between its Calls once off it by more than the Rebalancing band",
-  vol_farmer_v4: "Vol Farmer v3 on values of its own, by default the research's best run: 80% of each ticker's pot in shares, rebalanced, with Calls up to |delta| 0.5 expiring at the day's close",
+  vol_farmer_v4: "80% of each ticker's pot in shares, rebalanced, with Calls up to |delta| 0.5 expiring at the day's close",
 };
 
 /** Where a ticker's value came from, as its badge reads (lowest layer first: the order a reset walks back down). */

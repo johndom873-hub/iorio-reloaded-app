@@ -537,10 +537,10 @@ export interface BacktestSettingChoice {
   unavailableReason?: string;
 }
 
-export type BacktestSettingGroup = "How the session runs" | "Put ladder" | "Calls and Covered Calls" | "Contract choice" | "Entry filters" | "Exits" | "Hedge" | "Steady Stake" | "Original Vol Farmer (retired)" | "Vol Farmer v2" | "Vol Farmer v3" | "Vol Farmer v4";
+export type BacktestSettingGroup = "How the session runs" | "Looks and entries" | "Put ladder" | "Calls and Covered Calls" | "Contract choice" | "Entry filters" | "Exits" | "Hedge" | "Steady Stake" | "Original Vol Farmer (retired)" | "Vol Farmer v2" | "Vol Farmer v3" | "Vol Farmer v4";
 
-/** "baseline_wheel": rows the CC + Put Ladder reads; the others: rows only that decision maker reads. */
-export type BacktestSettingSection = "baseline_wheel" | "steady_stake" | "vol_farmer" | "vol_farmer_v2" | "vol_farmer_v3" | "vol_farmer_v4";
+/** "every_session": rows every session reads; "baseline_wheel": rows the retired CC + Put Ladder read; the others: rows only that decision maker reads. */
+export type BacktestSettingSection = "every_session" | "baseline_wheel" | "steady_stake" | "vol_farmer" | "vol_farmer_v2" | "vol_farmer_v3" | "vol_farmer_v4";
 
 /** A row's value against another row's: `oneOf` / `noneOf` its choice values, or a number `above`. */
 export interface BacktestSettingCondition {
@@ -572,8 +572,6 @@ export interface BacktestSettingRow {
   note: string | null;
   /** The values a "choice" row can take, the default first. */
   choices?: BacktestSettingChoice[];
-  /** One of the baseline values that can differ by ticker in a session of per-ticker pots (backtestTickerBaselineKeys). */
-  perTicker?: true;
 }
 
 export interface BacktestSettingsTemplate {
@@ -602,11 +600,11 @@ export interface CreateBacktestSessionResponse {
  */
 export interface BacktestSessionEstimateResponse {
   warnings: string[];
-  /** The session's capital: the starting value given, else Σ the pots; null while a ticker has no pot. */
-  capital: number | null;
+  /** The session's capital: the starting value given. */
+  capital: number;
   bookMode: BacktestBookMode;
-  /** Each ticker of a "pots" request as it resolves; null when the tickers share the session's settings. */
-  resolvedBySymbol: Record<string, BacktestSymbolResolution> | null;
+  /** Was each ticker of a CC + Put Ladder session of per-ticker pots (retired 2026-11-02); always null now. */
+  resolvedBySymbol: null;
 }
 
 export interface CreateBacktestSessionRequest {
@@ -617,39 +615,22 @@ export interface CreateBacktestSessionRequest {
   symbol?: string;
   startDate: string;
   endDate: string;
-  /**
-   * The session's capital. With the baseline deciding, it is split equally into the tickers' pots and can be left out:
-   * each ticker's pot is then its symbolSettings pot, else its lab pot ("per_ticker"), else the lab's default pot. Never
-   * together with a pot in symbolSettings. Required with the rules or the AI model.
-   */
-  startingValue?: number;
+  /** The session's capital: one account the tickers share. */
+  startingValue: number;
   tablesMode: BacktestTablesMode;
   overrides: BacktestSettingsOverrides;
-  /** The baseline only: each ticker's saved lab values ("per_ticker", the default) or the lab's global values for all. */
-  settingsSource?: BacktestSettingsSource;
-  /** The baseline only: values for some of the session's tickers, over every other source. */
-  symbolSettings?: Record<string, BacktestTickerValues>;
 }
 
-/** A batch takes 1 to this many runs (Marcelo 2026-10-17). */
-export const backtestMaxRunsPerBatch = 9;
-
-/**
- * POST /backtest/batches: the New session form's request. Every run shares the batch's name, the period, the tables, the
- * settings and where ticker values come from; each run has its own symbols and ticker values. Two or more runs need the
- * baseline as decision maker and each run's pots (no starting value). A run's session is named "<name> · Run 2 · <label>"
- * (one run: the name), cut to 120 characters.
- */
+/** POST /backtest/batches: the New session form's request, a batch of one run; its session takes the batch's name. */
 export interface CreateBacktestBatchRequest {
   name: string;
   startDate: string;
   endDate: string;
   tablesMode: BacktestTablesMode;
   overrides: BacktestSettingsOverrides;
-  settingsSource?: BacktestSettingsSource;
-  /** One run only: as CreateBacktestSessionRequest's. */
-  startingValue?: number;
-  runs: { label?: string; symbols: string[]; symbolSettings?: Record<string, BacktestTickerValues> }[];
+  startingValue: number;
+  /** One run: several were the CC + Put Ladder's (retired 2026-11-02); past batches keep theirs. */
+  runs: [{ label?: string; symbols: string[] }];
 }
 
 export interface BacktestBatchSummary {

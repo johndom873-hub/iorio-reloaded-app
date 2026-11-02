@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { BacktestSettingRow, BacktestSettingSection } from "../../api/backtest";
+import type { BacktestDecisionMaker, BacktestSettingRow, BacktestSettingSection } from "../../api/backtest";
 import {
-  fetchAllLabTickerOverrides,
   fetchBacktestLabGlobalAudit,
   fetchBacktestLabSettings,
   previewBacktestLabSettings,
@@ -10,22 +9,33 @@ import {
   type BacktestLabAuditRow,
   type BacktestLabChangePreview,
   type BacktestLabSettingsView,
-  type BacktestLabTickerOverrides,
 } from "../../api/backtestAnalysis";
-import { buildBacktestOverrides, formatSettingRowValue, gradeOptions, isSettingChanged, settingInputText, settingValueProblem, tradeGradeLabel } from "../../lib/backtestPresentation";
+import { buildBacktestOverrides, decisionMakerLabel, formatSettingRowValue, gradeOptions, isSettingChanged, settingInputText, settingValueProblem, tradeGradeLabel } from "../../lib/backtestPresentation";
 import { ApiError } from "../../api/client";
-import { backtestSettingGroupSummary, backtestSettingLines, backtestSettingSectionTitles, groupBacktestSettingRows, labelSettingPaths, labTickersKeepingTheirOwn, backtestSettingSectionNotes, settingAppliesNow, settingPathsInMessage, type BacktestSettingLine } from "../../lib/backtestSettingGroups";
-import { formatBrowserClockTime, formatBrowserDayMonth, formatCurrency, formatDayMonthYear, formatNumber, pluralizeCount } from "../../lib/formatters";
+import {
+  backtestSettingGroupSummary,
+  backtestSettingLines,
+  backtestSettingSectionNotes,
+  backtestSettingSectionTitles,
+  groupBacktestSettingRows,
+  isRetiredBacktestSettingSection,
+  labelSettingPaths,
+  retiredSectionNames,
+  settingAppliesNow,
+  settingPathsInMessage,
+  type BacktestSettingLine,
+} from "../../lib/backtestSettingGroups";
+import { formatBrowserClockTime, formatBrowserDayMonth, formatCurrency, pluralizeCount } from "../../lib/formatters";
 import { ConfirmModal } from "../ConfirmModal";
-import { DataTable, type DataTableColumn } from "../DataTable/DataTable";
 import { Spinner } from "../Spinner";
 import { CheckIcon, CollapseButton, InfoIcon, ToggleHeader } from "../pluto/plutoBits";
 import "../pluto/PlutoPage.css";
 
-// The Backtesting screen's Lab settings (mockup approved 2026-10-19): every setting a new session and the Analyse window
-// start from, in Pluto's settings editor (section nav, one group open at a time, unsaved changes highlighted, review before
-// saving). Separate from Pluto's live settings; tickers keep their own overrides. Saving marks out of date the stored
-// analyses whose values it changes (Vol Farmer v4, Marcelo 2026-11-01); Data files' Re-run out of date runs them again.
+// The Backtesting screen's Lab settings (mockups approved 2026-10-19, without the CC + Put Ladder, v2 and v3 2026-11-02):
+// every setting a new session and the Analyse window start from, in Pluto's settings editor (section nav, one group open
+// at a time, unsaved changes highlighted, review before saving): the rows every session reads, the Steady Stake's and
+// Vol Farmer v4's. Separate from Pluto's live settings. Saving marks out of date the stored analyses whose values it
+// changes (Vol Farmer v4, Marcelo 2026-11-01); Data files' Re-run out of date runs them again.
 
 const potPath = "lab.defaultPotDollars";
 const spreadCostPath = "trading.spreadCostChargedPct";
@@ -38,16 +48,16 @@ interface EditorGroup {
   rows: BacktestSettingRow[];
 }
 
-/** The default pot as a settings row, so it reads and validates like the template's rows. */
+/** The analysis's starting account as a settings row, so it reads and validates like the template's rows. */
 function potRow(lab: BacktestLabSettingsView): BacktestSettingRow {
-  return { path: potPath, group: "How the session runs", section: "baseline_wheel", label: "Default pot", unit: "dollars", now: lab.defaultPotDollars, editable: true, note: "the dollars each ticker starts with in a backtest and its analysis, unless the ticker has its own" };
+  return { path: potPath, group: "How the session runs", section: "every_session", label: "Analysis starting account", unit: "dollars", now: lab.defaultPotDollars, editable: true, note: "the account each ticker's analysis starts with; a trial in the Analyse window can try another" };
 }
 
-/** Lab defaults first (the pot and the fill's spread share), then the template's groups. */
+/** Lab defaults first (the analysis's account and the fill's spread share), then the template's groups that can still change a session. */
 function editorGroups(lab: BacktestLabSettingsView): EditorGroup[] {
   const spreadRow = lab.rows.find((row) => row.path === spreadCostPath);
-  const defaults: EditorGroup = { key: labDefaultsKey, title: "Lab defaults", section: "baseline_wheel", rows: [potRow(lab), ...(spreadRow ? [spreadRow] : [])] };
-  const rest = groupBacktestSettingRows(lab.rows.filter((row) => row.path !== spreadCostPath)).map((group) => ({ key: group.group, title: group.group, section: group.section, rows: group.rows }));
+  const defaults: EditorGroup = { key: labDefaultsKey, title: "Lab defaults", section: "every_session", rows: [potRow(lab), ...(spreadRow ? [spreadRow] : [])] };
+  const rest = groupBacktestSettingRows(lab.rows.filter((row) => row.path !== spreadCostPath && !isRetiredBacktestSettingSection(row.section))).map((group) => ({ key: group.group, title: group.group, section: group.section, rows: group.rows }));
   return [defaults, ...rest];
 }
 
@@ -104,7 +114,6 @@ function FieldInput({ row, value, onChange, id }: { row: BacktestSettingRow; val
 /** stacked: opened over another window (the Analyse window), so above its backdrop. */
 export function BacktestLabSettingsModal({ onClose, stacked = false }: { onClose: () => void; stacked?: boolean }) {
   const [lab, setLab] = useState<BacktestLabSettingsView | null>(null);
-  const [overrides, setOverrides] = useState<BacktestLabTickerOverrides[] | null>(null);
   const [audit, setAudit] = useState<BacktestLabAuditRow[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [valueByPath, setValueByPath] = useState<Record<string, string>>({});
@@ -118,13 +127,11 @@ export function BacktestLabSettingsModal({ onClose, stacked = false }: { onClose
   const [confirmingDiscard, setConfirmingDiscard] = useState(false);
   const [showAllAudit, setShowAllAudit] = useState(false);
   const groupRefs = useRef<Record<string, HTMLElement | null>>({});
-  const overridesRef = useRef<HTMLDivElement | null>(null);
 
   const load = useCallback(async () => {
     try {
-      const [nextLab, nextOverrides, nextAudit] = await Promise.all([fetchBacktestLabSettings(), fetchAllLabTickerOverrides(), fetchBacktestLabGlobalAudit()]);
+      const [nextLab, nextAudit] = await Promise.all([fetchBacktestLabSettings(), fetchBacktestLabGlobalAudit()]);
       setLab(nextLab);
-      setOverrides(nextOverrides);
       setAudit(nextAudit);
       setValueByPath(initialValues(editorGroups(nextLab)));
       setLoadError(null);
@@ -146,7 +153,7 @@ export function BacktestLabSettingsModal({ onClose, stacked = false }: { onClose
       groups.flatMap((group) =>
         group.rows.flatMap((row) => {
           const text = textOf(row.path);
-          if (row.path === potPath) return Number(text.trim()) > 0 ? [] : ["Default pot needs a dollar amount above 0."];
+          if (row.path === potPath) return Number(text.trim()) > 0 ? [] : ["Analysis starting account needs a dollar amount above 0."];
           const problem = row.editable ? settingValueProblem(row, text) : null;
           return problem ? [problem] : [];
         }),
@@ -191,8 +198,19 @@ export function BacktestLabSettingsModal({ onClose, stacked = false }: { onClose
     if (path === potPath) return formatCurrency(Number(text), 0);
     return formatSettingRowValue(row, row.unit === "choice" || row.unit === "grade" || row.unit === "time" ? text : Number(text));
   };
-  const formatAuditValue = (field: string, value: string | null) => (value === null ? "—" : shownValue(field, value));
-  const rowLabel = (field: string) => rowByPath.get(field)?.label ?? field;
+  // The history holds the retired decision makers' changes too: their rows are no longer edited here, but still named.
+  const retiredRowByPath = useMemo(() => new Map((lab?.rows ?? []).filter((row) => isRetiredBacktestSettingSection(row.section)).map((row) => [row.path, row] as const)), [lab]);
+  const formatAuditValue = (field: string, value: string | null) => {
+    if (value === null) return "—";
+    if (field === "decisionMaker") return `${decisionMakerLabel[value as BacktestDecisionMaker] ?? value}${rowByPath.get(field)?.choices?.some((choice) => choice.value === value) ? "" : " (retired)"}`;
+    const retiredRow = retiredRowByPath.get(field);
+    return retiredRow ? formatSettingRowValue(retiredRow, retiredRow.unit === "choice" || retiredRow.unit === "grade" || retiredRow.unit === "time" ? value : Number(value)) : shownValue(field, value);
+  };
+  const rowLabel = (field: string) => {
+    const retiredRow = retiredRowByPath.get(field);
+    if (retiredRow) return `${retiredSectionNames[retiredRow.section] ?? retiredRow.group} · ${retiredRow.label} (retired)`;
+    return rowByPath.get(field)?.label ?? field;
+  };
   const groupTitleOf = (field: string) => groups.find((group) => group.rows.some((row) => row.path === field))?.title ?? "";
 
   const requestBody = () => {
@@ -268,14 +286,13 @@ export function BacktestLabSettingsModal({ onClose, stacked = false }: { onClose
   };
 
   const groupSummary = (group: EditorGroup) =>
-    group.key === labDefaultsKey ? `${shownValue(potPath)} pot · spread cost ${shownValue(spreadCostPath)}` : backtestSettingGroupSummary(group.rows[0]!.group, textOf, (path) => shownValue(path));
+    group.key === labDefaultsKey ? `${shownValue(potPath)} analysis account · spread cost ${shownValue(spreadCostPath)}` : backtestSettingGroupSummary(group.rows[0]!.group, textOf, (path) => shownValue(path));
 
   const fieldLine = (line: BacktestSettingLine, index: number) => {
     const lead = line.rows[0]!;
     const lineChanged = line.rows.filter((row) => changedPaths.includes(row.path));
     const applies = line.rows.every((row) => settingAppliesNow(row, textOf));
     const notes = [...new Set(line.rows.map((row) => row.note).filter((note): note is string => note !== null))];
-    const keptBy = overrides ? labTickersKeepingTheirOwn(lead.path, overrides) : [];
     return (
       <div key={lead.path} className={`pm-field${index === 0 ? " first" : ""}${lineChanged.length > 0 ? " changed" : ""}`}>
         <div>
@@ -308,14 +325,6 @@ export function BacktestLabSettingsModal({ onClose, stacked = false }: { onClose
             <FieldInput row={lead} id={fieldId(lead.path)} value={textOf(lead.path)} onChange={(value) => setValue(lead.path, value)} />
           )}
           {lineChanged.length > 0 && <div className="pm-was">was {lineChanged.map((row) => shownValue(row.path, settingInputText(row.now))).join(" / ")}</div>}
-          {keptBy.length > 0 && (
-            <div className="lab-settings-kept">
-              {keptBy.length === 1 ? "1 ticker keeps its own" : `${keptBy.length} tickers keep their own`} ·{" "}
-              <button type="button" className="pm-link small" onClick={() => overridesRef.current?.scrollIntoView({ behavior: "smooth", block: "start" })}>
-                {listSymbols(keptBy)}
-              </button>
-            </div>
-          )}
         </div>
       </div>
     );
@@ -356,26 +365,11 @@ export function BacktestLabSettingsModal({ onClose, stacked = false }: { onClose
     );
   };
 
-  const sections: BacktestSettingSection[] = ["baseline_wheel", "steady_stake", "vol_farmer_v2", "vol_farmer_v3", "vol_farmer_v4"];
-
-  const overrideColumns: DataTableColumn<BacktestLabTickerOverrides>[] = [
-    { key: "ticker", header: "Ticker", freezeOnPhone: true, render: (row) => <span className="fw-bold">{row.symbol}</span> },
-    { key: "pot", header: "Pot", align: "right", render: (row) => (row.potDollars === null ? <span className="text-secondary">lab</span> : formatCurrency(row.potDollars, 0)) },
-    { key: "shares", header: "Shares", align: "right", render: (row) => (row.ladderSharesPct === null ? <span className="text-secondary">lab</span> : `${formatNumber(row.ladderSharesPct)}%`) },
-    { key: "rungs", header: "Rungs", align: "right", render: (row) => (row.ladderRungs === null ? <span className="text-secondary">lab</span> : formatNumber(row.ladderRungs)) },
-    { key: "shock", header: "Fixed shock", align: "right", render: (row) => (row.ladderShockPct === null ? <span className="text-secondary">lab</span> : `${formatNumber(row.ladderShockPct)}%`) },
-    {
-      key: "delta",
-      header: "|delta|",
-      align: "right",
-      render: (row) => (row.minAbsDelta === null && row.maxAbsDelta === null ? <span className="text-secondary">lab</span> : `${row.minAbsDelta?.toFixed(2) ?? "lab"}–${row.maxAbsDelta?.toFixed(2) ?? "lab"}`),
-    },
-    { key: "saved", header: "Saved", cellClassName: "font-mono text-secondary text-nowrap", render: (row) => formatDayMonthYear(row.updatedAt.slice(0, 10)) },
-  ];
+  const sections: BacktestSettingSection[] = ["every_session", "steady_stake", "vol_farmer_v4"];
 
   let body;
   if (loadError) body = <div className="alert alert-danger">{loadError}</div>;
-  else if (!lab || !overrides || !audit) {
+  else if (!lab || !audit) {
     body = (
       <div className="d-flex justify-content-center py-5">
         <Spinner label="Loading the lab settings" />
@@ -500,17 +494,6 @@ export function BacktestLabSettingsModal({ onClose, stacked = false }: { onClose
               </div>
             </div>
           </div>
-        </div>
-        <div className="lab-settings-overrides" ref={overridesRef}>
-          <DataTable
-            tableId="backtest-lab-overrides"
-            columns={overrideColumns}
-            rows={overrides}
-            rowKey={(row) => row.symbol}
-            toolbar={<h3 className="pm-card-t">Ticker overrides <span className="pm-group-sum">· tickers that keep their own value when the lab's changes; saved in each ticker's Analyse window</span></h3>}
-            emptyMessage="No ticker has its own lab values. They are saved in each ticker's Analyse window."
-            dense
-          />
         </div>
       </>
     );

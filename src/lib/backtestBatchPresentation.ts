@@ -1,5 +1,5 @@
 import { backtestTickerBaselineKeys, type BacktestBatchRun, type BacktestMetrics, type BacktestSessionBatchRef, type BacktestSessionListItem, type BacktestTickerValueKey } from "../api/backtest";
-import { backtestSeriesColorsByTheme, buyAndHoldColorByTheme, buyAndHoldLineStyle, formatAbsDelta, parseDollarAmountText, tickerValueTextProblem } from "./backtestPresentation";
+import { backtestSeriesColorsByTheme, buyAndHoldColorByTheme, buyAndHoldLineStyle, formatAbsDelta } from "./backtestPresentation";
 import { formatCurrency } from "./formatters";
 
 // Backtest batches (mockup approved by Marcelo 2026-10-17, https://claude.ai/artifact/9rs1PXZGBnkphdMu2wc6yf): up to 9 runs on
@@ -200,66 +200,4 @@ export function describeBatchRunStates(runs: BacktestSessionListItem[]): string 
     .filter((label) => counts.has(label))
     .map((label) => `${counts.get(label)} ${label}`)
     .join(" · ");
-}
-
-// ---- Make runs from a list of values (D5) ----
-
-export type BatchVaryKey = "potDollars" | "ladderSharesPct" | "ladderRungs" | "ladderShockMinPct" | "ladderShockMaxPct" | "ladderShockPct" | "minAbsDelta" | "maxAbsDelta";
-
-export const batchVaryChoices: { key: BatchVaryKey; label: string }[] = [
-  { key: "potDollars", label: "Pot $" },
-  { key: "ladderSharesPct", label: "Share level" },
-  { key: "ladderRungs", label: "Rungs" },
-  { key: "ladderShockMinPct", label: "Shock at least" },
-  { key: "ladderShockMaxPct", label: "Shock at most" },
-  { key: "ladderShockPct", label: "Fixed shock" },
-  { key: "minAbsDelta", label: "|delta| from" },
-  { key: "maxAbsDelta", label: "|delta| to" },
-];
-
-/** What Make runs is set to: a value, a ticker or every ticker ("*"), and the list as typed. */
-export interface BatchVary {
-  key: BatchVaryKey;
-  ticker: string;
-  text: string;
-}
-
-/**
- * The typed list: values separated by commas ("30, 50, 70"); pots by a comma and a space, or a semicolon, since a pot's
- * thousands take commas ("100,000, 150,000"). Each value once, checked as a typed ticker value; a pot as a whole dollar
- * amount. The ranges are checked by the estimate, run by run.
- */
-export function parseVaryValues(key: BatchVaryKey, text: string): { values: number[] } | { error: string } {
-  const tokens = (key === "potDollars" ? text.split(/,\s+|;|\s+(?=\$?\d)/) : text.split(/[,;\s]+/)).map((token) => token.trim()).filter((token) => token !== "");
-  if (tokens.length === 0) return { error: "Give one or more values, separated by commas." };
-  const values: number[] = [];
-  for (const token of tokens) {
-    const problem = tickerValueTextProblem(key, token);
-    if (problem) return { error: `${token}: ${problem}` };
-    const value = key === "potDollars" ? parseDollarAmountText(token) : Number(token);
-    if (!values.includes(value)) values.push(value);
-  }
-  return { values };
-}
-
-/** The run's tickers Make runs changes: the chosen one or every one, among those whose values use the key (the shock range only with the shock from history, the fixed shock only with a fixed shock). */
-export function batchVaryTargets(run: BatchRunValues, vary: Pick<BatchVary, "key" | "ticker">): string[] {
-  return [...run.symbols].sort().filter((symbol) => (vary.ticker === "*" || vary.ticker === symbol) && keysInUse(run.values[symbol] ?? {}).includes(vary.key));
-}
-
-/** What Make runs would do, before it is pressed: the button's label, a sentence, and whether it can (9 runs at most). */
-export function describeVaryPreview(runs: BatchRunValues[], vary: BatchVary, maxRuns: number): { ok: boolean; label: string; text: string } {
-  const parsed = parseVaryValues(vary.key, vary.text);
-  const label = batchVaryChoices.find((choice) => choice.key === vary.key)!.label;
-  if ("error" in parsed) return { ok: false, label: "Make runs", text: parsed.error };
-  const affected = runs.filter((run) => batchVaryTargets(run, vary).length > 0).length;
-  const withTicker = vary.ticker === "*" ? "" : ` with ${vary.ticker}`;
-  if (affected === 0) return { ok: false, label: "Make runs", text: `No run${withTicker} uses ${label.toLowerCase()}.` };
-  const count = parsed.values.length;
-  const everyRun = affected === runs.length;
-  if (count === 1) return { ok: true, label: "Set it", text: `Sets ${label.toLowerCase()} to ${vary.text.trim()} on ${everyRun ? (runs.length === 1 ? "the run" : "every run") : `${affected} runs`}${withTicker}.` };
-  const total = runs.length - affected + affected * count;
-  const sentence = `${everyRun ? (runs.length === 1 ? "The run" : "Each run") : `${affected} of the runs`}${withTicker} ${everyRun ? "becomes" : "become"} ${count} runs, one per value: ${runs.length} → ${total}.`;
-  if (total > maxRuns) return { ok: false, label: `Make ${total} runs`, text: `${sentence} That is more than ${maxRuns}: remove runs or give fewer values.` };
-  return { ok: true, label: `Make ${total} runs`, text: sentence };
 }

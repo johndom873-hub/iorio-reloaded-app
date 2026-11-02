@@ -1,5 +1,4 @@
-import type { BacktestSettingCondition, BacktestSettingGroup, BacktestSettingRow, BacktestSettingSection } from "../api/backtest";
-import type { BacktestLabTickerField, BacktestLabTickerOverrides } from "../api/backtestAnalysis";
+import type { BacktestDecisionMaker, BacktestSettingCondition, BacktestSettingGroup, BacktestSettingRow, BacktestSettingSection } from "../api/backtest";
 import { decisionMakerLabel } from "./backtestPresentation";
 
 // The settings' groups as the API's template lays them out (settingsTemplate.ts backtestSettingLayout), for the lab's
@@ -7,29 +6,38 @@ import { decisionMakerLabel } from "./backtestPresentation";
 // each group's one-line summary while it is closed.
 
 export const backtestSettingSectionTitles: Record<BacktestSettingSection, string> = {
-  baseline_wheel: "Used by the CC + Put Ladder",
+  every_session: "Every session",
+  baseline_wheel: "Used by the CC + Put Ladder (retired)",
   steady_stake: "Used by the Steady Stake",
   vol_farmer: "Used by the original Vol Farmer (retired)",
-  vol_farmer_v2: "Used by Vol Farmer v2 and v3",
-  vol_farmer_v3: "Used by Vol Farmer v3",
+  vol_farmer_v2: "Used by Vol Farmer v2 and v3 (retired)",
+  vol_farmer_v3: "Used by Vol Farmer v3 (retired)",
   vol_farmer_v4: "Used by Vol Farmer v4",
 };
 
-export const steadyStakeSectionNote = "Used only when the decision maker is the Steady Stake. None of these change a CC + Put Ladder session; the ladder's values don't change a Steady Stake session.";
+/** The note under a section's title; the rows every session reads open the table and have none. */
+export const backtestSettingSectionNotes: Record<BacktestSettingSection, string | null> = {
+  every_session: null,
+  baseline_wheel: "Used only by the CC + Put Ladder, retired on 2 Nov 2026: its past sessions read them.",
+  steady_stake: "Used only when the decision maker is the Steady Stake. None of these change a Vol Farmer v4 session.",
+  vol_farmer: "Used only by the original Vol Farmer, retired on 30 Oct 2026: its past sessions read them.",
+  vol_farmer_v2: "Used only by Vol Farmer v2 and v3, retired on 2 Nov 2026: their past sessions read them.",
+  vol_farmer_v3: "Used only by Vol Farmer v3, retired on 2 Nov 2026: its past sessions read them.",
+  vol_farmer_v4: "Used only when the decision maker is Vol Farmer v4. None of these change a Steady Stake session.",
+};
 
-export const volFarmerSectionNote = "Used only by the original Vol Farmer, retired on 30 Oct 2026: its past sessions read them. None of these change any session that can still be run.";
+/** The retired decision makers' sections (the original Vol Farmer 2026-10-30; the CC + Put Ladder, v2 and v3 2026-11-02): no setting there changes a session that can still run. */
+const retiredBacktestSettingSections: ReadonlySet<BacktestSettingSection> = new Set(["baseline_wheel", "vol_farmer", "vol_farmer_v2", "vol_farmer_v3"]);
+export const isRetiredBacktestSettingSection = (section: BacktestSettingSection) => retiredBacktestSettingSections.has(section);
 
-export const volFarmerV2SectionNote = "Used only when the decision maker is Vol Farmer v2 or v3. None of these change any other session.";
+/** The section of the decision maker's own rows; the rules and the AI model had none. */
+export function sessionSettingSectionOf(decisionMaker: BacktestDecisionMaker): BacktestSettingSection | null {
+  const sections: Partial<Record<BacktestDecisionMaker, BacktestSettingSection>> = { baseline: "baseline_wheel", steady_stake: "steady_stake", vol_farmer: "vol_farmer", vol_farmer_v2: "vol_farmer_v2", vol_farmer_v3: "vol_farmer_v3", vol_farmer_v4: "vol_farmer_v4" };
+  return sections[decisionMaker] ?? null;
+}
 
-export const volFarmerV3SectionNote = "Used only when the decision maker is Vol Farmer v3, beside Vol Farmer v2's values. None of these change any other session.";
-
-export const volFarmerV4SectionNote = "Used only when the decision maker is Vol Farmer v4: every value it reads is its own, so Vol Farmer v2's and v3's values don't change it, nor these any other session.";
-
-/** The note under a section's title; the CC + Put Ladder's section opens the table and has none. */
-export const backtestSettingSectionNotes: Record<BacktestSettingSection, string | null> = { baseline_wheel: null, steady_stake: steadyStakeSectionNote, vol_farmer: volFarmerSectionNote, vol_farmer_v2: volFarmerV2SectionNote, vol_farmer_v3: volFarmerV3SectionNote, vol_farmer_v4: volFarmerV4SectionNote };
-
-/** The original Vol Farmer's section, retired with it (Marcelo 2026-10-30): no setting there changes a session that can still run. */
-export const isRetiredBacktestSettingSection = (section: BacktestSettingSection) => section === "vol_farmer";
+/** A retired section's name before a row's label in the lab's history: "Vol Farmer v2 · LEAPS |delta| (retired)". */
+export const retiredSectionNames: Partial<Record<BacktestSettingSection, string>> = { baseline_wheel: "CC + Put Ladder", vol_farmer: "Original Vol Farmer", vol_farmer_v2: "Vol Farmer v2", vol_farmer_v3: "Vol Farmer v3" };
 
 export interface BacktestSettingRowGroup {
   group: BacktestSettingGroup;
@@ -129,7 +137,9 @@ const fewerPurchasesSummary: Record<string, (text: (path: string) => string, sho
 export function backtestSettingGroupSummary(group: BacktestSettingGroup, text: (path: string) => string, shown: (path: string) => string): string {
   switch (group) {
     case "How the session runs":
-      return [decisionMakerLabel[text("decisionMaker") as keyof typeof decisionMakerLabel] ?? shown("decisionMaker"), text("baseline.looks") === "every_look" ? "every look" : "once a day", ({ covered_call: "Covered Call entry", higher_yield: "put or Covered Call entry, whichever ranks higher" } as Record<string, string>)[text("baseline.entry")] ?? "Cash-Secured Put entry"].join(" · ");
+      return [decisionMakerLabel[text("decisionMaker") as keyof typeof decisionMakerLabel] ?? shown("decisionMaker"), `looks ${text("pluto.windowStartEt")}–${text("pluto.windowEndEt")} ET`].join(" · ");
+    case "Looks and entries":
+      return [text("baseline.looks") === "every_look" ? "every look" : "once a day", ({ covered_call: "Covered Call entry", higher_yield: "put or Covered Call entry, whichever ranks higher" } as Record<string, string>)[text("baseline.entry")] ?? "Cash-Secured Put entry"].join(" · ");
     case "Put ladder": {
       const puts = text("baseline.putsWhenNoCall");
       if (puts === "off") return "no ladder";
@@ -237,24 +247,8 @@ function volFarmerV3Summary(text: (path: string) => string, shown: (path: string
   ].join(" · ");
 }
 
-/** The lab values each ticker override stands in for (labSettingsStore.ts globalPathsByTickerField): a fixed shock replaces the whole shock rule. */
-const labPathsByTickerField: Record<BacktestLabTickerField, readonly string[]> = {
-  potDollars: ["lab.defaultPotDollars"],
-  ladderSharesPct: ["baseline.ladderSharesPct"],
-  ladderRungs: ["baseline.ladderRungs"],
-  ladderShockPct: ["baseline.ladderShock", "baseline.ladderShockPct", "baseline.ladderShockMinPct", "baseline.ladderShockMaxPct", "baseline.ladderShockNoHistoryPct", "baseline.ladderShockLookbackYears"],
-  minAbsDelta: ["baseline.minAbsDelta"],
-  maxAbsDelta: ["baseline.maxAbsDelta"],
-};
-
-/** The tickers whose own value replaces this lab value. */
-export function labTickersKeepingTheirOwn(path: string, overrides: readonly BacktestLabTickerOverrides[]): string[] {
-  const fields = (Object.keys(labPathsByTickerField) as BacktestLabTickerField[]).filter((field) => labPathsByTickerField[field].includes(path));
-  return overrides.filter((row) => fields.some((field) => row[field] !== null)).map((row) => row.symbol);
-}
-
 const settingPathPattern = /\b(?:baseline|pluto|trading|policy|model|lab|fixed|steadyStake|volFarmer|volFarmerV2|volFarmerV3|volFarmerV4)\.[A-Za-z]+\b|\bkellyFraction\b|\bdecisionMaker\b/g;
-const labOnlyLabels: Record<string, string> = { "lab.defaultPotDollars": "Default pot" };
+const labOnlyLabels: Record<string, string> = { "lab.defaultPotDollars": "Analysis starting account" };
 
 /** A refusal from the API with each setting key ("baseline.putsWhenNoCall") written as its label ("Puts when no call is sold"). */
 export function labelSettingPaths(message: string, rows: readonly BacktestSettingRow[]): string {
