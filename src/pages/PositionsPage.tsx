@@ -173,8 +173,9 @@ export function PositionsPage() {
   // Stock price for a row: the underlying's live last trade, requested for every position whatever its strategy (the
   // P&L stream prices it beside the legs). Falls back to the stock leg's market value / shares, then to the option
   // tick's underlying price, only while that quote has not arrived. `failed` = the stream this depends on errored
-  // (show a dash, not a spinner).
-  function resolvePrice(row: Position): { price: number | null; failed: boolean } {
+  // (show a dash, not a spinner). When the row's P&L comes from the nightly snapshot, `price` is the close that P&L was
+  // measured at (so Price, Break-Even's colour and Cycle P&L agree with it) and `latestPrice` the live one shown below it.
+  function resolvePrice(row: Position): { price: number | null; failed: boolean; latestPrice: number | null; closeAsOfDate: string | null } {
     const optionLeg = row.legs.find((leg) => leg.legType === "option" && !leg.exitAt);
     const stockShares = row.legs.filter((leg) => leg.legType === "stock" && !leg.exitAt).reduce((sum, leg) => sum + leg.quantity, 0);
     const stockMarketValue = unrealizedPnlByPositionId[row.id]?.stockMarketValue ?? null;
@@ -184,26 +185,29 @@ export function PositionsPage() {
     // Everything this row waits on has answered (or errored) and there is still no price: show a dash, not a spinner.
     const dataArrived = row.id in unrealizedPnlByPositionId && (optionLeg ? optionLeg.id in greeksByLegId : true);
     const streamsFailed = optionLeg ? greeksFetchFailed && unrealizedPnlFetchFailed : unrealizedPnlFetchFailed;
-    return { price, failed: price === null && (dataArrived || streamsFailed) };
+    const closeAsOf = positionPnlUnderlyingCloseAsOf(row, unrealizedPnlByPositionId);
+    if (closeAsOf !== null) return { price: closeAsOf, failed: false, latestPrice: price, closeAsOfDate: positionPnlAsOfDate(row, unrealizedPnlByPositionId) };
+    return { price, failed: price === null && (dataArrived || streamsFailed), latestPrice: null, closeAsOfDate: null };
   }
 
   // Cycle P&L for a row: the ticker's cycle with THIS row's price and each open option position's live unrealized premium
   // P&L swapped in (see liveCyclePnl). Any mark that isn't available stays at the stored value (last daily close / nightly
-  // snapshot), shown with an "As of" date only when the row has no price at all -- the same fallback the other P&L columns use.
+  // snapshot), shown with an "As of" date when the row has no price at all or its price is the snapshot's close -- the same
+  // fallback the other P&L columns use.
   function resolveCyclePnl(row: Position): { state: "loading" } | { state: "unavailable"; reason: string } | { state: "ready"; value: number; storedAsOf: string | null } {
     if (cycleMarksFetchFailed) return { state: "unavailable", reason: "Failed to load cycle data" };
     if (cycleMarksBySymbol === null) return { state: "loading" };
     const marks = cycleMarksBySymbol[row.symbol];
     if (!marks) return { state: "unavailable", reason: "No open cycle for this symbol" };
     if (marks.dataFlags.length > 0) return { state: "unavailable", reason: `Cycle data is inconsistent: ${marks.dataFlags.join("; ")}` };
-    const { price } = resolvePrice(row);
+    const { price, closeAsOfDate } = resolvePrice(row);
     const liveUnrealizedPremiumByPositionId: Record<string, number> = {};
     for (const position of positions) {
       if (position.symbol !== row.symbol || !(position.id in marks.optionMarks)) continue;
       const unrealizedPremiumPnl = unrealizedPnlByPositionId[position.id]?.unrealizedPremiumPnl;
       if (unrealizedPremiumPnl !== null && unrealizedPremiumPnl !== undefined) liveUnrealizedPremiumByPositionId[position.id] = unrealizedPremiumPnl;
     }
-    return { state: "ready", value: liveCyclePnl(marks, price, liveUnrealizedPremiumByPositionId), storedAsOf: price === null ? marks.markDate : null };
+    return { state: "ready", value: liveCyclePnl(marks, price, liveUnrealizedPremiumByPositionId), storedAsOf: price === null ? marks.markDate : closeAsOfDate };
   }
 
   // P(Δ) of the row's open short option from the live greeks; null while they load or when there is no short option.
@@ -305,19 +309,17 @@ export function PositionsPage() {
         "Current stock price. Greyed out when the market is closed: the last daily close (hover for its date). When the row's P&L comes from the nightly snapshot, the close it was measured at, with the latest price below it",
       align: "right",
       render: (row) => {
-        const { price, failed } = resolvePrice(row);
-        const pnlAsOfDate = positionPnlAsOfDate(row, unrealizedPnlByPositionId);
-        const closeAsOf = positionPnlUnderlyingCloseAsOf(row, unrealizedPnlByPositionId);
-        // P&L from the nightly snapshot: show the close it was measured at, so Price and P&L agree; the latest price goes below.
-        if (pnlAsOfDate && closeAsOf !== null) {
+        const { price, failed, latestPrice, closeAsOfDate } = resolvePrice(row);
+        // P&L from the nightly snapshot: the close it was measured at, with the latest price below.
+        if (closeAsOfDate && price !== null) {
           return (
             <>
-              <TooltipSpan text={`Close on ${formatDate(pnlAsOfDate)}, the price this row's P&L is measured at`}>{formatCurrency(closeAsOf, 2)}</TooltipSpan>
-              {price !== null && (
+              <TooltipSpan text={`Close on ${formatDate(closeAsOfDate)}, the price this row's P&L is measured at`}>{formatCurrency(price, 2)}</TooltipSpan>
+              {latestPrice !== null && (
                 <div className="small text-secondary text-nowrap">
                   latest{" "}
-                  <FlashingNumber value={price} precision={2}>
-                    {formatCurrency(price, 2)}
+                  <FlashingNumber value={latestPrice} precision={2}>
+                    {formatCurrency(latestPrice, 2)}
                   </FlashingNumber>
                 </div>
               )}
