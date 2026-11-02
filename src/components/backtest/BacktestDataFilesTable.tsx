@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState, type FormEvent } from "react";
+import { IconPlayerPlay, IconRefresh, IconTrash } from "@tabler/icons-react";
 import { useNavigate } from "react-router-dom";
 import { errorMessage } from "../../api/client";
 import { backtestMaxSymbolsPerSession, deleteBacktestDataFile, resumeBacktestJob, startBacktestDownload, type BacktestDataFileSummary, type BacktestJobView, type BacktestTickerSuitability } from "../../api/backtest";
@@ -341,18 +342,23 @@ export function BacktestDataFilesTable({ files, jobs, suitabilityBySymbol, onFil
       key: "splits",
       header: "Splits",
       headerClassName: "data-table-column-gap",
-      headerTitle: "Stock splits found in the file's period (new shares per old share, from the first day on the new scale). IBKR's bars are split-adjusted and the option prices are as traded, so a session puts each day's prices on that day's traded scale.",
-      cellClassName: "font-mono text-nowrap data-table-column-gap",
+      headerTitle: "Stock splits found in the file's period; point at the count for each one (new shares per old share, from the first day on the new scale). IBKR's bars are split-adjusted and the option prices are as traded, so a session puts each day's prices on that day's traded scale.",
+      align: "right",
+      cellClassName: "text-nowrap data-table-column-gap",
       render: (file) =>
         !file.detectedSplits ? (
           <TooltipSpan text={splitsNotAnalysedExplanation} className="text-secondary">
             {describeDetectedSplits(null)}
           </TooltipSpan>
+        ) : file.detectedSplits.length === 0 ? (
+          <span className="text-secondary">0</span>
         ) : (
-          <span className={file.detectedSplits.length === 0 ? "text-secondary" : undefined}>{describeDetectedSplits(file.detectedSplits)}</span>
+          <TooltipSpan text={describeDetectedSplits(file.detectedSplits)} multiline className="dotted-underline-label">
+            {formatNumber(file.detectedSplits.length)}
+          </TooltipSpan>
         ),
     },
-    { key: "size", header: "Size", align: "right", cellClassName: "text-nowrap", render: (file) => formatFileSize(file.sizeBytes) },
+    { key: "size", header: "Size", align: "right", headerClassName: "data-table-column-gap", cellClassName: "text-nowrap data-table-column-gap", render: (file) => formatFileSize(file.sizeBytes) },
     {
       key: "actions",
       header: "",
@@ -374,19 +380,27 @@ export function BacktestDataFilesTable({ files, jobs, suitabilityBySymbol, onFil
           <div className="d-flex justify-content-end gap-2">
             <button
               type="button"
-              className={`btn ${status === "stopped" ? "btn-outline-primary" : "btn-outline-secondary"} d-inline-flex align-items-center gap-1`}
+              className={`btn btn-icon ${status === "stopped" ? "btn-outline-primary" : "btn-outline-secondary"} backtest-icon-button`}
               disabled={downloadRequestRunning}
+              title={status === "stopped" ? `Resume ${file.symbol}'s download` : `Update ${file.symbol}: download the missing days`}
+              aria-label={status === "stopped" ? `Resume ${file.symbol}'s download` : `Update ${file.symbol}`}
               onClick={() => {
                 setRowError(null);
                 if (status === "stopped" && job) void resumeDownload(job);
                 else void requestDownload(file.symbol, file.firstDate ?? undefined, "row");
               }}
             >
-              {busy && <Spinner size="sm" />}
-              {status === "stopped" ? "Resume" : "Update"}
+              {busy ? <Spinner size="sm" /> : status === "stopped" ? <IconPlayerPlay size={16} aria-hidden="true" /> : <IconRefresh size={16} aria-hidden="true" />}
             </button>
-            <button type="button" className="btn btn-outline-danger" disabled={downloadRequestRunning || deleteRunning} onClick={() => setFileToDelete(file)}>
-              Delete
+            <button
+              type="button"
+              className="btn btn-icon btn-outline-danger backtest-icon-button"
+              disabled={downloadRequestRunning || deleteRunning}
+              title={`Delete ${file.symbol}'s data file`}
+              aria-label={`Delete ${file.symbol}'s data file`}
+              onClick={() => setFileToDelete(file)}
+            >
+              <IconTrash size={16} aria-hidden="true" />
             </button>
           </div>
         );

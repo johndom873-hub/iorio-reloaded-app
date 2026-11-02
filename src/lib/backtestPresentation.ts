@@ -296,7 +296,7 @@ export function describeSplitRatio(ratio: number): string {
 export function describeDetectedSplits(splits: BacktestDetectedSplit[] | null | undefined): string {
   if (!splits) return "not checked";
   if (splits.length === 0) return "none";
-  return splits.map((split) => `${describeSplitRatio(split.ratio)} · ${split.firstDayAfter}`).join(", ");
+  return splits.map((split) => `${describeSplitRatio(split.ratio)} from ${split.firstDayAfter}`).join("\n");
 }
 
 export const splitsNotAnalysedExplanation = "Not checked for this file's current data yet: checked after its next download, analysis or backtest session";
