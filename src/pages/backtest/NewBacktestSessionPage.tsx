@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { errorMessage } from "../../api/client";
+import { fetchTickerOwnValuesOverview, tickerOwnValueFields, type TickerOwnValuesOverview } from "../../api/backtestAnalysis";
+import { describeSeveralTickersWithOwnValues, describeTickerValuesDifferingFromLab, mergeTickerOwnValues } from "../../lib/analysisPresentation";
 import { isRetiredBacktestSettingSection, labelSettingPaths, sessionSettingSectionOf } from "../../lib/backtestSettingGroups";
 import {
   backtestMaxSymbolsPerSession,
@@ -94,6 +96,13 @@ function describeLooks(template: BacktestSettingsTemplate): string | null {
   return `${String(from.now)} – ${formatSettingRowValue(until, until.now)}`;
 }
 
+/** A ticker's own Vol Farmer v4 values as the Settings table's texts, by path ("volFarmerV4.callMinAbsDelta"); {} when it has none. */
+function ownValuesTextByPath(overview: TickerOwnValuesOverview | null, symbol: string): Record<string, string> {
+  const own = overview?.bySymbol[symbol]?.values;
+  if (!own) return {};
+  return Object.fromEntries(tickerOwnValueFields.flatMap((field) => (own[field] === null || own[field] === overview.labValues[field] ? [] : [[`volFarmerV4.${field}`, settingInputText(own[field])]])));
+}
+
 /** The form's values: the lab's, with a copied session's own changes when its decision maker can still run. */
 function initialValueByPath(template: BacktestSettingsTemplate, source: BacktestSessionDetail | null): Record<string, string> {
   const values: Record<string, string> = {};
@@ -135,7 +144,8 @@ function copiedVolFarmerV2Allocations(source: BacktestSessionDetail["session"], 
 // Steady Stake or Vol Farmer v4), the starting value, the history tables, and the lab's settings with the session's own
 // changes: the rows every session reads and the decision maker's own group. Every start is a batch of one run. "Run again
 // with changes" opens it with ?from=<sessionId> or ?fromBatch=<batchId>, prefilled from it; the Data files card's Backtest
-// opens it with ?symbols=<SYMBOL,SYMBOL>, those symbols picked.
+// opens it with ?symbols=<SYMBOL,SYMBOL>, those symbols picked. A session of one ticker with Vol Farmer v4 values of its own
+// (the Analyse window's) starts with them filled in; a session of several runs the lab's.
 export function NewBacktestSessionPage() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
@@ -178,6 +188,20 @@ export function NewBacktestSessionPage() {
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [created, setCreated] = useState<CreateBacktestBatchResponse | null>(null);
+  // The tickers' own Vol Farmer v4 values, and those filled in for the one ticker picked (cleared when it is dropped, unless edited).
+  const [tickerOwnValues, setTickerOwnValues] = useState<TickerOwnValuesOverview | null>(null);
+  const [tickerOwnValuesLoaded, setTickerOwnValuesLoaded] = useState(false);
+  const [filledOwnValues, setFilledOwnValues] = useState<Record<string, string>>({});
+  useEffect(() => {
+    let cancelled = false;
+    fetchTickerOwnValuesOverview()
+      .then((loaded) => !cancelled && setTickerOwnValues(loaded))
+      .catch(() => undefined)
+      .finally(() => !cancelled && setTickerOwnValuesLoaded(true));
+    return () => {
+      cancelled = true;
+    };
+  }, []);
   useEffect(() => {
     let cancelled = false;
     fetchBacktestSettingsTemplate()
@@ -226,7 +250,7 @@ export function NewBacktestSessionPage() {
   const coverage = sharedCoverage(selectedFiles);
 
   useEffect(() => {
-    if (initialized || !overview || !template || !sourceLoaded) return;
+    if (initialized || !overview || !template || !sourceLoaded || !tickerOwnValuesLoaded) return;
     const candidates = usableFiles(overview.files);
     const source = sourceSession?.session ?? null;
     const sourceSymbols = (source ? (source.symbols.length > 0 ? source.symbols : [source.symbol]) : []).filter((picked) =>
@@ -264,15 +288,27 @@ export function NewBacktestSessionPage() {
     const retiredResearch = source && runnable && runsVolFarmerV2Steps(sessionDecisionMaker(source)) ? describeRetiredVolFarmerV2Research(source.overrides) : [];
     if (retiredResearch.length > 0) setRetiredResearchNote(`This session used research settings the lab no longer has (${retiredResearch.join("; ")}). A rerun uses today's rules: the LEAPS bought once the price is half a Step below B-E2, one per holding, sold when the second position is called away; Calls and Puts on the next expiry only.`);
     const copiedAllowance: Record<string, string> = source && copiedAllocations?.allowanceText != null ? { [volFarmerExcessAllowancePathOf(sessionDecisionMaker(source))]: copiedAllocations.allowanceText } : {};
-    setValueByPath({ ...initialValueByPath(template, sourceSession), ...copiedAllowance });
+    // One ticker with values of its own, not a copied session (whose own changes already hold them): they are filled in.
+    const filled = !source && initialSymbols.length === 1 ? ownValuesTextByPath(tickerOwnValues, initialSymbols[0]!) : {};
+    setFilledOwnValues(filled);
+    setValueByPath({ ...initialValueByPath(template, sourceSession), ...copiedAllowance, ...filled });
     setInitialized(true);
-  }, [initialized, overview, template, sourceLoaded, sourceSession, sourceBatch, requestedSymbolsParam]);
+  }, [initialized, overview, template, sourceLoaded, sourceSession, sourceBatch, requestedSymbolsParam, tickerOwnValuesLoaded, tickerOwnValues]);
 
   /** Picking or dropping a symbol: custom dates become all that the picked files share; years narrowed by hand stay while they
    *  are still inside that period, and otherwise (or when they were all of the old period) become all of it. With no shared
    *  period the dates are cleared and the years cannot be picked. */
   const changeSymbols = (nextSymbols: string[]) => {
     setSymbols(nextSymbols);
+    // The values filled in for the ticker picked go back to the lab's when they are still as filled in; one ticker with
+    // values of its own gets them.
+    const nextFilled = nextSymbols.length === 1 ? ownValuesTextByPath(tickerOwnValues, nextSymbols[0]!) : {};
+    setValueByPath((previous) => {
+      const stillFilled = Object.entries(filledOwnValues).every(([path, text]) => previous[path] === text);
+      const cleared = stillFilled && template ? Object.fromEntries(Object.keys(filledOwnValues).map((path) => [path, settingInputText(template.rows.find((row) => row.path === path)?.now ?? previous[path] ?? "")])) : {};
+      return { ...previous, ...cleared, ...nextFilled };
+    });
+    setFilledOwnValues(nextFilled);
     // A dropped symbol takes its allocation with it (the API refuses one for a symbol not in the session).
     setAllocationTextBySymbol((previous) => Object.fromEntries(Object.entries(previous).filter(([symbol]) => nextSymbols.includes(symbol))));
     const nextCoverage = sharedCoverage(nextSymbols.map((picked) => files.find((file) => file.symbol === picked)).filter((file): file is BacktestDataFileSummary => file !== undefined));
@@ -537,6 +573,19 @@ export function NewBacktestSessionPage() {
       </div>
     </div>
   );
+  // The tickers' own Vol Farmer v4 values: those of the one ticker picked, or which of several have some.
+  const ownValuesDescription = (symbol: string) => (tickerOwnValues ? describeTickerValuesDifferingFromLab(mergeTickerOwnValues(tickerOwnValues.labValues, tickerOwnValues.bySymbol[symbol]?.values), tickerOwnValues.labValues) : "");
+  const symbolsWithOwnValues = symbols.filter((symbol) => ownValuesDescription(symbol) !== "");
+  let ownValuesNote: string | null = null;
+  if (decisionMaker === "vol_farmer_v4" && symbolsWithOwnValues.length > 0) {
+    if (symbols.length > 1) ownValuesNote = describeSeveralTickersWithOwnValues(symbolsWithOwnValues);
+    else {
+      const symbol = symbols[0]!;
+      const ownTexts = ownValuesTextByPath(tickerOwnValues, symbol);
+      const filledIn = Object.entries(ownTexts).every(([path, text]) => valueByPath[path] === text);
+      ownValuesNote = filledIn ? `Vol Farmer v4 runs ${symbol}'s own values (${ownValuesDescription(symbol)}), filled in under Settings.` : `${symbol} has its own values (${ownValuesDescription(symbol)}); this session's Settings differ from them.`;
+    }
+  }
   const periodNote = periodMode === "years" && fromYear !== null && toYear !== null ? (fromYear === toYear ? `whole year ${fromYear}` : `whole years ${fromYear} to ${toYear}`) : "custom dates";
 
   return (
@@ -611,6 +660,11 @@ export function NewBacktestSessionPage() {
                 {selectedFiles.length > 1 && (
                   <div className="text-secondary mt-1" style={{ fontSize: "0.75rem" }}>
                     {symbols.join(", ")} share one book: one cash balance, one account.
+                  </div>
+                )}
+                {ownValuesNote && (
+                  <div className="text-secondary mt-1" style={{ fontSize: "0.75rem" }}>
+                    {ownValuesNote}
                   </div>
                 )}
               </div>

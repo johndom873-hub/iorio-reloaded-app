@@ -1585,7 +1585,7 @@ const dataFileIssueLinesShown = 20;
  * Null when the file has none.
  */
 export function describeDataFileIssues(file: Pick<BacktestDataFileSummary, "issueDays" | "issues">): string | null {
-  if (file.issueDays === 0) return null;
+  if (file.issueDays === 0 && file.issues.farExpiries.length === 0) return null;
   const sections: { heading: string; lines: string[] }[] = [
     {
       heading: "Nothing stored yet (Update downloads these):",
@@ -1599,8 +1599,12 @@ export function describeDataFileIssues(file: Pick<BacktestDataFileSummary, "issu
       heading: "Could not be retrieved (every download tries again):",
       lines: file.issues.unavailable.map((entry) => `${entry.tradingDate}: ${entry.part ? `${dataFilePartLabels[entry.part]} ` : ""}(${entry.reason})`),
     },
+    {
+      heading: "Not counted: expirations more than 45 days out that ThetaData cannot serve (only a LEAPS choice on that day could differ):",
+      lines: file.issues.farExpiries.map((entry) => `${entry.tradingDate} · expiry ${entry.expiry}: ${describeDataFileParts(entry.parts)} (${entry.reason})`),
+    },
   ];
-  const blocks: string[] = [pluralizeCount(file.issueDays, "day") + " with issues"];
+  const blocks: string[] = [file.issueDays > 0 ? `${pluralizeCount(file.issueDays, "day")} with issues` : "No days with issues"];
   let shown = 0;
   let hidden = 0;
   for (const section of sections) {

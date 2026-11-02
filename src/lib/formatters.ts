@@ -179,6 +179,13 @@ export function formatDelta(delta: number | null | undefined): string {
   return delta.toFixed(2);
 }
 
+/** "0.30", "0.125": a |delta| to two places at least and four at most, zeros past the second dropped. */
+export function formatDeltaTrimmed(delta: number | null | undefined): string {
+  if (delta === null || delta === undefined || Number.isNaN(delta)) return "—";
+  const rounded = Number(delta.toFixed(4));
+  return Number(rounded.toFixed(2)) === rounded ? rounded.toFixed(2) : String(rounded);
+}
+
 // IBKR returns option expiries as "YYYYMMDD" (e.g. an order leg's expiry); the
 // rest of the app stores/sends dates as ISO "YYYY-MM-DD".
 export function ibkrExpiryToIsoDate(expiryYyyymmdd: string): string {

@@ -7,6 +7,7 @@ import { fetchAnalysesForTable, rerunOutOfDateAnalyses, type AnalysesForTable, t
 import { useIsAdmin } from "../../hooks/useAuth";
 import { formatBrowserClockTime, formatCurrency, formatDayMonth, formatFileSize, formatNumber, formatPercentage, formatRatio } from "../../lib/formatters";
 import { describeDataFileIssues, describeDetectedSplits, splitsNotAnalysedExplanation, suggestedSuitabilityLabel } from "../../lib/backtestPresentation";
+import { describeTickerValuesDifferingFromLab, mergeTickerOwnValues } from "../../lib/analysisPresentation";
 import { ConfirmModal } from "../ConfirmModal";
 import { DataTable, type DataTableColumn } from "../DataTable/DataTable";
 import { Spinner } from "../Spinner";
@@ -253,15 +254,27 @@ export function BacktestDataFilesTable({ files, jobs, suitabilityBySymbol, onFil
     {
       key: "symbol",
       header: "Symbol",
-      // The symbol opens the Analyse window (not the ticker modal): plain text until the file has a complete day.
-      render: (file) =>
-        file.firstDate ? (
+      // The symbol opens the Analyse window (not the ticker modal): plain text until the file has a complete day. A ticker
+      // with Vol Farmer v4 values of its own carries an Own values tag naming them.
+      render: (file) => {
+        const ownValuesText = analyses ? describeTickerValuesDifferingFromLab(mergeTickerOwnValues(analyses.labTickerFieldValues, analyses.tickerValuesBySymbol[file.symbol]?.values), analyses.labTickerFieldValues) : "";
+        const symbolCell = file.firstDate ? (
           <button type="button" className="btn btn-link p-0 text-decoration-none fw-bold iorio-symbol-link" title={`Analyse ${file.symbol} for Vol Farmer v4`} onClick={() => setAnalysedSymbol(file.symbol)}>
             {file.symbol}
           </button>
         ) : (
           <strong title="No complete days yet">{file.symbol}</strong>
-        ),
+        );
+        if (!ownValuesText) return symbolCell;
+        return (
+          <span className="d-inline-flex align-items-center gap-2">
+            {symbolCell}
+            <TooltipSpan text={`${file.symbol}'s own values: ${ownValuesText}`} className="analysis-src-tag is-override text-nowrap">
+              Own values
+            </TooltipSpan>
+          </span>
+        );
+      },
     },
     {
       key: "suitability",
@@ -327,12 +340,16 @@ export function BacktestDataFilesTable({ files, jobs, suitabilityBySymbol, onFil
     {
       key: "issues",
       header: "Issues",
-      headerTitle: "Days with a problem in the option data: nothing stored yet, stored with parts missing, or not retrievable. Point at the count for the list.",
+      headerTitle: "Days with a gap in the option data that can change a backtest: nothing stored yet, stored with a part or an expiration within 45 days missing, or not retrievable. Expirations further out are listed but not counted. Point at the count for the list.",
       align: "right",
       render: (file) =>
         file.issueDays > 0 ? (
           <TooltipSpan text={describeDataFileIssues(file)} multiline className="iorio-note-amber dotted-underline-label">
             {formatNumber(file.issueDays)}
+          </TooltipSpan>
+        ) : file.issues.farExpiries.length > 0 ? (
+          <TooltipSpan text={describeDataFileIssues(file)} multiline className="text-secondary dotted-underline-label">
+            0
           </TooltipSpan>
         ) : (
           <span className="text-secondary">0</span>

@@ -20,9 +20,31 @@ export type AnalysisReason = "manual" | "ticker_settings" | "global_settings" | 
 export type AnalysisRunStatus = "queued" | "running" | "stopped" | "succeeded" | "failed" | "cancelled";
 export type AnalysisPriceRange = "All" | "10Y" | "5Y" | "2Y" | "1Y";
 
-/** Run a trial: the analysis backtest at another starting account; nothing is saved as the ticker's analysis. */
+/** The five Vol Farmer v4 values a ticker can hold of its own (the API's labTickerValuesStore.ts). */
+export type TickerOwnValueField = "callMinAbsDelta" | "callMaxAbsDelta" | "firstPositionPct" | "putMaxAbsDelta" | "leapsMaxAccountPct";
+export const tickerOwnValueFields: readonly TickerOwnValueField[] = ["callMinAbsDelta", "callMaxAbsDelta", "firstPositionPct", "putMaxAbsDelta", "leapsMaxAccountPct"];
+/** Each a number, or null for the lab's value. */
+export type TickerOwnValues = Record<TickerOwnValueField, number | null>;
+/** The five as a ticker runs them (its own, else the lab's). */
+export type TickerFieldValues = Record<TickerOwnValueField, number>;
+
+export interface StoredTickerOwnValues {
+  symbol: string;
+  values: TickerOwnValues;
+  updatedAt: string;
+  updatedByUserId: string | null;
+}
+
+/** Every ticker's own values and the lab's five now (GET /backtest/ticker-values). */
+export interface TickerOwnValuesOverview {
+  labValues: TickerFieldValues;
+  bySymbol: Record<string, StoredTickerOwnValues>;
+}
+
+/** A trial: the analysis at another starting account, or with other values for the ticker's five (Analyse Only); nothing is saved as the ticker's analysis. */
 export interface AnalysisTrialValues {
   accountDollars: number;
+  volFarmerV4?: Partial<TickerFieldValues>;
 }
 
 /** Vol Farmer v4's values the analysis reads (a subset of the API's BacktestVolFarmerV4Settings). */
@@ -31,6 +53,8 @@ export interface AnalysisVolFarmerV4Values {
   callMaxAbsDelta: number;
   maxSpreadPctOfMid: number;
   firstPositionPct: number;
+  putMaxAbsDelta: number;
+  leapsMaxAccountPct: number;
   excessAllowancePct: number;
   rebalanceBandPct: number;
   putsStartCallYieldPct: number;
@@ -40,6 +64,8 @@ export interface AnalysisVolFarmerV4Values {
 export interface AnalysisLabValues {
   settings: { volFarmerV4?: AnalysisVolFarmerV4Values; trading: { spreadCostChargedPct: number } & Record<string, unknown> } & Record<string, unknown>;
   defaultPotDollars: number;
+  /** The ticker's own values the analysis read (null: the lab's); null when it had none. */
+  tickerValues: TickerOwnValues | null;
   trial: AnalysisTrialValues | null;
   effective: { accountDollars: number; potDollars: number; potShareOfAccount: number; firstPositionShare: number; v4: AnalysisVolFarmerV4Values; spreadShareCharged: number };
 }
@@ -456,6 +482,10 @@ export interface TickerAnalysisView {
   /** The stored analysis was computed with other lab values, or older formulas. */
   outOfDate: boolean;
   labSavedAt: string;
+  /** The ticker's own values; null when it has none. */
+  tickerValues: StoredTickerOwnValues | null;
+  /** The lab's five now: what each null of the ticker's own values reads. */
+  labTickerFieldValues: TickerFieldValues;
   fileLastDate: string | null;
   currentFormulasVersion: number;
   /** The header's name and classification; null when nothing is stored for the ticker. */
@@ -511,6 +541,9 @@ export interface AnalysesForTable {
   /** The tickers Re-run out of date would run. */
   outOfDate: string[];
   bySymbol: Record<string, AnalysisTableRow>;
+  /** The tickers with values of their own, and the lab's five (the Own values tag). */
+  tickerValuesBySymbol: Record<string, StoredTickerOwnValues>;
+  labTickerFieldValues: TickerFieldValues;
 }
 
 export interface BacktestLabSettingsView extends BacktestSettingsTemplate {
@@ -575,6 +608,15 @@ export function startTickerAnalysis(symbol: string, values?: AnalysisTrialValues
   return apiRequest<AnalysisRunView>(`/backtest/analyses/${encoded(symbol)}`, { method: "POST", body: JSON.stringify(values === undefined ? {} : { values }) });
 }
 
+/** Save and Analyse: the ticker's own values (null: the lab's), then its analysis with them. */
+export function saveTickerOwnValues(symbol: string, values: Partial<TickerOwnValues>): Promise<{ tickerValues: StoredTickerOwnValues | null; run: AnalysisRunView }> {
+  return apiRequest(`/backtest/ticker-values/${encoded(symbol)}`, { method: "PUT", body: JSON.stringify(values) });
+}
+
+export function fetchTickerOwnValuesOverview(): Promise<TickerOwnValuesOverview> {
+  return apiRequest<TickerOwnValuesOverview>("/backtest/ticker-values");
+}
+
 export function cancelTickerAnalysis(analysisId: string): Promise<AnalysisRunView> {
   return apiRequest<AnalysisRunView>(`/backtest/analyses/runs/${encoded(analysisId)}/cancel`, { method: "POST" });
 }
@@ -607,4 +649,9 @@ export function previewBacktestLabSettings(body: { overrides?: unknown; defaultP
 /** The global values' history (the lab's own changes), newest first. */
 export function fetchBacktestLabGlobalAudit(): Promise<BacktestLabAuditRow[]> {
   return apiRequest<BacktestLabAuditRow[]>("/backtest/lab-settings/audit?symbol=");
+}
+
+/** The lab's whole history, newest first: the global values and the tickers' own. */
+export function fetchBacktestLabAudit(): Promise<BacktestLabAuditRow[]> {
+  return apiRequest<BacktestLabAuditRow[]>("/backtest/lab-settings/audit");
 }

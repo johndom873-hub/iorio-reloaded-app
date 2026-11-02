@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { BacktestDecisionMaker, BacktestSettingRow, BacktestSettingSection } from "../../api/backtest";
 import {
-  fetchBacktestLabGlobalAudit,
+  fetchBacktestLabAudit,
   fetchBacktestLabSettings,
   previewBacktestLabSettings,
   saveBacktestLabSettings,
@@ -130,9 +130,10 @@ export function BacktestLabSettingsModal({ onClose, stacked = false }: { onClose
 
   const load = useCallback(async () => {
     try {
-      const [nextLab, nextAudit] = await Promise.all([fetchBacktestLabSettings(), fetchBacktestLabGlobalAudit()]);
+      const [nextLab, nextAudit] = await Promise.all([fetchBacktestLabSettings(), fetchBacktestLabAudit()]);
       setLab(nextLab);
-      setAudit(nextAudit);
+      // The global values' changes and the tickers' own Vol Farmer v4 values (the CC + Put Ladder's retired ticker values left out).
+      setAudit(nextAudit.filter((row) => row.symbol === null || row.field.startsWith("volFarmerV4.")));
       setValueByPath(initialValues(editorGroups(nextLab)));
       setLoadError(null);
     } catch (error) {
@@ -200,13 +201,15 @@ export function BacktestLabSettingsModal({ onClose, stacked = false }: { onClose
   };
   // The history holds the retired decision makers' changes too: their rows are no longer edited here, but still named.
   const retiredRowByPath = useMemo(() => new Map((lab?.rows ?? []).filter((row) => isRetiredBacktestSettingSection(row.section)).map((row) => [row.path, row] as const)), [lab]);
-  const formatAuditValue = (field: string, value: string | null) => {
-    if (value === null) return "—";
+  // A ticker's own value of null is the lab's.
+  const formatAuditValue = (field: string, value: string | null, symbol: string | null = null) => {
+    if (value === null) return symbol === null ? "—" : "Lab";
     if (field === "decisionMaker") return `${decisionMakerLabel[value as BacktestDecisionMaker] ?? value}${rowByPath.get(field)?.choices?.some((choice) => choice.value === value) ? "" : " (retired)"}`;
     const retiredRow = retiredRowByPath.get(field);
     return retiredRow ? formatSettingRowValue(retiredRow, retiredRow.unit === "choice" || retiredRow.unit === "grade" || retiredRow.unit === "time" ? value : Number(value)) : shownValue(field, value);
   };
-  const rowLabel = (field: string) => {
+  const rowLabel = (field: string, symbol: string | null = null) => {
+    if (symbol !== null) return `${symbol} · ${rowByPath.get(field)?.label ?? field}`;
     const retiredRow = retiredRowByPath.get(field);
     if (retiredRow) return `${retiredSectionNames[retiredRow.section] ?? retiredRow.group} · ${retiredRow.label} (retired)`;
     return rowByPath.get(field)?.label ?? field;
@@ -474,9 +477,9 @@ export function BacktestLabSettingsModal({ onClose, stacked = false }: { onClose
                 <ul className="pm-audit">
                   {auditRows.map((row) => (
                     <li key={row.id}>
-                      <span className="medium">{rowLabel(row.field)}</span>
+                      <span className="medium">{rowLabel(row.field, row.symbol)}</span>
                       <div className="lab-settings-audit-change">
-                        {formatAuditValue(row.field, row.oldValue)} → {formatAuditValue(row.field, row.newValue)}
+                        {formatAuditValue(row.field, row.oldValue, row.symbol)} → {formatAuditValue(row.field, row.newValue, row.symbol)}
                       </div>
                       <div className="who">
                         {row.userDisplayName ?? "—"} · {formatBrowserDayMonth(row.changedAt)} {formatBrowserClockTime(row.changedAt)}
@@ -553,7 +556,7 @@ export function BacktestLabSettingsModal({ onClose, stacked = false }: { onClose
         <ConfirmModal
           stacked
           title="Discard your changes?"
-          message={`${pluralizeCount(changedPaths.length, "unsaved change")} will be lost: ${changedPaths.map(rowLabel).join(", ")}.`}
+          message={`${pluralizeCount(changedPaths.length, "unsaved change")} will be lost: ${changedPaths.map((path) => rowLabel(path)).join(", ")}.`}
           cancelLabel="Keep editing"
           confirmLabel="Discard and close"
           onCancel={() => setConfirmingDiscard(false)}

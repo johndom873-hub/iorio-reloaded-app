@@ -1,7 +1,7 @@
-import type { AnalysisFigures, AnalysisLadderPutBlock, AnalysisMaxDrawdown, BacktestLabAuditRow, SuitabilityCheck, SuitabilityVerdict } from "../api/backtestAnalysis";
+import { tickerOwnValueFields, type AnalysisFigures, type AnalysisLadderPutBlock, type AnalysisMaxDrawdown, type AnalysisVolFarmerV4Values, type BacktestLabAuditRow, type SuitabilityCheck, type SuitabilityVerdict, type TickerFieldValues, type TickerOwnValueField, type TickerOwnValues } from "../api/backtestAnalysis";
 import type { BacktestSettingRow } from "../api/backtest";
 import { formatSettingRowValue } from "./backtestPresentation";
-import { formatCurrency, formatSignedNumber } from "./formatters";
+import { formatCurrency, formatDeltaTrimmed, formatInputNumber, formatPercentageValueTrimmed, formatSignedNumber, joinWithAnd } from "./formatters";
 
 // The Analyse window's shared presentation (Vol Farmer v4, mockup approved 2026-11-01): the session price chart's colours
 // and date runs, the header's categories, the bars' Max drawdown, the rule's checks, the sources, and the window's numbers
@@ -146,4 +146,92 @@ export function describeLabChangesSince(audit: readonly BacktestLabAuditRow[], r
       const label = field === "lab.defaultPotDollars" ? "Starting account" : (row?.label ?? field);
       return `${label} ${shown(row, field, change.newValue)} instead of ${shown(row, field, change.oldValue)}`;
     });
+}
+
+// ---- A ticker's own Vol Farmer v4 values (mockup approved 2026-11-02) ----
+
+export type TickerValueGroup = "calls" | "firstPosition" | "put" | "leaps";
+
+/** The window's four boxes: the Calls' |delta| range is one, from and to. */
+export const tickerValueGroups: readonly { group: TickerValueGroup; label: string; fields: readonly TickerOwnValueField[] }[] = [
+  { group: "calls", label: "Calls' |delta|", fields: ["callMinAbsDelta", "callMaxAbsDelta"] },
+  { group: "firstPosition", label: "First position", fields: ["firstPositionPct"] },
+  { group: "put", label: "Put |delta|", fields: ["putMaxAbsDelta"] },
+  { group: "leaps", label: "LEAPS cap", fields: ["leapsMaxAccountPct"] },
+];
+
+/** Each value's range, as the API checks it. */
+export const tickerOwnValueRanges: Record<TickerOwnValueField, { min: number; max: number }> = {
+  callMinAbsDelta: { min: 0.01, max: 0.99 },
+  callMaxAbsDelta: { min: 0.01, max: 0.99 },
+  firstPositionPct: { min: 10, max: 90 },
+  putMaxAbsDelta: { min: 0.01, max: 0.99 },
+  leapsMaxAccountPct: { min: 0, max: 100 },
+};
+
+const isPercentField = (field: TickerOwnValueField) => field === "firstPositionPct" || field === "leapsMaxAccountPct";
+
+/** One of the five as the window writes it: "0.10", "60%". */
+export function formatTickerOwnValue(field: TickerOwnValueField, value: number): string {
+  return isPercentField(field) ? formatPercentageValueTrimmed(value, 2) : formatDeltaTrimmed(value);
+}
+
+/** One of the five as an input's text: "0.10", "60". */
+export const tickerOwnValueInputText = (field: TickerOwnValueField, value: number) => (isPercentField(field) ? formatInputNumber(value, 4) : formatDeltaTrimmed(value));
+
+/** The five of a v4 section. */
+export function tickerFieldValuesOfVolFarmerV4(volFarmerV4: AnalysisVolFarmerV4Values): TickerFieldValues {
+  return Object.fromEntries(tickerOwnValueFields.map((field) => [field, volFarmerV4[field]])) as TickerFieldValues;
+}
+
+/** The five a ticker runs: its own where it has one, else the lab's. */
+export function mergeTickerOwnValues(lab: TickerFieldValues, own: TickerOwnValues | null | undefined): TickerFieldValues {
+  return Object.fromEntries(tickerOwnValueFields.map((field) => [field, own?.[field] ?? lab[field]])) as TickerFieldValues;
+}
+
+/** The boxes whose values differ between the two. */
+export function tickerValueGroupsDiffering(first: TickerFieldValues, second: TickerFieldValues): TickerValueGroup[] {
+  return tickerValueGroups.filter(({ fields }) => fields.some((field) => first[field] !== second[field])).map(({ group }) => group);
+}
+
+/** A box's values: "Calls' |delta| 0.10 to 0.40", "First position 60%", "Put |delta| 0.30", "LEAPS cap 10%". */
+export function describeTickerValueGroup(group: TickerValueGroup, values: TickerFieldValues): string {
+  const { label, fields } = tickerValueGroups.find((entry) => entry.group === group)!;
+  return `${label} ${fields.map((field) => formatTickerOwnValue(field, values[field])).join(" to ")}`;
+}
+
+/** The given boxes' values, joined: "Calls' |delta| 0.10 to 0.40, First position 60%"; "" when none. */
+export function describeTickerValues(values: TickerFieldValues, groups: readonly TickerValueGroup[]): string {
+  return groups.map((group) => describeTickerValueGroup(group, values)).join(", ");
+}
+
+/** The values that differ from the lab's, described; "" when none. */
+export const describeTickerValuesDifferingFromLab = (values: TickerFieldValues, lab: TickerFieldValues) => describeTickerValues(values, tickerValueGroupsDiffering(values, lab));
+
+/** Under a box: the lab's value now, "Lab: 0.05 to 0.50"; the LEAPS cap says what 0 does. */
+export function describeTickerValueLabHint(group: TickerValueGroup, lab: TickerFieldValues): string {
+  const { fields } = tickerValueGroups.find((entry) => entry.group === group)!;
+  const shown = fields.map((field) => formatTickerOwnValue(field, lab[field])).join(" to ");
+  return group === "leaps" ? `Lab: ${shown}; 0: no cap` : `Lab: ${shown}`;
+}
+
+/** A box's typed text as a number; null when it is not one. */
+export function parseTickerOwnValueText(text: string): number | null {
+  const trimmed = text.trim();
+  if (trimmed === "") return null;
+  const value = Number(trimmed);
+  return Number.isFinite(value) ? value : null;
+}
+
+/** Why a typed value cannot be used: "a number from 10 to 90"; null when it can. */
+export function tickerOwnValueProblem(field: TickerOwnValueField, text: string): string | null {
+  const value = parseTickerOwnValueText(text);
+  const { min, max } = tickerOwnValueRanges[field];
+  if (value === null || value < min || value > max) return `A number from ${formatInputNumber(min, 2)} to ${formatInputNumber(max, 2)}`;
+  return null;
+}
+
+/** The New session note for several tickers: "AAPL and AMD have their own values; a session of several tickers runs the lab's." */
+export function describeSeveralTickersWithOwnValues(symbols: readonly string[]): string {
+  return `${joinWithAnd(symbols)} ${symbols.length === 1 ? "has its" : "have their"} own values; a session of several tickers runs the lab's.`;
 }

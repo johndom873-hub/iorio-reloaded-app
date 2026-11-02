@@ -13,14 +13,16 @@ import {
   fetchBacktestLabGlobalAudit,
   fetchBacktestLabSettings,
   fetchTickerAnalysis,
+  saveTickerOwnValues,
   startTickerAnalysis,
   type AnalysisBacktestFigures,
   type AnalysisFileFigures,
   type AnalysisRunView,
   type AnalysisSessionRow,
   type StoredAnalysis,
+  type TickerFieldValues,
 } from "../../../api/backtestAnalysis";
-import { describeLabChangesSince } from "../../../lib/analysisPresentation";
+import { describeLabChangesSince, describeTickerValuesDifferingFromLab, mergeTickerOwnValues, tickerFieldValuesOfVolFarmerV4, tickerValueGroupsDiffering } from "../../../lib/analysisPresentation";
 import { formatBrowserClockTime, formatCurrency, formatDayMonth, formatDayMonthYear, formatNumber, joinWithAnd } from "../../../lib/formatters";
 import { useTickerModal } from "../../../hooks/useTickerModal";
 import { useIsAdmin } from "../../../hooks/useAuth";
@@ -37,14 +39,16 @@ import { AnalysisCorrelationCard, AnalysisDataQualityCard, AnalysisEarningsCard 
 import { AnalysisSessionsCard } from "./AnalysisSessionsCard";
 import { AnalysisSourcesCard } from "./AnalysisSourcesCard";
 import { AnalysisStockProfileCard } from "./AnalysisStockProfileCard";
+import { AnalysisTickerValuesCard, type AnalysisShownValuesTrial } from "./AnalysisTickerValuesCard";
 import { AnalysisCanTradeCard, AnalysisSizeCard, AnalysisTodayCard } from "./AnalysisTradingCards";
 import { AnalysisRuleCard, AnalysisVerdictBand } from "./AnalysisVerdictCards";
 import { AnalysisVolatilityCard } from "./AnalysisVolatilityCard";
 
-// The Analyse window (Backtesting → Data files): one ticker judged for Vol Farmer v4 at the lab's values (mockup approved
-// 2026-11-01). The stored analysis is re-run by Re-run analysis, or marked out of date when the lab's values it read
-// change; a trial runs its backtest at another starting value and is never saved as the ticker's analysis. Near full
-// screen like the Signals ticker window; full screen on a phone. Informational: closes on ESC and the backdrop.
+// The Analyse window (Backtesting → Data files): one ticker judged for Vol Farmer v4 at the lab's values, with the
+// ticker's own on top (mockups approved 2026-11-01 and 2026-11-02). The stored analysis is re-run by Re-run analysis or
+// Save and Analyse, or marked out of date when the values it read change; a trial runs at another starting value or with
+// other values (Analyse Only) and is never saved as the ticker's analysis. Near full screen like the Signals ticker
+// window; full screen on a phone. Informational: closes on ESC and the backdrop.
 
 const runFraction = (run: AnalysisRunView) => {
   const index = run.step ? analysisSteps.indexOf(run.step) : 0;
@@ -62,6 +66,25 @@ function describeRunStep(run: AnalysisRunView): string {
 const backtestOf = (analysis: StoredAnalysis | null): AnalysisBacktestFigures | null => {
   const backtest = analysis?.figures?.analysisBacktest ?? null;
   return backtest && "sessionId" in backtest ? backtest : null;
+};
+
+/** A run's five as it ran them, and the lab's five of that moment. */
+function runTickerValues(run: Pick<AnalysisRunView, "labValues">): { ran: TickerFieldValues; lab: TickerFieldValues } {
+  const ran = tickerFieldValuesOfVolFarmerV4(run.labValues.effective.v4);
+  const labSection = run.labValues.settings.volFarmerV4;
+  return { ran, lab: labSection ? tickerFieldValuesOfVolFarmerV4(labSection) : ran };
+}
+
+/** What a run ran apart from the lab's values: "Calls' |delta| 0.10 to 0.40"; "" when nothing. */
+const describeRunOwnValues = (run: Pick<AnalysisRunView, "labValues">) => {
+  const { ran, lab } = runTickerValues(run);
+  return describeTickerValuesDifferingFromLab(ran, lab);
+};
+
+/** A trial's name in the notes: "Trial at $200,000", with the values it ran apart from the lab's. */
+const describeTrialRun = (run: Pick<AnalysisRunView, "labValues">) => {
+  const values = run.labValues.trial?.volFarmerV4 ? describeRunOwnValues(run) : "";
+  return `at ${formatCurrency(run.labValues.effective.accountDollars, 0)}${values ? ` with ${values}` : ""}`;
 };
 
 interface TickerAnalysisModalProps {
@@ -83,7 +106,7 @@ export function TickerAnalysisModal({ symbol, onClose, onSuitabilitySaved }: Tic
   const [sessionsError, setSessionsError] = useState<string | null>(null);
   const [trialRunId, setTrialRunId] = useState<string | null>(null);
   const [showTrial, setShowTrial] = useState(false);
-  const [busy, setBusy] = useState<"rerun" | "trial" | "cancel" | "earnings" | null>(null);
+  const [busy, setBusy] = useState<"rerun" | "trial" | "values-trial" | "save-values" | "cancel" | "earnings" | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [earningsMessage, setEarningsMessage] = useState<string | null>(null);
   const [range, setRange] = useState<HoldingChartRange>("Backtest");
@@ -185,7 +208,7 @@ export function TickerAnalysisModal({ symbol, onClose, onSuitabilitySaved }: Tic
   const shownFigures = shownAnalysis?.figures ?? null;
   const shownBacktest = backtestOf(shownAnalysis);
 
-  const run = async (kind: "rerun" | "trial" | "cancel" | "earnings", work: () => Promise<void>) => {
+  const run = async (kind: NonNullable<typeof busy>, work: () => Promise<void>) => {
     setBusy(kind);
     setActionError(null);
     try {
@@ -204,6 +227,20 @@ export function TickerAnalysisModal({ symbol, onClose, onSuitabilitySaved }: Tic
       setTrialRunId(started.id);
     });
   const cancelRun = (target: AnalysisRunView) => run("cancel", async () => void (await cancelTickerAnalysis(target.id)));
+  // Save and Analyse: the boxes' values kept for the ticker (null where they are the lab's), its analysis re-run with them.
+  const saveOwnValues = (values: TickerFieldValues) =>
+    run("save-values", async () => {
+      const lab = view!.labTickerFieldValues;
+      await saveTickerOwnValues(symbol, Object.fromEntries(Object.entries(values).map(([field, value]) => [field, value === lab[field as keyof TickerFieldValues] ? null : value])));
+      setShowTrial(false);
+      setTrialRunId(null);
+    });
+  // Analyse Only: a trial with the boxes' values at the account of the analysis shown.
+  const tryOwnValues = (values: TickerFieldValues) =>
+    run("values-trial", async () => {
+      const started = await startTickerAnalysis(symbol, { accountDollars: (shownAnalysis ?? stored)?.labValues.effective.accountDollars ?? stored!.labValues.defaultPotDollars, volFarmerV4: values });
+      setTrialRunId(started.id);
+    });
   const fetchEarnings = () =>
     run("earnings", async () => {
       const result = await fetchAnalysisEarnings(symbol);
@@ -212,6 +249,30 @@ export function TickerAnalysisModal({ symbol, onClose, onSuitabilitySaved }: Tic
 
   // A new session on the New session form: the analysis backtest's own (a trial's when one is shown) to start from.
   const openNewSession = () => navigate(shownBacktest ? `/backtest/new?from=${encodeURIComponent(shownBacktest.sessionId)}` : `/backtest/new?symbols=${encodeURIComponent(symbol)}`);
+
+  const storedOwnValuesText = stored ? describeRunOwnValues(stored) : "";
+  // The ticker's own values now against those the stored analysis read: changed since, it is out of date for that.
+  const currentTickerValues = view ? mergeTickerOwnValues(view.labTickerFieldValues, view.tickerValues?.values) : null;
+  const ownValuesChangedSinceStored = Boolean(stored && view && currentTickerValues && tickerValueGroupsDiffering(mergeTickerOwnValues(runTickerValues(stored).lab, stored.labValues.tickerValues), mergeTickerOwnValues(runTickerValues(stored).lab, view.tickerValues?.values)).length > 0);
+  // The values trial the cards show, for the values card's note.
+  const shownValuesTrial: AnalysisShownValuesTrial | null = trial?.labValues.trial?.volFarmerV4 ? { values: runTickerValues(trial).ran, accountDollars: trial.labValues.effective.accountDollars, atLabAccount: trial.labValues.effective.accountDollars === trial.labValues.defaultPotDollars } : null;
+  const valuesCard = view && (
+    <AnalysisTickerValuesCard
+      symbol={symbol}
+      labValues={view.labTickerFieldValues}
+      ownValues={view.tickerValues?.values ?? null}
+      shownTrial={shownValuesTrial}
+      showingTrial={trial !== null}
+      savedAnalysisRunning={savedRun !== null}
+      trialRunning={trialRun !== null}
+      busy={busy !== null}
+      saving={busy === "save-values"}
+      tryingValues={busy === "values-trial"}
+      onSave={(values) => void saveOwnValues(values)}
+      onAnalyseOnly={(values) => void tryOwnValues(values)}
+      onBackToStored={() => setShowTrial(false)}
+    />
+  );
 
   const statusLine = (
     <div className="analysis-status-line">
@@ -223,7 +284,7 @@ export function TickerAnalysisModal({ symbol, onClose, onSuitabilitySaved }: Tic
           <span aria-hidden="true">·</span>
           <span>option data to {stored.optionLastDate ? formatDayMonthYear(stored.optionLastDate) : "—"}</span>
           <span aria-hidden="true">·</span>
-          <span>{trial ? `a trial at ${formatCurrency(trial.labValues.effective.accountDollars, 0)}` : "the lab's Vol Farmer v4 values"}</span>
+          <span>{trial ? `a trial ${describeTrialRun(trial)}` : storedOwnValuesText ? `${symbol}'s own values: ${storedOwnValuesText}` : "the lab's Vol Farmer v4 values"}</span>
         </>
       )}
       {savedRun ? (
@@ -271,19 +332,22 @@ export function TickerAnalysisModal({ symbol, onClose, onSuitabilitySaved }: Tic
           <b>Out of date.</b>{" "}
           {ranWithOlderFormulas && stored!.labValuesHash === view.currentHash
             ? "Computed with an older version of the analysis's formulas."
-            : `The lab's v4 values changed on ${formatDayMonth(labSaved.slice(0, 10))} at ${formatBrowserClockTime(labSaved)}, after this analysis ran${labChanges && labChanges.length > 0 ? `: ${joinWithAnd(labChanges)}` : ""}.${ranWithOlderFormulas ? " Its formulas are an older version too." : ""}`}{" "}
+            : ownValuesChangedSinceStored && currentTickerValues
+              ? `${symbol}'s own values changed after this analysis ran: ${describeTickerValuesDifferingFromLab(currentTickerValues, view.labTickerFieldValues) || "the lab's values"} now.${ranWithOlderFormulas ? " Its formulas are an older version too." : ""}`
+              : `The lab's v4 values changed on ${formatDayMonth(labSaved.slice(0, 10))} at ${formatBrowserClockTime(labSaved)}, after this analysis ran${labChanges && labChanges.length > 0 ? `: ${joinWithAnd(labChanges)}` : ""}.${ranWithOlderFormulas ? " Its formulas are an older version too." : ""}`}{" "}
           Everything below is from the values it ran with.
         </p>
       </AnalysisNote>,
     );
   }
+  const savedRunOwnValuesText = savedRun ? describeRunOwnValues(savedRun) : "";
   if (savedRun && stored) {
     notices.push(
       <AnalysisNote key="updating" tone="warn" icon="progress" live>
         <p className="d-inline-flex flex-wrap align-items-center gap-2">
           <Spinner size="sm" />
           <span>
-            <b>Re-running{savedRun.reason === "global_settings" ? " with the lab's saved values" : ""}:</b> {describeRunStep(savedRun)}. Until it finishes, the figures below are the previous analysis's. A background job: closing the window does not stop it.
+            <b>{savedRun.reason === "ticker_settings" ? `Saved for ${symbol}; re-running with ${savedRunOwnValuesText ? `its own values (${savedRunOwnValuesText})` : "the lab's values"}` : `Re-running${savedRun.reason === "global_settings" ? " with the lab's saved values" : ""}`}:</b> {describeRunStep(savedRun)}. Until it finishes, the figures below are the previous analysis's. A background job: closing the window does not stop it.
           </span>
         </p>
         <AnalysisProgressBar fraction={runFraction(savedRun)} label="Re-running the analysis" />
@@ -306,14 +370,14 @@ export function TickerAnalysisModal({ symbol, onClose, onSuitabilitySaved }: Tic
         <p className="d-inline-flex flex-wrap align-items-center gap-2">
           <Spinner size="sm" />
           <span>
-            <b>Trial at {formatCurrency(trialRun.labValues.effective.accountDollars, 0)}:</b> {describeRunStep(trialRun)}. It shows here when it finishes; nothing is saved as {symbol}'s analysis.
+            <b>Trial {describeTrialRun(trialRun)}:</b> {describeRunStep(trialRun)}. It shows here when it finishes; nothing is saved as {symbol}'s analysis.
           </span>
         </p>
         <AnalysisProgressBar fraction={runFraction(trialRun)} label="Running the trial" />
       </AnalysisNote>,
     );
   }
-  if (trial) {
+  if (trial && !shownValuesTrial) {
     notices.push(
       <AnalysisNote
         key="trial-shown"
@@ -329,7 +393,7 @@ export function TickerAnalysisModal({ symbol, onClose, onSuitabilitySaved }: Tic
         </p>
       </AnalysisNote>,
     );
-  } else if (view?.trial && !trialRun) {
+  } else if (!trial && view?.trial && !trialRun) {
     notices.push(
       <AnalysisNote
         key="trial-available"
@@ -340,7 +404,7 @@ export function TickerAnalysisModal({ symbol, onClose, onSuitabilitySaved }: Tic
           </button>
         }
       >
-        <p>The last trial, at {formatCurrency(view.trial.labValues.effective.accountDollars, 0)}, is kept until the next one.</p>
+        <p>The last trial, {describeTrialRun(view.trial)}, is kept until the next one.</p>
       </AnalysisNote>,
     );
   }
@@ -466,6 +530,7 @@ export function TickerAnalysisModal({ symbol, onClose, onSuitabilitySaved }: Tic
               <b>{symbol} hasn't been analysed yet.</b> The cards below come straight from the data file. The analysis adds the rest: whether it suits Vol Farmer v4 over the last 12, 6 and 3 months, a v4 backtest from the start of steady weeklies, the Calls v4 could sell on each expiry day, the pot that fits and what v4 would do today. It runs as a background job, so you can close this window.
             </p>
           </AnalysisNote>
+          {valuesCard}
           {fromFile}
         </>
       );
@@ -481,6 +546,7 @@ export function TickerAnalysisModal({ symbol, onClose, onSuitabilitySaved }: Tic
       <>
         {notices}
         {actionError && <div className="alert alert-danger mb-0">{actionError}</div>}
+        {valuesCard}
         {backtestProblem && <div className="alert alert-danger mb-0">The analysis backtest didn't finish ({backtestProblem}), so the verdict and the backtest's cards are missing. Re-run the analysis.</div>}
         {shownBacktest && (
           <>

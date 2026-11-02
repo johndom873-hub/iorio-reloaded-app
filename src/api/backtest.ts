@@ -369,10 +369,12 @@ export type BacktestDataFilePart = "quotes" | "eod" | "open_interest" | "intrada
 export interface BacktestDataFileIssues {
   /** Weekdays between firstDate and lastDate with nothing stored and no failed attempt recorded, as runs of consecutive weekdays. */
   notStored: { firstDate: string; lastDate: string; weekdays: number }[];
-  /** Days stored with a part or an expiration missing: one entry per day, expiration and reason. */
+  /** Days stored with a part, or an expiration within 45 days, missing: one entry per day, expiration and reason. */
   partial: { tradingDate: string; expiry: string | null; parts: BacktestDataFilePart[]; reason: string }[];
   /** Days, or a day's intraday quotes, the downloader could not retrieve; every later download asks for them again. */
   unavailable: { tradingDate: string; part: BacktestDataFilePart | null; reason: string }[];
+  /** Expirations more than 45 days out missing on a stored day: only a LEAPS choice that day can differ, so issueDays leaves them out. */
+  farExpiries: { tradingDate: string; expiry: string; parts: BacktestDataFilePart[]; reason: string }[];
 }
 
 /**
