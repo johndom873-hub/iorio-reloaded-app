@@ -513,11 +513,12 @@ export function formatInputNumber(value: number, decimalPlaces = 2): string {
   return String(Number(value.toFixed(decimalPlaces)));
 }
 
-export function formatNumber(value: number | string | null | undefined, maximumFractionDigits = 0): string {
+/** A number with thousands separators and at most maximumFractionDigits decimals; minimumFractionDigits keeps trailing zeros (1 with 1, 1 → "1.0"). */
+export function formatNumber(value: number | string | null | undefined, maximumFractionDigits = 0, minimumFractionDigits = 0): string {
   if (value === null || value === undefined) return "—";
   const numericValue = typeof value === "string" ? Number(value) : value;
   if (Number.isNaN(numericValue)) return "—";
-  return new Intl.NumberFormat("en-US", { maximumFractionDigits }).format(numericValue);
+  return new Intl.NumberFormat("en-US", { maximumFractionDigits, minimumFractionDigits }).format(numericValue);
 }
 
 // Compact "k"/"M" volume-style formatting, capped at 3 significant digits

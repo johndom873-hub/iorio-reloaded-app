@@ -550,7 +550,7 @@ export function TickerAnalysisModal({ symbol, onClose, onSuitabilitySaved }: Tic
         {backtestProblem && <div className="alert alert-danger mb-0">The analysis backtest didn't finish ({backtestProblem}), so the verdict and the backtest's cards are missing. Re-run the analysis.</div>}
         {shownBacktest && (
           <>
-            <AnalysisVerdictBand symbol={symbol} figures={shownFigures} backtest={shownBacktest} onSetFlag={isAdmin ? () => setSuitabilityOpen(true) : null} />
+            <AnalysisVerdictBand symbol={symbol} figures={shownFigures} backtest={shownBacktest} potDollars={effective.potDollars} firstPositionShare={effective.firstPositionShare} onSetFlag={isAdmin ? () => setSuitabilityOpen(true) : null} />
             <AnalysisRuleCard backtest={shownBacktest} splits={splits} />
             <AnalysisSourcesCard symbol={symbol} backtest={shownBacktest} putsStartCallYieldPct={effective.v4.putsStartCallYieldPct} bandFloorShare={effective.firstPositionShare - effective.v4.rebalanceBandPct / 100} bandTopShare={effective.firstPositionShare + effective.v4.rebalanceBandPct / 100} />
           </>

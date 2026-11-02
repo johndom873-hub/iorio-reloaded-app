@@ -2433,6 +2433,9 @@
 .analysis-summary-text ul { margin: 0; padding-left: 1.1rem; color: var(--tblr-secondary-color); font-size: 0.8125rem; }
 .analysis-verdict { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem 0.75rem; margin-bottom: 0.75rem; }
 .analysis-verdict p { margin: 0; flex: 1 1 18rem; font-size: 0.8125rem; }
+/* Under the verdict: the latest price, the smallest pot, the highest price a lot fits the pot at, expiries a week. */
+.analysis-verdict-facts { margin: -0.25rem 0 0.75rem; font-size: 0.8125rem; color: var(--tblr-secondary-color); }
+.analysis-verdict-facts b { color: var(--tblr-body-color); font-weight: 600; }
 .analysis-rec-list { margin: 0; display: flex; flex-direction: column; }
 .analysis-rec-list > div { display: grid; grid-template-columns: 8rem 6.5rem minmax(0, 1fr); gap: 0.25rem 0.75rem; padding: 0.45rem 0; border-top: 1px solid var(--tblr-border-color); align-items: baseline; }
 .analysis-rec-list dt { font-size: 0.8rem; font-weight: 400; color: var(--tblr-secondary-color); }

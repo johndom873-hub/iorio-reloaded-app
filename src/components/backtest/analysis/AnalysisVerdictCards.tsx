@@ -1,8 +1,8 @@
 import type { BacktestDetectedSplit } from "../../../api/backtest";
 import type { AnalysisBacktestFigures, AnalysisFigures, SuitabilityWindow } from "../../../api/backtestAnalysis";
-import { describeFailedChecks, formatCagrPoints, formatSignedCagrPoints } from "../../../lib/analysisPresentation";
+import { describeFailedChecks, expiryDaysPerWeek, formatCagrPoints, formatSignedCagrPoints, highestLotPriceForPot } from "../../../lib/analysisPresentation";
 import { describeSplitRatio } from "../../../lib/backtestPresentation";
-import { formatCurrency, formatDayMonthBesideYear, formatDayMonthYear, formatNumber, formatPercentage, formatPotDollars, formatRatio, joinWithAnd } from "../../../lib/formatters";
+import { formatCurrency, formatDayMonth, formatDayMonthBesideYear, formatDayMonthYear, formatNumber, formatPercentage, formatPotDollars, formatRatio, joinWithAnd } from "../../../lib/formatters";
 import { AnalysisCard } from "./analysisBits";
 
 // The Analyse window's verdict (Vol Farmer v4, mockup approved 2026-11-01): the band at the top, with the rule's verdict
@@ -37,12 +37,17 @@ interface AnalysisVerdictBandProps {
   symbol: string;
   figures: AnalysisFigures;
   backtest: AnalysisBacktestFigures;
+  /** The pot the analysis starts with and the first position's share of it (the values it ran with). */
+  potDollars: number;
+  firstPositionShare: number;
   /** Opens the Suitability flag; null when the viewer can't set it. */
   onSetFlag: (() => void) | null;
 }
 
-export function AnalysisVerdictBand({ symbol, figures, backtest, onSetFlag }: AnalysisVerdictBandProps) {
+export function AnalysisVerdictBand({ symbol, figures, backtest, potDollars, firstPositionShare, onSetFlag }: AnalysisVerdictBandProps) {
   const { verdict } = backtest.rule;
+  const lastTwelveMonths = backtest.rule.windows.find((window) => window.months === 12) ?? null;
+  const expiriesAWeek = lastTwelveMonths ? expiryDaysPerWeek(lastTwelveMonths) : null;
   const metrics = backtest.metrics;
   const hold = backtest.buyAndHoldMetrics;
   const spy = backtest.spyMetrics;
@@ -82,6 +87,20 @@ export function AnalysisVerdictBand({ symbol, figures, backtest, onSetFlag }: An
               </button>
             )}
           </div>
+          <p className="analysis-verdict-facts">
+            {figures.today.priceAsTraded !== null && (
+              <>
+                {symbol} <b>{formatCurrency(figures.today.priceAsTraded)}</b> at 10:00, {formatDayMonth(figures.today.date)} ·{" "}
+              </>
+            )}
+            smallest pot <b>{formatCurrency(smallest, 0)}</b> · the {formatCurrency(potDollars, 0)} pot holds a lot up to <b>{formatCurrency(highestLotPriceForPot(potDollars, firstPositionShare))}</b> a share
+            {lastTwelveMonths && expiriesAWeek !== null && (
+              <>
+                {" "}
+                · <b>{formatNumber(expiriesAWeek, 1, 1)}</b> expiries a week ({formatNumber(lastTwelveMonths.expiryDaysSold.expiryDays)} in the last 12 months)
+              </>
+            )}
+          </p>
           <div className="analysis-summary-text">
             <p>
               Vol Farmer v4 made {formatPercentage(metrics?.cagr)} a year on {symbol} from {formatDayMonthYear(backtest.startDate)} to {formatDayMonthYear(backtest.endDate)}, against {formatPercentage(hold?.cagr)} for holding the shares, with a Max drawdown of {formatPercentage(metrics?.maxDrawdown)} against {formatPercentage(hold?.maxDrawdown)}.

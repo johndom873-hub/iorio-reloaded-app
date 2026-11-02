@@ -1,4 +1,4 @@
-import { tickerOwnValueFields, type AnalysisFigures, type AnalysisLadderPutBlock, type AnalysisMaxDrawdown, type AnalysisVolFarmerV4Values, type BacktestLabAuditRow, type SuitabilityCheck, type SuitabilityVerdict, type TickerFieldValues, type TickerOwnValueField, type TickerOwnValues } from "../api/backtestAnalysis";
+import { tickerOwnValueFields, type AnalysisFigures, type AnalysisLadderPutBlock, type AnalysisMaxDrawdown, type AnalysisVolFarmerV4Values, type BacktestLabAuditRow, type SuitabilityCheck, type SuitabilityVerdict, type SuitabilityWindow, type TickerFieldValues, type TickerOwnValueField, type TickerOwnValues } from "../api/backtestAnalysis";
 import type { BacktestSettingRow } from "../api/backtest";
 import { formatSettingRowValue } from "./backtestPresentation";
 import { formatCurrency, formatDeltaTrimmed, formatInputNumber, formatPercentageValueTrimmed, formatSignedNumber, joinWithAnd } from "./formatters";
@@ -83,6 +83,22 @@ export const suitabilityCheckLabels: Record<SuitabilityCheck, string> = {
   weeks_with_expiry: "Weeks with an expiry",
   lot_fits: "A lot fits",
 };
+
+/** A lot's stock commission, as the suitability rule counts it (the API's stockCommissionPerLotDollars). */
+export const stockCommissionPerLotDollars = 0.5;
+
+/**
+ * The highest 10:00 price at which one lot (100 shares plus its commission) fits the first position's share of the pot,
+ * to the cent below (Marcelo 2026-11-02): (80% × $120,000 − $0.50) ÷ 100 = $959.99.
+ */
+export function highestLotPriceForPot(potDollars: number, firstPositionShare: number): number {
+  return Math.floor(firstPositionShare * potDollars - stockCommissionPerLotDollars + 1e-9) / 100;
+}
+
+/** A rule window's expiry days a week (Marcelo 2026-11-02): its expiry days ÷ its whole weeks, e.g. 53 ÷ 51 = 1.04; null without a whole week. */
+export function expiryDaysPerWeek(window: Pick<SuitabilityWindow, "expiryDaysSold" | "weeksWithExpiry">): number | null {
+  return window.weeksWithExpiry.wholeWeeks > 0 ? window.expiryDaysSold.expiryDays / window.weeksWithExpiry.wholeWeeks : null;
+}
 
 /** The checks a verdict failed, and the windows it couldn't measure: "Options' income · Expiry days sold"; "" when none. */
 export function describeFailedChecks(verdict: Pick<SuitabilityVerdict, "failedChecks" | "uncoveredWindows">): string {
