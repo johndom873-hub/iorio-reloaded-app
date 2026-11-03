@@ -497,7 +497,7 @@ export function PositionsPage() {
     {
       key: "stockPnl",
       header: "Stock P&L",
-      headerTitle: "Stock price movement vs. entry — positions with a stock leg only (covered calls, and unstructured stock-only positions); a cash-secured put never has one",
+      headerTitle: "Stock price movement vs. entry — positions with a stock leg only (covered calls, and No Strategy stock-only positions); a cash-secured put never has one",
       align: "right",
       cellClassName: "text-nowrap",
       render: (row) => {

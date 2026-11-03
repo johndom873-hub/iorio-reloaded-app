@@ -6,6 +6,7 @@ import { CycleBucketBadge } from "./CycleBucketBadge";
 import { Spinner } from "./Spinner";
 import { fetchCycles, type Cycle, type UnrealizedPnlResult } from "../api/positions";
 import { liveCycleTimelineRows } from "../lib/cycleLivePnl";
+import { describeCycleEventLabel } from "../lib/positionPnl";
 import { daysToExpiry, easternIsoDate, formatCurrency, formatDate, formatExpiryDayMonthWithDte, formatNumber, formatSignedPnl, formatTransactionPrice, pnlTextClass, todayInEasternIso } from "../lib/formatters";
 import { TooltipSpan } from "./TooltipSpan";
 
@@ -177,7 +178,7 @@ export function CycleCard({ symbol, unrealizedPnlByPositionId = {} }: { symbol: 
                         </span>
                       </td>
                     )}
-                    {visible("event") && <td className="cycle-event-cell">{row.label}</td>}
+                    {visible("event") && <td className="cycle-event-cell">{describeCycleEventLabel(row.label)}</td>}
                     {visible("owner") && <td><CycleBucketBadge bucket={row.bucket} /></td>}
                     {visible("quantity") && <td className="text-end font-mono">{formatNumber(row.quantity)}</td>}
                     {visible("strike") && <td className={`text-end font-mono ${row.strike === null ? "text-secondary" : ""}`}>{row.strike === null ? "—" : formatCurrency(row.strike, 2)}</td>}

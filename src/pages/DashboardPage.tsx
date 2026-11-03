@@ -54,7 +54,7 @@ import { useColumnVisibility } from "../components/DataTable/useColumnVisibility
 const strategyLabels: Record<string, string> = {
   covered_call: "Covered Calls",
   cash_secured_put: "Cash-Secured Puts",
-  unstructured: "No strategy",
+  unstructured: "No Strategy",
   hedge: "Hedges",
   leaps: "LEAPS",
   unallocated: "Unallocated (cash)",
@@ -393,7 +393,7 @@ function EventRow({ event, onSymbolClick }: { event: PositionEvent; onSymbolClic
     statusLabel = "Opened";
     statusBadgeClass = eventStatusBadge.opened;
   } else if (event.eventType === "unstructured") {
-    statusLabel = "No strategy";
+    statusLabel = "No Strategy";
     statusBadgeClass = eventStatusBadge.unstructured;
   } else {
     statusLabel = positionCloseReasonLabel(event.closeReason);
@@ -680,7 +680,7 @@ export function DashboardPage() {
   const allocationItems = [
     { label: "Covered Calls", value: portfolio?.coveredCalls ?? null, percent: allocationPercents?.coveredCalls ?? 0, color: ALLOCATION_COLORS.coveredCalls },
     { label: "Cash-Secured Puts", value: portfolio?.cashSecuredPuts ?? null, percent: allocationPercents?.cashSecuredPuts ?? 0, color: ALLOCATION_COLORS.cashSecuredPuts },
-    { label: "No strategy", value: portfolio?.unstructured ?? null, percent: allocationPercents?.unstructured ?? 0, color: ALLOCATION_COLORS.unstructured },
+    { label: "No Strategy", value: portfolio?.unstructured ?? null, percent: allocationPercents?.unstructured ?? 0, color: ALLOCATION_COLORS.unstructured },
     { label: "Hedges", value: portfolio?.hedge ?? null, percent: allocationPercents?.hedge ?? 0, color: ALLOCATION_COLORS.hedge },
     { label: "LEAPS", value: portfolio?.leaps ?? null, percent: allocationPercents?.leaps ?? 0, color: ALLOCATION_COLORS.leaps },
     { label: "Cash", tileLabel: "Available Cash", value: portfolio?.availableCash ?? null, percent: allocationPercents?.availableCash ?? 0, color: ALLOCATION_COLORS.cash },
@@ -692,7 +692,7 @@ export function DashboardPage() {
   const historyStrategySeries: { strategyKey: PositionStrategyKey; name: string; valueOf: (point: PnlHistoryPoint) => number }[] = [
     { strategyKey: "covered_call", name: "Covered Calls", valueOf: (point) => point.coveredCalls },
     { strategyKey: "cash_secured_put", name: "Cash-Secured Puts", valueOf: (point) => point.cashSecuredPuts },
-    { strategyKey: "unstructured", name: "No strategy", valueOf: (point) => point.unstructured },
+    { strategyKey: "unstructured", name: "No Strategy", valueOf: (point) => point.unstructured },
     { strategyKey: "hedge", name: "Hedges", valueOf: (point) => point.hedge },
     { strategyKey: "leaps", name: "LEAPS", valueOf: (point) => point.leaps },
   ];

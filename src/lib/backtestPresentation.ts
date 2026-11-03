@@ -1167,7 +1167,7 @@ const unstructuredReasonLabel: Record<string, string> = {
   unknown: "cause unclear",
 };
 
-/** Why shares sit in a position with no strategy (N/S), or null for any other position. */
+/** Why shares sit in a No Strategy (N/S) position, or null for any other position. */
 export function describeUnstructuredReason(position: Pick<BacktestPosition, "strategyKey" | "unstructuredReason">): string | null {
   if (position.strategyKey !== "unstructured" || position.unstructuredReason === null) return null;
   return unstructuredReasonLabel[position.unstructuredReason] ?? humanizeKey(position.unstructuredReason);

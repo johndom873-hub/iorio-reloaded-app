@@ -344,8 +344,8 @@ export const plutoParameterLabelByField: Record<string, string> = {
   promptVersion: "Prompt version (retired)",
   perTickerModelCooldownMinutes: "Per-ticker model cooldown (retired)",
   messageRateLimitPerSecond: "Message rate limit (retired)",
-  unstructuredCloseMinPct: "Unstructured close min % (retired)",
-  unstructuredCloseMinDollars: "Unstructured close min $ (retired)",
+  unstructuredCloseMinPct: "No Strategy close min % (retired)",
+  unstructuredCloseMinDollars: "No Strategy close min $ (retired)",
   buybackMinDte: "Buyback min DTE (retired)",
   ...Object.fromEntries(plutoParameterGroups.flatMap((group) => group.parameters.map((parameter) => [parameter.field, parameterAuditLabel[parameter.field] ?? parameter.label]))),
 };

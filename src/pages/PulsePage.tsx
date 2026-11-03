@@ -440,7 +440,7 @@ export function PulsePage() {
   const allocationSegments: PulseAllocationSegment[] = [
     { label: "Covered Calls", shortLabel: "CC", percent: allocationPercents?.coveredCalls ?? 0, color: "var(--tblr-blue)" },
     { label: "Cash-Secured Puts", shortLabel: "CSP", percent: allocationPercents?.cashSecuredPuts ?? 0, color: "var(--tblr-purple)" },
-    { label: "No strategy", shortLabel: "N/S", percent: allocationPercents?.unstructured ?? 0, color: "var(--tblr-orange)" },
+    { label: "No Strategy", shortLabel: "N/S", percent: allocationPercents?.unstructured ?? 0, color: "var(--tblr-orange)" },
     { label: "Hedge", shortLabel: "HDG", percent: allocationPercents?.hedge ?? 0, color: "var(--iorio-hedge)" },
     { label: "LEAPS", shortLabel: "LEAPS", percent: allocationPercents?.leaps ?? 0, color: "var(--iorio-leaps)" },
     { label: "Cash", shortLabel: "Cash", percent: allocationPercents?.availableCash ?? 0, color: "var(--border-strong)" },

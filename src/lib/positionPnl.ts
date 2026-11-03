@@ -33,17 +33,22 @@ const shareHandOverPositionLabels: Record<string, string> = {
   covered_call: "a Covered Call",
   cash_secured_put: "a Cash-Secured Put",
   hedge: "a Hedge",
-  unstructured: "a position with no strategy",
+  unstructured: "a No Strategy position",
 };
 
-/** Where shares moved to: "a Covered Call", "a Covered Call and a position with no strategy"; "the next position" when unknown. */
+/** Where shares moved to: "a Covered Call", "a Covered Call and a No Strategy position"; "the next position" when unknown. */
 export function describeShareHandOverPositions(positions: { strategyKey: string }[] | undefined): string {
   if (!positions || positions.length === 0) return "the next position";
   return positions.map((position) => shareHandOverPositionLabels[position.strategyKey] ?? `a ${humanizeKey(position.strategyKey)} position`).join(" and ");
 }
 
+/** A cycle timeline event's label as shown: the API's internal "Unstructured" (kept in stored backtest timelines) reads "No Strategy". */
+export function describeCycleEventLabel(label: string): string {
+  return label === "Shares handed to Unstructured" ? "Shares handed to No Strategy" : label;
+}
+
 // The one short code for each strategy, shown in every badge on the platform.
-// N/S = "no strategy": a position that doesn't cleanly pair into CC or CSP.
+// N/S = "No Strategy": a position that doesn't cleanly pair into CC or CSP.
 export function strategyAbbrev(strategyKey: PositionStrategyKey): string {
   if (strategyKey === "covered_call") return "CC";
   if (strategyKey === "cash_secured_put") return "CSP";
@@ -58,7 +63,7 @@ export function strategyTooltip(strategyKey: PositionStrategyKey): string {
   if (strategyKey === "cash_secured_put") return "Cash-Secured Put";
   if (strategyKey === "hedge") return "Hedge — a long Put held to protect the other positions";
   if (strategyKey === "leaps") return "LEAPS — a long Call";
-  return "No strategy (N/S) — a position that doesn't pair into a covered call or cash-secured put; needs review";
+  return "No Strategy (N/S) — a position that doesn't pair into a covered call or cash-secured put; needs review";
 }
 
 // THE strategy palette (the Strategy scoreboard's, standardized 2026-09-20):

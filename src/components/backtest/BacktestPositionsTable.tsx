@@ -63,7 +63,7 @@ const columns: DataTableColumn<BacktestPosition>[] = [
   {
     key: "ended",
     header: "Ended",
-    headerTitle: "How the position closed: expired, assigned, closed by Pluto (bought back, rolled or sold), or its shares moved to a covered call. Positions with no strategy say why they hold shares.",
+    headerTitle: "How the position closed: expired, assigned, closed by Pluto (bought back, rolled or sold), or its shares moved to a covered call. No Strategy positions say why they hold shares.",
     cellClassName: "text-nowrap",
     render: (position) => {
       const reason = describeUnstructuredReason(position);

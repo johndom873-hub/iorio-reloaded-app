@@ -237,7 +237,7 @@ const actionVerbs: Record<PlutoActionKind, string> = {
 /** The contract cell, under its own Ticker column: a title and a sub-line ("Sell $46 Call · 9 Oct (2DTE)" / "11 contracts with 1100 shares"). */
 export function describeOrderContract(action: DescribableOrder): { title: string; sub: string | null } {
   if (action.kind === "no_trade") return { title: "No order", sub: null };
-  if (action.kind === "close_shares") return { title: `Sell ${describeActionContracts(action)}`, sub: "Close unstructured shares" };
+  if (action.kind === "close_shares") return { title: `Sell ${describeActionContracts(action)}`, sub: "Close No Strategy shares" };
   // Vol Farmer v4's share purchase: a rebalancing top-up (before 2026-11-03 also a first position bought on a day it sold no option).
   if (action.kind === "buy_shares") return { title: `Buy ${describeActionContracts(action)}`, sub: "Shares alone, held uncovered" };
   if (!action.contract?.expiry) return { title: action.kind === "close_leg" ? "Buy back" : action.kind === "close_position" ? "Close covered Call" : "—", sub: null };
