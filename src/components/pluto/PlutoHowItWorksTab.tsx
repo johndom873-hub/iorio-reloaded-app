@@ -1,7 +1,7 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { errorMessage } from "../../api/client";
 import { fetchPlutoHowItWorks, type PlutoHowItWorks } from "../../api/pluto";
-import { formatCurrency, formatCurrencyTrimmed, formatDelta, formatNumber, formatPercentageValueTrimmed } from "../../lib/formatters";
+import { formatCurrency, formatCurrencyTrimmed, formatDelta, formatNumber, formatPercentageValueTrimmed, joinWithAnd } from "../../lib/formatters";
 import { Spinner } from "../Spinner";
 
 // Pluto's "How it works" tab (approved mockups https://claude.ai/artifact/TYdARe8Sa6RuF5Lb1E1s2b and, for Vol Farmer v4,
@@ -41,6 +41,13 @@ function VolFarmerV4Explanation({ values }: { values: PlutoHowItWorks }) {
   const buysBack = v4.callsInTheMoneyAtLastLook !== "assigned";
   const beforeWeekendsOnly = v4.callsInTheMoneyAtLastLook === "bought_back_before_weekends";
   const buyBackMinutes = `${v4.buyBackMinutesBeforeWindowEnd} minutes`;
+  // Always hold the stock (Marcelo 2026-11-03): Pluto's setting, and the tickers whose own value is the other one.
+  const holdsByDefault = v4.alwaysHoldTheStock === "on";
+  const otherwise = v4.alwaysHoldTheStockOtherwise;
+  const onWho = otherwise.length === 0 ? null : holdsByDefault ? `every ticker but ${joinWithAnd(otherwise)}` : joinWithAnd(otherwise);
+  const offWho = otherwise.length === 0 ? null : holdsByDefault ? joinWithAnd(otherwise) : `every ticker but ${joinWithAnd(otherwise)}`;
+  const holdingOn = <>Pluto buys a ticker's shares back at the next round after a call-away and tops them up on any day, even when no expiry ends that day</>;
+  const holdingOff = <>shares are bought only on a day Pluto sells a Call on them{sameDay ? <>: a new cycle waits for an expiry day and a top-up too, and only sales go</> : null}</>;
   return (
     <>
       <div className="pm-how-pair">
@@ -55,7 +62,13 @@ function VolFarmerV4Explanation({ values }: { values: PlutoHowItWorks }) {
             </p>
           )}
           <p className="pm-how-text">
-            The shares are kept near their share of the pot. Between Calls, when their value is more than <Value>{pct(v4.rebalanceBandPct)}</Value> of the pot away from {pct(v4.firstPositionPct)} of it, Pluto buys or sells whole lots to bring them back{bothPositions ? <>, counting the second position's shares too</> : null}{v4.topUpCapPct > 0 ? <>; it never buys past the point where the ticker has <Value>{pct(v4.topUpCapPct)}</Value> of its pot in shares and Puts' cash, so a stock that keeps falling is not chased all the way down</> : null}. A share order goes on its own: the ticker's option orders wait until it ends. Shares are only ever bought on a day Pluto sells a Call on them{sameDay ? <>: on a day no expiry ends it buys none, so a new cycle waits for an expiry day and a top-up too, and only sales go</> : null}.
+            The shares are kept near their share of the pot. Between Calls, when their value is more than <Value>{pct(v4.rebalanceBandPct)}</Value> of the pot away from {pct(v4.firstPositionPct)} of it, Pluto buys or sells whole lots to bring them back{bothPositions ? <>, counting the second position's shares too</> : null}{v4.topUpCapPct > 0 ? <>; it never buys past the point where the ticker has <Value>{pct(v4.topUpCapPct)}</Value> of its pot in shares and Puts' cash, so a stock that keeps falling is not chased all the way down</> : null}. A share order goes on its own: the ticker's option orders wait until it ends. {otherwise.length === 0 ? (
+              holdsByDefault ? <>Always hold the stock is on: {holdingOn}.</> : <>With Always hold the stock off, {holdingOff}.</>
+            ) : (
+              <>
+                With Always hold the stock on (<Value>{onWho}</Value>), {holdingOn}. With it off (<Value>{offWho}</Value>), {holdingOff}.
+              </>
+            )}
           </p>
           <p className="pm-how-text">
             {v4.putsSold === "with_every_call" ? <>The rest of the pot sells <b>Puts</b> with every Call the first position sells</> : <>When the best Call pays less than <Value>{pct(v4.putsStartCallYieldPct)}</Value> a year (the premium's return × <Value>{shared.premiumYieldSessionsPerYear}</Value> ÷ the trading sessions it is held, the one it is sold in and its expiry's both counted), usually after the stock has fallen, the rest of the pot sells <b>Puts</b></>}
@@ -113,7 +126,7 @@ function VolFarmerV4Explanation({ values }: { values: PlutoHowItWorks }) {
             </li>
             <li>Bid at least <Value>{formatCurrencyTrimmed(v4.minimumBid)}</Value>, spread at most <Value>{pct(v4.maxSpreadPctOfMid)}</Value> of the mid, at most <Value>{pct(v4.maxVolumeSharePct)}</Value> of the contract's volume the session before. No Call is sold whose commission is more than <Value>{pct(v4.callMaxCommissionPctOfPremium)}</Value> of its premium; one left out that way shows in the activity.</li>
             <li>
-              Rebalancing: when the first position has no Call open, its shares{bothPositions ? <> and the second position's</> : null} are traded back to <Value>{pct(v4.firstPositionPct)}</Value> of the pot once they are more than <Value>{pct(v4.rebalanceBandPct)}</Value> of the pot away from it, in whole lots, never below one lot. A purchase uses the free cash, on a day a Call is sold only; a sale sells only shares no Call covers
+              Rebalancing: when the first position has no Call open, its shares{bothPositions ? <> and the second position's</> : null} are traded back to <Value>{pct(v4.firstPositionPct)}</Value> of the pot once they are more than <Value>{pct(v4.rebalanceBandPct)}</Value> of the pot away from it, in whole lots, never below one lot. A purchase uses the free cash{holdsByDefault && otherwise.length === 0 ? null : <> (with Always hold the stock off, only on a day a Call is sold)</>}; a sale sells only shares no Call covers
               {bothPositions ? (v4.trimsSell === "higher_break_even_first" ? <>, the position with the higher break-even first</> : <>, the second position's first</>) : null}. The share order goes alone, at the mid of Pluto's stock quote.
             </li>
             <li>

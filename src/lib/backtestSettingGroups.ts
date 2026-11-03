@@ -239,6 +239,7 @@ function volFarmerV3Summary(text: (path: string) => string, shown: (path: string
   return [
     `${text(own("rebalances")) === "both_positions" ? `both positions rebalanced as one (trims ${text(own("trimsSell")) === "second_position_first" ? "the second position first" : "the higher break-even first"})` : "first position rebalanced"} beyond ${shown(own("rebalanceBandPct"))} of the pot`,
     text(own("firstPositionAfterCalledAway")) === "rebuild" ? "a first position called away first is rebuilt" : "a first position called away first waits for the second",
+    ...(text(own("alwaysHoldTheStock")) === "off" ? ["shares bought only with a Call"] : []),
     text(own("optionsExpiry")) === "today" ? "options expiring at today's close" : Number(text(own("optionsMaxDaysToExpiry"))) < 45 ? `options on the next expiry once it is ${text(own("optionsMaxDaysToExpiry"))} days or fewer away` : "options on the next expiry",
     text(own("callStrikeFloor")) === "none" ? "Calls anywhere above the price" : "Calls at or above the break-even",
     `${text(own("putsSold")) === "with_every_call" ? "Puts with every Call" : "Puts when the Calls yield little"}, ${text(own("putStrikeCap")) === "none" ? "anywhere below the price" : "a Step below the first break-even"}`,

@@ -4,19 +4,27 @@ import { allocationTextProblem, excessAllowanceTextProblem, parseAllocationText,
 // The Pluto Tickers tab's Edit allocations (mockup approved 2026-10-28): each enabled ticker's allocation typed in its row
 // and the excess allowance in the strip, checked as PUT /pluto/allocations checks them (a set allocation above 0 and at
 // most 100, rounded to 2 decimals; every set allocation, a switched-off ticker's too, at most 100% in all; the allowance
-// 0 to 1,000, 4 decimals) and saved together.
+// 0 to 1,000, 4 decimals) and saved together. Since 2026-11-03 (mockup approved) it is Edit tickers' settings: each
+// enabled ticker's Always hold the stock is chosen in its row too (Pluto's setting, On or Off) and saved with them.
+
+export type PlutoHolding = "on" | "off";
+export const plutoHoldingLabel: Record<PlutoHolding, string> = { on: "On", off: "Off" };
 
 export interface PlutoAllocationTicker {
   symbol: string;
   enabled: boolean;
   /** The saved allocation; null: an equal share. */
   savedPct: number | null;
+  /** The ticker's own Always hold the stock as saved; null: Pluto's setting. */
+  savedHolding: PlutoHolding | null;
 }
 
 export interface PlutoAllocationDraft {
   /** Each ticker's allocation as typed (empty: an equal share); a ticker not in it keeps its saved one. */
   textBySymbol: Record<string, string>;
   allowanceText: string;
+  /** Each enabled ticker's own Always hold the stock as chosen (null: Pluto's setting); a ticker not in it keeps its saved one. */
+  holdingBySymbol: Record<string, PlutoHolding | null>;
 }
 
 /** An allocation as the screen shows it, "9.09%"; the allowance keeps its 4 decimals, "26.3158%". */
@@ -30,6 +38,7 @@ export function allocationDraftOf(tickers: PlutoAllocationTicker[], savedAllowan
   return {
     textBySymbol: Object.fromEntries(tickers.filter((ticker) => ticker.enabled || ticker.savedPct !== null).map((ticker) => [ticker.symbol, ticker.savedPct === null ? "" : formatInputNumber(ticker.savedPct, 2)])),
     allowanceText: formatInputNumber(savedAllowancePct, 4),
+    holdingBySymbol: Object.fromEntries(tickers.filter((ticker) => ticker.enabled).map((ticker) => [ticker.symbol, ticker.savedHolding])),
   };
 }
 
@@ -63,10 +72,13 @@ export interface PlutoAllocationView {
   knockOn: string | null;
   potsTotalDollars: number | null;
   /** What Save sends; null while nothing changed or something cannot be saved. */
-  request: { allocations: Record<string, number | null>; excessAllowancePct?: number } | null;
+  request: { allocations: Record<string, number | null>; alwaysHoldTheStock?: Record<string, PlutoHolding | null>; excessAllowancePct?: number } | null;
 }
 
-export function buildPlutoAllocationView(tickers: PlutoAllocationTicker[], draft: PlutoAllocationDraft | null, budgetDollars: number | null, savedAllowancePct: number): PlutoAllocationView {
+/** "Pluto's setting (On)", "On" or "Off": a ticker's Always hold the stock as the save bar words it. */
+const holdingText = (holding: PlutoHolding | null, plutoHolding: PlutoHolding) => (holding === null ? `Pluto's setting (${plutoHoldingLabel[plutoHolding]})` : plutoHoldingLabel[holding]);
+
+export function buildPlutoAllocationView(tickers: PlutoAllocationTicker[], draft: PlutoAllocationDraft | null, budgetDollars: number | null, savedAllowancePct: number, plutoHolding: PlutoHolding): PlutoAllocationView {
   const typedText = (ticker: PlutoAllocationTicker) => draft?.textBySymbol[ticker.symbol];
   const problemOf = (ticker: PlutoAllocationTicker) => {
     const text = typedText(ticker);
@@ -107,6 +119,13 @@ export function buildPlutoAllocationView(tickers: PlutoAllocationTicker[], draft
       else changes.push({ symbol: ticker.symbol, detail: `(switched off) ${ticker.savedPct === null ? "equal share" : allocationPercentText(ticker.savedPct)} → ${setPct === null ? "equal share" : allocationPercentText(setPct)}` });
     }
   }
+  const changedHoldings: Record<string, PlutoHolding | null> = {};
+  for (const ticker of tickers) {
+    const chosen = draft?.holdingBySymbol[ticker.symbol];
+    if (chosen === undefined || chosen === ticker.savedHolding) continue;
+    changedHoldings[ticker.symbol] = chosen;
+    changes.push({ symbol: ticker.symbol, detail: `Always hold the stock ${holdingText(ticker.savedHolding, plutoHolding)} → ${holdingText(chosen, plutoHolding)}` });
+  }
   if (allowanceProblem !== null) problems.push(`Excess allowance: ${allowanceProblem}.`);
   else if (allowanceChanged) changes.push({ symbol: null, detail: `excess allowance ${allowancePercentText(savedAllowancePct)} → ${allowancePercentText(allowancePct)}` });
 
@@ -122,7 +141,10 @@ export function buildPlutoAllocationView(tickers: PlutoAllocationTicker[], draft
     changes,
     knockOn: draft ? describeKnockOn(enabled.filter((ticker) => ticker.savedPct === null && setPctOf(ticker) === null).map((ticker) => ticker.symbol), savedSummary.equalSharePct, summary.equalSharePct, budgetDollars, savedAllowancePct, allowancePct) : null,
     potsTotalDollars: budgetDollars === null ? null : (budgetDollars * summary.potsTotalPct) / 100,
-    request: draft && problems.length === 0 && !overFull && changes.length > 0 ? { allocations: changedAllocations, ...(allowanceChanged ? { excessAllowancePct: allowancePct } : {}) } : null,
+    request:
+      draft && problems.length === 0 && !overFull && changes.length > 0
+        ? { allocations: changedAllocations, ...(Object.keys(changedHoldings).length > 0 ? { alwaysHoldTheStock: changedHoldings } : {}), ...(allowanceChanged ? { excessAllowancePct: allowancePct } : {}) }
+        : null,
   };
 }
 

@@ -1,5 +1,5 @@
 import { Fragment } from "react";
-import type { BacktestSettingRow } from "../../api/backtest";
+import type { AlwaysHoldTheStock, BacktestSettingRow } from "../../api/backtest";
 import { isSettingChanged } from "../../lib/backtestPresentation";
 import { formatCurrency, formatInputNumber, formatPercentageValueTrimmed } from "../../lib/formatters";
 import { allocationTextProblem, excessAllowanceTextProblem, summarizeAllocations, tickerPotDollars, typedAllocationsBySymbol } from "../../lib/tickerAllocation";
@@ -11,6 +11,8 @@ import { BacktestCard, BacktestSymbolLink } from "./backtestBits";
 // allocation of the starting value (typed here, or an equal share of what the typed ones leave) raised by the excess
 // allowance, so the pots can add up to more than the account, whose cash they share. The allowance is the lab's setting
 // (volFarmerV2.excessAllowancePct), changed here for this session only; the allocations go in the session's overrides.
+// With Vol Farmer v4 deciding, each ticker may also set its own Always hold the stock (mockup approved 2026-11-03), else
+// it follows the session's (the Settings card's row).
 
 interface BacktestVolFarmerV2TickersCardProps {
   symbols: string[];
@@ -22,18 +24,26 @@ interface BacktestVolFarmerV2TickersCardProps {
   allowanceRow: BacktestSettingRow;
   allowanceText: string;
   onAllowanceChange: (text: string) => void;
+  /** Vol Farmer v4: the session's Always hold the stock and each ticker's own; absent, the column is not shown. */
+  alwaysHold?: { sessionValue: AlwaysHoldTheStock; bySymbol: Record<string, AlwaysHoldTheStock>; onChange: (symbol: string, value: AlwaysHoldTheStock | null) => void };
 }
 
 const tableId = "backtest-new-session-allocations";
-/** The Ticker and Allocation columns always show; the Pot can be hidden. */
-const hideableColumns = [{ key: "pot", header: "Pot" }];
+/** The Ticker and Allocation columns always show; Always hold and the Pot can be hidden. */
+const allHideableColumns = [
+  { key: "alwaysHold", header: "Always hold" },
+  { key: "pot", header: "Pot" },
+];
+const holdingLabel: Record<AlwaysHoldTheStock, string> = { on: "On", off: "Off" };
 
-export function BacktestVolFarmerV2TickersCard({ symbols, startingValue, allocationTextBySymbol, onAllocationChange, onResetAllocations, allowanceRow, allowanceText, onAllowanceChange }: BacktestVolFarmerV2TickersCardProps) {
+export function BacktestVolFarmerV2TickersCard({ symbols, startingValue, allocationTextBySymbol, onAllocationChange, onResetAllocations, allowanceRow, allowanceText, onAllowanceChange, alwaysHold }: BacktestVolFarmerV2TickersCardProps) {
+  const hideableColumns = alwaysHold ? allHideableColumns : allHideableColumns.filter((column) => column.key !== "alwaysHold");
   const { isColumnVisible, toggleColumn } = useColumnVisibility(
     tableId,
-    hideableColumns.map((column) => column.key),
+    allHideableColumns.map((column) => column.key),
   );
   const potShown = isColumnVisible("pot");
+  const holdShown = alwaysHold !== undefined && isColumnVisible("alwaysHold");
   const ordered = [...symbols].sort();
   const typed = typedAllocationsBySymbol(ordered, allocationTextBySymbol);
   const allowanceProblem = excessAllowanceTextProblem(allowanceText);
@@ -63,6 +73,7 @@ export function BacktestVolFarmerV2TickersCard({ symbols, startingValue, allocat
   const exampleAllocation = exampleSymbol ? (summary.allocationBySymbol.get(exampleSymbol) ?? 0) : 0;
   const exampleShare = (exampleAllocation * (100 + allowance)) / 100;
   const gear = <ColumnVisibilityPopover columns={hideableColumns} isColumnVisible={isColumnVisible} onToggleColumn={toggleColumn} />;
+  const ownHoldings = alwaysHold ? ordered.filter((symbol) => alwaysHold.bySymbol[symbol] !== undefined) : [];
 
   return (
     <BacktestCard
@@ -143,7 +154,7 @@ export function BacktestVolFarmerV2TickersCard({ symbols, startingValue, allocat
             <tr>
               <th>Ticker</th>
               <th>
-                {potShown ? (
+                {potShown || holdShown ? (
                   "Allocation"
                 ) : (
                   <div className="d-flex align-items-center gap-1">
@@ -152,6 +163,18 @@ export function BacktestVolFarmerV2TickersCard({ symbols, startingValue, allocat
                   </div>
                 )}
               </th>
+              {holdShown && (
+                <th title="Always hold the stock: On buys shares on any day, Off only on a day a Call is sold with them">
+                  {potShown ? (
+                    "Always hold"
+                  ) : (
+                    <div className="d-flex align-items-center gap-1">
+                      <span>Always hold</span>
+                      {gear}
+                    </div>
+                  )}
+                </th>
+              )}
               {potShown && (
                 <th>
                   <div className="d-flex align-items-center justify-content-end gap-1">
@@ -206,6 +229,20 @@ export function BacktestVolFarmerV2TickersCard({ symbols, startingValue, allocat
                       </div>
                     )}
                   </td>
+                  {holdShown && alwaysHold && (
+                    <td className={alwaysHold.bySymbol[symbol] !== undefined ? "backtest-ticker-value-changed" : undefined}>
+                      <select
+                        className={`form-select form-select-sm backtest-always-hold-select${alwaysHold.bySymbol[symbol] !== undefined ? " backtest-setting-changed-input" : ""}`}
+                        aria-label={`Always hold the stock for ${symbol} in this session`}
+                        value={alwaysHold.bySymbol[symbol] ?? ""}
+                        onChange={(event) => alwaysHold.onChange(symbol, event.target.value === "" ? null : (event.target.value as AlwaysHoldTheStock))}
+                      >
+                        <option value="">Session's setting ({holdingLabel[alwaysHold.sessionValue]})</option>
+                        <option value="on">On</option>
+                        <option value="off">Off</option>
+                      </select>
+                    </td>
+                  )}
                   {potShown && <td className="text-end font-mono">{pot === null ? "—" : formatCurrency(pot, 0)}</td>}
                 </tr>
               );
@@ -215,6 +252,7 @@ export function BacktestVolFarmerV2TickersCard({ symbols, startingValue, allocat
             <tr>
               <td>Total</td>
               <td className={`font-mono${overFull ? " text-danger" : ""}`}>{formatPercentageValueTrimmed(allocationTotal, 2)}</td>
+              {holdShown && <td />}
               {potShown && <td className="text-end font-mono">{potsTotal === null ? "—" : formatCurrency(potsTotal, 0)}</td>}
             </tr>
           </tfoot>
@@ -239,6 +277,24 @@ export function BacktestVolFarmerV2TickersCard({ symbols, startingValue, allocat
           )}
           .{allowance > 0 && " The pots can add up to more than the account: they share its cash."}
         </div>
+        {alwaysHold && (
+          <div className="mt-1">
+            Always hold the stock: the session's setting under Settings below ({holdingLabel[alwaysHold.sessionValue]}), unless a ticker sets its own
+            {ownHoldings.length > 0 && (
+              <>
+                {" ("}
+                {ownHoldings.map((symbol, index) => (
+                  <Fragment key={symbol}>
+                    {index > 0 && ", "}
+                    <BacktestSymbolLink symbol={symbol} /> {holdingLabel[alwaysHold.bySymbol[symbol]!]}
+                  </Fragment>
+                ))}
+                )
+              </>
+            )}
+            . On buys shares on any day; Off only on a day a Call is sold with them.
+          </div>
+        )}
         <div className="mt-1">Turn order at every look: alphabetical, starting one ticker further each day. When the cash runs short, the ticker whose turn comes later is the one cut; the LEAPS go last.</div>
       </div>
     </BacktestCard>

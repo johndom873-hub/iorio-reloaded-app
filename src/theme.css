@@ -2669,6 +2669,10 @@
   flex: 0 0 6rem;
   width: 6rem;
 }
+/* A ticker's own Always hold the stock on New session's Tickers card: wide enough for "Session's setting (Off)". */
+.backtest-always-hold-select {
+  width: 13rem;
+}
 /* A value that cannot be used keeps the red border without Tabler's ✗ icon, which covers the right-aligned number. */
 .backtest-allocation-input .form-control.is-invalid {
   background-image: none;

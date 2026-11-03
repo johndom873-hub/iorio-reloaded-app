@@ -67,7 +67,7 @@ export const plutoParameterGroups: PlutoParameterGroup[] = [
     title: "Vol Farmer",
     note: "Every Vol Farmer v4 ticker. Set from the lab's best run of 30 Oct 2026; never synced with the lab. The caps, cooldown and SPY stress breaker under Safety Limits count v4's orders too.",
     summary: (settings) =>
-      `First position ${settings.volFarmerV4FirstPositionPct}% ± ${settings.volFarmerV4RebalanceBandPct}%${settings.volFarmerV4TopUpCapPct > 0 ? `, top-ups up to ${settings.volFarmerV4TopUpCapPct}%` : ""} · ${settings.volFarmerV4OptionsExpiry === "today" ? "options expiring today" : "options on the next expiry"} · Calls' |delta| ${settings.volFarmerV4CallMinAbsDelta.toFixed(2)}–${settings.volFarmerV4CallMaxAbsDelta.toFixed(2)} · Puts under ${settings.volFarmerV4PutsStartCallYieldPct}% a year, |delta| ≤ ${settings.volFarmerV4PutMaxAbsDelta.toFixed(2)} · Step ${settings.volFarmerV4StepRule === "fixed" ? `${settings.volFarmerV4StepBelowFirstBreakEvenPct}% fixed` : "the implied move"} · LEAPS ${settings.volFarmerV4LeapsMinDte}+ DTE, |delta| ${settings.volFarmerV4LeapsAbsDelta.toFixed(2)}, ≤ ${settings.volFarmerV4LeapsMaxAllocationPct}% of the pot · spread ${settings.volFarmerV4MaxSpreadPctOfMid}%${volFarmerV4BuyBackSummary[settings.volFarmerV4CallsInTheMoneyAtLastLook] ?? ""}`,
+      `First position ${settings.volFarmerV4FirstPositionPct}% ± ${settings.volFarmerV4RebalanceBandPct}%${settings.volFarmerV4TopUpCapPct > 0 ? `, top-ups up to ${settings.volFarmerV4TopUpCapPct}%` : ""} · ${settings.volFarmerV4OptionsExpiry === "today" ? "options expiring today" : "options on the next expiry"} · Calls' |delta| ${settings.volFarmerV4CallMinAbsDelta.toFixed(2)}–${settings.volFarmerV4CallMaxAbsDelta.toFixed(2)} · Puts under ${settings.volFarmerV4PutsStartCallYieldPct}% a year, |delta| ≤ ${settings.volFarmerV4PutMaxAbsDelta.toFixed(2)} · Step ${settings.volFarmerV4StepRule === "fixed" ? `${settings.volFarmerV4StepBelowFirstBreakEvenPct}% fixed` : "the implied move"} · ${settings.volFarmerV4AlwaysHoldTheStock === "off" ? "shares only with a Call · " : ""}LEAPS ${settings.volFarmerV4LeapsMinDte}+ DTE, |delta| ${settings.volFarmerV4LeapsAbsDelta.toFixed(2)}, ≤ ${settings.volFarmerV4LeapsMaxAllocationPct}% of the pot · spread ${settings.volFarmerV4MaxSpreadPctOfMid}%${volFarmerV4BuyBackSummary[settings.volFarmerV4CallsInTheMoneyAtLastLook] ?? ""}`,
     parameters: [
       { field: "volFarmerV4CallMinAbsDelta", label: "Calls' |delta| range", unit: "min", kind: "number", step: "0.01", help: "Calls v4 may sell, by absolute delta, struck where Calls struck at least says." },
       { field: "volFarmerV4CallMaxAbsDelta", label: "Calls' max |delta|", unit: "max", kind: "number", step: "0.01", help: "Highest absolute delta of a Call v4 may sell.", pairedWithPrevious: true },
@@ -115,12 +115,20 @@ export const plutoParameterGroups: PlutoParameterGroup[] = [
         help: "A first position called away while the second still holds shares: wait for the second to be called away before a new cycle, or rebuild it at the next look, its shares bought with its Call (less the second position's shares' value when both are rebalanced as one).",
       },
       {
+        field: "volFarmerV4AlwaysHoldTheStock",
+        label: "Always hold the stock",
+        kind: "select",
+        options: ["on", "off"],
+        optionLabels: { on: "On: bought on any day", off: "Off: only with a Call" },
+        help: "On: shares are bought back at the next look after a call-away, and topped up on any day, even when no Call is sold that day. Off: shares are bought only on a day a Call is sold with them, so a flat ticker waits for its next expiry day. Trims sell on any day either way. A ticker's own value on the Tickers tab overrides this.",
+      },
+      {
         field: "volFarmerV4OptionsExpiry",
         label: "Calls and Puts expire",
         kind: "select",
         options: ["today", "next"],
         optionLabels: { today: "At today's close, on expiry days", next: "On the next expiry" },
-        help: "Today's close: sold only on the days an expiry ends at the close, so they cover no night; on other days v4 buys no shares (a new cycle waits for an expiry day) and only trims. Or the next expiry after today.",
+        help: "Today's close: sold only on the days an expiry ends at the close, so they cover no night; on other days v4 sells no option, and buys shares only with Always hold the stock on. Or the next expiry after today.",
       },
       { field: "volFarmerV4OptionsMaxDaysToExpiry", label: "Next expiry within", unit: "days", kind: "integer", step: "1", help: "With the next expiry: the most calendar days it may be away for v4 to sell on it; further away, it only rebalances. 45: every next expiry (1 to 45)." },
       {

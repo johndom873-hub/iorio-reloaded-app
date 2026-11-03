@@ -5,7 +5,7 @@ import { allocationPercentText, allowancePercentText, type PlutoAllocationView }
 import { Spinner } from "../Spinner";
 import { TickerButton } from "./plutoBits";
 
-// The Tickers tab's allocation strip and Edit allocations' save bar (mockup approved 2026-10-28): the budget, the bar of
+// The Tickers tab's allocation strip and Edit tickers' settings' save bar (mockup approved 2026-10-28; renamed 2026-11-03): the budget, the bar of
 // set and equal shares, the excess allowance (typed while editing) with what the pots add up to; the changes and what
 // they do to the tickers on an equal share; set allocations over 100% in a danger alert that keeps Save off. Every
 // ticker named opens the ticker window.
@@ -108,9 +108,9 @@ export function PlutoAllocationStrip({ view, budgetDollars, capitalBudgetPct, al
         </span>
       )}
       {allowanceText === null && onEdit && (
-        <button type="button" className="pm-btn sm pm-alloc-edit" onClick={onEdit} disabled={locked} title={locked ? "Only an admin can change the allocations." : undefined}>
+        <button type="button" className="pm-btn sm pm-alloc-edit" onClick={onEdit} disabled={locked} title={locked ? "Only an admin can change the tickers' settings." : undefined}>
           {locked ? <IconLock size={14} aria-hidden="true" /> : <IconPencil size={14} aria-hidden="true" />}
-          Edit allocations
+          Edit tickers' settings
         </button>
       )}
     </div>
@@ -134,7 +134,7 @@ export function PlutoAllocationSaveBar({ view, saving, saveError, onCancel, onSa
       </button>
       <button type="button" className="pm-btn primary" onClick={onSave} disabled={saving || view.request === null}>
         {saving && <Spinner size="sm" />}
-        Save allocations
+        Save tickers' settings
       </button>
     </span>
   );
@@ -174,12 +174,12 @@ export function PlutoAllocationSaveBar({ view, saving, saveError, onCancel, onSa
       <i className="pend" aria-hidden="true" />
       <div className="pm-alloc-savebar-body">
         {view.changes.length === 0 ? (
-          <span className="muted">No changes yet: type a ticker's allocation, or empty one to put it on an equal share.</span>
+          <span className="muted">No changes yet: type a ticker's allocation, or empty one to put it on an equal share; choose whether it always holds the stock, or leave it on Pluto's setting.</span>
         ) : (
           <>
             <b className="strong">{pluralize(view.changes.length, "change")}:</b>{" "}
             {view.changes.map((change, index) => (
-              <Fragment key={change.symbol ?? "allowance"}>
+              <Fragment key={`${change.symbol ?? "allowance"}-${index}`}>
                 {index > 0 && ", "}
                 {change.symbol && (
                   <>

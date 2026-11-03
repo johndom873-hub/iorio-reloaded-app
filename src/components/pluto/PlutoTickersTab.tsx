@@ -8,7 +8,7 @@ import { ApiError } from "../../api/client";
 import { fetchPlutoTickerAllocations, fetchPlutoVolFarmerV4, savePlutoAllocations, updateShortlistBotEnabled, type PlutoSettings, type PlutoState, type PlutoTickerAllocation, type PlutoVolFarmerV4Ticker } from "../../api/pluto";
 import type { ShortlistRow, TickerBackfillRun } from "../../api/shortlist";
 import { formatBrowserDayMonth, formatCurrency, formatInputNumber, formatPercentageValueTrimmed, pluralize } from "../../lib/formatters";
-import { allocationDraftOf, allocationPercentText, buildPlutoAllocationView, type PlutoAllocationDraft, type PlutoAllocationTicker } from "../../lib/plutoAllocationEdit";
+import { allocationDraftOf, allocationPercentText, buildPlutoAllocationView, plutoHoldingLabel, type PlutoAllocationDraft, type PlutoAllocationTicker, type PlutoHolding } from "../../lib/plutoAllocationEdit";
 import { ColumnVisibilityPopover } from "../DataTable/ColumnVisibilityPopover";
 import { useColumnVisibility } from "../DataTable/useColumnVisibility";
 import { Spinner } from "../Spinner";
@@ -44,6 +44,7 @@ const columns = [
   { key: "now", header: "Pluto now" },
   { key: "allocation", header: "Allocation", title: "% of Pluto's capital budget: set, or an equal share of what the set allocations leave", align: "right" },
   { key: "pot", header: "Pot", title: "The allocation of Pluto's capital budget, raised by the excess allowance, at last night's account value", align: "right" },
+  { key: "alwaysHold", header: "Always hold", title: "Always hold the stock: On buys shares on any day, Off only on a day a Call is sold with them. Pluto's setting unless the ticker sets its own" },
   { key: "dailyBars", header: "Daily bars", title: "Daily price history", align: "right" },
   { key: "ivDays", header: "IV days", title: "Days of implied-volatility history in IV Rank and IV %ile's 252-day window", align: "right" },
   { key: "earnings", header: "Earnings", title: "Earnings dates on record, with the next one", align: "right" },
@@ -151,8 +152,8 @@ export function PlutoTickersTab({ rows, loading, error, state, maxEnabled, isPho
   // counts as switched off: the API counts every set allocation toward the 100%.
   const allocationTickers = useMemo<PlutoAllocationTicker[]>(
     () => [
-      ...rows.map((row) => ({ symbol: row.symbol, enabled: row.botEnabled, savedPct: allocationBySymbol.get(row.symbol)?.allocationPct ?? null })),
-      ...(allocations ?? []).filter((ticker) => ticker.allocationPct !== null && !rows.some((row) => row.symbol === ticker.symbol)).map((ticker) => ({ symbol: ticker.symbol, enabled: false, savedPct: ticker.allocationPct })),
+      ...rows.map((row) => ({ symbol: row.symbol, enabled: row.botEnabled, savedPct: allocationBySymbol.get(row.symbol)?.allocationPct ?? null, savedHolding: allocationBySymbol.get(row.symbol)?.alwaysHoldTheStock ?? null })),
+      ...(allocations ?? []).filter((ticker) => ticker.allocationPct !== null && !rows.some((row) => row.symbol === ticker.symbol)).map((ticker) => ({ symbol: ticker.symbol, enabled: false, savedPct: ticker.allocationPct, savedHolding: ticker.alwaysHoldTheStock })),
     ],
     [rows, allocations, allocationBySymbol],
   );
@@ -164,8 +165,8 @@ export function PlutoTickersTab({ rows, loading, error, state, maxEnabled, isPho
     () => rows.filter((row) => (filter === "all" || (filter === "on") === row.botEnabled) && (!needle || row.symbol.toUpperCase().includes(needle) || (row.companyName ?? "").toUpperCase().includes(needle))),
     [rows, filter, needle],
   );
-  // While editing, the Allocation and Pot columns show even when hidden: the inputs are in them.
-  const visibleColumns = columns.filter((column) => isColumnVisible(column.key) || (editingAllocations && (column.key === "allocation" || column.key === "pot")));
+  // While editing, the Allocation, Pot and Always hold columns show even when hidden: the inputs are in them.
+  const visibleColumns = columns.filter((column) => isColumnVisible(column.key) || (editingAllocations && (column.key === "allocation" || column.key === "pot" || column.key === "alwaysHold")));
 
   const toolbar = (
     <div className="pm-toolbar">
@@ -192,7 +193,8 @@ export function PlutoTickersTab({ rows, loading, error, state, maxEnabled, isPho
 
   const budget = allocations?.find((ticker) => ticker.capitalBudgetDollars !== null)?.capitalBudgetDollars ?? null;
   const enabledRows = rows.filter((row) => row.botEnabled);
-  const allocationView = buildPlutoAllocationView(allocationTickers, allocationDraft, budget, settings?.excessAllowancePct ?? 0);
+  const plutoHolding: PlutoHolding = settings?.volFarmerV4AlwaysHoldTheStock ?? "on";
+  const allocationView = buildPlutoAllocationView(allocationTickers, allocationDraft, budget, settings?.excessAllowancePct ?? 0, plutoHolding);
   const startEditingAllocations = () => {
     setAllocationDraft(allocationDraftOf(allocationTickers, settings?.excessAllowancePct ?? 0));
     setAllocationSaveError(null);
@@ -203,6 +205,7 @@ export function PlutoTickersTab({ rows, loading, error, state, maxEnabled, isPho
     setAllocationSaveError(null);
   };
   const changeAllocationText = (symbol: string, text: string) => setAllocationDraft((previous) => previous && { ...previous, textBySymbol: { ...previous.textBySymbol, [symbol]: text } });
+  const changeHolding = (symbol: string, holding: PlutoHolding | null) => setAllocationDraft((previous) => previous && { ...previous, holdingBySymbol: { ...previous.holdingBySymbol, [symbol]: holding } });
   async function saveAllocations() {
     const request = allocationView.request;
     if (!request || savingAllocations) return;
@@ -210,13 +213,13 @@ export function PlutoTickersTab({ rows, loading, error, state, maxEnabled, isPho
     setAllocationSaveError(null);
     try {
       const saved = await savePlutoAllocations(request);
-      const changeCount = saved.allocations.length + (saved.excessAllowance ? 1 : 0);
+      const changeCount = saved.allocations.length + saved.alwaysHoldTheStock.length + (saved.excessAllowance ? 1 : 0);
       setAllocationDraft(null);
-      setSavedNote(changeCount === 0 ? "The allocations were already these: nothing changed." : `Allocations saved: ${pluralize(changeCount, "change")}. Pluto uses them from its next round.`);
+      setSavedNote(changeCount === 0 ? "The tickers' settings were already these: nothing changed." : `Tickers' settings saved: ${pluralize(changeCount, "change")}. Pluto uses them from its next round.`);
       void loadAllocations();
       onAllocationsSaved();
     } catch (err) {
-      setAllocationSaveError(err instanceof ApiError ? err.message : "Could not save the allocations.");
+      setAllocationSaveError(err instanceof ApiError ? err.message : "Could not save the tickers' settings.");
     } finally {
       setSavingAllocations(false);
     }
@@ -278,6 +281,32 @@ export function PlutoTickersTab({ rows, loading, error, state, maxEnabled, isPho
     if (!editingAllocations || allocationView.rowBySymbol.get(row.symbol)?.setPct == null) return undefined;
     return allocationView.overFull ? "pm-alloc-over" : "pm-alloc-set";
   };
+  /** A ticker's Always hold the stock: On or Off and whether it is its own or Pluto's, or its choice while editing. */
+  const holdingCell = (row: ShortlistRow) => {
+    if (!row.botEnabled) return <span className="muted">—</span>;
+    const saved = allocationBySymbol.get(row.symbol)?.alwaysHoldTheStock ?? null;
+    if (editingAllocations) {
+      const chosen = allocationDraft.holdingBySymbol[row.symbol] ?? null;
+      return (
+        <>
+          <span className="pm-input pm-hold-input">
+            <select aria-label={`Always hold the stock for ${row.symbol}`} value={chosen ?? ""} onChange={(event) => changeHolding(row.symbol, event.target.value === "" ? null : (event.target.value as PlutoHolding))} disabled={savingAllocations}>
+              <option value="">Pluto's setting ({plutoHoldingLabel[plutoHolding]})</option>
+              <option value="on">On</option>
+              <option value="off">Off</option>
+            </select>
+          </span>
+          {chosen !== saved && <span className="pm-cell-sub">changed</span>}
+        </>
+      );
+    }
+    return (
+      <>
+        <b className="strong">{plutoHoldingLabel[saved ?? plutoHolding]}</b>
+        <span className="pm-cell-sub">{saved === null ? "Pluto's setting" : `set for ${row.symbol}`}</span>
+      </>
+    );
+  };
   const potCell = (row: ShortlistRow) => {
     if (!row.botEnabled) return <span className="muted">Not enabled</span>;
     const saved = allocationBySymbol.get(row.symbol);
@@ -317,6 +346,7 @@ export function PlutoTickersTab({ rows, loading, error, state, maxEnabled, isPho
                         {allocationCell(row)}
                         <span className="pm-m-alloc-pot num">{potCell(row)}</span>
                       </span>
+                      {row.botEnabled && <span className="pm-m-hold">{holdingCell(row)}</span>}
                     </span>
                   );
                 return (
@@ -324,6 +354,7 @@ export function PlutoTickersTab({ rows, loading, error, state, maxEnabled, isPho
                     <span className="pm-m-figs">
                       <span className="pm-m-fig">{allocationCell(row)}</span>
                       <span className="pm-m-fig num">{potCell(row)}</span>
+                      <span className="pm-m-fig" title="Always hold the stock">{holdingCell(row)}</span>
                     </span>
                   )
                 );
@@ -375,11 +406,12 @@ export function PlutoTickersTab({ rows, loading, error, state, maxEnabled, isPho
                 status: row.backfillStatus === "preparing" ? <PreparingStatusBadge progressPercent={row.backfillProgressPercent ?? 0} onClick={() => setPrepTicker({ tickerId: row.tickerId, symbol: row.symbol, companyName: row.companyName })} /> : <span className="muted">—</span>,
                 allocation: allocationCell(row),
                 pot: potCell(row),
+                alwaysHold: holdingCell(row),
               };
               return (
                 <tr key={row.id} className={row.botEnabled ? "on" : undefined}>
                   {visibleColumns.map((column) => (
-                    <td key={column.key} className={[("align" in column && column.align === "right") ? "r num" : "", column.key === "switch" || column.key === "dailyBars" || column.key === "earnings" ? "nw" : "", column.key === "allocation" ? (allocationCellClass(row) ?? "") : ""].filter(Boolean).join(" ") || undefined}>
+                    <td key={column.key} className={[("align" in column && column.align === "right") ? "r num" : "", column.key === "switch" || column.key === "dailyBars" || column.key === "earnings" || column.key === "alwaysHold" ? "nw" : "", column.key === "allocation" ? (allocationCellClass(row) ?? "") : ""].filter(Boolean).join(" ") || undefined}>
                       {cells[column.key]}
                     </td>
                   ))}

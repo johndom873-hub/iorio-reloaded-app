@@ -166,6 +166,8 @@ export interface PlutoSettings {
   volFarmerV4TopUpCapPct: number;
   /** A Call expiring today still in the money in the window's last minutes: assigned at the close, or bought back (every day, or before weekends only). */
   volFarmerV4CallsInTheMoneyAtLastLook: "assigned" | "bought_back" | "bought_back_before_weekends";
+  /** Every ticker's Always hold the stock unless it sets its own: "on" buys shares on any day, "off" only with a Call. */
+  volFarmerV4AlwaysHoldTheStock: "on" | "off";
   updatedAt: string;
   updatedByUserId: string | null;
 }
@@ -620,6 +622,9 @@ export interface PlutoHowItWorks {
     trimsSell: PlutoSettings["volFarmerV4TrimsSell"];
     topUpCapPct: number;
     callsInTheMoneyAtLastLook: PlutoSettings["volFarmerV4CallsInTheMoneyAtLastLook"];
+    alwaysHoldTheStock: PlutoSettings["volFarmerV4AlwaysHoldTheStock"];
+    /** The enabled tickers whose own Always hold the stock is the other value, alphabetical. */
+    alwaysHoldTheStockOtherwise: string[];
     /** The buyback's minutes before the window's end, from buyBackStartsEt (HH:MM ET); one still working is cancelled at buyBackCancelledAtEt on a regular day. */
     buyBackMinutesBeforeWindowEnd: number;
     buyBackStartsEt: string;
@@ -732,21 +737,27 @@ export interface PlutoTickerAllocation {
   potDollars: number | null;
   /** Pluto's capital budget at last night's account value; null with no account value. */
   capitalBudgetDollars: number | null;
+  /** The ticker's own Always hold the stock; null = Pluto's setting. */
+  alwaysHoldTheStock: PlutoSettings["volFarmerV4AlwaysHoldTheStock"] | null;
+  /** What the ticker follows: its own value, else Pluto's. */
+  alwaysHoldTheStockEffective: PlutoSettings["volFarmerV4AlwaysHoldTheStock"];
 }
 
 export function fetchPlutoTickerAllocations(): Promise<PlutoTickerAllocation[]> {
   return apiRequest<PlutoTickerAllocation[]>("/pluto/ticker-allocations");
 }
 
-/** What PUT /pluto/allocations changed: each ticker's allocation (null: an equal share) and the excess allowance. */
+/** What PUT /pluto/allocations changed: each ticker's allocation (null: an equal share), its Always hold the stock (null: Pluto's) and the excess allowance. */
 export interface PlutoAllocationChanges {
   allocations: { symbol: string; from: number | null; to: number | null }[];
+  alwaysHoldTheStock: { symbol: string; from: "on" | "off" | null; to: "on" | "off" | null }[];
   excessAllowance: { from: number; to: number } | null;
 }
 
-/** The Tickers tab's save (admin only): the allocations typed, each a % of Pluto's budget or null for an equal share, and
- *  the excess allowance when it changed, saved together or not at all. */
-export function savePlutoAllocations(input: { allocations: Record<string, number | null>; excessAllowancePct?: number }): Promise<PlutoAllocationChanges> {
+/** The Tickers tab's save (admin only): the allocations typed, each a % of Pluto's budget or null for an equal share, each
+ *  ticker's Always hold the stock changed (null: Pluto's setting), and the excess allowance when it changed, saved together
+ *  or not at all. */
+export function savePlutoAllocations(input: { allocations: Record<string, number | null>; alwaysHoldTheStock?: Record<string, "on" | "off" | null>; excessAllowancePct?: number }): Promise<PlutoAllocationChanges> {
   return apiRequest<PlutoAllocationChanges>("/pluto/allocations", { method: "PUT", body: JSON.stringify(input) });
 }
 

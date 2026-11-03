@@ -262,7 +262,13 @@ export interface BacktestVolFarmerV3Settings {
   topUpCapPctOfPot: number;
   /** A Call expiring today still in the money at the day's last look: left to be assigned, or bought back with the shares kept (every day, or only at the last session before a weekend). */
   callsInTheMoneyAtLastLook: "assigned" | "bought_back" | "bought_back_before_weekends";
+  /** Always hold the stock: "on" buys shares on any day, "off" only on a day a Call is sold with them. */
+  alwaysHoldTheStock: AlwaysHoldTheStock;
+  /** A ticker's own Always hold the stock, for the session's symbols; a symbol not set follows alwaysHoldTheStock. */
+  tickerAlwaysHoldTheStock: Record<string, AlwaysHoldTheStock>;
 }
+
+export type AlwaysHoldTheStock = "on" | "off";
 
 /** Vol Farmer v4's values (the API's BacktestVolFarmerV4Settings; the lab's default): v3 on a copy of every value it reads. */
 export type BacktestVolFarmerV4Settings = Pick<BacktestVolFarmerSettings, "callMinAbsDelta" | "callMaxAbsDelta" | "maxSpreadPctOfMid"> & BacktestVolFarmerV2Settings & BacktestVolFarmerV3Settings;

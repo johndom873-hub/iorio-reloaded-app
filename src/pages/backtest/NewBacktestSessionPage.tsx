@@ -20,6 +20,8 @@ import {
   type BacktestSettingsTemplate,
   type BacktestTablesMode,
   type BacktestVolFarmerV2Settings,
+  type BacktestVolFarmerV4Settings,
+  type AlwaysHoldTheStock,
   type CreateBacktestBatchRequest,
   type CreateBacktestBatchResponse,
   type CreateBacktestSessionRequest,
@@ -178,6 +180,8 @@ export function NewBacktestSessionPage() {
   const [valueByPath, setValueByPath] = useState<Record<string, string>>({});
   // Vol Farmer v2 deciding: each ticker's allocation as typed on the Tickers card (empty: an equal share).
   const [allocationTextBySymbol, setAllocationTextBySymbol] = useState<Record<string, string>>({});
+  // Vol Farmer v4: each ticker's own Always hold the stock for this session (the others follow the Settings card's row).
+  const [alwaysHoldBySymbol, setAlwaysHoldBySymbol] = useState<Record<string, AlwaysHoldTheStock>>({});
   // A copied session sized by a dollar pot per ticker (before allocations): what it came back as.
   const [retiredTickerPotNote, setRetiredTickerPotNote] = useState<string | null>(null);
   const [retiredResearchNote, setRetiredResearchNote] = useState<string | null>(null);
@@ -284,6 +288,10 @@ export function NewBacktestSessionPage() {
       setAllocationTextBySymbol(copiedAllocations.textBySymbol);
       setRetiredTickerPotNote(copiedAllocations.note);
     }
+    if (source && runnable && sessionDecisionMaker(source) === "vol_farmer_v4") {
+      const copiedHoldings = (source.overrides.volFarmerV4 as Partial<BacktestVolFarmerV4Settings> | undefined)?.tickerAlwaysHoldTheStock ?? {};
+      setAlwaysHoldBySymbol(Object.fromEntries(Object.entries(copiedHoldings).filter(([symbol]) => sourceSymbols.includes(symbol))));
+    }
     // A Vol Farmer v2 session run with research settings since retired cannot be rerun as it was: say so (2026-10-28).
     const retiredResearch = source && runnable && runsVolFarmerV2Steps(sessionDecisionMaker(source)) ? describeRetiredVolFarmerV2Research(source.overrides) : [];
     if (retiredResearch.length > 0) setRetiredResearchNote(`This session used research settings the lab no longer has (${retiredResearch.join("; ")}). A rerun uses today's rules: the LEAPS bought once the price is half a Step below B-E2, one per holding, sold when the second position is called away; Calls and Puts on the next expiry only.`);
@@ -311,6 +319,7 @@ export function NewBacktestSessionPage() {
     setFilledOwnValues(nextFilled);
     // A dropped symbol takes its allocation with it (the API refuses one for a symbol not in the session).
     setAllocationTextBySymbol((previous) => Object.fromEntries(Object.entries(previous).filter(([symbol]) => nextSymbols.includes(symbol))));
+    setAlwaysHoldBySymbol((previous) => Object.fromEntries(Object.entries(previous).filter(([symbol]) => nextSymbols.includes(symbol))));
     const nextCoverage = sharedCoverage(nextSymbols.map((picked) => files.find((file) => file.symbol === picked)).filter((file): file is BacktestDataFileSummary => file !== undefined));
     setStartDate(nextCoverage?.firstDate ?? "");
     setEndDate(nextCoverage?.lastDate ?? "");
@@ -374,10 +383,14 @@ export function NewBacktestSessionPage() {
   const allowanceText = valueByPath[allowancePath] ?? (allowanceRow ? String(allowanceRow.now) : "0");
   // What the session overrides: the settings changed, and with Vol Farmer v2, v3 or v4 deciding each allocation typed on the Tickers card.
   const tickerAllocationPct = useMemo(() => (runsVolFarmerV2Steps(decisionMaker) ? typedAllocationsBySymbol(symbols, allocationTextBySymbol) : {}), [decisionMaker, symbols, allocationTextBySymbol]);
-  const overrides = useMemo<BacktestSettingsOverrides>(
-    () => (Object.keys(tickerAllocationPct).length === 0 ? settingsOverrides : { ...settingsOverrides, [allocationSection]: { ...settingsOverrides[allocationSection], tickerAllocationPct } }),
-    [settingsOverrides, tickerAllocationPct, allocationSection],
-  );
+  // Vol Farmer v4's own Always hold the stock per ticker, for the session's tickers only (the API refuses others).
+  const tickerAlwaysHoldTheStock = useMemo(() => (decisionMaker === "vol_farmer_v4" ? Object.fromEntries(Object.entries(alwaysHoldBySymbol).filter(([symbol]) => symbols.includes(symbol))) : {}), [decisionMaker, alwaysHoldBySymbol, symbols]);
+  const overrides = useMemo<BacktestSettingsOverrides>(() => {
+    const withAllocations: BacktestSettingsOverrides = Object.keys(tickerAllocationPct).length === 0 ? settingsOverrides : { ...settingsOverrides, [allocationSection]: { ...settingsOverrides[allocationSection], tickerAllocationPct } };
+    return Object.keys(tickerAlwaysHoldTheStock).length === 0 ? withAllocations : { ...withAllocations, volFarmerV4: { ...withAllocations.volFarmerV4, tickerAlwaysHoldTheStock } };
+  }, [settingsOverrides, tickerAllocationPct, allocationSection, tickerAlwaysHoldTheStock]);
+  const alwaysHoldRow = allRows.find((row) => row.path === "volFarmerV4.alwaysHoldTheStock") ?? null;
+  const sessionAlwaysHold = (valueByPath["volFarmerV4.alwaysHoldTheStock"] ?? (alwaysHoldRow ? String(alwaysHoldRow.now) : "on")) as AlwaysHoldTheStock;
   const requestText = useMemo(() => {
     if (!template || symbols.length === 0 || !sessionStartDate || !sessionEndDate || !(startingValue > 0)) return null;
     // The endpoint needs no name (an unnamed form still gets its estimate).
@@ -819,6 +832,19 @@ export function NewBacktestSessionPage() {
             allowanceRow={allowanceRow}
             allowanceText={allowanceText}
             onAllowanceChange={(text) => setValueByPath((previous) => ({ ...previous, [allowancePath]: text }))}
+            alwaysHold={
+              decisionMaker === "vol_farmer_v4" && alwaysHoldRow
+                ? {
+                    sessionValue: sessionAlwaysHold,
+                    bySymbol: alwaysHoldBySymbol,
+                    onChange: (symbol, value) =>
+                      setAlwaysHoldBySymbol((previous) => {
+                        const { [symbol]: _dropped, ...rest } = previous;
+                        return value === null ? rest : { ...rest, [symbol]: value };
+                      }),
+                  }
+                : undefined
+            }
           />
         )}
 
