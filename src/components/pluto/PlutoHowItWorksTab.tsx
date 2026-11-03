@@ -140,7 +140,7 @@ function VolFarmerV4Explanation({ values }: { values: PlutoHowItWorks }) {
             <li>The v4 tickers take turns at each round in alphabetical order, starting one ticker further each day. A LEAPS is bought or topped up after every ticker's other orders, with the free cash they left.</li>
           </ul>
         </div>
-        <p className="pm-how-note">A ticker Pluto already held keeps its holdings: every share joins the first position at the cycle's break-even, its open Calls stay the first position's, its open Puts the second's. A ticker holding only Puts waits until they expire or are assigned.</p>
+        <p className="pm-how-note">A ticker Pluto already held keeps its holdings: every share joins the first position at the cycle's break-even, its open Calls stay the first position's, its open Puts the second's. Shares no open Call covers get Calls of their own on the next day Calls are sold, beside the ones still open. A ticker holding only Puts waits until they expire or are assigned.</p>
       </Card>
     </>
   );
