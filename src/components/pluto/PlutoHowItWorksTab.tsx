@@ -111,7 +111,7 @@ function VolFarmerV4Explanation({ values }: { values: PlutoHowItWorks }) {
                 <>A Call in the money at the close is assigned: its shares are sold at the strike and bought again at the next round.</>
               )}
             </li>
-            <li>Bid at least <Value>{formatCurrencyTrimmed(v4.minimumBid)}</Value>, spread at most <Value>{pct(v4.maxSpreadPctOfMid)}</Value> of the mid, at most <Value>{pct(v4.maxVolumeSharePct)}</Value> of the contract's volume the session before.</li>
+            <li>Bid at least <Value>{formatCurrencyTrimmed(v4.minimumBid)}</Value>, spread at most <Value>{pct(v4.maxSpreadPctOfMid)}</Value> of the mid, at most <Value>{pct(v4.maxVolumeSharePct)}</Value> of the contract's volume the session before. No Call is sold whose commission is more than <Value>{pct(v4.callMaxCommissionPctOfPremium)}</Value> of its premium; one left out that way shows in the activity.</li>
             <li>
               Rebalancing: when the first position has no Call open, its shares{bothPositions ? <> and the second position's</> : null} are traded back to <Value>{pct(v4.firstPositionPct)}</Value> of the pot once they are more than <Value>{pct(v4.rebalanceBandPct)}</Value> of the pot away from it, in whole lots, never below one lot. A purchase uses the free cash, on a day a Call is sold only; a sale sells only shares no Call covers
               {bothPositions ? (v4.trimsSell === "higher_break_even_first" ? <>, the position with the higher break-even first</> : <>, the second position's first</>) : null}. The share order goes alone, at the mid of Pluto's stock quote.

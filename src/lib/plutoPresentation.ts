@@ -707,6 +707,14 @@ export function describeFeedEvent(event: PlutoEvent, context?: PlutoFeedContext)
       return { dot: "ctl", title: "IBKR connection restored", detail: payload.downMinutes ? `after ${text(payload.downMinutes)} min` : null, sub: null };
     case "order_adopted":
       return { dot: "warn", title: "Order adopted after a restart", detail: orderLine(payload, context, null, at), sub: `Still working ${text(payload.ageMinutes)} min after the restart; watch resumed` };
+    case "call_skipped_commission": {
+      // Vol Farmer v4's safeguard: the Call a look would have sold, left out because its commission is over the cap's share of its premium.
+      const premium = Number(payload.premiumDollars ?? 0);
+      const commission = Number(payload.commissionDollars ?? 0);
+      const contract = formatOptionContractLabel({ symbol, strike: Number(payload.strike ?? 0), right: "C", expiry: text(payload.expiry), dte: payload.dte === undefined ? null : Number(payload.dte) });
+      const share = premium > 0 ? Math.round((commission / premium) * 100) : null;
+      return { dot: "warn", title: "Call not sold: commission too high", detail: contract, sub: `Commission ${formatCurrency(commission)} is ${share === null ? "more than" : `${share}% of`} its ${formatCurrency(premium)} premium, over ${Math.round(Number(payload.maxShareOfPremium ?? 0) * 100)}%` };
+    }
     case "holdings_adopted": {
       // A strategy taking over a ticker's shares and open options at its first look, once per ticker.
       const putContracts = Number(payload.putContracts ?? 0);
