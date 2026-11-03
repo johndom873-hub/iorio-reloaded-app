@@ -120,7 +120,7 @@ export const plutoParameterGroups: PlutoParameterGroup[] = [
         kind: "select",
         options: ["today", "next"],
         optionLabels: { today: "At today's close, on expiry days", next: "On the next expiry" },
-        help: "Today's close: sold only on the days an expiry ends at the close, so they cover no night; on other days v4 only rebalances, and a new cycle buys its shares alone. Or the next expiry after today.",
+        help: "Today's close: sold only on the days an expiry ends at the close, so they cover no night; on other days v4 buys no shares (a new cycle waits for an expiry day) and only trims. Or the next expiry after today.",
       },
       { field: "volFarmerV4OptionsMaxDaysToExpiry", label: "Next expiry within", unit: "days", kind: "integer", step: "1", help: "With the next expiry: the most calendar days it may be away for v4 to sell on it; further away, it only rebalances. 45: every next expiry (1 to 45)." },
       {
