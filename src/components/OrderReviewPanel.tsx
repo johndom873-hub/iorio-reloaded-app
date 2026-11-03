@@ -37,7 +37,6 @@ import { computeAnnualizedYield, computeCapitalAtRiskFromOrderLegs, computeFrict
 import { DottedLabelTooltip } from "./HelpTooltip";
 import { computeProbabilityOfProfit } from "../lib/probabilityOfProfit";
 import { computeLongCallProbabilityOfProfit } from "../lib/leapsValuation";
-import { LeapsPnlOverTimeModal } from "./LeapsPnlOverTimeModal";
 import { flashClassName, useFlashOnChange } from "../hooks/useFlashOnChange";
 import { useTooltip } from "../hooks/useTooltip";
 import { useTradingSessions } from "../hooks/useTradingSessions";
@@ -224,7 +223,6 @@ export function OrderReviewPanel({ order: initialOrder, initialAdaptivePriority,
   const capitalAtRisk = isOpeningOrder && !isLeaps ? computeCapitalAtRiskFromOrderLegs(order.payload.strategyKey as StrategyKey, order.payload.legs) : null;
   const leapsCost = isLeaps && payoff ? payoff.maxLoss : null;
   const cashRequired = leapsCost ?? capitalAtRisk;
-  const [showPnlOverTime, setShowPnlOverTime] = useState(false);
   const tradingSessions = useTradingSessions();
   const optionLeg = order.payload.legs.find((leg) => leg.role === "option");
   const stockLeg = order.payload.legs.find((leg) => leg.role === "stock");
@@ -437,11 +435,6 @@ export function OrderReviewPanel({ order: initialOrder, initialAdaptivePriority,
               POP
             </div>
             <div className="fw-semibold">{formatPercentage(livePop)}</div>
-          </div>
-          <div className="col-4 d-flex align-items-end">
-            <button type="button" className="btn btn-outline-primary btn-sm leaps-pnl-button" onClick={() => setShowPnlOverTime(true)}>
-              P&amp;L over time
-            </button>
           </div>
         </div>
       )}
@@ -676,15 +669,6 @@ export function OrderReviewPanel({ order: initialOrder, initialAdaptivePriority,
         <button type="button" className="btn btn-outline-secondary" onClick={onCancelled}>
           Close
         </button>
-      )}
-      {showPnlOverTime && isLeaps && optionLeg?.strike !== undefined && optionLegExpiryIso && (
-        <LeapsPnlOverTimeModal
-          symbol={order.payload.symbol}
-          position={{ strike: optionLeg.strike, expiryIso: optionLegExpiryIso, premium: optionLeg.unitPrice, contracts: optionLeg.quantity, multiplier: 100 }}
-          initialImpliedVolatility={quote?.impliedVolatility ?? null}
-          initialSpotPrice={liveSpotPrice ?? null}
-          onClose={() => setShowPnlOverTime(false)}
-        />
       )}
     </div>
   );

@@ -23,6 +23,7 @@ import { TickerHeaderStrip } from "./TickerHeaderStrip";
 import { TickerPositionsCards } from "./TickerPositionsCards";
 import { OptionChainCard, type ChainContractRef, type OptionChainMode } from "./ticker/OptionChainCard";
 import { LeapsOrderSetupForm } from "./ticker/LeapsOrderSetupForm";
+import { LeapsPnlOverTimeChart } from "./ticker/LeapsPnlOverTimeChart";
 import { OpenOrderSetupForm } from "./ticker/OpenOrderSetupForm";
 import { RollOrderSetupForm } from "./ticker/RollOrderSetupForm";
 
@@ -328,6 +329,37 @@ export function TickerModal({ symbol, initialRollLegId = null, focusPositionId =
 
   const pickDte = pick ? (chain?.expiries.find((expiry) => expiry.expiry === pick.expiry)?.dte ?? daysToExpiry(pick.expiry)) : null;
   const pickQuote = pickKey ? (liveQuotes[pickKey] ?? null) : null;
+
+  // LEAPS P&L over time, under the chain (under the order pane on a phone): the Order Setup's limit price and contracts,
+  // then the order under review's. Figures are tagged with their contract so a new pick never draws the previous one's.
+  const [leapsSetupFigures, setLeapsSetupFigures] = useState<{ contractKey: string; premium: number | null; contracts: number } | null>(null);
+  const reportLeapsSetupFigures = useCallback(
+    (figures: { premium: number | null; contracts: number }) => {
+      if (pickKey) setLeapsSetupFigures({ contractKey: pickKey, ...figures });
+    },
+    [pickKey],
+  );
+  const leapsOrderLeg = pendingOrder?.order.payload.strategyKey === "leaps" ? pendingOrder.order.payload.legs.find((leg) => leg.role === "option") : undefined;
+  const leapsChartFigures =
+    !pick || !pickKey || chainMode !== "leaps" || rollModeLeg || frozenTicker
+      ? null
+      : leapsOrderLeg
+        ? { premium: leapsOrderLeg.unitPrice, contracts: leapsOrderLeg.quantity }
+        : leapsSetupFigures?.contractKey === pickKey
+          ? leapsSetupFigures
+          : { premium: null, contracts: 1 };
+  const leapsPnlChart = pick && pickKey && leapsChartFigures && (
+    <LeapsPnlOverTimeChart
+      key={pickKey}
+      symbol={symbol}
+      strike={pick.strike}
+      expiryIso={pick.expiry}
+      premium={leapsChartFigures.premium}
+      contracts={leapsChartFigures.contracts}
+      liveImpliedVolatility={pickQuote?.impliedVolatility ?? null}
+      liveSpotPrice={spotPrice}
+    />
+  );
   const heldQuote = heldLegKey ? (liveQuotes[heldLegKey] ?? null) : null;
   const earningsBeforePickExpiry = pick && tradingContext?.nextEarningsDateIso && tradingContext.nextEarningsDateIso <= pick.expiry ? tradingContext.nextEarningsDateIso : null;
   const earningsNotice = earningsBeforePickExpiry ? (
@@ -484,6 +516,7 @@ export function TickerModal({ symbol, initialRollLegId = null, focusPositionId =
                       }}
                     />
                   </div>
+                  {!isPhoneLayout && leapsPnlChart}
                 </div>
 
                 <div style={{ flex: "1 1 32%", minWidth: "19rem" }}>
@@ -533,6 +566,7 @@ export function TickerModal({ symbol, initialRollLegId = null, focusPositionId =
                           accessLevelRefusal={accessLevelRefusal}
                           onCancel={clearSelection}
                           onSubmitted={(order, adaptivePriority) => setPendingOrder({ order, adaptivePriority })}
+                          onFiguresChange={reportLeapsSetupFigures}
                         />
                       ) : pick ? (
                         <OpenOrderSetupForm
@@ -559,6 +593,7 @@ export function TickerModal({ symbol, initialRollLegId = null, focusPositionId =
                       )}
                     </div>
                   </div>
+                  {isPhoneLayout && leapsPnlChart}
                 </div>
               </div>
 

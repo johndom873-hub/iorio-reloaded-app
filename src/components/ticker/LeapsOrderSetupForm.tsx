@@ -7,12 +7,11 @@ import { useTooltip } from "../../hooks/useTooltip";
 import { computeLongCallPayoff } from "../../lib/payoff";
 import { formatCurrency, formatNumber, formatOptionContractLabel, formatPercentage, formatQuotePrice, formatSignedPercentage, formatSignedPnl } from "../../lib/formatters";
 import { FillPriorityPicker } from "../FillPriorityPicker";
-import { LeapsPnlOverTimeModal } from "../LeapsPnlOverTimeModal";
 import { Spinner } from "../Spinner";
 
 // Order setup for a LEAPS, a Call bought on the Ticker modal's chain in Buy LEAPS mode (approved by Marcelo
 // 2026-10-27): the cost is the most it can lose, the gain has no cap, the breakeven at expiry is strike + premium, and
-// the "P&L over time" modal shows what the Call is worth before then. The premium counts toward the Risk & Limits
+// the "P&L over time" chart under the chain shows what the Call is worth before then (fed by onFiguresChange). The premium counts toward the Risk & Limits
 // rules and the traders' capital (checkOrderLimits with strategyKey "leaps"). Builds through POST /positions/orders.
 
 const orderLimitsDebounceMs = 400;
@@ -38,6 +37,8 @@ interface LeapsOrderSetupFormProps {
   accessLevelRefusal: string | null;
   onCancel: () => void;
   onSubmitted: (order: OrderRequest, adaptivePriority: AdaptivePriority) => void;
+  /** The limit price (null while it has none) and contracts, on every change: they feed the P&L over time chart. */
+  onFiguresChange: (figures: { premium: number | null; contracts: number }) => void;
 }
 
 function Row({ label, value, tone }: { label: ReactNode; value: ReactNode; tone?: string }) {
@@ -62,7 +63,7 @@ function ReviewOrderButton({ disabled, blockedTooltip, building, onClick }: { di
   );
 }
 
-export function LeapsOrderSetupForm({ symbol, contract, spotPrice, notice, accessLevelRefusal, onCancel, onSubmitted }: LeapsOrderSetupFormProps) {
+export function LeapsOrderSetupForm({ symbol, contract, spotPrice, notice, accessLevelRefusal, onCancel, onSubmitted, onFiguresChange }: LeapsOrderSetupFormProps) {
   const hasTwoSidedQuote = contract.bid !== null && contract.ask !== null;
   const mid = hasTwoSidedQuote ? (contract.bid! + contract.ask!) / 2 : null;
   const [contractQty, setContractQty] = useState("1");
@@ -74,7 +75,6 @@ export function LeapsOrderSetupForm({ symbol, contract, spotPrice, notice, acces
   const [adaptivePriority, setAdaptivePriority] = useState<AdaptivePriority>("Normal");
   const [building, setBuilding] = useState(false);
   const [buildError, setBuildError] = useState<string | null>(null);
-  const [showPnlOverTime, setShowPnlOverTime] = useState(false);
 
   const quantity = Math.max(1, Math.floor(Number(contractQty) || 0));
   const limitPrice = Number(limitPriceInput);
@@ -83,6 +83,9 @@ export function LeapsOrderSetupForm({ symbol, contract, spotPrice, notice, acces
   const payoff = limitPriceInCents === null ? null : computeLongCallPayoff([{ legType: "option", optionType: "call", entryPrice: String(limitPriceInCents), strikePrice: String(contract.strike), quantity, multiplier: 100 }]);
   const cost = payoff?.maxLoss ?? null;
   const shares = quantity * 100;
+  useEffect(() => {
+    onFiguresChange({ premium: limitPriceInCents, contracts: quantity });
+  }, [onFiguresChange, limitPriceInCents, quantity]);
 
   const commissionPreviewLegs: CommissionPreviewLeg[] | null = limitPriceInCents === null ? null : [{ role: "option", action: "BUY", symbol, quantity, unitPrice: limitPriceInCents, strike: contract.strike, expiry: toIbkrExpiry(contract.expiry), right: "C" }];
   const commissionPreview = useOrderCommissionPreview(commissionPreviewLegs);
@@ -200,14 +203,7 @@ export function LeapsOrderSetupForm({ symbol, contract, spotPrice, notice, acces
         <Row label="Max gain" value="Unlimited" tone="text-success" />
         <Row label="Max loss (the premium)" value={cost === null ? "—" : formatSignedPnl(-cost, 0)} tone="text-danger" />
         <Row
-          label={
-            <span className="d-inline-flex align-items-center gap-2 flex-wrap">
-              Breakeven at expiry
-              <button type="button" className="btn btn-outline-primary btn-sm py-0 leaps-pnl-button" disabled={limitPriceInCents === null} onClick={() => setShowPnlOverTime(true)}>
-                P&amp;L over time
-              </button>
-            </span>
-          }
+          label="Breakeven at expiry"
           value={
             payoff ? (
               <span className="text-nowrap">
@@ -238,16 +234,6 @@ export function LeapsOrderSetupForm({ symbol, contract, spotPrice, notice, acces
           Cancel
         </button>
       </div>
-
-      {showPnlOverTime && limitPriceInCents !== null && (
-        <LeapsPnlOverTimeModal
-          symbol={symbol}
-          position={{ strike: contract.strike, expiryIso: contract.expiry, premium: limitPriceInCents, contracts: quantity, multiplier: 100 }}
-          initialImpliedVolatility={contract.impliedVolatility}
-          initialSpotPrice={spotPrice}
-          onClose={() => setShowPnlOverTime(false)}
-        />
-      )}
     </div>
   );
 }

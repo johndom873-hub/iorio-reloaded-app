@@ -7,7 +7,6 @@ import { useColumnVisibility } from "./DataTable/useColumnVisibility";
 import { ApexChart } from "./charts/ApexChart";
 import { ClosePositionModal } from "./ClosePositionModal";
 import { RecoveryPathModal } from "./RecoveryPathModal";
-import { LeapsPnlOverTimeModal } from "./LeapsPnlOverTimeModal";
 import { useChartPriceRange } from "../hooks/useChartPriceRange";
 import { useTheme } from "../hooks/useTheme";
 import type { Greeks, Position, UnrealizedPnlResult } from "../api/positions";
@@ -179,9 +178,6 @@ export function PositionCard({
     () => (position.strategyKey === "covered_call" || position.strategyKey === "cash_secured_put" || position.strategyKey === "leaps" ? computePayoff(position.strategyKey, displayedLegs, position.breakEven ?? null) : null),
     [position, displayedLegs],
   );
-  // A LEAPS's long Call, for its P&L over time.
-  const leapsCallLeg = position.strategyKey === "leaps" ? (displayedLegs.find((leg) => leg.legType === "option" && leg.side === "long" && leg.optionType === "call" && leg.strikePrice !== null && leg.expiryDate !== null) ?? null) : null;
-  const [showPnlOverTime, setShowPnlOverTime] = useState(false);
   const chartPriceRange = useChartPriceRange(payoff?.breakeven ?? null, currentPrice);
   const payoffChartPoints = useMemo(() => (payoff && chartPriceRange ? computePayoffChartPoints(payoff, chartPriceRange) : []), [payoff, chartPriceRange]);
 
@@ -354,11 +350,6 @@ export function PositionCard({
         >
           <span className="position-stat-label">{position.strategyKey === "leaps" ? "Breakeven at expiry:" : "Breakeven:"}</span> {formatCurrency(payoff.breakeven)}
         </TooltipSpan>
-        {leapsCallLeg && position.status === "open" && (
-          <button type="button" className="btn btn-outline-primary btn-sm py-0 leaps-pnl-button" onClick={() => setShowPnlOverTime(true)}>
-            P&amp;L over time
-          </button>
-        )}
         {position.strategyKey === "covered_call" && (position.cycleOpenPositionCount ?? 0) > 1 && position.cycleBreakEven != null && (
           <div className="small text-secondary w-100 text-lg-center">
             {position.symbol} has {position.cycleOpenPositionCount} positions: the whole-cycle break-even, {formatCurrency(position.cycleBreakEven, 2)}, is in the Wheel cycle card.
@@ -556,16 +547,6 @@ export function PositionCard({
             setShowClose(false);
             onChanged();
           }}
-        />
-      )}
-
-      {showPnlOverTime && leapsCallLeg && (
-        <LeapsPnlOverTimeModal
-          symbol={position.symbol}
-          position={{ strike: Number(leapsCallLeg.strikePrice), expiryIso: leapsCallLeg.expiryDate!.slice(0, 10), premium: Number(leapsCallLeg.entryPrice), contracts: leapsCallLeg.quantity, multiplier: leapsCallLeg.multiplier }}
-          initialImpliedVolatility={null}
-          initialSpotPrice={currentPrice}
-          onClose={() => setShowPnlOverTime(false)}
         />
       )}
 
