@@ -47,6 +47,7 @@ import {
   projectionKeyOf,
   readLastOpenedPortfolioId,
   readPortfolioViewSettings,
+  roundAllocationsKeepingTotal,
   warningCodesBySymbol,
   warningLinesOf,
   writeLastOpenedPortfolioId,
@@ -387,16 +388,14 @@ export function PortfolioSimulatorPage() {
   const changeTickers = (tickers: PortfolioBookTicker[]) => setEdited((previous) => ({ ...previous, tickers }));
   const applySuggestedAllocations = () => {
     if (!pots) return;
-    const suggested = new Map(pots.suggested.allocationPct.map((entry) => [entry.symbol, Math.round(entry.allocationPct * 100) / 100]));
+    const suggested = roundAllocationsKeepingTotal(pots.suggested.allocationPct);
     setLeftOut(edited.tickers.filter((ticker) => !suggested.has(ticker.symbol)).map((ticker) => ticker.symbol));
     changeTickers(edited.tickers.filter((ticker) => suggested.has(ticker.symbol)).map((ticker) => ({ symbol: ticker.symbol, allocationPct: suggested.get(ticker.symbol)! })));
   };
   const applySuggestion = (suggestion: PortfolioSuggestion) => {
-    const allocations = suggestion.allocationsPct;
-    const kept = edited.tickers.filter((ticker) => allocations[ticker.symbol] !== undefined).map((ticker) => ({ symbol: ticker.symbol, allocationPct: Math.round(allocations[ticker.symbol]! * 100) / 100 }));
-    const added = Object.keys(allocations)
-      .filter((symbol) => !edited.tickers.some((ticker) => ticker.symbol === symbol))
-      .map((symbol) => ({ symbol, allocationPct: Math.round(allocations[symbol]! * 100) / 100 }));
+    const allocations = roundAllocationsKeepingTotal(Object.entries(suggestion.allocationsPct).map(([symbol, allocationPct]) => ({ symbol, allocationPct })));
+    const kept = edited.tickers.filter((ticker) => allocations.has(ticker.symbol)).map((ticker) => ({ symbol: ticker.symbol, allocationPct: allocations.get(ticker.symbol)! }));
+    const added = [...allocations.keys()].filter((symbol) => !edited.tickers.some((ticker) => ticker.symbol === symbol)).map((symbol) => ({ symbol, allocationPct: allocations.get(symbol)! }));
     setLeftOut([]);
     changeTickers([...kept, ...added]);
   };

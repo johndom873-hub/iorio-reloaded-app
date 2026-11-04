@@ -38,6 +38,22 @@ export function portfolioNameProblem(name: string, portfolios: readonly SavedPor
   return taken ? `A portfolio named "${taken.name}" already exists. Choose another name.` : null;
 }
 
+/**
+ * Allocations rounded to 2 decimals (as the boxes show them) keeping their total: each is rounded down to the cent of a
+ * percent, then the cents the rounding lost go one each to the largest remainders. Example: three thirds of 100% become
+ * 33.34, 33.33 and 33.33, adding up to 100.00 rather than 99.99.
+ */
+export function roundAllocationsKeepingTotal(allocations: readonly { symbol: string; allocationPct: number }[]): Map<string, number> {
+  const cents = allocations.map((entry) => ({ symbol: entry.symbol, exact: entry.allocationPct * 100, floor: Math.floor(entry.allocationPct * 100 + 1e-9) }));
+  let missing = Math.round(cents.reduce((sum, entry) => sum + entry.exact, 0)) - cents.reduce((sum, entry) => sum + entry.floor, 0);
+  for (const entry of [...cents].sort((a, b) => b.exact - b.floor - (a.exact - a.floor))) {
+    if (missing <= 0) break;
+    entry.floor += 1;
+    missing -= 1;
+  }
+  return new Map(cents.map((entry) => [entry.symbol, entry.floor / 100]));
+}
+
 // ---- View settings (this browser only) ----
 
 export interface PortfolioViewSettings {
