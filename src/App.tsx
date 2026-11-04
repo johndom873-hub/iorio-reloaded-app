@@ -27,6 +27,7 @@ const NewBacktestSessionPage = import.meta.env.DEV ? lazy(() => import("./pages/
 const BacktestSessionPage = import.meta.env.DEV ? lazy(() => import("./pages/backtest/BacktestSessionPage").then((module) => ({ default: module.BacktestSessionPage }))) : null;
 const BacktestComparePage = import.meta.env.DEV ? lazy(() => import("./pages/backtest/BacktestComparePage").then((module) => ({ default: module.BacktestComparePage }))) : null;
 const BacktestBatchPage = import.meta.env.DEV ? lazy(() => import("./pages/backtest/BacktestBatchPage").then((module) => ({ default: module.BacktestBatchPage }))) : null;
+const PortfolioSimulatorPage = import.meta.env.DEV ? lazy(() => import("./pages/backtest/PortfolioSimulatorPage").then((module) => ({ default: module.PortfolioSimulatorPage }))) : null;
 
 /** A Backtesting screen: loaded on first visit, wrapped in .backtest-screen (theme.css: phone tap targets). */
 function BacktestScreen({ children }: { children: ReactNode }) {
@@ -75,6 +76,7 @@ function App() {
                   {BacktestSessionPage && <Route path="/backtest/sessions/:sessionId" element={<BacktestScreen><BacktestSessionPage /></BacktestScreen>} />}
                   {BacktestComparePage && <Route path="/backtest/compare" element={<BacktestScreen><BacktestComparePage /></BacktestScreen>} />}
                   {BacktestBatchPage && <Route path="/backtest/batches/:batchId" element={<BacktestScreen><BacktestBatchPage /></BacktestScreen>} />}
+                  {PortfolioSimulatorPage && <Route path="/backtest/portfolio" element={<BacktestScreen><PortfolioSimulatorPage /></BacktestScreen>} />}
                   <Route path="*" element={<NotFoundPage />} />
                 </Route>
               </Route>

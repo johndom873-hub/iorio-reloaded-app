@@ -1,5 +1,6 @@
 import { useState } from "react";
-import { IconRefresh, IconSettings } from "@tabler/icons-react";
+import { Link } from "react-router-dom";
+import { IconChartPie, IconRefresh, IconSettings } from "@tabler/icons-react";
 import { errorMessage } from "../../api/client";
 import { refreshBacktestMarketIndices } from "../../api/backtest";
 import { PageHeader } from "../../components/layout/PageHeader";
@@ -67,6 +68,10 @@ export function BacktestPage() {
         subtitle={pageSubtitle}
         actions={
           <span className="d-inline-flex flex-wrap align-items-center gap-2">
+            <Link to="/backtest/portfolio" className="btn btn-outline-secondary d-inline-flex align-items-center gap-1">
+              <IconChartPie size={18} aria-hidden="true" />
+              Portfolio simulator
+            </Link>
             <button type="button" className="btn btn-outline-secondary d-inline-flex align-items-center gap-1" onClick={() => setLabSettingsOpen(true)}>
               <IconSettings size={18} aria-hidden="true" />
               Lab settings

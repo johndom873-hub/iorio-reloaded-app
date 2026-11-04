@@ -154,6 +154,10 @@ export function NewBacktestSessionPage() {
   const sourceSessionId = searchParams.get("from");
   const sourceBatchId = searchParams.get("fromBatch");
   const requestedSymbolsParam = searchParams.get("symbols");
+  // From the portfolio simulator's "Backtest this book": "XLE:12.5,C:" (empty: an equal share), the account and its name.
+  const requestedAllocationsParam = searchParams.get("allocations");
+  const requestedStartingValueParam = searchParams.get("startingValue");
+  const requestedNameParam = searchParams.get("name");
   const { data: overview, loadError: overviewError } = useBacktestOverview();
 
   const [template, setTemplate] = useState<BacktestSettingsTemplate | null>(null);
@@ -286,6 +290,19 @@ export function NewBacktestSessionPage() {
       setTablesMode(source.tablesMode);
     }
     if (sourceBatch) setName(sourceBatch.batch.name);
+    if (!source && !sourceBatch) {
+      const requestedAllocations = Object.fromEntries(
+        (requestedAllocationsParam ?? "")
+          .split(",")
+          .map((entry) => entry.split(":"))
+          .filter(([picked, allocation]) => picked && allocation && initialSymbols.includes(picked.trim().toUpperCase()))
+          .map(([picked, allocation]) => [picked!.trim().toUpperCase(), allocation!.trim()]),
+      );
+      if (Object.keys(requestedAllocations).length > 0) setAllocationTextBySymbol(requestedAllocations);
+      const requestedStartingValue = Number(requestedStartingValueParam);
+      if (requestedStartingValueParam && Number.isFinite(requestedStartingValue) && requestedStartingValue > 0) setStartingValueText(formatNumber(requestedStartingValue));
+      if (requestedNameParam) setName(requestedNameParam);
+    }
     const runnable = source !== null && decisionMakerCanRun(sessionDecisionMaker(source));
     if (source && !runnable) setRetiredDecisionMakerNote(`This session was decided by ${decidedByPhrase[sessionDecisionMaker(source)]}, since retired: its period and tickers come back, its settings from the lab.`);
     const copiedAllocations = source && runnable && runsVolFarmerV2Steps(sessionDecisionMaker(source)) ? copiedVolFarmerV2Allocations(source, sourceSymbols) : null;
@@ -306,7 +323,7 @@ export function NewBacktestSessionPage() {
     setFilledOwnValues(filled);
     setValueByPath({ ...initialValueByPath(template, sourceSession), ...copiedAllowance, ...filled });
     setInitialized(true);
-  }, [initialized, overview, template, sourceLoaded, sourceSession, sourceBatch, requestedSymbolsParam, tickerOwnValuesLoaded, tickerOwnValues]);
+  }, [initialized, overview, template, sourceLoaded, sourceSession, sourceBatch, requestedSymbolsParam, requestedAllocationsParam, requestedStartingValueParam, requestedNameParam, tickerOwnValuesLoaded, tickerOwnValues]);
 
   /** Picking or dropping a symbol: custom dates become all that the picked files share; years narrowed by hand stay while they
    *  are still inside that period, and otherwise (or when they were all of the old period) become all of it. With no shared
