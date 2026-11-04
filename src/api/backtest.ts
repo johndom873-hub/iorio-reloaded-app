@@ -6,7 +6,7 @@ import type { TradingSettingsInput } from "./riskLimits";
 // API's src/backtest/backtestTypes.ts (keep them in step with it); figures are defined in the API's
 // docs/backtesting/FORMULAS.md. Ratios are fractions (0.418 = +41.8%).
 
-export type BacktestJobKind = "download" | "backtest" | "analysis";
+export type BacktestJobKind = "download" | "backtest" | "analysis" | "portfolio_library";
 export type BacktestJobStatus = "queued" | "running" | "succeeded" | "failed" | "cancelled";
 /** What the screen shows: a running job with a heartbeat older than 60 s is "stopped". */
 export type BacktestJobDisplayStatus = BacktestJobStatus | "stopped";

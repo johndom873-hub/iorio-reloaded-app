@@ -191,7 +191,7 @@ export function describeJobProgress(job: BacktestJobView): string {
     return job.progressTotal > 0 ? `${step}, ${formatNumber(job.progressDone)} of ${formatNumber(job.progressTotal)} days` : step;
   }
   if (job.progressTotal <= 0) return job.displayStatus === "queued" ? "waiting" : job.displayStatus === "running" ? "starting" : "never started";
-  return `${formatNumber(job.progressDone)} of ${formatNumber(job.progressTotal)} ${job.kind === "download" ? "trading days" : "days"}`;
+  return `${formatNumber(job.progressDone)} of ${formatNumber(job.progressTotal)} ${job.kind === "download" ? "trading days" : job.kind === "portfolio_library" ? "runs" : "days"}`;
 }
 
 /** Total run time: "running 1 h 5 min" while it runs, "ran 1 h 12 min" once it ended, "ran 40 min so far" for a resumed download still queued. */
@@ -215,6 +215,8 @@ export function describeJobTickers(symbols: string): string {
  *  shows whole unless even the name is cut away, and the session or analysis name after it (null for a download), which
  *  a tight row cuts to fit first. */
 export function describeJobTitleParts(job: Pick<BacktestJobView, "kind" | "symbol" | "sessionName">): { symbol: string; name: string | null } {
+  // A rebuild of the portfolio simulator's suggestions library covers every ticker: its symbol column is a placeholder.
+  if (job.kind === "portfolio_library") return { symbol: "Suggestions library", name: null };
   const symbol = describeJobTickers(job.symbol);
   if (job.kind === "analysis") return { symbol, name: "Analysis" };
   return { symbol, name: job.kind === "backtest" && job.sessionName ? job.sessionName : null };
@@ -228,6 +230,7 @@ export function describeJobTitle(job: Pick<BacktestJobView, "kind" | "symbol" | 
 
 /** The job row's hover text: its title with every ticker. */
 export function describeJobTitleWithEveryTicker(job: Pick<BacktestJobView, "kind" | "symbol" | "sessionName">): string {
+  if (job.kind === "portfolio_library") return describeJobTitle(job);
   const { name } = describeJobTitleParts(job);
   return name ? `${job.symbol} · ${name}` : job.symbol;
 }

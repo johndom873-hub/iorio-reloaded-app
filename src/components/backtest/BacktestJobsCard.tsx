@@ -67,7 +67,7 @@ export function BacktestJobsCard({ jobs, onJobsChanged }: BacktestJobsCardProps)
     >
       {actionError && <div className="alert alert-danger m-3 mb-0">{actionError}</div>}
       <div className="backtest-job-columns">
-        <BacktestJobList title="Backtests" emptyText="No backtests. They appear here while they run." jobs={jobs.filter((job) => job.kind === "backtest" || job.kind === "analysis")} {...listProps} />
+        <BacktestJobList title="Backtests" emptyText="No backtests. They appear here while they run." jobs={jobs.filter((job) => job.kind === "backtest" || job.kind === "analysis" || job.kind === "portfolio_library")} {...listProps} />
         <BacktestJobList title="Downloads" emptyText="No downloads. They appear here while they run." jobs={jobs.filter((job) => job.kind === "download")} {...listProps} />
       </div>
       {jobToCancel && (
@@ -103,6 +103,9 @@ function describeStopDialog(job: BacktestJobView): { title: string; message: str
   }
   if (job.kind === "analysis") {
     return { title: "Stop this analysis?", message: `${describeJobTitle(job)}: the analysis stops. Update Analysis runs it again.`, confirmLabel: "Stop analysis", cancelLabel: "Keep running" };
+  }
+  if (job.kind === "portfolio_library") {
+    return { title: "Stop rebuilding the suggestions library?", message: "The tickers it finished stay in the library; the next rebuild does the rest.", confirmLabel: "Stop rebuild", cancelLabel: "Keep running" };
   }
   return {
     title: "Stop this backtest?",
@@ -153,7 +156,7 @@ function BacktestJobList({ title, emptyText, jobs, now, pendingAction, isPending
             // start now, by pausing the running one.
             const isFirstQueued = job.id === firstQueuedJobId;
             const canMoveToTop = job.kind === "download" && status === "queued" && (!isFirstQueued || downloadRunning);
-            const canResume = (status === "stopped" || status === "failed") && job.kind !== "analysis";
+            const canResume = (status === "stopped" || status === "failed") && job.kind !== "analysis" && job.kind !== "portfolio_library";
             const hasButtons = canMoveToTop || canResume || canCancel;
             const running = status === "running";
             const count = describeJobRowCount(job);
