@@ -456,6 +456,7 @@ export function describeTrigger(pass: Pick<PlutoPass, "trigger" | "triggerDetail
     case "opening_analysis":
       if (detail.dataIncomplete === true) return form === "short" ? "Opening analysis · data incomplete" : "at the opening analysis, before today's data was complete";
       if (detail.afterLateSeed === true) return form === "short" ? "Opening analysis · data now complete" : "once today's data was complete, after an early opening analysis";
+      if (detail.noOptionExpiryToday === true) return form === "short" ? "Opening analysis · no option expiry today" : "at the opening analysis, on a day no option expires at the close";
       return form === "short" ? "Opening analysis" : "at the opening analysis";
     case "manual":
       return form === "short" ? "Started by hand" : "when started by hand";
@@ -698,7 +699,14 @@ export function describeFeedEvent(event: PlutoEvent, context?: PlutoFeedContext)
       return { dot: "ctl", title: "Trading window closed", detail: "stopped analysing new trades", sub: null };
     case "analysis_started": {
       const data = text(payload.data);
-      const detail = data === "incomplete" ? "Option quotes not in by 10:30 ET, running on incomplete data" : data === "complete_after_early_start" ? "Option quotes in now, after an early start on incomplete data" : "Option quotes in";
+      const detail =
+        data === "incomplete"
+          ? "Option quotes not in by 10:30 ET, running on incomplete data"
+          : data === "complete_after_early_start"
+            ? "Option quotes in now, after an early start on incomplete data"
+            : data === "no_option_expiry_today"
+              ? "No option expires at today's close, no quotes to wait for"
+              : "Option quotes in";
       return { dot: "model", title: "Started analysing new trades", detail, sub: null };
     }
     case "connection_lost":

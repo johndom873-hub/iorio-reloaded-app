@@ -591,7 +591,7 @@ export function fetchPlutoSettings(): Promise<PlutoSettings> {
 
 /** Every number the How it works tab quotes (API src/pluto/howItWorks.ts): percentages in percent, deltas as fractions, money in dollars. */
 export interface PlutoHowItWorks {
-  shared: { windowStartEt: string; windowEndEt: string; windowEndMinutesBeforeCloseAtLeast: number; capitalBudgetPct: number; excessAllowancePct: number; dailyLossBreakerPct: number; unfilledOrderCancelMinutes: number; premiumYieldSessionsPerYear: number };
+  shared: { windowStartEt: string; windowEndEt: string; windowEndMinutesBeforeCloseAtLeast: number; capitalBudgetPct: number; excessAllowancePct: number; dailyLossBreakerPct: number; unfilledOrderCancelMinutes: number; premiumYieldSessionsPerYear: number; openingLookFallbackEt: string };
   /** The Safety Limits: they hold Vol Farmer v4's orders. */
   safetyLimits: { maxWorkingOrdersPerTicker: number; maxOrdersPerTickerPerDay: number; maxOpenPositionsPerTicker: number; maxOpenPositions: number; maxOrdersPerDay: number; spyStressBreakerPct: number; tickerCooldownMinutes: number };
   volFarmerV4: {
