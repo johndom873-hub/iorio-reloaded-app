@@ -599,7 +599,6 @@ export interface PlutoHowItWorks {
     callMaxAbsDelta: number;
     maxSpreadPctOfMid: number;
     minimumBid: number;
-    maxVolumeSharePct: number;
     /** No Call is sold whose commission is more than this % of its premium. */
     callMaxCommissionPctOfPremium: number;
     firstPositionPct: number;
