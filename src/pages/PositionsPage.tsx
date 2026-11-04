@@ -28,12 +28,13 @@ import {
   formatAsOfClose,
   formatDate,
   formatDaysToExpiry,
+  formatDelta,
   formatPercentageValue,
   formatSignedPnl,
   pnlTextClass,
 } from "../lib/formatters";
 import { liveCyclePnl } from "../lib/cycleLivePnl";
-import { SUCCESS_PROBABILITY_HEADER, SUCCESS_PROBABILITY_HEADER_TITLE, formatSuccessProbability, successProbabilityFromDelta } from "../lib/successProbability";
+import { ABSOLUTE_DELTA_HEADER, ABSOLUTE_DELTA_HEADER_TITLE, shortOptionAbsoluteDelta } from "../lib/shortOptionAbsoluteDelta";
 import { useRefreshAfterTickerModal, useTickerModal } from "../hooks/useTickerModal";
 import {
   positionExpiryDate,
@@ -226,27 +227,27 @@ export function PositionsPage() {
     return { state: "ready", value: liveCyclePnl(marks, price, liveUnrealizedPremiumByPositionId), storedAsOf: price === null ? marks.markDate : closeAsOfDate };
   }
 
-  // P(Δ) of the row's open short option from the live greeks; null while they load or when there is no short option.
-  function successProbabilityByDelta(row: Position): number | null {
+  // |Δ| of the row's open short option from the live greeks; null while they load or when there is no short option.
+  function absoluteDeltaOfRow(row: Position): number | null {
     const optionLeg = row.legs.find((leg) => leg.legType === "option" && !leg.exitAt);
     if (!optionLeg) return null;
-    return successProbabilityFromDelta(optionLeg, greeksByLegId[optionLeg.id]?.delta);
+    return shortOptionAbsoluteDelta(optionLeg, greeksByLegId[optionLeg.id]?.delta);
   }
 
-  function renderSuccessProbabilityByDelta(row: Position) {
+  function renderAbsoluteDelta(row: Position) {
     const optionLeg = row.legs.find((leg) => leg.legType === "option" && !leg.exitAt);
     if (!optionLeg) return <span className="text-secondary">—</span>;
-    if (optionLeg.side !== "short") return <TooltipSpan className="text-secondary" text="Only a short option has a chance of success">—</TooltipSpan>;
+    if (optionLeg.side !== "short") return <TooltipSpan className="text-secondary" text="Only a short option shows its |Δ|">—</TooltipSpan>;
     const greeks = greeksByLegId[optionLeg.id];
     if (!greeks) {
       if (greeksFetchFailed) return <TooltipSpan className="text-secondary" text="Failed to load">—</TooltipSpan>;
-      return <Spinner size="sm" label="Loading P(Δ)" />;
+      return <Spinner size="sm" label="Loading |Δ|" />;
     }
-    const value = successProbabilityFromDelta(optionLeg, greeks.delta);
+    const value = shortOptionAbsoluteDelta(optionLeg, greeks.delta);
     if (value === null) return <TooltipSpan className="text-secondary" text="No delta available">—</TooltipSpan>;
     return (
       <FlashingNumber value={value} precision={2} title={greeks.asOfDate ? `As of ${formatDate(greeks.asOfDate)} close` : undefined}>
-        {formatSuccessProbability(value)}
+        {formatDelta(value)}
       </FlashingNumber>
     );
   }
@@ -548,12 +549,12 @@ export function PositionsPage() {
       },
     },
     {
-      key: "successProbabilityByDelta",
-      header: SUCCESS_PROBABILITY_HEADER,
-      headerTitle: SUCCESS_PROBABILITY_HEADER_TITLE,
+      key: "absoluteDelta",
+      header: ABSOLUTE_DELTA_HEADER,
+      headerTitle: ABSOLUTE_DELTA_HEADER_TITLE,
       align: "right",
-      sortValue: (row) => successProbabilityByDelta(row),
-      render: (row) => renderSuccessProbabilityByDelta(row),
+      sortValue: (row) => absoluteDeltaOfRow(row),
+      render: (row) => renderAbsoluteDelta(row),
     },
     {
       key: "actions",

@@ -3,11 +3,10 @@ import { ChartTimeAxis } from "./ChartTimeAxis";
 
 // Pure/presentational — PulsePage owns the rolling-sample logic (sampling
 // the live greeks stream's delta per position, filtered to CC/CSP only, and
-// converting it to P(Δ) via lib/successProbability.ts before it reaches this
-// component). Every series runs 0..1 with 1 = success, so higher is better for
-// both strategies. The reference line is a minimum: a position sitting below
-// it is more likely to end badly than well.
-export interface SuccessProbabilitySeries {
+// taking its magnitude via lib/shortOptionAbsoluteDelta.ts before it reaches this
+// component). Every series runs 0..1; higher means the short option is more
+// likely to finish in the money. The reference line is a neutral marker at even odds.
+export interface AbsoluteDeltaSeries {
   /** Position id, not symbol — a rolled position can leave two open positions sharing one ticker, so symbol alone isn't a safe React key. */
   id: string;
   symbol: string;
@@ -15,8 +14,8 @@ export interface SuccessProbabilitySeries {
   values: number[];
 }
 
-interface SuccessProbabilityChartProps {
-  seriesByPosition: SuccessProbabilitySeries[];
+interface AbsoluteDeltaChartProps {
+  seriesByPosition: AbsoluteDeltaSeries[];
   referenceLine: number;
   /**
    * Same sample clock PulsePage uses for every series (one push per
@@ -30,7 +29,7 @@ interface SuccessProbabilityChartProps {
   yAxisMax?: number;
 }
 
-export function SuccessProbabilityChart({ seriesByPosition, referenceLine, timestamps, yAxisMax = 1 }: SuccessProbabilityChartProps) {
+export function AbsoluteDeltaChart({ seriesByPosition, referenceLine, timestamps, yAxisMax = 1 }: AbsoluteDeltaChartProps) {
   const wrapRef = useRef<HTMLDivElement>(null);
   const [hoverFraction, setHoverFraction] = useState<number | null>(null);
 
