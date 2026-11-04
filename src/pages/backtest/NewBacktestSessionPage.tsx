@@ -29,7 +29,7 @@ import {
 import { ConfirmModal } from "../../components/ConfirmModal";
 import { PageHeader } from "../../components/layout/PageHeader";
 import { Spinner } from "../../components/Spinner";
-import { BacktestBackLink, BacktestCard, BacktestSegmentedSwitch } from "../../components/backtest/backtestBits";
+import { BacktestBackLink, BacktestCard, BacktestSegmentedSwitch, BacktestSymbolLink } from "../../components/backtest/backtestBits";
 import { BacktestSettingsTable } from "../../components/backtest/BacktestSettingsTable";
 import { BacktestStartSessionConfirmBody } from "../../components/backtest/BacktestStartSessionConfirmBody";
 import { BacktestSymbolPicker } from "../../components/backtest/BacktestSymbolPicker";
@@ -184,6 +184,8 @@ export function NewBacktestSessionPage() {
   const [alwaysHoldBySymbol, setAlwaysHoldBySymbol] = useState<Record<string, AlwaysHoldTheStock>>({});
   // A copied session sized by a dollar pot per ticker (before allocations): what it came back as.
   const [retiredTickerPotNote, setRetiredTickerPotNote] = useState<string | null>(null);
+  // A copied session that started before a ticker's data now does (a business change, Marcelo 2026-11-04): its start moves there.
+  const [movedStart, setMovedStart] = useState<{ symbol: string; from: string; sourceStart: string } | null>(null);
   const [retiredResearchNote, setRetiredResearchNote] = useState<string | null>(null);
   // A copied session whose decision maker was retired: its period and tickers come back, its settings from the lab.
   const [retiredDecisionMakerNote, setRetiredDecisionMakerNote] = useState<string | null>(null);
@@ -266,7 +268,10 @@ export function NewBacktestSessionPage() {
     const initialSymbols = sourceSymbols.length > 0 ? sourceSymbols : requestedSymbols.length > 0 ? requestedSymbols : candidates[0] ? [candidates[0].symbol] : [];
     const initialCoverage = sharedCoverage(initialSymbols.map((picked) => candidates.find((candidate) => candidate.symbol === picked)!));
     setSymbols(initialSymbols);
-    const copiedDates = source && sourceSymbols.length > 0 ? { startDate: source.startDate, endDate: source.endDate } : null;
+    const startsLast = initialCoverage ? initialSymbols.find((picked) => candidates.find((candidate) => candidate.symbol === picked)!.firstDate === initialCoverage.firstDate) : undefined;
+    const movedStartDate = source && sourceSymbols.length > 0 && initialCoverage && source.startDate < initialCoverage.firstDate ? initialCoverage.firstDate : null;
+    if (source && movedStartDate && startsLast) setMovedStart({ symbol: startsLast, from: movedStartDate, sourceStart: source.startDate });
+    const copiedDates = source && sourceSymbols.length > 0 ? { startDate: movedStartDate ?? source.startDate, endDate: source.endDate } : null;
     setStartDate(copiedDates?.startDate ?? initialCoverage?.firstDate ?? "");
     setEndDate(copiedDates?.endDate ?? initialCoverage?.lastDate ?? "");
     // A copied session opens on whole years when some From / To gives its dates exactly, else on its own dates.
@@ -606,6 +611,11 @@ export function NewBacktestSessionPage() {
       <BacktestBackLink />
       <PageHeader title={pageTitle} subtitle={pageSubtitle} />
       {sourceSessionId && !sourceSession && <div className="iorio-note-amber mb-2">The session to copy could not be loaded; the form starts from the lab's settings.</div>}
+      {movedStart && (
+        <div className="iorio-note-amber mb-2">
+          <BacktestSymbolLink symbol={movedStart.symbol} />'s data now starts {movedStart.from}, after this session's start ({movedStart.sourceStart}): the run starts on {movedStart.from}.
+        </div>
+      )}
       {retiredTickerPotNote && <div className="iorio-note-amber mb-2">{retiredTickerPotNote}</div>}
       {retiredResearchNote && <div className="iorio-note-amber mb-2">{retiredResearchNote}</div>}
       {retiredDecisionMakerNote && <div className="iorio-note-amber mb-2">{retiredDecisionMakerNote}</div>}
