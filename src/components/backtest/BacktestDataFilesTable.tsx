@@ -27,7 +27,7 @@ interface BacktestDataFilesTableProps {
   analysesReloadKey: number;
 }
 
-/** The From, To and Days columns' headings: the file's option days, and the IBKR daily spot (stock) prices in the local DB. */
+/** The From and Days columns' headings (and Expiries'): the file's option days, and the IBKR daily spot (stock) prices in the local DB. */
 const optionsGroup = { label: "Options", className: "text-center", title: "Days with option prices stored in the file (ThetaData)" };
 const spotGroup = { label: "Spot", className: "text-center", title: "IBKR daily spot prices of the stock, in the local database: the forecast and the settlement prices come from them" };
 
@@ -302,14 +302,29 @@ export function BacktestDataFilesTable({ files, jobs, suitabilityBySymbol, onFil
       },
     },
     {
+      key: "latestImpliedVolatility",
+      header: "IV",
+      headerTitle: "IBKR's latest daily implied volatility of the stock (30 days), from the local database; point at a value for its day",
+      align: "right",
+      cellClassName: "text-nowrap",
+      render: (file) =>
+        file.latestImpliedVolatility === null ? (
+          "—"
+        ) : (
+          <TooltipSpan text={`IBKR's implied volatility on ${file.latestImpliedVolatilityDate ?? "an unknown day"}`} className="dotted-underline-label">
+            {formatPercentage(file.latestImpliedVolatility)}
+          </TooltipSpan>
+        ),
+    },
+    {
       key: "optionsIncome",
-      header: "Options' income",
+      header: "Options",
       headerTitle: "The Calls' and Puts' P&L a year over the last 12 months ÷ the account at their start (the rule's first check)",
       group: analysisGroup,
       align: "right",
       render: (file) => {
         const figures = analyses?.bySymbol[file.symbol]?.tableFigures ?? null;
-        return figures ? `${formatPercentage(figures.optionsIncomeTwelveMonths)} a year` : "—";
+        return figures ? formatPercentage(figures.optionsIncomeTwelveMonths) : "—";
       },
     },
     { key: "v4Cagr", header: "VF CAGR", group: analysisGroup, align: "right", render: (file) => formatPercentage(analyses?.bySymbol[file.symbol]?.tableFigures?.v4Cagr) },
@@ -331,12 +346,32 @@ export function BacktestDataFilesTable({ files, jobs, suitabilityBySymbol, onFil
       render: (file) => formatCurrency(analyses?.bySymbol[file.symbol]?.tableFigures?.smallestPotDollars, 0),
     },
     { key: "from", header: "From", group: optionsGroup, cellClassName: "font-mono text-nowrap", render: (file) => file.firstDate ?? "—" },
-    { key: "to", header: "To", group: optionsGroup, cellClassName: "font-mono text-nowrap", render: (file) => file.lastDate ?? "—" },
-    { key: "days", header: "Days", headerTitle: "Days with option prices", group: optionsGroup, align: "right", render: (file) => formatNumber(file.completeDays) },
+    {
+      key: "days",
+      header: "Days",
+      headerTitle: "Days with option prices",
+      group: optionsGroup,
+      align: "right",
+      render: (file) => (file.lastDate ? <TooltipSpan text={`Last day: ${file.lastDate}`}>{formatNumber(file.completeDays)}</TooltipSpan> : formatNumber(file.completeDays)),
+    },
+    {
+      key: "expiriesPerWeek",
+      header: "Expiries",
+      headerTitle: "Expirations a week with a Call quoted at 10:00: the median of the file's last 4 full Monday-to-Friday weeks (5 = a new expiration every weekday, 1 = weekly only)",
+      group: optionsGroup,
+      align: "right",
+      render: (file) => formatNumber(file.expiriesPerWeek, 1),
+    },
     // No IBKR bars: an amber "none" under From, since a backtest needs them.
     { key: "spotFrom", header: "From", group: spotGroup, headerClassName: "data-table-column-gap", cellClassName: "font-mono text-nowrap data-table-column-gap", render: (file) => file.barsFirstDate ?? <span className="iorio-note-amber">none</span> },
-    { key: "spotTo", header: "To", group: spotGroup, cellClassName: "font-mono text-nowrap", render: (file) => file.barsLastDate ?? "—" },
-    { key: "spotDays", header: "Days", headerTitle: "Days with spot prices", group: spotGroup, align: "right", render: (file) => formatNumber(file.barsCount) },
+    {
+      key: "spotDays",
+      header: "Days",
+      headerTitle: "Days with spot prices",
+      group: spotGroup,
+      align: "right",
+      render: (file) => (file.barsLastDate ? <TooltipSpan text={`Last day: ${file.barsLastDate}`}>{formatNumber(file.barsCount)}</TooltipSpan> : formatNumber(file.barsCount)),
+    },
     {
       key: "issues",
       header: "Issues",
