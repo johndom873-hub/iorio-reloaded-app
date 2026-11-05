@@ -152,7 +152,7 @@ function VolFarmerV4Explanation({ values }: { values: PlutoHowItWorks }) {
               {sameDay ? <> On a day none of the tickers has an option expiring at the close, there are no quotes to wait for: it runs at the window's start, Telegram says so, and no Calls or Puts are sold that day.</> : null}
             </li>
             <li>The Safety Limits cap v4's orders and positions. While SPY is down <Value>{pct(safetyLimits.spyStressBreakerPct)}</Value> or more on the day, v4 opens nothing; a sale of a LEAPS or of shares still goes.</li>
-            <li>Every order but a LEAPS is held to the ticker's pot; a LEAPS to Pluto's book value across every ticker.</li>
+            <li>Every order but a LEAPS is held to the ticker's pot; a LEAPS to Pluto's book value across every ticker. An order that adds no money at risk (a Call on shares already held, a Call roll) is held to neither.</li>
             <li>A purchase and a Put are no more than the free cash pays for: the smallest of what Pluto's book has uncommitted, its available cash and its settled cash left (its cash less what its open Puts hold, its orders working and the min cash reserve of its value). With no settled cash reported, nothing is bought, except on the paper account, which reports none and uses its total cash instead.</li>
             <li>Pluto's daily-loss breaker watches its own book: its value now against last night's, less cash moved into it today.</li>
             <li>The v4 tickers take turns at each round in alphabetical order, starting one ticker further each day. A LEAPS is bought or topped up after every ticker's other orders, with the free cash they left.</li>
