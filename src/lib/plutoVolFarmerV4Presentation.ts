@@ -24,7 +24,7 @@ export function describeVolFarmerV4WorkingOrder(order: PlutoVolFarmerV4Ticker["w
 export function volFarmerV4LastRoundLines(ticker: PlutoVolFarmerV4Ticker): string[] {
   if (ticker.lastRoundNotes.length > 0) return ticker.lastRoundNotes.map((note) => note.charAt(0).toUpperCase() + note.slice(1));
   if (ticker.lastRoundAt === null) return ["Not looked at yet"];
-  return ["Nothing planned"];
+  return ticker.workingOrders.length > 0 ? [] : ["Nothing planned"];
 }
 
 /** "Last order Nov 5 12:47 AM: Sell 10 × $46 Call · 4 Nov (0DTE), limit $0.27, filled at $0.37", in the viewer's clock (today: the time alone). */

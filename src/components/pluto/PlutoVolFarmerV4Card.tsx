@@ -54,7 +54,7 @@ function NextActionCell({ ticker, open, onToggle }: { ticker: PlutoVolFarmerV4Ti
         <span className={chip.className}>{chip.label}</span>
         <span className="strong">{nextAction.text}</span>
       </div>
-      {nextAction.sub && <span className="pm-cell-sub">{nextAction.sub}</span>}
+      {nextAction.sub && <span className="pm-cell-sub pm-v4-sub" title={nextAction.sub}>{nextAction.sub}</span>}
       {nextAction.alert && (
         <span className="pm-v4-alert">
           <WarningIcon />
@@ -128,7 +128,7 @@ function LastRoundCell({ ticker, todayIso }: { ticker: PlutoVolFarmerV4Ticker; t
       {volFarmerV4LastRoundLines(ticker).map((line, index) => (
         <span key={`note-${index}`} className="pm-cell-sub pm-v4-note" title={line}>{line}</span>
       ))}
-      {ticker.lastOrder && <span className="pm-cell-sub pm-v4-note">{describeVolFarmerV4LastOrder(ticker.lastOrder)}</span>}
+      {ticker.lastOrder && <span className="pm-cell-sub pm-v4-note" title={describeVolFarmerV4LastOrder(ticker.lastOrder)}>{describeVolFarmerV4LastOrder(ticker.lastOrder)}</span>}
       {ticker.cancelledToday > 0 && <span className="pm-cell-sub">{describeVolFarmerV4CancelledToday(ticker.cancelledToday)}</span>}
     </>
   );
