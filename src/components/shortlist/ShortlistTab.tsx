@@ -9,7 +9,7 @@ import { DailyBarsCell, EarningsCell, ImpliedVolatilityDaysCell, OptionChainExpi
 import { ActionsMenu, type ActionsMenuItem } from "./ActionsMenu";
 import { PlutoBotToggle } from "../pluto/PlutoBotToggle";
 import { useIsAdmin } from "../../hooks/useAuth";
-import { adminOnlyShortlistRemoveReason } from "../../lib/accessLevelPresentation";
+import { plutoEnabledRemovalRefusal } from "../../lib/accessLevelPresentation";
 import { ApiError } from "../../api/client";
 import {
   addToShortlist,
@@ -343,17 +343,18 @@ export function ShortlistTab({ onOpenTickerModal }: ShortlistTabProps) {
                 ? "Another ticker is being prepared. One at a time."
                 : "Nothing failed — the setup pipeline (history, calendar, chain strikes) completed cleanly",
           },
-          isAdmin
-            ? {
-                key: "remove",
-                label: "Remove",
-                onClick: () => setRemoveConfirmRow(row),
-                loading: removingId === row.id,
-                danger: true,
-                disabled: row.openPositionCount > 0,
-                disabledReason: `${pluralize(row.openPositionCount, "open position")} on this ticker. Close ${row.openPositionCount === 1 ? "it" : "them"} before removing.`,
-              }
-            : { key: "remove", label: "Remove (admin only)", onClick: () => {}, danger: true, disabled: true, disabledReason: adminOnlyShortlistRemoveReason },
+          {
+            key: "remove",
+            label: "Remove",
+            onClick: () => setRemoveConfirmRow(row),
+            loading: removingId === row.id,
+            danger: true,
+            disabled: row.openPositionCount > 0 || (!isAdmin && row.botEnabled),
+            disabledReason:
+              row.openPositionCount > 0
+                ? `${pluralize(row.openPositionCount, "open position")} on this ticker. Close ${row.openPositionCount === 1 ? "it" : "them"} before removing.`
+                : plutoEnabledRemovalRefusal,
+          },
         ];
         return (
           <div className="d-flex justify-content-end">

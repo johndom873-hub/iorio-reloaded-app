@@ -3,7 +3,7 @@
 
 export const adminOnlyPlutoSwitchReason = "Only an admin can switch Pluto on or off for a ticker.";
 
-export const adminOnlyShortlistRemoveReason = "Only an admin can remove a ticker from the Shortlist.";
+export const plutoEnabledRemovalRefusal = "Pluto is switched on for this ticker, so only an admin can remove it. Ask an admin to switch Pluto off for it first.";
 
 /** Why a trader cannot open or roll on this ticker (Pluto trades it), or null when they can. Closing is never blocked. */
 export function plutoTickerOpenOrRollRefusal(symbol: string, { isAdmin, plutoTradesSymbol }: { isAdmin: boolean; plutoTradesSymbol: boolean }): string | null {

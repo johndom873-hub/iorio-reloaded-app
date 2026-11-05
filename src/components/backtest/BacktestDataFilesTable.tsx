@@ -4,7 +4,6 @@ import { useNavigate } from "react-router-dom";
 import { errorMessage } from "../../api/client";
 import { backtestMaxSymbolsPerSession, deleteBacktestDataFile, resumeBacktestJob, startBacktestDownload, type BacktestDataFileSummary, type BacktestJobView, type BacktestTickerSuitability } from "../../api/backtest";
 import { fetchAnalysesForTable, rerunOutOfDateAnalyses, type AnalysesForTable, type AnalysisTableRow, type SuitabilityVerdict } from "../../api/backtestAnalysis";
-import { useIsAdmin } from "../../hooks/useAuth";
 import { formatBrowserClockTime, formatCurrency, formatDayMonth, formatFileSize, formatNumber, formatPercentage, formatRatio } from "../../lib/formatters";
 import { describeDataFileIssues, describeDetectedSplits, splitsNotAnalysedExplanation, suggestedSuitabilityLabel } from "../../lib/backtestPresentation";
 import { describeTickerValuesDifferingFromLab, mergeTickerOwnValues } from "../../lib/analysisPresentation";
@@ -65,7 +64,6 @@ export function BacktestDataFilesTable({ files, jobs, suitabilityBySymbol, onFil
   const [fileToDelete, setFileToDelete] = useState<BacktestDataFileSummary | null>(null);
   const [deleteRunning, setDeleteRunning] = useState(false);
   const [suitabilitySymbol, setSuitabilitySymbol] = useState<string | null>(null);
-  const isAdmin = useIsAdmin();
   const navigate = useNavigate();
   const downloadRequestRunning = pendingSymbol !== null || bulkUpdateRunning;
   const [analyses, setAnalyses] = useState<AnalysesForTable | null>(null);
@@ -279,9 +277,7 @@ export function BacktestDataFilesTable({ files, jobs, suitabilityBySymbol, onFil
     {
       key: "suitability",
       header: "Suitability",
-      headerTitle: isAdmin
-        ? "Whether the ticker suits Vol Farmer v4, as you mark it. While Pending, the latest analysis's rule suggests a flag beside it. Click a badge to mark it or edit its note."
-        : "Whether the ticker suits Vol Farmer v4, as an admin marks it. While Pending, the latest analysis's rule suggests a flag beside it. Point at a badge for its note.",
+      headerTitle: "Whether the ticker suits Vol Farmer v4, as you mark it. While Pending, the latest analysis's rule suggests a flag beside it. Click a badge to mark it or edit its note.",
       cellClassName: "text-nowrap",
       // The flag; while Pending, the rule's suggested flag beside it, and a spinner while an analysis runs.
       render: (file) => {
@@ -290,7 +286,7 @@ export function BacktestDataFilesTable({ files, jobs, suitabilityBySymbol, onFil
         const verdict = ruleVerdictOf(row);
         return (
           <span className="d-inline-flex align-items-center gap-2">
-            <TickerSuitabilityBadge symbol={file.symbol} suitability={suitability} onOpen={isAdmin ? () => setSuitabilitySymbol(file.symbol) : null} />
+            <TickerSuitabilityBadge symbol={file.symbol} suitability={suitability} onOpen={() => setSuitabilitySymbol(file.symbol)} />
             {(suitability?.status ?? "pending") === "pending" && verdict && (
               <span className="text-secondary" style={{ fontSize: "0.75rem" }}>
                 suggests {suggestedSuitabilityLabel(verdict.suits)}

@@ -25,7 +25,6 @@ import {
 import { describeLabChangesSince, describeTickerValuesDifferingFromLab, mergeTickerOwnValues, tickerFieldValuesOfVolFarmerV4, tickerValueGroupsDiffering } from "../../../lib/analysisPresentation";
 import { formatBrowserClockTime, formatCurrency, formatDayMonth, formatDayMonthYear, formatNumber, joinWithAnd } from "../../../lib/formatters";
 import { useTickerModal } from "../../../hooks/useTickerModal";
-import { useIsAdmin } from "../../../hooks/useAuth";
 import { TickerSuitabilityModal } from "../TickerSuitabilityModal";
 import { AnalysisTickerIdentity } from "./AnalysisTickerHeader";
 import { Spinner } from "../../Spinner";
@@ -97,7 +96,6 @@ interface TickerAnalysisModalProps {
 
 export function TickerAnalysisModal({ symbol, onClose, onSuitabilitySaved }: TickerAnalysisModalProps) {
   const navigate = useNavigate();
-  const isAdmin = useIsAdmin();
   const [suitabilityOpen, setSuitabilityOpen] = useState(false);
   const signalsTicker = useTickerModal();
   const isActive = useCallback((view: { active: AnalysisRunView[] }) => view.active.length > 0, []);
@@ -551,7 +549,7 @@ export function TickerAnalysisModal({ symbol, onClose, onSuitabilitySaved }: Tic
         {backtestProblem && <div className="alert alert-danger mb-0">The analysis backtest didn't finish ({backtestProblem}), so the verdict and the backtest's cards are missing. Re-run the analysis.</div>}
         {shownBacktest && (
           <>
-            <AnalysisVerdictBand symbol={symbol} figures={shownFigures} backtest={shownBacktest} potDollars={effective.potDollars} firstPositionShare={effective.firstPositionShare} onSetFlag={isAdmin ? () => setSuitabilityOpen(true) : null} />
+            <AnalysisVerdictBand symbol={symbol} figures={shownFigures} backtest={shownBacktest} potDollars={effective.potDollars} firstPositionShare={effective.firstPositionShare} onSetFlag={() => setSuitabilityOpen(true)} />
             <AnalysisRuleCard backtest={shownBacktest} splits={splits} />
             <AnalysisSourcesCard symbol={symbol} backtest={shownBacktest} putsStartCallYieldPct={effective.v4.putsStartCallYieldPct} bandFloorShare={effective.firstPositionShare - effective.v4.rebalanceBandPct / 100} bandTopShare={effective.firstPositionShare + effective.v4.rebalanceBandPct / 100} />
           </>
@@ -597,7 +595,7 @@ export function TickerAnalysisModal({ symbol, onClose, onSuitabilitySaved }: Tic
                   <h5 className="modal-title" id="analysis-modal-title">
                     {symbol}
                   </h5>
-                  {view && <AnalysisTickerIdentity symbol={symbol} profile={view.profile} suitability={view.suitability} onOpenSuitability={isAdmin ? () => setSuitabilityOpen(true) : null} />}
+                  {view && <AnalysisTickerIdentity symbol={symbol} profile={view.profile} suitability={view.suitability} onOpenSuitability={() => setSuitabilityOpen(true)} />}
                 </div>
               </div>
               <div className="d-none d-sm-block">{statusLine}</div>

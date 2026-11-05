@@ -1376,7 +1376,7 @@ export function refreshBacktestMarketIndices(): Promise<BacktestMarketIndexFiles
   return apiRequest<BacktestMarketIndexFiles | null>("/backtest/market-indices/refresh", { method: "POST" });
 }
 
-/** Marks the ticker Suitable or Unsuitable with its note (admin only; 403 for a trader). */
+/** Marks the ticker Suitable or Unsuitable with its note (any signed-in user). */
 export function saveTickerSuitability(symbol: string, status: "suitable" | "unsuitable", note: string): Promise<BacktestTickerSuitability> {
   return apiRequest<BacktestTickerSuitability>(`/backtest/ticker-suitability/${encodeURIComponent(symbol)}`, { method: "PUT", body: JSON.stringify({ status, note }) });
 }
