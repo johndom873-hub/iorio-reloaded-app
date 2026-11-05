@@ -279,8 +279,8 @@ export function PlutoStatusCard({ state, status, settings, now, isPhone, showKpi
   }
 
   // ---- KPI figures ----
-  const nlv = state.book.netLiquidationValue;
-  const budget = nlv === null ? null : (nlv * state.book.capitalBudgetPct) / 100;
+  // What Pluto's tickers commit, against its book's value at last night's snapshot (the Pluto and Manual books, 2026-11-05).
+  const budget = state.book.plutoBookValue;
   const ordersToday = state.counters.ordersToday;
   const ordersMax = state.counters.maxOrdersPerDay;
   const windowStartMs = new Date(session.windowStartAt).getTime();

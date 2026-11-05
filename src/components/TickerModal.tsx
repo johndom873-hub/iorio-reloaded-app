@@ -1,3 +1,4 @@
+import { bookLabels } from "../api/books";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { fetchNextTickerCalendarEvents, type NextTickerCalendarEvents } from "../api/calendarEvents";
 import { ApiError } from "../api/client";
@@ -465,7 +466,7 @@ export function TickerModal({ symbol, initialRollLegId = null, focusPositionId =
                 <TickerMetric label="IV Rank" value={volatility?.ivRank == null ? "—" : formatNumber(volatility.ivRank, 0)} />
                 <TickerMetric label="IV %ile" value={volatility?.ivPercentile == null ? "—" : formatPercentageValue(volatility.ivPercentile, 0)} />
                 <TickerMetric label="Shares free" value={tradingContext ? formatNumber(tradingContext.freeShares, 0) : "—"} />
-                <TickerMetric label="Cash free" value={tradingContext?.freeCash == null ? "—" : formatCurrency(tradingContext.freeCash, 0)} />
+                <TickerMetric label={tradingContext ? `Cash free (${bookLabels[tradingContext.freeCashBook]})` : "Cash free"} value={tradingContext?.freeCash == null ? "—" : formatCurrency(tradingContext.freeCash, 0)} />
               </div>
 
               {rollNotice && (

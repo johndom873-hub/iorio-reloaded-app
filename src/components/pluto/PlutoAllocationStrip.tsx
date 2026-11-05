@@ -27,7 +27,6 @@ function TickerList({ symbols, onOpenTicker, lastJoin = ", " }: { symbols: strin
 interface PlutoAllocationStripProps {
   view: PlutoAllocationView;
   budgetDollars: number | null;
-  capitalBudgetPct: number | null;
   /** The allowance as typed while editing; null when not editing. */
   allowanceText: string | null;
   onAllowanceChange: (text: string) => void;
@@ -39,15 +38,15 @@ interface PlutoAllocationStripProps {
   onOpenTicker: (symbol: string) => void;
 }
 
-export function PlutoAllocationStrip({ view, budgetDollars, capitalBudgetPct, allowanceText, onAllowanceChange, onEdit, locked, saving, onOpenTicker }: PlutoAllocationStripProps) {
+export function PlutoAllocationStrip({ view, budgetDollars, allowanceText, onAllowanceChange, onEdit, locked, saving, onOpenTicker }: PlutoAllocationStripProps) {
   const { summary } = view;
   const potsDiffer = Math.abs(summary.potsTotalPct - 100) > 0.005;
-  const potsText = `pots add up to ${allocationPercentText(summary.potsTotalPct)} of the budget${potsDiffer && view.potsTotalDollars !== null ? ` (${formatCurrency(view.potsTotalDollars, 0)})` : ""}`;
+  const potsText = `pots add up to ${allocationPercentText(summary.potsTotalPct)} of the book${potsDiffer && view.potsTotalDollars !== null ? ` (${formatCurrency(view.potsTotalDollars, 0)})` : ""}`;
   return (
     <div className="pm-alloc">
       <span>
-        Pluto's budget <b>{budgetDollars === null ? "—" : formatCurrency(budgetDollars, 0)}</b>
-        {budgetDollars !== null && capitalBudgetPct !== null && capitalBudgetPct > 0 && <span className="muted"> ({allocationPercentText(capitalBudgetPct)} of last night's {formatCurrency((budgetDollars * 100) / capitalBudgetPct, 0)})</span>}
+        Pluto's book <b>{budgetDollars === null ? "—" : formatCurrency(budgetDollars, 0)}</b>
+        {budgetDollars !== null && <span className="muted"> (last night's value)</span>}
       </span>
       <span className={`pm-alloc-bar${view.overFull ? " over" : ""}`} aria-hidden="true">
         {summary.barSegments.map((segment) => (

@@ -10,6 +10,11 @@ import { ClosePositionModal } from "../components/ClosePositionModal";
 import { TickColoredPrice } from "../components/TickColoredPrice";
 import { useTheme } from "../hooks/useTheme";
 import { ApiError } from "../api/client";
+import { bookLabels, fetchBooks, type BooksState } from "../api/books";
+import { useBookSelection } from "../hooks/useBookSelection";
+import { useIsAdmin } from "../hooks/useAuth";
+import { PendingTransferCards } from "../components/books/PendingTransferCard";
+import { BookSwitch } from "../components/books/BookSwitch";
 import {
   fetchAvailableCash,
   fetchDashboardEvents,
@@ -241,9 +246,13 @@ interface TopStatProps {
   deltaClassName?: string;
   // Equal-width columns from lg up (five cards); the phone default is two per row.
   columnClassName?: string;
+  /** In place of the value line (All books' Available Cash lists each book's). */
+  body?: ReactNode;
+  /** A small line under the value (All books' Account Value split by book). */
+  footnote?: ReactNode;
 }
 
-function TopStat({ label, value, loading, valueClassName, tooltip, delta, deltaClassName, columnClassName = "col-6 col-lg" }: TopStatProps) {
+function TopStat({ label, value, loading, valueClassName, tooltip, delta, deltaClassName, columnClassName = "col-6 col-lg", body, footnote }: TopStatProps) {
   return (
     <div className={columnClassName}>
       <div className="card h-100">
@@ -264,6 +273,8 @@ function TopStat({ label, value, loading, valueClassName, tooltip, delta, deltaC
           </div>
           {loading ? (
             <Spinner size="sm" label={`Loading ${label}`} />
+          ) : body ? (
+            body
           ) : (
             <div className="d-flex align-items-baseline gap-2 flex-wrap">
               <span className={`fw-bold font-mono ${valueClassName ?? ""}`} style={{ fontSize: "1.25rem" }}>
@@ -274,6 +285,11 @@ function TopStat({ label, value, loading, valueClassName, tooltip, delta, deltaC
                   {delta}
                 </span>
               )}
+            </div>
+          )}
+          {!loading && footnote && (
+            <div className="text-secondary font-mono mt-1" style={{ fontSize: "0.75rem" }}>
+              {footnote}
             </div>
           )}
         </div>
@@ -490,6 +506,16 @@ const needsAttentionColumns = [
 
 export function DashboardPage() {
   const { theme } = useTheme();
+  // The book switch (Marcelo 2026-11-05; mockup https://claude.ai/artifact/BsfaHtEXioGY52rbmVBHLr): every figure follows it.
+  const [book, setBook] = useBookSelection();
+  const isAdmin = useIsAdmin();
+  const [books, setBooks] = useState<BooksState | null>(null);
+  const loadBooks = useCallback(() => {
+    fetchBooks()
+      .then(setBooks)
+      .catch(() => setBooks(null));
+  }, []);
+  useEffect(loadBooks, [loadBooks]);
   const [summary, setSummary] = useState<DashboardSummary | null>(null);
   const [summaryLoading, setSummaryLoading] = useState(true);
   const [summaryError, setSummaryError] = useState<string | null>(null);
@@ -523,12 +549,14 @@ export function DashboardPage() {
   // prices, no stream) — Dashboard's tiles load once, unlike Pulse's live ones.
   const [unrealizedPnlByPositionId, setUnrealizedPnlByPositionId] = useState<Record<string, UnrealizedPnlResult> | null>(null);
   const [unrealizedLoading, setUnrealizedLoading] = useState(true);
+  // Every open position, with its book: the Unrealised tile and Needs Attention follow the book switch.
+  const [openPositionsForBooks, setOpenPositionsForBooks] = useState<Position[]>([]);
 
   const [events, setEvents] = useState<PositionEvent[]>([]);
   const [eventsLoading, setEventsLoading] = useState(true);
   const [eventsError, setEventsError] = useState<string | null>(null);
 
-  const [needsAttention, setNeedsAttention] = useState<Position[]>([]);
+  const [allNeedsAttention, setNeedsAttention] = useState<Position[]>([]);
   const [needsAttentionLoading, setNeedsAttentionLoading] = useState(true);
   const [needsAttentionError, setNeedsAttentionError] = useState<string | null>(null);
   const [needsAttentionPriceBySymbol, setNeedsAttentionPriceBySymbol] = useState<Record<string, number | null>>({});
@@ -545,26 +573,29 @@ export function DashboardPage() {
   );
 
   useEffect(() => {
-    fetchDashboardSummary()
+    setSummaryLoading(true);
+    fetchDashboardSummary(book)
       .then(setSummary)
       .catch((err) => setSummaryError(err instanceof ApiError ? err.message : "Failed to load dashboard summary."))
       .finally(() => setSummaryLoading(false));
-  }, []);
+  }, [book]);
 
   useEffect(() => {
-    fetchPerformance()
+    setPerformanceLoading(true);
+    fetchPerformance(book)
       .then(setPerformance)
       .catch((err) => setPerformanceError(err instanceof ApiError ? err.message : "Failed to load performance."))
       .finally(() => setPerformanceLoading(false));
-  }, []);
+  }, [book]);
 
   const loadExposure = useCallback(() => {
     setExposureError(null);
-    fetchExposure()
+    setExposureLoading(true);
+    fetchExposure(book)
       .then(setExposure)
       .catch((err) => setExposureError(err instanceof ApiError ? err.message : "Failed to load account allocation."))
       .finally(() => setExposureLoading(false));
-  }, []);
+  }, [book]);
 
   useEffect(() => {
     loadExposure();
@@ -581,25 +612,28 @@ export function DashboardPage() {
   }, []);
 
   useEffect(() => {
-    fetchPnlHistory()
+    setHistoryLoading(true);
+    fetchPnlHistory(90, book)
       .then(setHistory)
       .catch((err) => setHistoryError(err instanceof ApiError ? err.message : "Failed to load P&L history."))
       .finally(() => setHistoryLoading(false));
-  }, []);
+  }, [book]);
 
   useEffect(() => {
-    fetchPeriodPnlByStrategy()
+    setPeriodPnlLoading(true);
+    fetchPeriodPnlByStrategy(book)
       .then(setPeriodPnl)
       .catch((err) => setPeriodPnlError(err instanceof ApiError ? err.message : "Failed to load P&L by strategy."))
       .finally(() => setPeriodPnlLoading(false));
-  }, []);
+  }, [book]);
 
   useEffect(() => {
-    fetchDashboardEvents()
+    setEventsLoading(true);
+    fetchDashboardEvents(40, book)
       .then(setEvents)
       .catch((err) => setEventsError(err instanceof ApiError ? err.message : "Failed to load recent events."))
       .finally(() => setEventsLoading(false));
-  }, []);
+  }, [book]);
 
   // "unstructured" positions with a bare stock leg and no open option leg —
   // e.g. a covered call's short call expired worthless, or a CSP got
@@ -617,6 +651,7 @@ export function DashboardPage() {
       // isn't a filterable value server-side, so this fetches every open
       // position and filters client-side instead.
       const openPositions = await fetchPositions({ status: "open" });
+      setOpenPositionsForBooks(openPositions);
       fetchUnrealizedPnl(openPositions.map((position) => position.id))
         .then(setUnrealizedPnlByPositionId)
         .catch(() => setUnrealizedPnlByPositionId(null))
@@ -641,6 +676,7 @@ export function DashboardPage() {
   }, [loadNeedsAttention]);
   useRefreshAfterTickerModal(loadNeedsAttention);
 
+  const needsAttention = useMemo(() => (book === "all" ? allNeedsAttention : allNeedsAttention.filter((position) => position.bookKey === book)), [allNeedsAttention, book]);
   const needsAttentionSymbols = Array.from(new Set(needsAttention.map((position) => position.symbol))).sort().join(",");
 
   useEffect(() => {
@@ -660,15 +696,20 @@ export function DashboardPage() {
   // nightly snapshot only when that call fails. Yesterday's P&L and the
   // unrealised % base deliberately keep using the snapshot.
   const snapshotAccountValue = summary?.netLiquidationValue ? Number(summary.netLiquidationValue) : null;
-  const liveNetLiquidationValue = cash?.netLiquidationValue ?? null;
+  const readyBooks = books?.ready ? books : null;
+  // A book's value is live from the books (its ledger cash and its legs now); All books', IBKR's live net liquidation value.
+  const liveNetLiquidationValue = book === "all" ? (cash?.netLiquidationValue ?? null) : (readyBooks?.books[book].bookValue ?? null);
   const accountValueNumber = liveNetLiquidationValue ?? snapshotAccountValue;
   const yesterdaysPnl = summary?.periods.day ? Number(summary.periods.day) : null;
+  const bookAvailableCash = book === "all" ? null : (readyBooks?.books[book].availableCash ?? null);
   const availableCashPercent =
-    accountValueNumber !== null && accountValueNumber > 0 && cash?.availableCashToTrade != null ? (cash.availableCashToTrade / accountValueNumber) * 100 : null;
+    book !== "all" && accountValueNumber !== null && accountValueNumber > 0 && bookAvailableCash !== null ? (bookAvailableCash / accountValueNumber) * 100 : null;
   // Same formula Pulse uses (approved 2026-09-19): % is against the account
-  // value excluding this open gain/loss.
+  // value excluding this open gain/loss. A book's: its own positions, against its own cost (the mark when a leg moved in).
   const totalUnrealizedPnl = unrealizedPnlByPositionId
-    ? Object.values(unrealizedPnlByPositionId).reduce((sum, row) => sum + (row.unrealizedPnl ?? 0), 0)
+    ? openPositionsForBooks
+        .filter((position) => book === "all" || position.bookKey === book)
+        .reduce((sum, position) => sum + (unrealizedPnlByPositionId[position.id]?.unrealizedPnl ?? 0) - (book === "all" ? 0 : position.bookCostAdjustmentDollars), 0)
     : null;
   const accountValueBeforeUnrealizedPnl = totalUnrealizedPnl !== null && snapshotAccountValue !== null ? snapshotAccountValue - totalUnrealizedPnl : null;
   const totalUnrealizedPnlPercent =
@@ -683,7 +724,7 @@ export function DashboardPage() {
     { label: "No Strategy", value: portfolio?.unstructured ?? null, percent: allocationPercents?.unstructured ?? 0, color: ALLOCATION_COLORS.unstructured },
     { label: "Hedges", value: portfolio?.hedge ?? null, percent: allocationPercents?.hedge ?? 0, color: ALLOCATION_COLORS.hedge },
     { label: "LEAPS", value: portfolio?.leaps ?? null, percent: allocationPercents?.leaps ?? 0, color: ALLOCATION_COLORS.leaps },
-    { label: "Cash", tileLabel: "Available Cash", value: portfolio?.availableCash ?? null, percent: allocationPercents?.availableCash ?? 0, color: ALLOCATION_COLORS.cash },
+    { label: "Cash", tileLabel: book === "all" ? "Cash (both books)" : "Available Cash", value: portfolio?.availableCash ?? null, percent: allocationPercents?.availableCash ?? 0, color: ALLOCATION_COLORS.cash },
   ].filter((item) => item.value === null || !showsAsZeroDollars(item.value));
 
   const sectorRows = (exposure?.concentrationBySector ?? []).filter((row: ConcentrationRow) => row.sector !== "Unallocated");
@@ -713,7 +754,13 @@ export function DashboardPage() {
 
   return (
     <>
-      <PageHeader title="Dashboard" subtitle="Aggregate P&L across all strategies" />
+      <PageHeader
+        title="Dashboard"
+        subtitle={book === "all" ? "Aggregate P&L across both books" : `The ${bookLabels[book]} book's own figures, from the books' start`}
+        actions={<BookSwitch selection={book} onChange={setBook} />}
+      />
+
+      {isAdmin && readyBooks && readyBooks.pendingTransfers.length > 0 && <PendingTransferCards books={readyBooks} onSplit={loadBooks} />}
 
       {summaryError && <div className="alert alert-danger">{summaryError}</div>}
       {cashError && <div className="alert alert-danger">{cashError}</div>}
@@ -721,17 +768,47 @@ export function DashboardPage() {
 
       <div className="row g-3 mb-3">
         <TopStat
-          label="Account Value"
+          label={book === "all" ? "Account Value" : `${bookLabels[book]} Book Value`}
           loading={cashLoading || summaryLoading}
           value={formatCurrency(accountValueNumber, 0)}
+          footnote={
+            book === "all" && readyBooks
+              ? `Pluto ${formatCurrency(readyBooks.books.pluto.bookValue, 0)} · Manual ${formatCurrency(readyBooks.books.manual.bookValue, 0)}${showsAsZeroDollars(readyBooks.unallocatedCash) ? "" : ` · Unallocated ${formatCurrency(readyBooks.unallocatedCash, 0)}`}`
+              : null
+          }
         />
         <TopStat
           label="Available Cash"
-          loading={cashLoading || summaryLoading}
-          value={formatCurrency(cash?.availableCashToTrade ?? null, 0)}
+          loading={books === null && cashLoading}
+          value={formatCurrency(bookAvailableCash, 0)}
           delta={availableCashPercent === null ? null : `(${availableCashPercent.toFixed(1)}%)`}
           deltaClassName={statusTextClass[lowerIsWorseStatus(availableCashPercent, ...AVAILABLE_CASH_PERCENT_BANDS)]}
-          tooltip="Total cash minus cash reserved to cover assignment on open cash-secured puts."
+          tooltip="What an opening order of the book may use: its cash less what its Puts hold, its orders still working and the min cash reserve."
+          body={
+            book === "all" ? (
+              readyBooks ? (
+                <>
+                  <div className="d-flex flex-column gap-1 font-mono">
+                    {(["manual", "pluto"] as const).map((key) => (
+                      <div key={key} className="d-flex justify-content-between gap-2">
+                        <span className="text-secondary" style={{ fontSize: "0.8rem" }}>
+                          {bookLabels[key]}
+                        </span>
+                        <span className="fw-bold">{formatCurrency(readyBooks.books[key].availableCash, 0)}</span>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="text-secondary mt-1" style={{ fontSize: "0.75rem" }}>
+                    Each book can use only its own. Not added up.
+                  </div>
+                </>
+              ) : (
+                <div className="text-secondary" style={{ fontSize: "0.8rem" }}>
+                  The books have not been started yet.
+                </div>
+              )
+            ) : undefined
+          }
         />
         <TopStat
           label="Yesterday's P&L"
@@ -1090,7 +1167,7 @@ export function DashboardPage() {
               />
             </div>
             <div className="text-secondary mt-2" style={{ fontSize: "0.72rem" }}>
-              % of total account value (net liquidation value, including cash). See Risk &amp; Limits for concentration limits.
+              {book === "all" ? "% of total account value (net liquidation value, including cash)." : `% of the ${bookLabels[book]} book's value (its positions and cash).`} See Risk &amp; Limits for concentration limits.
             </div>
           </>
         )}

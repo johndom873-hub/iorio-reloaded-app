@@ -6,7 +6,6 @@ import { formatCurrency, formatInputNumber, hhmmMinutesBefore } from "./formatte
 
 /** Figures the help texts quote, so "% of account" settings can say what they come to in dollars right now. */
 export interface PlutoParameterContext {
-  netLiquidationValue: number | null;
   settings: PlutoSettings;
   /** Every shortlisted ticker's allocation and pot, for "10% of COIN's pot" in the LEAPS cap's help; null while loading. */
   tickerAllocations?: PlutoTickerAllocation[] | null;
@@ -49,19 +48,7 @@ const volFarmerV4BuyBackSummary: Record<PlutoSettings["volFarmerV4CallsInTheMone
   bought_back_before_weekends: " · ITM Calls bought back before weekends",
 };
 
-function dollarsOfAccount(context: PlutoParameterContext, pct: number): string {
-  return context.netLiquidationValue === null ? "" : ` (${formatCurrency((context.netLiquidationValue * pct) / 100, 0)} now)`;
-}
-
 export const plutoParameterGroups: PlutoParameterGroup[] = [
-  {
-    key: "capital",
-    title: "Capital",
-    summary: (settings) => `budget ${settings.capitalBudgetPct}% of the account`,
-    parameters: [
-      { field: "capitalBudgetPct", label: "Capital budget", unit: "% of account", kind: "number", step: "1", help: (context) => `Everything that may be committed at once on the tickers Pluto is enabled on, human positions there included${dollarsOfAccount(context, context.settings.capitalBudgetPct)}. Hedges are not counted.` },
-    ],
-  },
   {
     key: "volFarmerV4",
     title: "Vol Farmer",
@@ -186,7 +173,7 @@ export const plutoParameterGroups: PlutoParameterGroup[] = [
         help: (context) => {
           const example = (context.tickerAllocations ?? []).find((ticker) => ticker.potDollars !== null);
           const cap = example ? ` ${context.settings.volFarmerV4LeapsMaxAllocationPct}% of ${example.symbol}'s ${formatCurrency(example.potDollars!, 0)} pot is ${formatCurrency((example.potDollars! * context.settings.volFarmerV4LeapsMaxAllocationPct) / 100, 0)} today.` : "";
-          return `The most a LEAPS purchase spends, as a share of the ticker's pot, paid from the cash free in Pluto's budget.${cap}`;
+          return `The most a LEAPS purchase spends, as a share of the ticker's pot, paid from the cash free in Pluto's book.${cap}`;
         },
       },
     ],

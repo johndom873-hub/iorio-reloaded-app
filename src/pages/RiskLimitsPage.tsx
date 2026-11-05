@@ -1,3 +1,4 @@
+import { BooksCard } from "../components/books/BooksCard";
 import { useCallback, useEffect, useState } from "react";
 import type { ReactNode } from "react";
 import { PageHeader } from "../components/layout/PageHeader";
@@ -7,13 +8,11 @@ import { HelpTooltip } from "../components/HelpTooltip";
 import { TooltipSpan } from "../components/TooltipSpan";
 import { ApiError } from "../api/client";
 import {
-  fetchCapitalSplit,
   fetchRiskLimitsAudit,
   fetchTradingHalt,
   fetchTradingSettings,
   updateTradingHalt,
   updateTradingSettings,
-  type CapitalSplit,
   type ConcentrationRow,
   type RiskLimitsAuditRow,
   type TradingHalt,
@@ -25,7 +24,6 @@ import { DataTable, type DataTableColumn } from "../components/DataTable/DataTab
 import { ReadOnlySetting } from "../components/ReadOnlySetting";
 import { ViewOnlyNote } from "../components/ViewOnlyNote";
 import { useIsAdmin } from "../hooks/useAuth";
-import { usePollWhileVisible } from "../hooks/usePollWhileVisible";
 import { ConfirmModal } from "../components/ConfirmModal";
 import { openNotificationStream } from "../api/notifications";
 import { formatCurrency, formatDateTime, formatDayCount, formatDelta, formatInputNumber, formatMinutesOrNever, formatPercentage, formatPercentageValueTrimmed, formatRelativeTime } from "../lib/formatters";
@@ -369,98 +367,6 @@ function SettingsSection({ title, description, children }: SettingsSectionProps)
   );
 }
 
-const capitalSplitRefreshMs = 60_000;
-
-interface CapitalBlockProps {
-  title: string;
-  description: string;
-  figures: { label: string; dollars: number | null }[];
-  /** Budget/available less in use; negative is the amount over, shown in red. */
-  leftDollars: number | null;
-  footnote: string;
-}
-
-function CapitalBlock({ title, description, figures, leftDollars, footnote }: CapitalBlockProps) {
-  const isOver = leftDollars !== null && leftDollars < 0;
-  return (
-    <div className="col-12 col-lg-6">
-      <div className="border rounded p-3 h-100">
-        <div className="fw-bold">{title}</div>
-        <div className="text-secondary" style={{ fontSize: "0.8rem" }}>
-          {description}
-        </div>
-        <div className="row g-2 mt-1">
-          {figures.map((figure) => (
-            <div key={figure.label} className="col-4">
-              <div className="text-secondary" style={{ fontSize: "0.75rem" }}>
-                {figure.label}
-              </div>
-              <div className="fw-bold font-monospace">{formatCurrency(figure.dollars, 0)}</div>
-            </div>
-          ))}
-          <div className="col-4">
-            <div className="text-secondary" style={{ fontSize: "0.75rem" }}>
-              {isOver ? "Over by" : "Left"}
-            </div>
-            <div className={`fw-bold font-monospace${isOver ? " text-danger" : ""}`}>{formatCurrency(leftDollars === null ? null : Math.abs(leftDollars), 0)}</div>
-          </div>
-        </div>
-        <div className="text-secondary mt-2" style={{ fontSize: "0.75rem" }}>
-          {footnote}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// The account's two halves (2026-10-17): Pluto's capital budget, reserved for it even while it is off, and everything else,
-// in which a trader's new positions must fit. Read when the page opens and every minute while it is visible.
-function CapitalSplitBlocks() {
-  const [split, setSplit] = useState<CapitalSplit | null>(null);
-  const [error, setError] = useState<string | null>(null);
-
-  const load = useCallback(() => {
-    fetchCapitalSplit()
-      .then((loaded) => {
-        setSplit(loaded);
-        setError(null);
-      })
-      .catch((err: unknown) => setError(err instanceof ApiError ? err.message : "Failed to load Pluto's and everyone else's capital."));
-  }, []);
-
-  useEffect(load, [load]);
-  usePollWhileVisible(load, capitalSplitRefreshMs);
-
-  if (error) return <div className="text-danger mb-3" style={{ fontSize: "0.8rem" }}>{error}</div>;
-  if (!split) return <Spinner size="sm" label="Loading Pluto's and everyone else's capital" />;
-  const plutoLeft = split.pluto.budgetDollars === null ? null : split.pluto.budgetDollars - split.pluto.inUseDollars;
-  const outsideLeft = split.outsidePluto.availableDollars === null ? null : split.outsidePluto.availableDollars - split.outsidePluto.inUseDollars;
-  return (
-    <div className="row g-3 mb-3">
-      <CapitalBlock
-        title="Pluto"
-        description={`${formatPercentageValueTrimmed(split.plutoCapitalBudgetPct, 2)} of net liquidation value, reserved for Pluto even while it is off`}
-        figures={[
-          { label: "Budget", dollars: split.pluto.budgetDollars },
-          { label: "In use", dollars: split.pluto.inUseDollars },
-        ]}
-        leftDollars={plutoLeft}
-        footnote={`${split.pluto.openPositionCount} ${split.pluto.openPositionCount === 1 ? "position" : "positions"} on the tickers Pluto trades.`}
-      />
-      <CapitalBlock
-        title="Everything else"
-        description="The rest of the account: a trader's new positions must fit in what is left"
-        figures={[
-          { label: "Available", dollars: split.outsidePluto.availableDollars },
-          { label: "In use", dollars: split.outsidePluto.inUseDollars },
-        ]}
-        leftDollars={outsideLeft}
-        footnote="EXP $ of every other position, plus orders still working."
-      />
-    </div>
-  );
-}
-
 // A retired field still named in older history rows.
 const historyFieldLabels: Record<string, string> = { ...fieldLabels, tradingHalt: "Trading halt", minAnnualizedYieldPct: "Min annualised yield % (retired)" };
 
@@ -600,33 +506,27 @@ export function RiskLimitsPage() {
             )}
 
             <div className="row mb-3">
-              <div className="col-12 col-sm-6 col-md-3">
+              <div className="col-12 col-sm-6 col-md-4">
                 <div className="text-secondary" style={{ fontSize: "0.75rem" }}>
-                  Net Liquidation Value
+                  Net Liquidation Value (both books)
                 </div>
                 <div className="fw-bold">{formatCurrency(exposure?.account?.netLiquidationValue ?? null, 0)}</div>
               </div>
-              <div className="col-12 col-sm-6 col-md-3">
+              <div className="col-12 col-sm-6 col-md-4">
                 <div className="text-secondary" style={{ fontSize: "0.75rem" }}>
-                  Total Cash
+                  Total Cash (both books)
                 </div>
                 <div className="fw-bold">{formatCurrency(exposure?.account?.totalCashValue ?? null, 0)}</div>
               </div>
-              <div className="col-12 col-sm-6 col-md-3">
+              <div className="col-12 col-sm-6 col-md-4">
                 <div className="text-secondary" style={{ fontSize: "0.75rem" }}>
-                  Available Cash
-                </div>
-                <div className="fw-bold">{formatCurrency(exposure?.availableCash ?? null, 0)}</div>
-              </div>
-              <div className="col-12 col-sm-6 col-md-3">
-                <div className="text-secondary" style={{ fontSize: "0.75rem" }}>
-                  Gross Position Value
+                  Gross Position Value (both books)
                 </div>
                 <div className="fw-bold">{formatCurrency(exposure?.account?.grossPositionValue ?? null, 0)}</div>
               </div>
             </div>
 
-            <CapitalSplitBlocks />
+            <BooksCard />
 
             <div className="row g-3">
               <ConcentrationList

@@ -59,7 +59,7 @@ export function volFarmerV4Warnings(ticker: PlutoVolFarmerV4Ticker): { symbol: s
   const bothPositionsHoldShares = (ticker.first?.shares ?? 0) > 0 && (ticker.second?.shares ?? 0) > 0;
   const leapsComplete = ticker.leaps !== null && ticker.leaps.heldContracts >= ticker.leaps.intendedContracts;
   if (bothPositionsHoldShares && !leapsComplete && figures.freeCashDollars < figures.leapsCapDollars) {
-    warnings.push({ symbol: ticker.symbol, text: `'s two positions hold shares and ${formatCurrency(figures.freeCashDollars, 0)} of Pluto's budget is free, less than its ${formatCurrency(figures.leapsCapDollars, 0)} LEAPS cap: a LEAPS would be bought short of its count.` });
+    warnings.push({ symbol: ticker.symbol, text: `'s two positions hold shares and ${formatCurrency(figures.freeCashDollars, 0)} of Pluto's book is free, less than its ${formatCurrency(figures.leapsCapDollars, 0)} LEAPS cap: a LEAPS would be bought short of its count.` });
   }
   return warnings;
 }

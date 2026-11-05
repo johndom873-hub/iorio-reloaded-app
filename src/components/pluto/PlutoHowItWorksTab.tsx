@@ -78,13 +78,13 @@ function VolFarmerV4Explanation({ values }: { values: PlutoHowItWorks }) {
             Once the stock is half a Step below the second position's break-even, <b>B-E²</b>, Pluto buys a <b>LEAPS</b>: a Call <Value>{v4.leapsMinDte}</Value> or more days out that gains as the stock recovers. It is sold as soon as the second position's shares are gone, even at a loss.
           </p>
           <p className="pm-how-text">
-            The v4 tickers share Pluto's budget. Each ticker's pot is its allocation of the budget, raised by the excess allowance (<Value>{pct(shared.excessAllowancePct)}</Value> now), so the pots can add up to more than the budget. The account is a cash account: a purchase or a Put uses only cash that has settled, so Pluto counts the smallest of the budget's free cash, the account's and the settled cash left.
+            The v4 tickers share Pluto's book: its own share of the account, which grows or shrinks with Pluto's results and spends only its own cash. Each ticker's pot is its allocation of the book's value, raised by the excess allowance (<Value>{pct(shared.excessAllowancePct)}</Value> now), so the pots can add up to more than the book. The account is a cash account: a purchase or a Put uses only cash that has settled, so Pluto counts the smallest of what its book has uncommitted, its available cash and its settled cash left.
           </p>
           <p className="pm-how-text muted">Pluto looks at every v4 ticker at every round, all day. Every order goes at the mid; one that does not fill is planned again at a later round.</p>
         </Card>
         <Card title="A worked example">
           <p className="pm-how-text">
-            A {formatCurrency(example.accountValue, 0)} account, Pluto's budget {pct(shared.capitalBudgetPct)}, the ticker's allocation {pct(example.allocationPct)}{shared.excessAllowancePct > 0 && <>, the excess allowance {pct(shared.excessAllowancePct)}</>}: its pot is <b>{formatCurrency(example.pot, 0)}</b>.
+            Pluto's book worth {formatCurrency(example.plutoBookValue, 0)}, the ticker's allocation {pct(example.allocationPct)}{shared.excessAllowancePct > 0 && <>, the excess allowance {pct(shared.excessAllowancePct)}</>}: its pot is <b>{formatCurrency(example.pot, 0)}</b>.
           </p>
           <ol className="pm-how-list">
             <li>The stock is at {formatCurrency(example.stockPrice)}. {pct(v4.firstPositionPct)} of the pot, {formatCurrency(firstPositionDollars, 0)}, buys <b>{example.lots} lots</b> ({formatNumber(example.lots * 100)} shares), with a Call sold on them.</li>
@@ -104,7 +104,7 @@ function VolFarmerV4Explanation({ values }: { values: PlutoHowItWorks }) {
               {implied ? <>The stock's options price a {pct(example.impliedVolatilityPct)} yearly move, so the Step is {pct(example.impliedVolatilityPct)} × √(21 ÷ 252) = <b>{pct(example.stepPct)}</b></> : <>The Step is a fixed <b>{pct(example.stepPct)}</b></>}
               {v4.putStrikeCap === "first_break_even_less_step" ? <>: Puts are sold struck at most {formatCurrency(example.firstBreakEven)} × (1 − {pct(example.stepPct)}) = <b>{formatCurrency(example.putStrikeCap)}</b></> : <>; the Puts may be struck anywhere below the price</>}, with the rest of the pot, {formatCurrency(example.pot - firstPositionDollars, 0)}.
             </li>
-            <li>If a Put is assigned, a LEAPS is bought once the stock is half that Step, <b>{pct(example.leapsEntryBelowSecondBreakEvenPct)}</b>, below B-E², and spends at most {pct(v4.leapsMaxAllocationPct)} of the pot: <b>{formatCurrency(example.leapsCap, 0)}</b>, from Pluto's budget.</li>
+            <li>If a Put is assigned, a LEAPS is bought once the stock is half that Step, <b>{pct(example.leapsEntryBelowSecondBreakEvenPct)}</b>, below B-E², and spends at most {pct(v4.leapsMaxAllocationPct)} of the pot: <b>{formatCurrency(example.leapsCap, 0)}</b>, from Pluto's book.</li>
           </ol>
         </Card>
       </div>
@@ -152,8 +152,9 @@ function VolFarmerV4Explanation({ values }: { values: PlutoHowItWorks }) {
               {sameDay ? <> On a day none of the tickers has an option expiring at the close, there are no quotes to wait for: it runs at the window's start, Telegram says so, and no Calls or Puts are sold that day.</> : null}
             </li>
             <li>The Safety Limits cap v4's orders and positions. While SPY is down <Value>{pct(safetyLimits.spyStressBreakerPct)}</Value> or more on the day, v4 opens nothing; a sale of a LEAPS or of shares still goes.</li>
-            <li>Every order but a LEAPS is held to the ticker's pot; a LEAPS to Pluto's budget across every ticker.</li>
-            <li>A purchase and a Put are no more than the free cash pays for: the smallest of Pluto's budget left, the account's free cash and the settled cash left (IBKR's settled cash less the cash the open Puts hold and the orders working). With no settled cash reported, nothing is bought, except on the paper account, which reports none and uses its total cash instead.</li>
+            <li>Every order but a LEAPS is held to the ticker's pot; a LEAPS to Pluto's book value across every ticker.</li>
+            <li>A purchase and a Put are no more than the free cash pays for: the smallest of what Pluto's book has uncommitted, its available cash and its settled cash left (its cash less what its open Puts hold, its orders working and the min cash reserve of its value). With no settled cash reported, nothing is bought, except on the paper account, which reports none and uses its total cash instead.</li>
+            <li>Pluto's daily-loss breaker watches its own book: its value now against last night's, less cash moved into it today.</li>
             <li>The v4 tickers take turns at each round in alphabetical order, starting one ticker further each day. A LEAPS is bought or topped up after every ticker's other orders, with the free cash they left.</li>
           </ul>
         </div>

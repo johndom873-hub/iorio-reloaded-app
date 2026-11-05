@@ -327,7 +327,6 @@ export function PlutoPage() {
           audit={audit}
           loading={settingsLoading}
           error={settingsError}
-          state={state}
           isPhone={isPhone}
           onSaved={(saved) => {
             setSettings(saved);

@@ -10,7 +10,7 @@ interface PlutoBotToggleProps {
   entryId: string;
   symbol: string;
   enabled: boolean;
-  /** Switching Pluto off with open positions on the ticker asks first: Pluto stops managing them. */
+  /** Switching Pluto on or off with open positions on the ticker asks first: they move between the books at the mark. */
   openPositionCount: number;
   onChanged: (enabled: boolean) => void;
   onError?: (message: string) => void;
@@ -55,7 +55,7 @@ export function PlutoBotToggle({ entryId, symbol, enabled, openPositionCount, on
         ariaLabel={`Pluto ${enabled ? "enabled" : "disabled"} for ${symbol}`}
         onToggle={requestToggle}
       />
-      {confirming && <PlutoStopsManagingConfirm symbol={symbol} openPositionCount={openPositionCount} onConfirm={() => void toggle()} onCancel={() => setConfirming(false)} />}
+      {confirming && <PlutoStopsManagingConfirm entryId={entryId} symbol={symbol} botEnabled={enabled} openPositionCount={openPositionCount} onConfirm={() => void toggle()} onCancel={() => setConfirming(false)} />}
     </>
   );
 }

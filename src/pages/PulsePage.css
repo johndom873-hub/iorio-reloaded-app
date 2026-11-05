@@ -351,6 +351,28 @@
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
+/* Available Cash per book (the Pluto and Manual books, 2026-11-05): two compact rows in place of one value. */
+.iorio-pulse-page .kpi-book-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.5rem;
+  min-width: 0;
+}
+.iorio-pulse-page .kpi-book-name {
+  font-size: 0.66rem;
+  color: var(--text-secondary);
+}
+.iorio-pulse-page .kpi-book-value {
+  font-family: var(--font-mono);
+  font-size: 0.95rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.iorio-pulse-page .sub-value.unallocated-pending {
+  color: var(--warning);
+}
 .iorio-pulse-page .kpi-delta {
   font-family: var(--font-mono);
   font-size: 0.68rem;

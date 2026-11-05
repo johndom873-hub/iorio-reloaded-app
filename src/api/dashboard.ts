@@ -1,3 +1,4 @@
+import { bookQuery, type BookSelection } from "./books";
 import { apiRequest } from "./client";
 
 export interface DashboardPeriods {
@@ -29,8 +30,8 @@ export interface DashboardSummary {
   strategyBreakdown: StrategyPnlBreakdown[];
 }
 
-export function fetchDashboardSummary(): Promise<DashboardSummary> {
-  return apiRequest<DashboardSummary>("/dashboard/summary");
+export function fetchDashboardSummary(book: BookSelection = "all"): Promise<DashboardSummary> {
+  return apiRequest<DashboardSummary>(`/dashboard/summary${bookQuery(book)}`);
 }
 
 export interface PnlHistoryPoint {
@@ -45,8 +46,8 @@ export interface PnlHistoryPoint {
   residual: number | null;
 }
 
-export function fetchPnlHistory(days = 90): Promise<PnlHistoryPoint[]> {
-  return apiRequest<PnlHistoryPoint[]>(`/dashboard/history?days=${days}`);
+export function fetchPnlHistory(days = 90, book: BookSelection = "all"): Promise<PnlHistoryPoint[]> {
+  return apiRequest<PnlHistoryPoint[]>(`/dashboard/history?days=${days}${bookQuery(book, "&")}`);
 }
 
 export interface Portfolio {
@@ -58,8 +59,8 @@ export interface Portfolio {
   availableCash: number | null;
 }
 
-export function fetchPortfolio(): Promise<Portfolio> {
-  return apiRequest<Portfolio>("/dashboard/portfolio");
+export function fetchPortfolio(book: BookSelection = "all"): Promise<Portfolio> {
+  return apiRequest<Portfolio>(`/dashboard/portfolio${bookQuery(book)}`);
 }
 
 export interface StrategyPeriodPnlRow {
@@ -79,8 +80,8 @@ export interface PeriodPnlByStrategy {
   total: StrategyPeriodPnlRow;
 }
 
-export function fetchPeriodPnlByStrategy(): Promise<PeriodPnlByStrategy> {
-  return apiRequest<PeriodPnlByStrategy>("/dashboard/period-pnl-by-strategy");
+export function fetchPeriodPnlByStrategy(book: BookSelection = "all"): Promise<PeriodPnlByStrategy> {
+  return apiRequest<PeriodPnlByStrategy>(`/dashboard/period-pnl-by-strategy${bookQuery(book)}`);
 }
 
 export interface PositionEventLeg {
@@ -122,8 +123,8 @@ export interface PositionEvent {
   legs: PositionEventLeg[];
 }
 
-export function fetchDashboardEvents(limit = 40): Promise<PositionEvent[]> {
-  return apiRequest<PositionEvent[]>(`/dashboard/events?limit=${limit}`);
+export function fetchDashboardEvents(limit = 40, book: BookSelection = "all"): Promise<PositionEvent[]> {
+  return apiRequest<PositionEvent[]>(`/dashboard/events?limit=${limit}${bookQuery(book, "&")}`);
 }
 
 export interface AccountValue {
@@ -186,6 +187,6 @@ export interface PerformanceSummary {
   compoundAnnualGrowthRatePercent: number | null;
 }
 
-export function fetchPerformance(): Promise<PerformanceSummary> {
-  return apiRequest<PerformanceSummary>("/dashboard/performance");
+export function fetchPerformance(book: BookSelection = "all"): Promise<PerformanceSummary> {
+  return apiRequest<PerformanceSummary>(`/dashboard/performance${bookQuery(book)}`);
 }

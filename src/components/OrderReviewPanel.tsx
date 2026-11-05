@@ -15,7 +15,8 @@ export interface OrderReviewQuoteSeed {
   theta: number | null;
   vega: number | null;
 }
-import { fetchAccountValue, fetchAvailableCash } from "../api/dashboard";
+import { fetchAccountValue } from "../api/dashboard";
+import { bookLabels, bookOfOrder, fetchBooks, type BookKey } from "../api/books";
 import type { OpenOrderStrategyKey, StrategyKey } from "../api/strategy";
 import {
   daysToExpiry,
@@ -157,6 +158,8 @@ export function OrderReviewPanel({ order: initialOrder, initialAdaptivePriority,
   const [quoteStreamError, setQuoteStreamError] = useState<string | null>(null);
   const [totalAccountValue, setTotalAccountValue] = useState<number | null>(null);
   const [availableCashToTrade, setAvailableCashToTrade] = useState<number | null>(null);
+  /** The book the order is measured against (the Pluto and Manual books, 2026-11-05); null until the books are read. */
+  const [orderBook, setOrderBook] = useState<BookKey | null>(null);
   const notifiedFilledRef = useRef(false);
 
   // Mirrors the old schedulePoll's onFilled short-circuit, just fed by the
@@ -171,27 +174,36 @@ export function OrderReviewPanel({ order: initialOrder, initialAdaptivePriority,
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [order.status]);
 
-  // Live (approved 2026-08-27, see fetchAvailableCash) -- shown below the
+  // Live (approved 2026-08-27; the books' live figures since 2026-11-05) -- shown below the
   // Live Quote card so "can I afford this" is answered with a genuinely
   // current cash figure, not last night's snapshot. The same call's account
   // value is the base for Capital at Risk's % of the account (approved
   // 2026-08-25, visible at the decision point), matching Pulse, Dashboard and
   // Positions; the nightly snapshot only when the live value is missing.
+  // Since the books (Marcelo 2026-11-05): the order's own book, its available cash (what the order route checks it
+  // against) and its value as Capital at Risk's base.
   useEffect(() => {
     const loadSnapshotAccountValue = () =>
       fetchAccountValue()
         .then((result) => setTotalAccountValue(result.netLiquidationValue === null ? null : Number(result.netLiquidationValue)))
         .catch(() => setTotalAccountValue(null));
-    fetchAvailableCash()
-      .then((result) => {
-        setAvailableCashToTrade(result.availableCashToTrade);
-        if (result.netLiquidationValue !== null) setTotalAccountValue(result.netLiquidationValue);
-        else void loadSnapshotAccountValue();
+    fetchBooks()
+      .then((books) => {
+        if (!books.ready) {
+          setAvailableCashToTrade(null);
+          void loadSnapshotAccountValue();
+          return;
+        }
+        const book = bookOfOrder({ symbol: order.payload.symbol }, books.plutoSymbols);
+        setOrderBook(book);
+        setAvailableCashToTrade(books.books[book].availableCash);
+        setTotalAccountValue(books.books[book].bookValue);
       })
       .catch(() => {
         setAvailableCashToTrade(null);
         void loadSnapshotAccountValue();
       });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Streams for as long as the panel stays open (approved 2026-08-27,
@@ -561,7 +573,7 @@ export function OrderReviewPanel({ order: initialOrder, initialAdaptivePriority,
       {isOpeningOrder && optionLeg && cashRequired !== null && (
         <div className="d-flex flex-column gap-1" style={{ fontSize: "0.8rem" }}>
           <div className="d-flex justify-content-between">
-            <span className="text-secondary">Available cash to trade</span>
+            <span className="text-secondary">Available cash to trade{orderBook ? ` (${bookLabels[orderBook]})` : ""}</span>
             <span className="font-mono fw-semibold">
               {availableCashToTrade !== null ? formatCurrency(availableCashToTrade) : <Spinner size="sm" label="Loading available cash" />}
             </span>
@@ -571,7 +583,7 @@ export function OrderReviewPanel({ order: initialOrder, initialAdaptivePriority,
             <span className="font-mono fw-semibold text-danger">{formatSignedPnl(-cashRequired, 0)}</span>
           </div>
           <div className="d-flex justify-content-between">
-            <span className="text-secondary">Cash after this trade</span>
+            <span className="text-secondary">Cash after this trade{orderBook ? ` (${bookLabels[orderBook]})` : ""}</span>
             <span className="font-mono fw-semibold">
               {availableCashToTrade !== null ? formatCurrency(availableCashToTrade - cashRequired) : <Spinner size="sm" label="Loading available cash" />}
             </span>

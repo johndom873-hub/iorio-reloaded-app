@@ -1,3 +1,4 @@
+import type { BookKey } from "./books";
 import { apiRequest } from "./client";
 import { openMultiplexedStream } from "./streamMultiplexer";
 import type { MacroEvent } from "./calendarEvents";
@@ -26,7 +27,9 @@ export interface TickerTradingContext {
   companyName: string | null;
   freeShares: number;
   /** Null when the account summary could not be read. */
+  /** The available cash of the ticker's book (freeCashBook): what an order on the ticker may use. */
   freeCash: number | null;
+  freeCashBook: BookKey;
   heldLegs: OpenShortLeg[];
   /** λ (0..1), the Risk & Limits spread cost share. */
   spreadShareCharged: number;

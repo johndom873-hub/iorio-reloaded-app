@@ -44,7 +44,9 @@ import { shortOptionAbsoluteDelta, ABSOLUTE_DELTA_HEADER } from "../lib/shortOpt
 import { positionExpiryDate, strategyAbbrev as positionStrategyAbbrev, strategyTooltip } from "../lib/positionPnl";
 import { FlashingNumber } from "../components/FlashingNumber";
 import { TooltipSpan } from "../components/TooltipSpan";
-import { AVAILABLE_CASH_PERCENT_BANDS, higherIsWorseStatus, lowerIsWorseStatus, type StatusClass } from "../lib/statusThresholds";
+import { higherIsWorseStatus, type StatusClass } from "../lib/statusThresholds";
+import { showsAsZeroDollars } from "../lib/formatters";
+import { bookLabels, fetchBooks, type BooksState } from "../api/books";
 import { TopologyMap, type PulseEvent } from "../components/pulse/TopologyMap";
 import { nodeIdsForActiveEdges } from "../components/pulse/pulseEdges";
 import { formatOrderLegsSummary, orderAwaitsFillPrices, type LatestEventsOrder } from "../components/pulse/latestEventsOrders";
@@ -393,6 +395,9 @@ export function PulsePage() {
   const [accountValue, setAccountValue] = useState<AccountValue | null>(null);
   const [summary, setSummary] = useState<DashboardSummary | null>(null);
   const [availableCash, setAvailableCash] = useState<AvailableCash | null>(null);
+  // Each book's available cash (the Pluto and Manual books, 2026-11-05): Pulse stays a whole-account view, but the
+  // figure someone trades from is per book.
+  const [books, setBooks] = useState<BooksState | null>(null);
   const { exposure } = useExposureStream("Failed to load account exposure.");
 
   // Live value from the polled account summary; the nightly snapshot only
@@ -400,11 +405,6 @@ export function PulsePage() {
   // % base deliberately keep using the snapshot (accountValue).
   const liveNetLiquidationValue = availableCash?.netLiquidationValue ?? null;
   const netLiquidationValue = liveNetLiquidationValue ?? accountValue?.netLiquidationValue ?? null;
-  const availableCashToTrade = availableCash?.availableCashToTrade ?? null;
-  const availableCashPercent =
-    netLiquidationValue !== null && netLiquidationValue > 0 && availableCashToTrade !== null
-      ? (availableCashToTrade / netLiquidationValue) * 100
-      : null;
 
   useEffect(() => {
     fetchAccountValue().then(setAccountValue).catch(() => {});
@@ -414,7 +414,10 @@ export function PulsePage() {
   // Refreshed every minute while the tab is visible, and immediately on
   // refocus. A failed poll keeps the last good values on screen.
   useEffect(() => {
-    const refreshAvailableCash = () => fetchAvailableCash().then(setAvailableCash).catch(() => {});
+    const refreshAvailableCash = () => {
+      fetchAvailableCash().then(setAvailableCash).catch(() => {});
+      fetchBooks().then(setBooks).catch(() => {});
+    };
     refreshAvailableCash();
     const interval = window.setInterval(() => {
       if (isTabLive()) refreshAvailableCash();
@@ -846,16 +849,20 @@ export function PulsePage() {
       </div>
       <div className="kpi-tile">
         <span className="kpi-label">Available Cash</span>
-        <div className="kpi-value-row">
-          <FlashingNumber value={availableCash?.availableCashToTrade ?? null} className="kpi-value">
-            {formatSignedPnl(availableCash?.availableCashToTrade ?? null, 0).replace("+", "")}
-          </FlashingNumber>
-          {availableCashPercent !== null && (
-            <span className={`kpi-delta ${lowerIsWorseStatus(availableCashPercent, ...AVAILABLE_CASH_PERCENT_BANDS)}`}>
-              ({availableCashPercent.toFixed(1)}%)
-            </span>
-          )}
-        </div>
+        {books?.ready ? (
+          (["manual", "pluto"] as const).map((book) => (
+            <div key={book} className="kpi-book-row">
+              <span className="kpi-book-name">{bookLabels[book]}</span>
+              <FlashingNumber value={books.books[book].availableCash} className="kpi-book-value">
+                {formatSignedPnl(books.books[book].availableCash, 0).replace("+", "")}
+              </FlashingNumber>
+            </div>
+          ))
+        ) : (
+          <div className="kpi-value-row">
+            <span className="kpi-value">—</span>
+          </div>
+        )}
       </div>
       <div className="kpi-tile">
         <span className="kpi-label">Yesterday&apos;s P&amp;L</span>
@@ -1134,6 +1141,12 @@ export function PulsePage() {
             {availableCash?.cashLockedInCsps ? formatCompactDollars(availableCash.cashLockedInCsps) : "—"}
           </FlashingNumber>
         </div>
+        {books?.ready && !showsAsZeroDollars(books.unallocatedCash) && (
+          <div className="sub-row">
+            <span className="sub-name">Unallocated</span>
+            <span className="sub-value unallocated-pending">{formatCompactDollars(books.unallocatedCash)}</span>
+          </div>
+        )}
       </div>
     ),
     gateway: (

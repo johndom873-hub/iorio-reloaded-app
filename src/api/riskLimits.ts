@@ -1,3 +1,4 @@
+import { bookQuery, type BookSelection } from "./books";
 import { apiRequest, apiBaseUrl } from "./client";
 import { openMultiplexedStream } from "./streamMultiplexer";
 import type { StrategyKey } from "./strategy";
@@ -89,8 +90,9 @@ export interface ExposureData {
 // hasn't quoted yet, since there's no "frozen phase complete" signal for a
 // plain fetch; that's the tradeoff Dashboard accepts for a load-once view.
 // Pulse and Risk & Limits stay on openExposureStream below.
-export function fetchExposure(): Promise<ExposureData> {
-  return apiRequest<ExposureData>("/risk-limits/exposure");
+/** `book`: only that book's positions, against its value and available cash (the Dashboard's book switch). */
+export function fetchExposure(book: BookSelection = "all"): Promise<ExposureData> {
+  return apiRequest<ExposureData>(`/risk-limits/exposure${bookQuery(book)}`);
 }
 
 // Live-upgrading replacement for the old one-shot GET /risk-limits/exposure
@@ -140,21 +142,6 @@ export function fetchTradingHalt(): Promise<TradingHalt> {
 /** A reason is required when halting; optional when lifting the halt. */
 export function updateTradingHalt(input: { enabled: boolean; reason: string | null }): Promise<TradingHalt> {
   return apiRequest<TradingHalt>("/risk-limits/trading-halt", { method: "PUT", body: JSON.stringify(input) });
-}
-
-// The account's two halves (2026-10-17): Pluto's capital budget with what its book uses, and the rest of the account with
-// what people use of it. A trader's new positions must fit in the rest. Dollar figures are null when IBKR's account value
-// could not be read (accountDataError says why).
-export interface CapitalSplit {
-  netLiquidationValue: number | null;
-  accountDataError: string | null;
-  plutoCapitalBudgetPct: number;
-  pluto: { budgetDollars: number | null; inUseDollars: number; openPositionCount: number };
-  outsidePluto: { availableDollars: number | null; inUseDollars: number };
-}
-
-export function fetchCapitalSplit(): Promise<CapitalSplit> {
-  return apiRequest<CapitalSplit>("/risk-limits/capital-split");
 }
 
 /** One change to a trading setting or to the trading halt (field "tradingHalt", values "on"/"off", with its reason). Admins only. */

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ApiError } from "../../api/client";
-import { fetchPlutoSettingsVersion, fetchPlutoTickerAllocations, updatePlutoSettings, type PlutoSettings, type PlutoSettingsAuditRow, type PlutoSettingsField, type PlutoSettingsInput, type PlutoSettingsVersion, type PlutoState, type PlutoTickerAllocation } from "../../api/pluto";
+import { fetchPlutoSettingsVersion, fetchPlutoTickerAllocations, updatePlutoSettings, type PlutoSettings, type PlutoSettingsAuditRow, type PlutoSettingsField, type PlutoSettingsInput, type PlutoSettingsVersion, type PlutoTickerAllocation } from "../../api/pluto";
 import { formatBrowserClockTime, formatBrowserDayMonth } from "../../lib/formatters";
 import { applySettingsEdit, changedSettingsFields, describeSettingsChange, formatSettingDisplay, formatSettingRowWithUnit, formStateWithEdits, plutoParameterHelp, plutoParameterGroups, plutoParameterLabelByField, plutoParameterSpecByField, settingsChangedElsewhere, settingShownAsZeroLabel, settingsInputValue, type PlutoParameterContext, type PlutoParameterGroup, type PlutoParameterSpec, type PlutoSettingsChange, type PlutoSettingsEdits, type PlutoSettingsFormState } from "../../lib/plutoParameters";
 import { useIsAdmin } from "../../hooks/useAuth";
@@ -15,7 +15,6 @@ interface PlutoSettingsTabProps {
   audit: PlutoSettingsAuditRow[];
   loading: boolean;
   error: string | null;
-  state: PlutoState | null;
   isPhone: boolean;
   onSaved: (settings: PlutoSettings) => void;
 }
@@ -71,9 +70,9 @@ function ReadOnlyGroupSettings({ rows, settings, context }: { rows: PlutoParamet
   );
 }
 
-function GroupCard({ group, settings, form, changed, state, tickerAllocations, onChange, isOpen, onToggle, anchorRef, readOnly }: { group: PlutoParameterGroup; settings: PlutoSettings; form: PlutoSettingsFormState; changed: Set<string>; state: PlutoState | null; tickerAllocations: PlutoTickerAllocation[] | null; onChange: (field: PlutoSettingsField, value: string) => void; isOpen: boolean; onToggle: () => void; anchorRef: (element: HTMLElement | null) => void; readOnly: boolean }) {
+function GroupCard({ group, settings, form, changed, tickerAllocations, onChange, isOpen, onToggle, anchorRef, readOnly }: { group: PlutoParameterGroup; settings: PlutoSettings; form: PlutoSettingsFormState; changed: Set<string>; tickerAllocations: PlutoTickerAllocation[] | null; onChange: (field: PlutoSettingsField, value: string) => void; isOpen: boolean; onToggle: () => void; anchorRef: (element: HTMLElement | null) => void; readOnly: boolean }) {
   const changedCount = group.parameters.filter((parameter) => changed.has(parameter.field)).length;
-  const context: PlutoParameterContext = { netLiquidationValue: state?.book.netLiquidationValue ?? null, settings, tickerAllocations };
+  const context: PlutoParameterContext = { settings, tickerAllocations };
   const rows: PlutoParameterSpec[][] = [];
   for (const parameter of group.parameters) {
     if (parameter.pairedWithPrevious && rows.length > 0) rows[rows.length - 1]!.push(parameter);
@@ -122,7 +121,7 @@ function GroupCard({ group, settings, form, changed, state, tickerAllocations, o
   );
 }
 
-export function PlutoSettingsTab({ settings, audit, loading, error, state, isPhone, onSaved }: PlutoSettingsTabProps) {
+export function PlutoSettingsTab({ settings, audit, loading, error, isPhone, onSaved }: PlutoSettingsTabProps) {
   const [edits, setEdits] = useState<PlutoSettingsEdits>({});
   const [confirming, setConfirming] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -211,7 +210,7 @@ export function PlutoSettingsTab({ settings, audit, loading, error, state, isPho
       setConfirming(false);
       onSaved(saved);
     } catch (err) {
-      // The API names the field by its key ("capitalBudgetPct cannot be above 100."); show the label people see.
+      // The API names the field by its key ("dailyLossBreakerPct cannot be above 100."); show the label people see.
       setSaveError(err instanceof ApiError ? err.message.replace(/^(\w+)/, (field) => plutoParameterLabelByField[field] ?? field) : "Could not save the settings.");
       setConfirming(false);
     } finally {
@@ -287,7 +286,7 @@ export function PlutoSettingsTab({ settings, audit, loading, error, state, isPho
         <div className="pm-stack tight">
           {isAdmin && savebar}
           {plutoParameterGroups.map((group) => (
-            <GroupCard key={group.key} group={group} settings={settings} form={form} changed={changedFields} state={state} tickerAllocations={tickerAllocations} onChange={updateField} isOpen={openGroup === group.key} onToggle={() => setOpenGroup((current) => (current === group.key ? null : group.key))} anchorRef={(element) => { groupRefs.current[group.key] = element; }} readOnly={!isAdmin} />
+            <GroupCard key={group.key} group={group} settings={settings} form={form} changed={changedFields} tickerAllocations={tickerAllocations} onChange={updateField} isOpen={openGroup === group.key} onToggle={() => setOpenGroup((current) => (current === group.key ? null : group.key))} anchorRef={(element) => { groupRefs.current[group.key] = element; }} readOnly={!isAdmin} />
           ))}
         </div>
         <div className="pm-stack tight">

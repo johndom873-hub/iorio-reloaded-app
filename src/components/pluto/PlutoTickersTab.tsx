@@ -29,7 +29,7 @@ interface PlutoTickersTabProps {
   onOpenTicker: (symbol: string) => void;
   onToggled: (entryId: string, enabled: boolean) => void;
   onPrepRunChange: (run: TickerBackfillRun | null) => void;
-  /** Pluto's settings: the capital budget and the excess allowance the allocations strip shows. */
+  /** Pluto's settings: the excess allowance the allocations strip shows. */
   settings: PlutoSettings | null;
   /** After Edit allocations saves: Pluto's settings again (the excess allowance is one of them). */
   onAllocationsSaved: () => void;
@@ -42,8 +42,8 @@ const columns = [
   { key: "ticker", header: "Ticker" },
   { key: "sector", header: "Sector" },
   { key: "now", header: "Pluto now" },
-  { key: "allocation", header: "Allocation", title: "% of Pluto's capital budget: set, or an equal share of what the set allocations leave", align: "right" },
-  { key: "pot", header: "Pot", title: "The allocation of Pluto's capital budget, raised by the excess allowance, at last night's account value", align: "right" },
+  { key: "allocation", header: "Allocation", title: "% of Pluto's book value: set, or an equal share of what the set allocations leave", align: "right" },
+  { key: "pot", header: "Pot", title: "The allocation of Pluto's book value, raised by the excess allowance, at last night's book value", align: "right" },
   { key: "alwaysHold", header: "Always hold", title: "Always hold the stock: On buys shares on any day, Off only on a day a Call is sold with them. Pluto's setting unless the ticker sets its own" },
   { key: "dailyBars", header: "Daily bars", title: "Daily price history", align: "right" },
   { key: "ivDays", header: "IV days", title: "Days of implied-volatility history in IV Rank and IV %ile's 252-day window", align: "right" },
@@ -84,7 +84,7 @@ function TickerSwitch({ row, onToggled, onError, withLabel, locked }: { row: Sho
         {locked && <IconLock size={12} aria-hidden="true" className="text-secondary flex-shrink-0" />}
         {withLabel && <span className={`pm-switch-state ${row.botEnabled ? "on" : "off"}`}>{saving ? <Spinner size="sm" /> : row.botEnabled ? "Allowed" : "Off"}</span>}
       </label>
-      {confirming && <PlutoStopsManagingConfirm symbol={row.symbol} openPositionCount={row.openPositionCount} onConfirm={() => void toggle()} onCancel={() => setConfirming(false)} />}
+      {confirming && <PlutoStopsManagingConfirm entryId={row.id} symbol={row.symbol} botEnabled={row.botEnabled} openPositionCount={row.openPositionCount} onConfirm={() => void toggle()} onCancel={() => setConfirming(false)} />}
     </>
   );
 }
@@ -191,7 +191,7 @@ export function PlutoTickersTab({ rows, loading, error, state, maxEnabled, isPho
     </div>
   );
 
-  const budget = allocations?.find((ticker) => ticker.capitalBudgetDollars !== null)?.capitalBudgetDollars ?? null;
+  const budget = allocations?.find((ticker) => ticker.plutoBookValueDollars !== null)?.plutoBookValueDollars ?? null;
   const enabledRows = rows.filter((row) => row.botEnabled);
   const plutoHolding: PlutoHolding = settings?.volFarmerV4AlwaysHoldTheStock ?? "on";
   const allocationView = buildPlutoAllocationView(allocationTickers, allocationDraft, budget, settings?.excessAllowancePct ?? 0, plutoHolding);
@@ -228,7 +228,6 @@ export function PlutoTickersTab({ rows, loading, error, state, maxEnabled, isPho
     <PlutoAllocationStrip
       view={allocationView}
       budgetDollars={budget}
-      capitalBudgetPct={settings?.capitalBudgetPct ?? null}
       allowanceText={allocationDraft?.allowanceText ?? null}
       onAllowanceChange={(text) => setAllocationDraft((previous) => previous && { ...previous, allowanceText: text })}
       onEdit={settings ? startEditingAllocations : null}
@@ -256,7 +255,7 @@ export function PlutoTickersTab({ rows, loading, error, state, maxEnabled, isPho
             <input
               type="text"
               inputMode="decimal"
-              aria-label={`${row.symbol} allocation, % of Pluto's budget (empty: an equal share)`}
+              aria-label={`${row.symbol} allocation, % of Pluto's book value (empty: an equal share)`}
               value={typed ?? ""}
               placeholder={equalShare === null ? "" : formatInputNumber(+equalShare.toFixed(2), 2)}
               onChange={(event) => changeAllocationText(row.symbol, event.target.value)}

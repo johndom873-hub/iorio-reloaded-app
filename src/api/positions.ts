@@ -1,3 +1,4 @@
+import type { BookKey } from "./books";
 import { apiRequest, apiBaseUrl, apiStreamedRequest } from "./client";
 import { openMultiplexedStream } from "./streamMultiplexer";
 import { openDeferredEventSource } from "./tickerDetail";
@@ -49,6 +50,10 @@ export type PositionStrategyKey = StrategyKey | "unstructured" | "hedge" | "leap
 export interface Position {
   id: string;
   strategyKey: PositionStrategyKey;
+  /** The book the position is in now (Pluto's on a ticker Pluto is switched on for, hedges excepted; else Manual's). */
+  bookKey: BookKey;
+  /** What its open legs' sources took when moved between the books at the mark: the book's unrealised is the position's less this. */
+  bookCostAdjustmentDollars: number;
   status: PositionStatus;
   openedAt: string;
   closedAt: string | null;

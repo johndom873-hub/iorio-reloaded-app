@@ -108,9 +108,9 @@ export interface PlutoState extends PlutoStateCore {
     workingOrderSymbols: string[];
     openPositionsBySymbol: Record<string, number>;
     workingOrdersBySymbol: Record<string, number>;
-    netLiquidationValue: number | null;
-    netLiquidationValueAsOf: string | null;
-    capitalBudgetPct: number;
+    /** Pluto's book value at last night's snapshot (the Pluto and Manual books, 2026-11-05); null before the books start. */
+    plutoBookValue: number | null;
+    plutoBookValueAsOf: string | null;
   };
   agent: { connected: boolean; heartbeatAgeSeconds: number; gitSha: string | null; appEnvironment: string | null } | null;
 }
@@ -118,8 +118,7 @@ export interface PlutoState extends PlutoStateCore {
 export type PlutoTelegramVerbosity = "actions" | "off";
 
 export interface PlutoSettings {
-  capitalBudgetPct: number;
-  /** % every ticker's pot is raised above its allocation: the pots may add up to more than the budget, whose cash they share. */
+  /** % every ticker's pot is raised above its allocation: the pots may add up to more than Pluto's book value, whose cash they share. */
   excessAllowancePct: number;
   windowStartEt: string;
   windowEndEt: string;
@@ -591,7 +590,7 @@ export function fetchPlutoSettings(): Promise<PlutoSettings> {
 
 /** Every number the How it works tab quotes (API src/pluto/howItWorks.ts): percentages in percent, deltas as fractions, money in dollars. */
 export interface PlutoHowItWorks {
-  shared: { windowStartEt: string; windowEndEt: string; windowEndMinutesBeforeCloseAtLeast: number; capitalBudgetPct: number; excessAllowancePct: number; dailyLossBreakerPct: number; unfilledOrderCancelMinutes: number; premiumYieldSessionsPerYear: number; openingLookFallbackEt: string };
+  shared: { windowStartEt: string; windowEndEt: string; windowEndMinutesBeforeCloseAtLeast: number; excessAllowancePct: number; dailyLossBreakerPct: number; unfilledOrderCancelMinutes: number; premiumYieldSessionsPerYear: number; openingLookFallbackEt: string };
   /** The Safety Limits: they hold Vol Farmer v4's orders. */
   safetyLimits: { maxWorkingOrdersPerTicker: number; maxOrdersPerTickerPerDay: number; maxOpenPositionsPerTicker: number; maxOpenPositions: number; maxOrdersPerDay: number; spyStressBreakerPct: number; tickerCooldownMinutes: number };
   volFarmerV4: {
@@ -629,7 +628,8 @@ export interface PlutoHowItWorks {
     buyBackStartsEt: string;
     buyBackCancelledAtEt: string;
     example: {
-      accountValue: number;
+      /** Pluto's book value in the example: the pots' base. */
+      plutoBookValue: number;
       allocationPct: number;
       pot: number;
       stockPrice: number;
@@ -759,8 +759,8 @@ export interface PlutoTickerAllocation {
   allocationPct: number | null;
   /** The pot in dollars while the ticker is enabled in Pluto; null otherwise or with no account value. */
   potDollars: number | null;
-  /** Pluto's capital budget at last night's account value; null with no account value. */
-  capitalBudgetDollars: number | null;
+  /** Pluto's book value at last night's snapshot; null before the books start. */
+  plutoBookValueDollars: number | null;
   /** The ticker's own Always hold the stock; null = Pluto's setting. */
   alwaysHoldTheStock: PlutoSettings["volFarmerV4AlwaysHoldTheStock"] | null;
   /** What the ticker follows: its own value, else Pluto's. */
