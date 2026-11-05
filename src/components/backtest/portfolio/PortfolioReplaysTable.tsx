@@ -22,7 +22,7 @@ export function PortfolioReplaysTable({ replays }: { replays: Replay[] }) {
       columns={columns}
       rows={replays}
       rowKey={(row) => row.name}
-      toolbar={<BacktestCardTitle title="Today's book through past crashes" description="each window's actual days, once, at the actual drift; a ticker not yet listed moves as β × SPY; SPY with its dividends reinvested" />}
+      toolbar={<BacktestCardTitle title="Today's book through past crashes" description="each window's actual days, once, at the actual drift; a ticker not yet listed moves as its stand-in, else β × SPY; SPY with its dividends reinvested" />}
     />
   );
 }

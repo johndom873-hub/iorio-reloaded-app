@@ -13,6 +13,7 @@ import {
   simulatePortfolio,
   updateSavedPortfolio,
   type PortfolioBookTicker,
+  type PortfolioDrift,
   type PortfolioLibraryStatus,
   type PortfolioPots,
   type PortfolioProjection,
@@ -40,6 +41,8 @@ import { PortfolioSuggestionsCard } from "../../components/backtest/portfolio/Po
 import { PortfolioAddTickerPicker } from "../../components/backtest/portfolio/PortfolioAddTickerPicker";
 import { SavePortfolioAsModal } from "../../components/backtest/portfolio/SavePortfolioAsModal";
 import {
+  driftLabels,
+  driftOrder,
   editedPortfolioOf,
   emptyPortfolio,
   groupLabelBySymbol,
@@ -60,7 +63,10 @@ import {
 // named portfolios, project the book with v4's own steps, compare it with another saved portfolio, and take the suggestions.
 // The last portfolio opened in this browser opens again; with none, an empty book. A projection runs on Run projection and
 // when a portfolio is opened (instant when the same one was saved in the last 14 days); after it, the compared portfolio's
-// projection and the suggestions follow.
+// projection and the suggestions follow. Every projection runs at both drifts, one after the other, on the same paths.
+
+/** A book's projections at both drifts. */
+type ProjectionPair = Record<PortfolioDrift, PortfolioProjection>;
 
 type PendingSwitch = { kind: "open"; id: string } | { kind: "new" };
 
@@ -76,8 +82,8 @@ export function PortfolioSimulatorPage() {
   const [simulation, setSimulation] = useState<PortfolioSimulation | null>(null);
   const [pots, setPots] = useState<PortfolioPots | null>(null);
   const [bookError, setBookError] = useState<string | null>(null);
-  const [projection, setProjection] = useState<{ key: string; data: PortfolioProjection } | null>(null);
-  const [compared, setCompared] = useState<{ portfolioId: string; key: string; data: PortfolioProjection } | null>(null);
+  const [projection, setProjection] = useState<{ key: string; data: ProjectionPair } | null>(null);
+  const [compared, setCompared] = useState<{ portfolioId: string; key: string; data: ProjectionPair } | null>(null);
   const [run, setRun] = useState<ProjectionRunState>(idleRun);
   const [suggestions, setSuggestions] = useState<PortfolioSuggestions | null>(null);
   const [suggestionsRunning, setSuggestionsRunning] = useState(false);
@@ -92,7 +98,7 @@ export function PortfolioSimulatorPage() {
   const [leftOut, setLeftOut] = useState<string[]>([]);
   const stopStreams = useRef<(() => void)[]>([]);
   const portfoliosRef = useRef<SavedPortfolio[]>([]);
-  const comparedRef = useRef<{ portfolioId: string; key: string; data: PortfolioProjection } | null>(null);
+  const comparedRef = useRef<{ portfolioId: string; key: string; data: ProjectionPair } | null>(null);
   portfoliosRef.current = portfolios ?? [];
 
   const saved = edited.id ? (portfolios?.find((portfolio) => portfolio.id === edited.id) ?? null) : null;
@@ -117,6 +123,31 @@ export function PortfolioSimulatorPage() {
   }, []);
 
   useEffect(() => stopAll, [stopAll]);
+
+  /** `book` projected at the neutral drift, then as it happened, the progress counting both; `onDone` with the pair. */
+  const projectBothDrifts = useCallback((book: Pick<EditedPortfolio, "tickers" | "accountDollars">, settings: PortfolioViewSettings, label: string, onDone: (pair: ProjectionPair) => void, onFailure: (message: string) => void) => {
+    const done: Partial<ProjectionPair> = {};
+    const total = settings.pathCount * driftOrder.length;
+    const projectAt = (index: number) => {
+      const drift = driftOrder[index]!;
+      setRun({ running: true, label: `${label} · ${driftLabels[drift]} (${index + 1} of ${driftOrder.length})`, done: index * settings.pathCount, total, error: null });
+      stopStreams.current.push(
+        openPortfolioProjectionStream(
+          { tickers: book.tickers, accountDollars: book.accountDollars, horizonYears: settings.horizonYears, drift, pathCount: settings.pathCount },
+          {
+            onProgress: (pathsDone) => setRun((current) => ({ ...current, done: index * settings.pathCount + pathsDone })),
+            onResult: (data) => {
+              done[drift] = data;
+              if (index + 1 < driftOrder.length) projectAt(index + 1);
+              else onDone(done as ProjectionPair);
+            },
+            onFailure,
+          },
+        ),
+      );
+    };
+    projectAt(0);
+  }, []);
 
   const runSuggestions = useCallback((book: EditedPortfolio, settings: PortfolioViewSettings) => {
     setSuggestions(null);
@@ -147,48 +178,40 @@ export function PortfolioSimulatorPage() {
     if (!other || other.tickers.length === 0) return next();
     const key = projectionKeyOf(other.tickers, other.accountDollars, settings);
     if (comparedRef.current?.key === key && comparedRef.current.portfolioId === other.id) return next();
-    setRun({ running: true, label: `Projecting ${other.name}`, done: 0, total: settings.pathCount, error: null });
-    stopStreams.current.push(
-      openPortfolioProjectionStream(
-        { tickers: other.tickers, accountDollars: other.accountDollars, horizonYears: settings.horizonYears, drift: settings.drift, pathCount: settings.pathCount },
-        {
-          onProgress: (done, total) => setRun((current) => ({ ...current, done, total })),
-          onResult: (data) => {
-            comparedRef.current = { portfolioId: other.id, key, data };
-            setCompared(comparedRef.current);
-            setRun(idleRun);
-            next();
-          },
-          onFailure: (message) => setRun({ ...idleRun, error: `${other.name}: ${message}` }),
-        },
-      ),
+    projectBothDrifts(
+      other,
+      settings,
+      `Projecting ${other.name}`,
+      (data) => {
+        comparedRef.current = { portfolioId: other.id, key, data };
+        setCompared(comparedRef.current);
+        setRun(idleRun);
+        next();
+      },
+      (message) => setRun({ ...idleRun, error: `${other.name}: ${message}` }),
     );
-  }, []);
+  }, [projectBothDrifts]);
 
   const runProjection = useCallback(
     (book: EditedPortfolio, settings: PortfolioViewSettings) => {
       stopAll();
       if (book.tickers.length === 0) return;
       const key = projectionKeyOf(book.tickers, book.accountDollars, settings);
-      setRun({ running: true, label: "Projecting the book", done: 0, total: settings.pathCount, error: null });
       setSuggestions(null);
       setSuggestionsError(null);
-      stopStreams.current.push(
-        openPortfolioProjectionStream(
-          { tickers: book.tickers, accountDollars: book.accountDollars, horizonYears: settings.horizonYears, drift: settings.drift, pathCount: settings.pathCount },
-          {
-            onProgress: (done, total) => setRun((current) => ({ ...current, done, total })),
-            onResult: (data) => {
-              setProjection({ key, data });
-              setRun(idleRun);
-              runCompared(settings, () => runSuggestions(book, settings));
-            },
-            onFailure: (message) => setRun({ ...idleRun, error: message }),
-          },
-        ),
+      projectBothDrifts(
+        book,
+        settings,
+        "Projecting the book",
+        (data) => {
+          setProjection({ key, data });
+          setRun(idleRun);
+          runCompared(settings, () => runSuggestions(book, settings));
+        },
+        (message) => setRun({ ...idleRun, error: message }),
       );
     },
-    [runCompared, runSuggestions, stopAll],
+    [projectBothDrifts, runCompared, runSuggestions, stopAll],
   );
 
   // ---- Opening, New, Save, Save as, Delete ----
@@ -373,15 +396,16 @@ export function PortfolioSimulatorPage() {
   const warningCodes = warningCodesBySymbol(simulation?.warnings ?? []);
   const shownProjection = projection?.data ?? null;
   const projectionStale = projection !== null && projection.key !== currentKey;
-  const comparedSummary = compareWith && compared?.portfolioId === compareWith.id && compared.key === projectionKeyOf(compareWith.tickers, compareWith.accountDollars, view) ? { name: compareWith.name, summary: compared.data.summary } : null;
+  const comparedSummaries =
+    compareWith && compared?.portfolioId === compareWith.id && compared.key === projectionKeyOf(compareWith.tickers, compareWith.accountDollars, view) ? { name: compareWith.name, summaries: { neutral: compared.data.neutral.summary, as_it_happened: compared.data.as_it_happened.summary } } : null;
   const tickerRows: PortfolioTickerRow[] = (pots?.pots ?? [])
     .filter((pot) => edited.tickers.some((ticker) => ticker.symbol === pot.symbol))
     .map((pot) => ({
       symbol: pot.symbol,
       allocationPct: pot.allocationPct,
       pot,
-      projected: shownProjection?.tickers.find((ticker) => ticker.symbol === pot.symbol) ?? null,
-      year: shownProjection?.summary.tickers.find((ticker) => ticker.symbol === pot.symbol) ?? null,
+      projected: shownProjection?.neutral.tickers.find((ticker) => ticker.symbol === pot.symbol) ?? null,
+      year: shownProjection?.[view.chartDrift].summary.tickers.find((ticker) => ticker.symbol === pot.symbol) ?? null,
       warningCodes: warningCodes.get(pot.symbol) ?? [],
     }));
 
@@ -471,15 +495,13 @@ export function PortfolioSimulatorPage() {
             <PortfolioControls
               accountDollars={edited.accountDollars}
               horizonYears={view.horizonYears}
-              drift={view.drift}
               pathCount={view.pathCount}
               excessAllowancePct={pots?.excessAllowancePct ?? null}
               hasTickers={edited.tickers.length > 0}
               run={run}
-              projection={shownProjection}
+              projection={shownProjection?.neutral ?? null}
               onAccountDollars={(accountDollars) => setEdited((previous) => ({ ...previous, accountDollars }))}
               onHorizonYears={(horizonYears) => changeView({ horizonYears })}
-              onDrift={(drift) => changeView({ drift })}
               onPathCount={(pathCount) => changeView({ pathCount })}
               onRun={() => runProjection(edited, view)}
               onStop={stopAll}
@@ -514,7 +536,14 @@ export function PortfolioSimulatorPage() {
               <div className="portfolio-outcome-column">
                 {projectionStale && <div className="iorio-note-amber portfolio-stale-note">The book or the view settings changed since this projection: Run projection to update the figures.</div>}
                 {shownProjection ? (
-                  <PortfolioOutcomeCard summary={shownProjection.summary} horizonYears={shownProjection.horizonYears} accountDollars={shownProjection.accountDollars} compare={comparedSummary} />
+                  <PortfolioOutcomeCard
+                    summaries={{ neutral: shownProjection.neutral.summary, as_it_happened: shownProjection.as_it_happened.summary }}
+                    horizonYears={shownProjection.neutral.horizonYears}
+                    accountDollars={shownProjection.neutral.accountDollars}
+                    compare={comparedSummaries}
+                    chartDrift={view.chartDrift}
+                    onChartDrift={(chartDrift) => changeView({ chartDrift })}
+                  />
                 ) : (
                   <div className="card">
                     <div className="card-body text-secondary">{run.running ? "The outcome appears once the projection finishes." : "Run projection to see the outcome."}</div>
@@ -522,8 +551,8 @@ export function PortfolioSimulatorPage() {
                 )}
               </div>
             </div>
-            {shownProjection && <PortfolioReplaysTable replays={shownProjection.replays} />}
-            {tickerRows.length > 0 && <PortfolioTickersTable rows={tickerRows} />}
+            {shownProjection && <PortfolioReplaysTable replays={shownProjection.neutral.replays} />}
+            {tickerRows.length > 0 && <PortfolioTickersTable rows={tickerRows} yearDrift={shownProjection ? view.chartDrift : null} />}
             {simulation && <PortfolioFallTogetherCard simulation={simulation} />}
             <PortfolioSuggestionsCard library={library} suggestions={suggestions} running={suggestionsRunning} error={suggestionsError} rebuilding={rebuilding} onRebuild={() => void rebuild()} onApply={applySuggestion} />
           </>

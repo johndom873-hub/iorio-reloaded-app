@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import type { PortfolioDrift, PortfolioHorizonYears, PortfolioProjection } from "../../../api/backtestPortfolio";
+import type { PortfolioHorizonYears, PortfolioProjection } from "../../../api/backtestPortfolio";
 import { formatDateTime, formatDayMonthYear, formatNumber } from "../../../lib/formatters";
 import { projectionPathChoices } from "../../../lib/portfolioSimulatorPresentation";
 import { BacktestSegmentedSwitch } from "../backtestBits";
@@ -17,7 +17,6 @@ export interface ProjectionRunState {
 interface PortfolioControlsProps {
   accountDollars: number;
   horizonYears: PortfolioHorizonYears;
-  drift: PortfolioDrift;
   pathCount: number;
   excessAllowancePct: number | null;
   hasTickers: boolean;
@@ -25,14 +24,13 @@ interface PortfolioControlsProps {
   projection: PortfolioProjection | null;
   onAccountDollars: (dollars: number) => void;
   onHorizonYears: (years: PortfolioHorizonYears) => void;
-  onDrift: (drift: PortfolioDrift) => void;
   onPathCount: (count: number) => void;
   onRun: () => void;
   onStop: () => void;
 }
 
 /** The account (typed with thousands separators, applied on leaving the box or Enter), the view settings and the projection's run. */
-export function PortfolioControls({ accountDollars, horizonYears, drift, pathCount, excessAllowancePct, hasTickers, run, projection, onAccountDollars, onHorizonYears, onDrift, onPathCount, onRun, onStop }: PortfolioControlsProps) {
+export function PortfolioControls({ accountDollars, horizonYears, pathCount, excessAllowancePct, hasTickers, run, projection, onAccountDollars, onHorizonYears, onPathCount, onRun, onStop }: PortfolioControlsProps) {
   const [accountText, setAccountText] = useState(formatNumber(accountDollars));
   useEffect(() => setAccountText(formatNumber(accountDollars)), [accountDollars]);
   const typedAccount = Number(accountText.replace(/[,\s$]/g, ""));
@@ -77,18 +75,6 @@ export function PortfolioControls({ accountDollars, horizonYears, drift, pathCou
             />
           </div>
           <div className="portfolio-bar-control">
-            <span className="portfolio-bar-label">Stocks drift</span>
-            <BacktestSegmentedSwitch<PortfolioDrift>
-              ariaLabel="Stocks drift"
-              options={[
-                { value: "neutral", label: "Neutral" },
-                { value: "as_it_happened", label: "As it happened" },
-              ]}
-              value={drift}
-              onChange={onDrift}
-            />
-          </div>
-          <div className="portfolio-bar-control">
             <label htmlFor="portfolio-paths" className="portfolio-bar-label">
               Paths
             </label>
@@ -118,6 +104,9 @@ export function PortfolioControls({ accountDollars, horizonYears, drift, pathCou
               Run projection
             </button>
           )}
+        </div>
+        <div className="text-secondary mt-2" style={{ fontSize: "0.8rem" }}>
+          Runs both drifts on the same {formatNumber(pathCount)} paths: Neutral (each stock earns the T-bill + β × the market's long-run excess return) and As it happened (each stock's own past moves).
         </div>
         {run.running && (
           <div className="d-flex flex-column gap-1 mt-3">

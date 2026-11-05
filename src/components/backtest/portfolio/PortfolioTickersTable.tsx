@@ -1,6 +1,7 @@
-import type { PortfolioProjection, PortfolioTickerPot } from "../../../api/backtestPortfolio";
+import type { PortfolioDrift, PortfolioProjection, PortfolioTickerPot } from "../../../api/backtestPortfolio";
 import { formatCurrency, formatDayMonthYear, formatNumber, formatPercentage } from "../../../lib/formatters";
 import { DataTable, type DataTableColumn } from "../../DataTable/DataTable";
+import { driftLabels } from "../../../lib/portfolioSimulatorPresentation";
 import { BacktestCardTitle, BacktestSymbolLink } from "../backtestBits";
 
 export interface PortfolioTickerRow {
@@ -81,6 +82,33 @@ const columns: DataTableColumn<PortfolioTickerRow>[] = [
     sortValue: (row) => row.projected?.ownHistoryFrom ?? null,
   },
   {
+    key: "beforeListing",
+    header: "Before its listing",
+    headerTitle: "The stand-in whose real moves fill the years before the ticker's own, × the two's volatility ratio over the days both traded; without one, β × SPY's moves",
+    render: (row) =>
+      row.projected?.standIn ? (
+        <span title={`${row.projected.standIn.symbol}'s moves × ${row.projected.standIn.volatilityRatio.toFixed(2)} before ${row.symbol}'s own`}>
+          from {row.projected.standIn.symbol} · moves × {row.projected.standIn.volatilityRatio.toFixed(2)}
+        </span>
+      ) : (
+        <span className="text-secondary">—</span>
+      ),
+    sortValue: (row) => row.projected?.standIn?.symbol ?? null,
+  },
+  {
+    key: "ivNow",
+    header: "IV30 now ÷ normal",
+    headerTitle: "Today's 30-day IV ÷ its 4-year median: every path starts from it and fades back over the ticker's measured half-life",
+    align: "right",
+    render: (row) =>
+      row.projected?.ivNowAgainstNormal != null ? (
+        <span title={`Half-life ${formatNumber(row.projected.ivHalfLifeSessions)} sessions`}>×{row.projected.ivNowAgainstNormal.toFixed(2)}</span>
+      ) : (
+        <span className="text-secondary">—</span>
+      ),
+    sortValue: (row) => row.projected?.ivNowAgainstNormal ?? null,
+  },
+  {
     key: "warnings",
     header: "Warnings",
     render: (row) =>
@@ -98,8 +126,8 @@ const columns: DataTableColumn<PortfolioTickerRow>[] = [
   },
 ];
 
-/** Each ticker of the book: its pot in whole lots, and from the projection its β, dividend yield, average year and own drawdown odds. */
-export function PortfolioTickersTable({ rows }: { rows: PortfolioTickerRow[] }) {
+/** Each ticker of the book: its pot in whole lots, and from the projection its β, dividend yield, average year, own drawdown odds, stand-in and IV now. */
+export function PortfolioTickersTable({ rows, yearDrift }: { rows: PortfolioTickerRow[]; yearDrift: PortfolioDrift | null }) {
   return (
     <DataTable
       tableId="portfolio-simulator-tickers"
@@ -112,7 +140,7 @@ export function PortfolioTickersTable({ rows }: { rows: PortfolioTickerRow[] }) 
       toolbar={
         <BacktestCardTitle
           title="Each ticker"
-          description="pot = allocation × (1 + allowance) × account, in whole 100-share lots; premium, Calls sold and call-aways: the average year over the paths; own Max drawdown: the ticker alone at its pot, from the library"
+          description={`pot = allocation × (1 + allowance) × account, in whole 100-share lots; premium, Calls sold and call-aways: the average year over the paths${yearDrift ? ` (${driftLabels[yearDrift].toLowerCase()} drift, the chart's)` : ""}; own Max drawdown: the ticker alone at its pot, from the library`}
         />
       }
     />

@@ -58,7 +58,8 @@ export function roundAllocationsKeepingTotal(allocations: readonly { symbol: str
 
 export interface PortfolioViewSettings {
   horizonYears: PortfolioHorizonYears;
-  drift: PortfolioDrift;
+  /** The drift the year-end chart, the average year and each ticker's year are shown at (both are always projected). */
+  chartDrift: PortfolioDrift;
   pathCount: number;
   compareWithId: string | null;
 }
@@ -66,14 +67,18 @@ export interface PortfolioViewSettings {
 export const projectionPathChoices = [100, 500, 1000, 2000] as const;
 const viewSettingsKey = "iorio-portfolio-simulator-view";
 const lastOpenedKey = "iorio-portfolio-simulator-last-opened";
-const defaultViewSettings: PortfolioViewSettings = { horizonYears: 5, drift: "neutral", pathCount: 500, compareWithId: null };
+const defaultViewSettings: PortfolioViewSettings = { horizonYears: 5, chartDrift: "neutral", pathCount: 500, compareWithId: null };
+
+/** Both drifts, in the order they are projected and shown. */
+export const driftOrder: readonly PortfolioDrift[] = ["neutral", "as_it_happened"];
+export const driftLabels: Record<PortfolioDrift, string> = { neutral: "Neutral", as_it_happened: "As it happened" };
 
 export function readPortfolioViewSettings(): PortfolioViewSettings {
   try {
     const stored = JSON.parse(localStorage.getItem(viewSettingsKey) ?? "null") as Partial<PortfolioViewSettings> | null;
     return {
       horizonYears: stored?.horizonYears === 3 ? 3 : 5,
-      drift: stored?.drift === "as_it_happened" ? "as_it_happened" : "neutral",
+      chartDrift: stored?.chartDrift === "as_it_happened" ? "as_it_happened" : "neutral",
       pathCount: (projectionPathChoices as readonly number[]).includes(stored?.pathCount ?? 0) ? stored!.pathCount! : defaultViewSettings.pathCount,
       compareWithId: typeof stored?.compareWithId === "string" ? stored.compareWithId : null,
     };
@@ -201,6 +206,6 @@ export function groupLabelBySymbol(groups: readonly { symbols: string[] }[]): Ma
 }
 
 /** A projection's book key, to tell whether the figures on screen are for the book as it is now. */
-export function projectionKeyOf(tickers: readonly PortfolioBookTicker[], accountDollars: number, view: Pick<PortfolioViewSettings, "horizonYears" | "drift" | "pathCount">): string {
-  return JSON.stringify({ tickers: tickers.map((ticker) => [ticker.symbol, ticker.allocationPct ?? null]), accountDollars, ...view });
+export function projectionKeyOf(tickers: readonly PortfolioBookTicker[], accountDollars: number, view: Pick<PortfolioViewSettings, "horizonYears" | "pathCount">): string {
+  return JSON.stringify({ tickers: tickers.map((ticker) => [ticker.symbol, ticker.allocationPct ?? null]), accountDollars, horizonYears: view.horizonYears, pathCount: view.pathCount });
 }

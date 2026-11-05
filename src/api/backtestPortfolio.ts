@@ -88,6 +88,16 @@ export interface PortfolioPercentiles {
 
 export type PortfolioYearSource = "calls" | "puts" | "leaps" | "interest" | "dividends" | "shares";
 
+/** v4's or a buy and hold's figures over the paths (the book or SPY held from today's prices, never traded). */
+export interface PortfolioHeldSummary {
+  cagr: PortfolioPercentiles;
+  maxDrawdown: PortfolioPercentiles;
+  /** The lowest daily value ÷ the starting account − 1 (0 when it never went under). */
+  lowestAgainstStart: PortfolioPercentiles;
+  lowestAgainstStartAtOdds: { oneIn: number; lowestAgainstStart: number }[];
+  yearEnds: { year: number; value: PortfolioPercentiles }[];
+}
+
 export interface PortfolioProjectionSummary {
   pathCount: number;
   cagr: PortfolioPercentiles;
@@ -98,6 +108,9 @@ export interface PortfolioProjectionSummary {
   yearEnds: { year: number; value: PortfolioPercentiles }[];
   tickers: { symbol: string; premiumYear: number; callsSoldYear: number; callAwaysYear: number; daysWithoutSharesShare: number }[];
   bookBeta: { all: number; down: number } | null;
+  v4: PortfolioHeldSummary;
+  heldBook: PortfolioHeldSummary;
+  heldSpy: PortfolioHeldSummary | null;
 }
 
 export interface PortfolioProjection {
@@ -117,6 +130,12 @@ export interface PortfolioProjection {
     expiryWeekdays: number[];
     beta: number;
     ownHistoryFrom: string | null;
+    /** The ticker whose real moves fill the days before its own, × their volatility ratio. */
+    standIn: { symbol: string; volatilityRatio: number } | null;
+    /** Today's 30-day IV ÷ its 4-year median; null without today's IV. */
+    ivNowAgainstNormal: number | null;
+    ivHalfLifeSessions: number;
+    eventFactors: { macro: number; earningsReaction: number };
     tenOclockFrom: string | null;
     chainDays: number;
     businessChange: { symbol: string; currentBusinessFrom: string; before: string } | null;

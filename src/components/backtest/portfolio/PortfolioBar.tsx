@@ -82,7 +82,7 @@ export function PortfolioBar({ portfolios, openId, unsaved, savedAt, hasTickers,
           </div>
         </div>
         <div className="text-secondary mt-2" style={{ fontSize: "0.8rem" }}>
-          {savedAt ? `Saved ${formatDateTime(savedAt)} · ` : "Not saved yet · "}a portfolio holds its tickers, their allocations and the account. Horizon, drift and paths are this browser's view settings.
+          {savedAt ? `Saved ${formatDateTime(savedAt)} · ` : "Not saved yet · "}a portfolio holds its tickers, their allocations and the account. Horizon, paths and the chart's drift are this browser's view settings.
         </div>
       </div>
     </div>
