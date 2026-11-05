@@ -77,12 +77,12 @@ export function PlutoLiveTab({ state, actions, actionsLoading, actionsError, fee
     );
   }
   return (
-    <div className="pm-grid-live">
-      <div className="pm-stack">
+    <div className="pm-stack">
+      <div className="pm-grid-live">
         {ordersCard}
-        {volFarmerV4Card}
+        {activityCard}
       </div>
-      {activityCard}
+      {volFarmerV4Card}
     </div>
   );
 }

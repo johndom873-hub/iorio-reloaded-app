@@ -1,5 +1,5 @@
 import type { PlutoVolFarmerV4Option, PlutoVolFarmerV4Ticker } from "../api/pluto";
-import { daysToExpiry, formatCurrency, formatOptionContractLabel, pluralize } from "./formatters";
+import { browserLocalIsoDate, daysToExpiry, formatBrowserClockTime, formatBrowserDayMonth, formatCurrency, formatOptionContractLabel, pluralize } from "./formatters";
 
 // The Live tab's Vol Farmer v4 card (approved mockup, 2026-10-28): each v4 ticker's positions, LEAPS, working orders and
 // last round in plain words, and its warnings (Marcelo 2026-10-28) from the figures its last round read.
@@ -20,13 +20,23 @@ export function describeVolFarmerV4WorkingOrder(order: PlutoVolFarmerV4Ticker["w
   return `${workingOrderVerbs[order.kind]} ${order.kind === "buy_leaps" || order.kind === "sell_leaps" ? "LEAPS " : ""}${label} · ${order.contracts}× at the mid`;
 }
 
-/** What the last round said about the ticker; with nothing said, what its state means for the next rounds. */
+/** What the last round noted about the ticker; a round that noted nothing planned nothing (an order it sent shows as the last order). */
 export function volFarmerV4LastRoundLines(ticker: PlutoVolFarmerV4Ticker): string[] {
   if (ticker.lastRoundNotes.length > 0) return ticker.lastRoundNotes.map((note) => note.charAt(0).toUpperCase() + note.slice(1));
   if (ticker.lastRoundAt === null) return ["Not looked at yet"];
-  if (ticker.first && ticker.first.calls.length > 0 && ticker.second === null) return ["Calls open: Puts wait for the first position's next Call"];
-  if (ticker.first && ticker.first.calls.length > 0) return ["Calls open"];
-  return ["Nothing to do"];
+  return ["Nothing planned"];
+}
+
+/** "Last order Nov 5 12:47 AM: Sell 10 × $46 Call · 4 Nov (0DTE), limit $0.27, filled at $0.37", in the viewer's clock (today: the time alone). */
+export function describeVolFarmerV4LastOrder(lastOrder: NonNullable<PlutoVolFarmerV4Ticker["lastOrder"]>): string {
+  const sentOnAnotherDay = browserLocalIsoDate(lastOrder.at) !== browserLocalIsoDate(new Date());
+  const when = `${sentOnAnotherDay ? `${formatBrowserDayMonth(lastOrder.at)} ` : ""}${formatBrowserClockTime(lastOrder.at)}`;
+  return `Last order ${when}: ${lastOrder.text}`;
+}
+
+/** "5 orders sent today were cancelled unfilled". */
+export function describeVolFarmerV4CancelledToday(count: number): string {
+  return `${pluralize(count, "order")} sent today ${count === 1 ? "was" : "were"} cancelled unfilled`;
 }
 
 /**

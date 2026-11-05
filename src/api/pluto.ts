@@ -704,6 +704,24 @@ export interface PlutoVolFarmerV4Position {
   puts: PlutoVolFarmerV4Option[];
 }
 
+export type PlutoVolFarmerV4ActionState = "ready" | "working" | "waiting" | "blocked" | "not_due" | "done" | "stopped";
+
+/** One of the six things v4 can do on a ticker, and where it stands. */
+export interface PlutoVolFarmerV4ActionLine {
+  key: "sell_calls" | "sell_puts" | "buy_leaps" | "buy_shares" | "sell_shares" | "buy_back_call";
+  name: string;
+  state: PlutoVolFarmerV4ActionState;
+  detail: string;
+}
+
+/** What v4 does next on a ticker: the state, a headline, when / what holds it, and a blocker worth a line of its own. */
+export interface PlutoVolFarmerV4NextAction {
+  state: PlutoVolFarmerV4ActionState;
+  text: string;
+  sub: string | null;
+  alert: string | null;
+}
+
 /** A Vol Farmer v4 ticker as v4's memory counts it (GET /pluto/vol-farmer-v4). */
 export interface PlutoVolFarmerV4Ticker {
   symbol: string;
@@ -720,6 +738,13 @@ export interface PlutoVolFarmerV4Ticker {
   /** What the last round read: the pot, what the ticker commits as the pot check counts it, v4's free cash and the LEAPS cap. */
   /** putsDollars: the pot less the First position's share; rounds before 2026-10-30 lack it (half the pot). */
   lastRoundFigures: { potDollars: number; committedDollars: number; freeCashDollars: number; leapsCapDollars: number; putsDollars?: number } | null;
+  nextAction: PlutoVolFarmerV4NextAction;
+  /** The six actions with their states; empty while v4 waits to adopt the ticker. */
+  actions: PlutoVolFarmerV4ActionLine[];
+  /** The last order Pluto sent on the ticker (its activity): when, and what it was, its limit and how it ended. */
+  lastOrder: { at: string; text: string } | null;
+  /** Orders sent today that were cancelled unfilled, in whole or in part. */
+  cancelledToday: number;
 }
 
 export function fetchPlutoVolFarmerV4(): Promise<PlutoVolFarmerV4Ticker[]> {

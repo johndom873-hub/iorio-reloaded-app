@@ -1,8 +1,9 @@
-import { useEffect, useState, type ReactNode } from "react";
+import { Fragment, useEffect, useState, type ReactNode } from "react";
 import { errorMessage } from "../../api/client";
-import { fetchPlutoVolFarmerV4, type PlutoVolFarmerV4Position, type PlutoVolFarmerV4Ticker } from "../../api/pluto";
+import { IconChevronDown, IconChevronUp } from "@tabler/icons-react";
+import { fetchPlutoVolFarmerV4, type PlutoVolFarmerV4ActionState, type PlutoVolFarmerV4Position, type PlutoVolFarmerV4Ticker } from "../../api/pluto";
 import { formatBrowserClockTime, formatBrowserDayMonth, formatCurrency, formatNumber, formatOptionContractLabel, daysToExpiry, pluralize, todayInEasternIso } from "../../lib/formatters";
-import { describeVolFarmerV4LeapsHeld, describeVolFarmerV4Option, describeVolFarmerV4WorkingOrder, volFarmerV4LastRoundLines, volFarmerV4Warnings } from "../../lib/plutoVolFarmerV4Presentation";
+import { describeVolFarmerV4CancelledToday, describeVolFarmerV4LastOrder, describeVolFarmerV4LeapsHeld, describeVolFarmerV4Option, describeVolFarmerV4WorkingOrder, volFarmerV4LastRoundLines, volFarmerV4Warnings } from "../../lib/plutoVolFarmerV4Presentation";
 import { ColumnVisibilityPopover } from "../DataTable/ColumnVisibilityPopover";
 import { useColumnVisibility } from "../DataTable/useColumnVisibility";
 import { Spinner } from "../Spinner";
@@ -11,7 +12,8 @@ import { TickerButton, WarningIcon } from "./plutoBits";
 
 // The Live tab's Vol Farmer v4 card (approved mockup https://claude.ai/artifact/QGwKxNa7orZFFjfeRBnhoU, 2026-10-28): each
 // v4 ticker's two positions and LEAPS as v4's memory counts them, its working orders and what its last round said, with
-// the warnings its last round's figures raise. Loaded again after every round.
+// the warnings its last round's figures raise. Loaded again after every round. The Next action column (approved mockup,
+// 2026-11-05) says what v4 does next on the ticker and what stops it; "All actions" lists the six things v4 can do.
 
 interface PlutoVolFarmerV4CardProps {
   /** Pluto's last round: the card loads again when it changes. */
@@ -27,10 +29,66 @@ const columns = [
   { key: "second", header: "Second position" },
   { key: "secondBreakEven", header: "B-E²", align: "right" },
   { key: "leaps", header: "LEAPS" },
+  { key: "nextAction", header: "Next action" },
   { key: "lastRound", header: "Last round" },
 ] as const;
 
 const dash = <span className="muted">—</span>;
+
+const actionChips: Record<PlutoVolFarmerV4ActionState, { className: string; label: string }> = {
+  ready: { className: "pm-b ok", label: "Ready" },
+  working: { className: "pm-b info", label: "Working" },
+  waiting: { className: "pm-b info", label: "Waiting" },
+  blocked: { className: "pm-b warn", label: "Blocked" },
+  not_due: { className: "pm-b neutral", label: "Not due" },
+  done: { className: "pm-b neutral", label: "Done" },
+  stopped: { className: "pm-b bad", label: "Stopped" },
+};
+
+function NextActionCell({ ticker, open, onToggle }: { ticker: PlutoVolFarmerV4Ticker; open: boolean; onToggle: () => void }) {
+  const { nextAction } = ticker;
+  const chip = actionChips[nextAction.state];
+  return (
+    <>
+      <div className="pm-v4-next">
+        <span className={chip.className}>{chip.label}</span>
+        <span className="strong">{nextAction.text}</span>
+      </div>
+      {nextAction.sub && <span className="pm-cell-sub">{nextAction.sub}</span>}
+      {nextAction.alert && (
+        <span className="pm-v4-alert">
+          <WarningIcon />
+          {nextAction.alert}
+        </span>
+      )}
+      {ticker.actions.length > 0 && (
+        <button type="button" className="pm-v4-more" aria-expanded={open} onClick={onToggle}>
+          {open ? "Hide actions" : "All actions"}
+          {open ? <IconChevronUp className="ic" /> : <IconChevronDown className="ic" />}
+        </button>
+      )}
+    </>
+  );
+}
+
+function ActionsList({ ticker }: { ticker: PlutoVolFarmerV4Ticker }) {
+  return (
+    <table className="pm-v4-actions">
+      <tbody>
+        {ticker.actions.map((action) => {
+          const chip = actionChips[action.state];
+          return (
+            <tr key={action.key}>
+              <td className="strong">{action.name}</td>
+              <td><span className={chip.className}>{chip.label}</span></td>
+              <td className={action.state === "blocked" ? "t-warn" : undefined}>{action.detail}</td>
+            </tr>
+          );
+        })}
+      </tbody>
+    </table>
+  );
+}
 
 function PositionCell({ position, kind, todayIso }: { position: PlutoVolFarmerV4Position | null; kind: "first" | "second"; todayIso: string }) {
   if (position === null) return dash;
@@ -70,6 +128,8 @@ function LastRoundCell({ ticker, todayIso }: { ticker: PlutoVolFarmerV4Ticker; t
       {volFarmerV4LastRoundLines(ticker).map((line, index) => (
         <span key={`note-${index}`} className="pm-cell-sub pm-v4-note" title={line}>{line}</span>
       ))}
+      {ticker.lastOrder && <span className="pm-cell-sub pm-v4-note">{describeVolFarmerV4LastOrder(ticker.lastOrder)}</span>}
+      {ticker.cancelledToday > 0 && <span className="pm-cell-sub">{describeVolFarmerV4CancelledToday(ticker.cancelledToday)}</span>}
     </>
   );
 }
@@ -86,6 +146,13 @@ function tickerSub(ticker: PlutoVolFarmerV4Ticker): string | null {
 export function PlutoVolFarmerV4Card({ lastPassAt, isPhone, onOpenTicker }: PlutoVolFarmerV4CardProps) {
   const [tickers, setTickers] = useState<PlutoVolFarmerV4Ticker[] | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [openActions, setOpenActions] = useState<ReadonlySet<string>>(new Set());
+  const toggleActions = (symbol: string) =>
+    setOpenActions((current) => {
+      const next = new Set(current);
+      if (!next.delete(symbol)) next.add(symbol);
+      return next;
+    });
   const { isColumnVisible, toggleColumn } = useColumnVisibility("pluto-vol-farmer-v4", columns.map((column) => column.key));
 
   useEffect(() => {
@@ -127,7 +194,7 @@ export function PlutoVolFarmerV4Card({ lastPassAt, isPhone, onOpenTicker }: Plut
                 {sub && sub !== "not looked at yet" && <span className="muted">{sub}</span>}
               </div>
               {ticker.first === null && ticker.second === null && ticker.leaps === null && ticker.workingOrders.length === 0 ? (
-                <div className="pm-v4-m-quiet">{volFarmerV4LastRoundLines(ticker).join(" · ")}</div>
+                <div className="pm-v4-m-quiet">{[ticker.nextAction.text, ...volFarmerV4LastRoundLines(ticker)].join(" · ")}</div>
               ) : (
               <dl className="pm-v4-m-grid">
                 <dt>First position</dt>
@@ -140,10 +207,13 @@ export function PlutoVolFarmerV4Card({ lastPassAt, isPhone, onOpenTicker }: Plut
                 <dd className="num">{breakEvenCell(ticker.second)}</dd>
                 <dt>LEAPS</dt>
                 <dd><LeapsCell leaps={ticker.leaps} todayIso={todayIso} /></dd>
+                <dt>Next action</dt>
+                <dd><NextActionCell ticker={ticker} open={openActions.has(ticker.symbol)} onToggle={() => toggleActions(ticker.symbol)} /></dd>
                 <dt>Last round</dt>
                 <dd><LastRoundCell ticker={ticker} todayIso={todayIso} /></dd>
               </dl>
               )}
+              {openActions.has(ticker.symbol) && <div className="pm-v4-m-actions"><ActionsList ticker={ticker} /></div>}
             </li>
           );
         })}
@@ -151,7 +221,7 @@ export function PlutoVolFarmerV4Card({ lastPassAt, isPhone, onOpenTicker }: Plut
     );
   } else {
     body = (
-      <div className="pm-table-wrap">
+      <div className="pm-table-wrap pm-v4-wrap">
         <table className="pm-table compact pm-v4-table">
           <thead>
             <tr>
@@ -175,16 +245,29 @@ export function PlutoVolFarmerV4Card({ lastPassAt, isPhone, onOpenTicker }: Plut
                 second: <PositionCell position={ticker.second} kind="second" todayIso={todayIso} />,
                 secondBreakEven: breakEvenCell(ticker.second),
                 leaps: <LeapsCell leaps={ticker.leaps} todayIso={todayIso} />,
+                nextAction: <NextActionCell ticker={ticker} open={openActions.has(ticker.symbol)} onToggle={() => toggleActions(ticker.symbol)} />,
                 lastRound: <LastRoundCell ticker={ticker} todayIso={todayIso} />,
               };
+              const actionsOpen = openActions.has(ticker.symbol) && ticker.actions.length > 0;
               return (
-                <tr key={ticker.symbol}>
-                  {visibleColumns.map((column) => (
-                    <td key={column.key} className={"align" in column ? "r num nw" : column.key === "lastRound" ? "pm-v4-last" : column.key === "ticker" ? "pm-v4-ticker" : column.key === "first" ? "pm-v4-position" : column.key === "second" ? "pm-v4-second" : column.key === "leaps" ? "pm-v4-leaps-cell" : undefined}>
-                      {cells[column.key]}
-                    </td>
-                  ))}
-                </tr>
+                <Fragment key={ticker.symbol}>
+                  <tr className={actionsOpen ? "pm-v4-open" : undefined}>
+                    {visibleColumns.map((column) => (
+                      <td key={column.key} className={"align" in column ? "r num nw" : column.key === "lastRound" ? "pm-v4-last" : column.key === "ticker" ? "pm-v4-ticker" : column.key === "first" ? "pm-v4-position" : column.key === "second" ? "pm-v4-second" : column.key === "leaps" ? "pm-v4-leaps-cell" : column.key === "nextAction" ? "pm-v4-next-cell" : undefined}>
+                        {cells[column.key]}
+                      </td>
+                    ))}
+                  </tr>
+                  {actionsOpen && (
+                    <tr>
+                      <td colSpan={visibleColumns.length} className="pm-v4-detail">
+                        <div className="pm-v4-detail-pane">
+                          <ActionsList ticker={ticker} />
+                        </div>
+                      </td>
+                    </tr>
+                  )}
+                </Fragment>
               );
             })}
           </tbody>
@@ -198,7 +281,7 @@ export function PlutoVolFarmerV4Card({ lastPassAt, isPhone, onOpenTicker }: Plut
       <div className="pm-card-h">
         <h2 className="pm-card-t">Vol Farmer v4</h2>
         <div className="pm-card-meta">
-          {!isPhone && <span>Each ticker's two positions and LEAPS, as v4 counts them</span>}
+          {!isPhone && <span>Each ticker's two positions and LEAPS as v4 counts them, and what it does next</span>}
           {lastRoundAt && <span>last round {formatBrowserClockTime(lastRoundAt)}</span>}
           {!isPhone && <ColumnVisibilityPopover variant="toolbar" columns={columns.map((column) => ({ key: column.key, header: column.header }))} isColumnVisible={isColumnVisible} onToggleColumn={toggleColumn} />}
         </div>
@@ -220,7 +303,7 @@ export function PlutoVolFarmerV4Card({ lastPassAt, isPhone, onOpenTicker }: Plut
       )}
       {body}
       <div className="pm-card-foot">
-        B-E¹: the first position's break-even, what its shares cost less its Calls' premiums per share. B-E²: the second's, its assigned Puts' strike less its Puts' and Calls' premiums per share. An order still working counts as planned until it is done. Warnings come from each ticker's last round.
+        B-E¹: the first position's break-even, what its shares cost less its Calls' premiums per share. B-E²: the second's, its assigned Puts' strike less its Puts' and Calls' premiums per share. Next action: what v4 does next on the ticker, when, and what stops it if something does. Last round: what the last round noted on the ticker (a quiet round says it planned nothing) and the last order Pluto sent on it. An order still working counts as planned until it is done. Warnings come from each ticker's last round.
       </div>
     </section>
   );

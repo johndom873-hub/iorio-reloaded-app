@@ -775,6 +775,32 @@ a.pm-b:hover, button.pm-b.link:hover { text-decoration: underline; }
 .pm-v4-position { min-width: 12rem; }
 .pm-v4-second { min-width: 10rem; }
 .pm-v4-leaps-cell { min-width: 10rem; }
+.pm-v4-next { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; }
+.pm-v4-next-cell { min-width: 17rem; max-width: 26rem; }
+.pm-v4-more { display: inline-flex; align-items: center; gap: 0.2rem; margin-top: 0.4rem; padding: 0; border: 0; background: none; color: var(--link); font: inherit; font-size: 0.75rem; font-weight: 500; cursor: pointer; }
+.pm-v4-more:hover { text-decoration: underline; }
+.pm-v4-more:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; border-radius: 3px; }
+.pm-v4-more .ic { width: 14px; height: 14px; }
+.pm-v4-alert { display: flex; align-items: flex-start; gap: 0.3rem; margin-top: 0.25rem; font-size: 0.75rem; color: var(--warning-text); }
+.pm-v4-alert .ic { width: 14px; height: 14px; flex: none; margin-top: 1px; }
+.pm-v4-wrap { container-type: inline-size; }
+/* The card surface itself, not --surface-2: the azure Waiting chip reaches 4.5:1 on it in light and dark. */
+.pm-table td.pm-v4-detail { padding: 0; background: var(--surface); box-shadow: inset 3px 0 0 var(--border); }
+/* The table can be wider than the card: the actions panel keeps the card's width and stays in view while the table scrolls. */
+.pm-v4-detail-pane { position: sticky; left: 0; width: 100cqw; }
+.pm-v4-actions { width: 100%; border-collapse: collapse; }
+.pm-v4-actions td { padding: 0.5rem 0.75rem; border-bottom: 1px solid var(--border-soft); vertical-align: top; font-size: 0.8rem; }
+.pm-v4-actions tr:last-child td { border-bottom: 0; }
+.pm-v4-actions td:first-child { padding-left: 1.125rem; width: 11rem; white-space: nowrap; }
+.pm-v4-actions td:nth-child(2) { width: 6.5rem; }
+.pm-v4-actions td:last-child { padding-right: 1.125rem; }
+.pm-table tbody tr.pm-v4-open td { border-bottom-color: transparent; }
+.pm-v4-m-actions { margin-top: 0.5rem; border: 1px solid var(--border); border-radius: 6px; overflow-x: auto; }
+.pm-v4-m-actions .pm-v4-actions tr { display: grid; grid-template-columns: 1fr auto; align-items: center; padding: 0.5rem 0.75rem; border-bottom: 1px solid var(--border-soft); }
+.pm-v4-m-actions .pm-v4-actions tr:last-child { border-bottom: 0; }
+.pm-v4-m-actions .pm-v4-actions td { display: block; padding: 0; border: 0; width: auto; }
+.pm-v4-m-actions .pm-v4-actions td:first-child { padding: 0; white-space: normal; }
+.pm-v4-m-actions .pm-v4-actions td:last-child { grid-column: 1 / -1; margin-top: 0.25rem; padding: 0; }
 .pm-v4-warnings { padding: 0.75rem 1.125rem 0; }
 .pm-v4-warnings .pm-alert-text + .pm-alert-text { margin-top: 0.25rem; }
 .pm-v4-m-head { display: flex; align-items: baseline; justify-content: space-between; gap: 0.5rem; }
