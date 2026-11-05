@@ -36,7 +36,7 @@ export function PlutoLiveTab({ state, actions, actionsLoading, actionsError, fee
   const { isColumnVisible, toggleColumn } = useColumnVisibility("pluto-orders-today", columns.map((column) => column.key));
 
   const ordersCard = (
-    <section className="pm-card">
+    <section className={isPhone ? "pm-card" : "pm-card pm-orders-fixed"}>
       <div className="pm-card-h">
         <h2 className="pm-card-t">Today's orders</h2>
         {isPhone ? (
@@ -78,7 +78,7 @@ export function PlutoLiveTab({ state, actions, actionsLoading, actionsError, fee
   }
   return (
     <div className="pm-stack">
-      <div className="pm-grid-live">
+      <div className="pm-grid-live pm-grid-live-matched">
         {ordersCard}
         {activityCard}
       </div>

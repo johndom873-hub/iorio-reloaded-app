@@ -153,6 +153,11 @@
 
 /* Layout grids */
 .pm-grid-live { display: grid; grid-template-columns: minmax(0, 1fr) 400px; gap: 20px; align-items: start; }
+/* Desktop Live tab: Today's orders takes the height of the Activity card beside it (at least 24rem) and scrolls inside it, as Activity does. */
+.pm-grid-live-matched { align-items: stretch; }
+.pm-card.pm-orders-fixed { display: flex; flex-direction: column; height: 0; min-height: max(24rem, 100%); }
+.pm-orders-fixed > .pm-table-wrap, .pm-orders-fixed > .pm-empty { flex: 1 1 auto; min-height: 0; overflow-y: auto; }
+.pm-orders-fixed .pm-table thead th { position: sticky; top: 0; z-index: 1; background: var(--thead); }
 .pm-stack { display: flex; flex-direction: column; gap: 20px; min-width: 0; }
 .pm-stack.tight { gap: 16px; }
 
