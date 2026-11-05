@@ -911,7 +911,7 @@ export function describeSessionSpan(first: number | null, last: number | null = 
   return first === last ? formatNumber(first) : `${formatNumber(first)}→${formatNumber(last)}`;
 }
 
-/** The baseline's contract checks in short, for the days each left contracts out ("spread too wide 3 · too little volume 2"). */
+/** The baseline's contract checks in short, for the days each left contracts out ("spread too wide 3 · bid size or volume too small 2"). */
 const candidateCheckLabels: Record<BacktestCandidateCheck, string> = {
   outsideExpiryRange: "expiry outside the range",
   spansEarnings: "spans earnings",
@@ -919,7 +919,7 @@ const candidateCheckLabels: Record<BacktestCandidateCheck, string> = {
   aboveCeiling: "strike above the ceiling",
   noUsableQuote: "no usable quote",
   spreadTooWide: "spread too wide",
-  tooLittleVolume: "too little volume",
+  tooLittleVolume: "bid size or volume too small",
   noImpliedVolatility: "no implied volatility",
   outsideDeltaRange: "delta outside the range",
   alreadyHeld: "already held",
