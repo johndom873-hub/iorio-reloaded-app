@@ -31,7 +31,7 @@ export interface PendingTransfer {
 }
 
 export type BooksState =
-  | { ready: false }
+  | { ready: false; startsFrom: "statement" | "live" }
   | {
       ready: true;
       books: Record<BookKey, BookFigures>;
@@ -102,4 +102,24 @@ export function bookQuery(selection: BookSelection, joiner: "?" | "&" = "?"): st
 /** The book an order belongs to: Pluto's for Pluto's own order or a ticker in Pluto's book, else Manual's. */
 export function bookOfOrder(order: { plutoActionId?: string | null; symbol: string }, plutoSymbols: readonly string[]): BookKey {
   return order.plutoActionId || plutoSymbols.includes(order.symbol.trim().toUpperCase()) ? "pluto" : "manual";
+}
+
+/** What starting the books would set (or did): each book's opening cash, positions and value. */
+export interface BooksCutoverPreview {
+  mode: "statement" | "live";
+  cutOverAt: string;
+  statementToDate: string | null;
+  ibkrCash: number;
+  pluto: { cash: number; positionsValue: number; bookValue: number };
+  manual: { cash: number; positionsValue: number; bookValue: number };
+  plutoSymbols: string[];
+  legsWithoutClosingPrice: string[];
+}
+
+export function previewBooksCutover(plutoStartingValue: number): Promise<BooksCutoverPreview> {
+  return apiRequest<BooksCutoverPreview>("/books/cutover/preview", { method: "POST", body: JSON.stringify({ plutoStartingValue }) });
+}
+
+export function startBooks(plutoStartingValue: number): Promise<BooksCutoverPreview> {
+  return apiRequest<BooksCutoverPreview>("/books/cutover", { method: "POST", body: JSON.stringify({ plutoStartingValue }) });
 }

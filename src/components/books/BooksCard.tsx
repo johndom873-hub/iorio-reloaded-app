@@ -6,6 +6,7 @@ import { usePollWhileVisible } from "../../hooks/usePollWhileVisible";
 import { formatCurrency, formatDayMonthYear } from "../../lib/formatters";
 import { Spinner } from "../Spinner";
 import { MoveCashModal } from "./MoveCashModal";
+import { StartBooksCard } from "./StartBooksCard";
 
 // Risk & Limits' books (Marcelo 2026-11-05; mockup https://claude.ai/artifact/BsfaHtEXioGY52rbmVBHLr), in place of the
 // percentage split: each book's value, cash and available cash, the unallocated cash, and the books' check against IBKR
@@ -68,6 +69,7 @@ export function BooksCard() {
   if (error) return <div className="alert alert-danger">{error}</div>;
   if (!books) return <Spinner size="sm" label="Loading the books" />;
   if (!books.ready) {
+    if (isAdmin) return <StartBooksCard startsFrom={books.startsFrom} onStarted={load} />;
     return <div className="text-secondary mb-3" style={{ fontSize: "0.8rem" }}>The Pluto and Manual books have not been started yet, so no opening order can be placed.</div>;
   }
   const pendingCount = books.pendingTransfers.length;
