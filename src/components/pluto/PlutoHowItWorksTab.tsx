@@ -1,7 +1,7 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { errorMessage } from "../../api/client";
 import { fetchPlutoHowItWorks, type PlutoHowItWorks } from "../../api/pluto";
-import { formatCurrency, formatCurrencyTrimmed, formatDelta, formatNumber, formatPercentageValueTrimmed, joinWithAnd } from "../../lib/formatters";
+import { formatCurrency, formatCurrencyTrimmed, formatDelta, formatNumber, formatPercentageValueTrimmed, formatQuotePrice, joinWithAnd } from "../../lib/formatters";
 import { Spinner } from "../Spinner";
 
 // Pluto's "How it works" tab (approved mockups https://claude.ai/artifact/TYdARe8Sa6RuF5Lb1E1s2b and, for Vol Farmer v4,
@@ -58,7 +58,7 @@ function VolFarmerV4Explanation({ values }: { values: PlutoHowItWorks }) {
           </p>
           {buysBack && (
             <p className="pm-how-text">
-              {beforeWeekendsOnly ? "Before a weekend" : "Every day"}, a Call {sameDay ? null : "expiring that day "}still in the money in the last {buyBackMinutes} before the window closes is bought back at the mid, and the shares are kept {beforeWeekendsOnly ? "over the weekend" : "overnight"} instead of being called away at the close and bought again {beforeWeekendsOnly ? "on Monday" : "the next day"}. A buyback that doesn't fill, or that the settled cash can't pay for, leaves the Call to be assigned as usual.
+              {beforeWeekendsOnly ? "Before a weekend" : "Every day"}, a Call {sameDay ? null : "expiring that day "}still in the money in the last {buyBackMinutes} before the window closes is bought back a cent above the mid, and the shares are kept {beforeWeekendsOnly ? "over the weekend" : "overnight"} instead of being called away at the close and bought again {beforeWeekendsOnly ? "on Monday" : "the next day"}. A buyback that doesn't fill, or that the settled cash can't pay for, leaves the Call to be assigned as usual.
             </p>
           )}
           <p className="pm-how-text">
@@ -80,7 +80,9 @@ function VolFarmerV4Explanation({ values }: { values: PlutoHowItWorks }) {
           <p className="pm-how-text">
             The v4 tickers share Pluto's book: its own share of the account, which grows or shrinks with Pluto's results and spends only its own cash. Each ticker's pot is its allocation of the book's value, raised by the excess allowance (<Value>{pct(shared.excessAllowancePct)}</Value> now), so the pots can add up to more than the book. The account is a cash account: a purchase or a Put uses only cash that has settled, so Pluto counts the smallest of what its book has uncommitted, its available cash and its settled cash left.
           </p>
-          <p className="pm-how-text muted">Pluto looks at every v4 ticker at every round, all day. Every order goes at the mid; one that does not fill is planned again at a later round.</p>
+          <p className="pm-how-text muted">
+            Pluto looks at every v4 ticker at every round, all day. A Call, Put or buyback is priced <Value>{v4.optionCentsGivenUp}</Value> {v4.optionCentsGivenUp === 1 ? "cent" : "cents"} past the mid, so it fills sooner, never past the bid or ask: a Call quoted {formatQuotePrice(example.saleBid)} / {formatQuotePrice(example.saleAsk)} is sold at {formatQuotePrice(example.saleLimit)}. A LEAPS and the shares go at the mid. While a Call on shares already held, a Put or a buyback waits to fill, Pluto checks the market every <Value>{v4.followTheMidCheckSeconds}</Value> seconds and moves the order's price with it, up to <Value>{v4.maxLimitChangesPerOrder}</Value> times. An order that still does not fill is planned again at a later round.
+          </p>
         </Card>
         <Card title="A worked example">
           <p className="pm-how-text">
@@ -90,7 +92,7 @@ function VolFarmerV4Explanation({ values }: { values: PlutoHowItWorks }) {
             <li>The stock is at {formatCurrency(example.stockPrice)}. {pct(v4.firstPositionPct)} of the pot, {formatCurrency(firstPositionDollars, 0)}, buys <b>{example.lots} lots</b> ({formatNumber(example.lots * 100)} shares), with a Call sold on them.</li>
             {buysBack && (
               <li>
-                On a {beforeWeekendsOnly ? "Friday" : "Tuesday"} at {example.buyBackTimeEt} the stock is at {formatCurrency(example.buyBackStockPrice)}, above the {example.lots} {formatCurrency(example.stockPrice, 0)} Calls sold that morning: Pluto buys them back at the mid, {formatCurrency(example.buyBackMid)}, for <b>{formatCurrency(example.buyBackCostDollars, 0)}</b> plus {formatCurrency(example.buyBackCommissionDollars)} commission, and keeps the {formatNumber(example.lots * 100)} shares instead of selling them at {formatCurrency(example.stockPrice, 0)} at the close and buying them again {beforeWeekendsOnly ? "on Monday" : "on Wednesday"}.
+                On a {beforeWeekendsOnly ? "Friday" : "Tuesday"} at {example.buyBackTimeEt} the stock is at {formatCurrency(example.buyBackStockPrice)}, above the {example.lots} {formatCurrency(example.stockPrice, 0)} Calls sold that morning: quoted {formatQuotePrice(example.buyBackBid)} / {formatQuotePrice(example.buyBackAsk)}, Pluto buys them back a cent above the mid, at {formatCurrency(example.buyBackLimit)}, for <b>{formatCurrency(example.buyBackCostDollars, 0)}</b> plus {formatCurrency(example.buyBackCommissionDollars)} commission, and keeps the {formatNumber(example.lots * 100)} shares instead of selling them at {formatCurrency(example.stockPrice, 0)} at the close and buying them again {beforeWeekendsOnly ? "on Monday" : "on Wednesday"}.
               </li>
             )}
             <li>
@@ -118,13 +120,13 @@ function VolFarmerV4Explanation({ values }: { values: PlutoHowItWorks }) {
             <li>
               {buysBack ? (
                 <>
-                  A Call {sameDay ? null : "expiring that day "}in the money in the last {buyBackMinutes} before the window closes (<Value>{v4.buyBackStartsEt}–{shared.windowEndEt}</Value>): bought back {beforeWeekendsOnly ? <>on the last session before a weekend (a Friday, or the Thursday before a Friday holiday), </> : null}at the mid, the shares kept, if the settled cash left pays for it. One still unfilled at <Value>{v4.buyBackCancelledAtEt}</Value>, or after resting <Value>{shared.unfilledOrderCancelMinutes}</Value> minutes unfilled, is left to be assigned at the close. In those {buyBackMinutes} v4 places no other order for the ticker{beforeWeekendsOnly ? <>, so no new Call is sold on the shares it keeps. On other days, assigned at the close.</> : <>.</>}
+                  A Call {sameDay ? null : "expiring that day "}in the money in the last {buyBackMinutes} before the window closes (<Value>{v4.buyBackStartsEt}–{shared.windowEndEt}</Value>): bought back {beforeWeekendsOnly ? <>on the last session before a weekend (a Friday, or the Thursday before a Friday holiday), </> : null}a cent above the mid, the shares kept, if the settled cash left pays for it. One still unfilled at <Value>{v4.buyBackCancelledAtEt}</Value>, or after resting <Value>{shared.unfilledOrderCancelMinutes}</Value> minutes unfilled, is left to be assigned at the close. In those {buyBackMinutes} v4 places no other order for the ticker{beforeWeekendsOnly ? <>, so no new Call is sold on the shares it keeps. On other days, assigned at the close.</> : <>.</>}
                 </>
               ) : (
                 <>A Call in the money at the close is assigned: its shares are sold at the strike and bought again at the next round.</>
               )}
             </li>
-            <li>Bid at least <Value>{formatCurrencyTrimmed(v4.minimumBid)}</Value>, spread at most <Value>{pct(v4.maxSpreadPctOfMid)}</Value> of the mid, both checked again on a live quote just before the order, which is a limit at that quote's mid; there is no limit on the number of contracts. No Call is sold whose commission is more than <Value>{pct(v4.callMaxCommissionPctOfPremium)}</Value> of its premium; one left out that way shows in the activity.</li>
+            <li>Bid at least <Value>{formatCurrencyTrimmed(v4.minimumBid)}</Value>, spread at most <Value>{pct(v4.maxSpreadPctOfMid)}</Value> of the mid, both checked again on a live quote just before the order, which is a limit a cent past that quote's mid; there is no limit on the number of contracts. No Call is sold whose commission is more than <Value>{pct(v4.callMaxCommissionPctOfPremium)}</Value> of its premium; one left out that way shows in the activity.</li>
             <li>
               Rebalancing: when the first position has no Call open, its shares{bothPositions ? <> and the second position's</> : null} are traded back to <Value>{pct(v4.firstPositionPct)}</Value> of the pot once they are more than <Value>{pct(v4.rebalanceBandPct)}</Value> of the pot away from it, in whole lots, never below one lot. A purchase uses the free cash{holdsByDefault && otherwise.length === 0 ? null : <> (with Always hold the stock off, only on a day a Call is sold)</>}; a sale sells only shares no Call covers
               {bothPositions ? (v4.trimsSell === "higher_break_even_first" ? <>, the position with the higher break-even first</> : <>, the second position's first</>) : null}. The share order goes alone, at the mid of Pluto's stock quote.

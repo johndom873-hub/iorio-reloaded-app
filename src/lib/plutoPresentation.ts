@@ -1,6 +1,6 @@
 import type { PlutoAction, PlutoActionContract, PlutoActionKind, PlutoActionOutcome, PlutoEvent, PlutoEventCategory, PlutoPass, PlutoReadinessResult, PlutoState, PlutoSystemCheck, PlutoWorkingOrder } from "../api/pluto";
 import { formatSettingDisplay, plutoParameterLabelByField } from "./plutoParameters";
-import { daysToExpiry, easternIsoDate, formatBrowserClockTime, formatCurrency, formatDayMonth, formatEasternTime, formatOptionContractLabel, formatOrderSize, formatRelativeAge, formatSignedPercentageValue, formatRelativeTime, formatDateTime, formatStrike, pluralize, pluralizeCount, todayInEasternIso } from "./formatters";
+import { daysToExpiry, easternIsoDate, formatBrowserClockTime, formatCurrency, formatDayMonth, formatEasternTime, formatOptionContractLabel, formatOrderSize, formatRelativeAge, formatSignedPercentageValue, formatRelativeTime, formatDateTime, formatStrike, formatTransactionPrice, pluralize, pluralizeCount, todayInEasternIso } from "./formatters";
 
 // Presentation rules for the Pluto screen (redesign approved 2026-10-06): one status at a time, plain-language
 // wording for orders, decisions and the activity feed. Pure functions so the components stay declarative.
@@ -715,6 +715,9 @@ export function describeFeedEvent(event: PlutoEvent, context?: PlutoFeedContext)
       return { dot: "ctl", title: "IBKR connection restored", detail: payload.downMinutes ? `after ${text(payload.downMinutes)} min` : null, sub: null };
     case "order_adopted":
       return { dot: "warn", title: "Order adopted after a restart", detail: orderLine(payload, context, null, at), sub: `Still working ${text(payload.ageMinutes)} min after the restart; watch resumed` };
+    case "order_repriced":
+      // Follow the mid: a working order's limit moved to the price the strategy would send now.
+      return { dot: "look", title: "Limit moved with the market", detail: orderLine(payload, context, null, at), sub: `limit ${formatTransactionPrice(Number(payload.from))} → ${formatTransactionPrice(Number(payload.to))}` };
     case "call_skipped_commission": {
       // Vol Farmer v4's safeguard: the Call a look would have sold, left out because its commission is over the cap's share of its premium.
       const premium = Number(payload.premiumDollars ?? 0);

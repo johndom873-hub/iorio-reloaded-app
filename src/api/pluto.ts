@@ -600,6 +600,11 @@ export interface PlutoHowItWorks {
     minimumBid: number;
     /** No Call is sold whose commission is more than this % of its premium. */
     callMaxCommissionPctOfPremium: number;
+    /** A Call, Put or buyback goes this many cents past the mid, never past the bid or ask; a LEAPS at the mid. */
+    optionCentsGivenUp: number;
+    /** Follow the mid: a working Call on shares held, Put or buyback is checked every this many seconds and its limit moved, at most maxLimitChangesPerOrder times. */
+    followTheMidCheckSeconds: number;
+    maxLimitChangesPerOrder: number;
     firstPositionPct: number;
     putsStartCallYieldPct: number;
     putMaxAbsDelta: number;
@@ -652,10 +657,16 @@ export interface PlutoHowItWorks {
       putStrikeCap: number;
       leapsEntryBelowSecondBreakEvenPct: number;
       leapsCap: number;
-      /** The buyback: at buyBackTimeEt the stock is at buyBackStockPrice, above the lots' Calls struck at stockPrice, bought back at buyBackMid. */
+      /** The order price: a Call quoted saleBid / saleAsk is sold at saleLimit. */
+      saleBid: number;
+      saleAsk: number;
+      saleLimit: number;
+      /** The buyback: at buyBackTimeEt the stock is at buyBackStockPrice, above the lots' Calls struck at stockPrice, quoted buyBackBid / buyBackAsk, bought back at buyBackLimit. */
       buyBackTimeEt: string;
       buyBackStockPrice: number;
-      buyBackMid: number;
+      buyBackBid: number;
+      buyBackAsk: number;
+      buyBackLimit: number;
       buyBackCostDollars: number;
       buyBackCommissionDollars: number;
     };
