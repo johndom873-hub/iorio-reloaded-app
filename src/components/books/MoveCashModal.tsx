@@ -19,8 +19,8 @@ export function MoveCashModal({ books, onMoved, onCancel }: { books: ReadyBooks;
   const amount = parseDollarAmountText(amountText);
   const available = books.books[fromBook].availableCash;
   const valid = Number.isFinite(amount) && amount > 0 && available !== null && Math.round(amount * 100) <= Math.round(available * 100);
-  const fromAfter = bookAfterCashMoves(books.books[fromBook], valid ? -amount : 0, books.minCashReservePct);
-  const toAfter = bookAfterCashMoves(books.books[toBook], valid ? amount : 0, books.minCashReservePct);
+  const fromAfter = bookAfterCashMoves(books.books[fromBook], valid ? -amount : 0, books.minCashReservePctByBook[fromBook]);
+  const toAfter = bookAfterCashMoves(books.books[toBook], valid ? amount : 0, books.minCashReservePctByBook[toBook]);
 
   const confirm = () => {
     if (!valid) return;

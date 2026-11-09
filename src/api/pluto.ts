@@ -120,6 +120,8 @@ export type PlutoTelegramVerbosity = "actions" | "off";
 export interface PlutoSettings {
   /** % every ticker's pot is raised above its allocation: the pots may add up to more than Pluto's book value, whose cash they share. */
   excessAllowancePct: number;
+  /** % of Pluto's book value its opening orders leave as cash; Risk & Limits' reserve is the Manual book's. */
+  minCashReservePct: number;
   windowStartEt: string;
   windowEndEt: string;
   dailyLossBreakerPct: number;
@@ -590,7 +592,7 @@ export function fetchPlutoSettings(): Promise<PlutoSettings> {
 
 /** Every number the How it works tab quotes (API src/pluto/howItWorks.ts): percentages in percent, deltas as fractions, money in dollars. */
 export interface PlutoHowItWorks {
-  shared: { windowStartEt: string; windowEndEt: string; windowEndMinutesBeforeCloseAtLeast: number; excessAllowancePct: number; dailyLossBreakerPct: number; unfilledOrderCancelMinutes: number; premiumYieldSessionsPerYear: number; openingLookFallbackEt: string };
+  shared: { windowStartEt: string; windowEndEt: string; windowEndMinutesBeforeCloseAtLeast: number; excessAllowancePct: number; minCashReservePct: number; dailyLossBreakerPct: number; unfilledOrderCancelMinutes: number; premiumYieldSessionsPerYear: number; openingLookFallbackEt: string };
   /** The Safety Limits: they hold Vol Farmer v4's orders. */
   safetyLimits: { maxWorkingOrdersPerTicker: number; maxOrdersPerTickerPerDay: number; maxOpenPositionsPerTicker: number; maxOpenPositions: number; maxOrdersPerDay: number; spyStressBreakerPct: number; tickerCooldownMinutes: number };
   volFarmerV4: {

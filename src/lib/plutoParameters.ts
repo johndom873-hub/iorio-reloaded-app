@@ -125,7 +125,7 @@ export const plutoParameterGroups: PlutoParameterGroup[] = [
         options: ["assigned", "bought_back", "bought_back_before_weekends"],
         optionLabels: { assigned: "Left to be assigned", bought_back: "Bought back, the shares kept", bought_back_before_weekends: "Bought back before weekends only" },
         help: (context) =>
-          `A Call expiring at today's close still in the money in the last ${volFarmerV4BuyBackMinutes} minutes before the window closes (${hhmmMinutesBefore(context.settings.windowEndEt, volFarmerV4BuyBackMinutes)}–${context.settings.windowEndEt}): left to be assigned at the close; bought back at the mid, the shares kept; or bought back only on the last session before a weekend (a Friday, or the Thursday before a Friday holiday). A buyback the settled cash can't pay for, or one still unfilled at 15:58, leaves the Call to be assigned.`,
+          `A Call expiring at today's close still in the money in the last ${volFarmerV4BuyBackMinutes} minutes before the window closes (${hhmmMinutesBefore(context.settings.windowEndEt, volFarmerV4BuyBackMinutes)}–${context.settings.windowEndEt}): left to be assigned at the close; bought back a cent above the mid, the shares kept; or bought back only on the last session before a weekend (a Friday, or the Thursday before a Friday holiday). A buyback the settled cash can't pay for, or one still unfilled at 15:58, leaves the Call to be assigned.`,
       },
       {
         field: "volFarmerV4CallStrikeFloor",
@@ -199,7 +199,8 @@ export const plutoParameterGroups: PlutoParameterGroup[] = [
     parameters: [
       { field: "windowStartEt", label: "Window start", unit: "ET", kind: "time", help: "Pluto acts from this Eastern time." },
       { field: "windowEndEt", label: "Window end", unit: "ET", kind: "time", help: "Pluto stops acting at this Eastern time, or 30 minutes before an early close if that comes first." },
-      { field: "dailyLossBreakerPct", label: "Daily loss breaker", unit: "% of account", kind: "number", step: "0.1", help: "A day down this much versus last night trips a breaker: Pluto stops until a person resets it." },
+      { field: "dailyLossBreakerPct", label: "Daily loss breaker", unit: "% of Pluto's book", kind: "number", step: "0.1", help: "A day down this much versus last night trips a breaker: Pluto stops until a person resets it." },
+      { field: "minCashReservePct", label: "Min cash reserve", unit: "% of Pluto's book", kind: "number", step: "0.1", help: "Cash Pluto's opening orders leave, as a share of its book value. Its buybacks of Calls in the money may use it. The Manual book keeps Risk & Limits' reserve." },
       { field: "maxQuoteAgeMinutes", label: "Max quote age", unit: "min", kind: "integer", step: "1", help: "A band quote older than this is left out of Pluto's look." },
       { field: "maxFillSlippagePct", label: "Max fill slippage", unit: "%", kind: "number", step: "1", help: "A fill this far past the reference price (below the bid for a sell, above the ask for a buy), as a share of it, trips the fill_slippage breaker." },
     ],
@@ -301,7 +302,7 @@ export const plutoParameterLabelByField: Record<string, string> = {
   maxSectorPctOfBudget: "Max per sector (retired)",
   maxOpenPositions: "Max open positions (retired)",
   orderSizePctOfBudget: "Order size (retired)",
-  minCashReservePct: "Min cash reserve (retired)",
+  minCashReservePct: "Min cash reserve",
   stressRiskBudgetPct: "Stress cap per order (retired)",
   stressSigmas: "Stress move (retired)",
   minGrade: "Min grade (retired)",

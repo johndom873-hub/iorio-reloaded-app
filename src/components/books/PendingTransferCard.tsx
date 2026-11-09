@@ -56,8 +56,8 @@ function PendingTransferRow({ transfer, books, onSplit }: { transfer: PendingTra
       .catch((err) => setError(err instanceof ApiError ? err.message : "The split failed."))
       .finally(() => setSplitting(false));
   };
-  const plutoAfter = bookAfterCashMoves(books.books.pluto, valid ? pluto : 0, books.minCashReservePct);
-  const manualAfter = bookAfterCashMoves(books.books.manual, valid ? manual : 0, books.minCashReservePct);
+  const plutoAfter = bookAfterCashMoves(books.books.pluto, valid ? pluto : 0, books.minCashReservePctByBook.pluto);
+  const manualAfter = bookAfterCashMoves(books.books.manual, valid ? manual : 0, books.minCashReservePctByBook.manual);
 
   return (
     <div className="card mb-3">
@@ -148,7 +148,7 @@ function PendingTransferRow({ transfer, books, onSplit }: { transfer: PendingTra
                 </table>
               </div>
               <div className="text-secondary" style={{ fontSize: "0.8rem" }}>
-                Available after also keeps {books.minCashReservePct}% of the added value as the min cash reserve. The split is recorded with your name and can only be changed by moving cash between books.
+                Available after also keeps each book's min cash reserve of the added value: Pluto {books.minCashReservePctByBook.pluto}%, Manual {books.minCashReservePctByBook.manual}%. The split is recorded with your name and can only be changed by moving cash between books.
               </div>
             </div>
           }

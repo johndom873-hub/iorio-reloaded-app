@@ -41,7 +41,8 @@ export type BooksState =
       /** IBKR's live cash − (both books + Unallocated); null when IBKR's cash is unknown. */
       cashGapAgainstIbkr: number | null;
       confirmedThrough: string;
-      minCashReservePct: number;
+      /** Each book's min cash reserve, % of its value: Pluto's own setting, the Manual book's Risk & Limits'. */
+      minCashReservePctByBook: Record<BookKey, number>;
       /** The tickers in Pluto's book now: an order or position on any other is Manual's (hedges always are). */
       plutoSymbols: string[];
       pendingTransfers: PendingTransfer[];
