@@ -1,6 +1,6 @@
-import type { ShortlistRow } from "../../api/shortlist";
+import type { ShortlistRow, TickerDataRetry } from "../../api/shortlist";
 import { useTooltip } from "../../hooks/useTooltip";
-import { daysToExpiry, formatBarsAsYears, formatDate, formatDaysToExpiry, ibkrExpiryToIsoDate } from "../../lib/formatters";
+import { daysToExpiry, formatBarsAsYears, formatDate, formatDateTime, formatDaysToExpiry, ibkrExpiryToIsoDate } from "../../lib/formatters";
 import { DottedLabelTooltip } from "../HelpTooltip";
 import { WarningTriangle } from "./WarningTriangle";
 
@@ -94,5 +94,30 @@ export function PreparingStatusBadge({ progressPercent, onClick }: { progressPer
       <span className="prep-ring" aria-hidden="true" />
       Preparing {progressPercent}%
     </button>
+  );
+}
+
+const dataRetryKinds: Record<TickerDataRetry["kind"], { name: string; shortlistAction: string }> = {
+  option_chain: { name: "chain", shortlistAction: "Populate Option Chain" },
+  daily_bars_history: { name: "history", shortlistAction: "Populate Daily Bars" },
+};
+
+/**
+ * A chain or 5-year history still missing today, which the API retries every 10 minutes (tickerDataRetries.ts): "Chain retry
+ * queued" before the first try, "Retrying chain (1 of 3)" after one failed, "Chain retry failed" once no tries are left.
+ */
+export function DataRetryBadge({ retry }: { retry: TickerDataRetry }) {
+  const { name, shortlistAction } = dataRetryKinds[retry.kind];
+  const capitalized = name.charAt(0).toUpperCase() + name.slice(1);
+  const label = retry.gaveUp ? `${capitalized} retry failed` : retry.attempts === 0 ? `${capitalized} retry queued` : `Retrying ${name} (${retry.attempts} of ${retry.maxAttempts})`;
+  const lastTry = retry.lastAttemptAt ? ` Last try ${formatDateTime(retry.lastAttemptAt)}: ${retry.lastError ?? "failed"}.` : "";
+  const tooltip = retry.gaveUp
+    ? `The ${name} is still missing after ${retry.maxAttempts} tries today. Actions → ${shortlistAction} fixes it now.${lastTry}`
+    : `The ${name} is missing today and is tried again every 10 minutes, ${retry.maxAttempts} tries a day (${retry.attempts} made).${lastTry}`;
+  const ref = useTooltip<HTMLSpanElement>(tooltip, { multiline: true });
+  return (
+    <span ref={ref} tabIndex={0} className={retry.gaveUp ? "badge badge-data-retry-failed" : "badge badge-data-retry"}>
+      {label}
+    </span>
   );
 }

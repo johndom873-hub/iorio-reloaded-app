@@ -5,7 +5,7 @@ import { DataTable, type DataTableColumn } from "../DataTable/DataTable";
 import { Spinner } from "../Spinner";
 import { ConfirmModal } from "../ConfirmModal";
 import { TickerPrepModal } from "./TickerPrepModal";
-import { DailyBarsCell, EarningsCell, ImpliedVolatilityDaysCell, OptionChainExpiriesCell, PreparingStatusBadge, quartersForEarningsAdjustment } from "./readinessCells";
+import { DailyBarsCell, DataRetryBadge, EarningsCell, ImpliedVolatilityDaysCell, OptionChainExpiriesCell, PreparingStatusBadge, quartersForEarningsAdjustment } from "./readinessCells";
 import { ActionsMenu, type ActionsMenuItem } from "./ActionsMenu";
 import { PlutoBotToggle } from "../pluto/PlutoBotToggle";
 import { useIsAdmin } from "../../hooks/useAuth";
@@ -276,6 +276,12 @@ export function ShortlistTab({ onOpenTickerModal }: ShortlistTabProps) {
             progressPercent={row.backfillProgressPercent ?? 0}
             onClick={() => setPrepTicker({ tickerId: row.tickerId, symbol: row.symbol, companyName: row.companyName })}
           />
+        ) : row.dataRetries.length > 0 ? (
+          <div className="d-flex flex-column align-items-start gap-1">
+            {row.dataRetries.map((retry) => (
+              <DataRetryBadge key={retry.kind} retry={retry} />
+            ))}
+          </div>
         ) : (
           <span className="text-secondary">—</span>
         ),

@@ -36,6 +36,19 @@ export interface ShortlistRow {
   isEtf: boolean;
   /** One entry per expiry stored in option_chain_expiry_strikes, each with its strike count. */
   optionChainExpiries: OptionChainExpiryStrikeCount[];
+  /** Today's automatic retries still open (the API's tickerDataRetries.ts): a chain or 5-year history still missing. */
+  dataRetries: TickerDataRetry[];
+}
+
+export interface TickerDataRetry {
+  kind: "option_chain" | "daily_bars_history";
+  /** Tries made today; 0 = queued for the next pass (every 10 minutes). */
+  attempts: number;
+  maxAttempts: number;
+  /** No tries left today: the Shortlist action fixes it by hand. */
+  gaveUp: boolean;
+  lastError: string | null;
+  lastAttemptAt: string | null;
 }
 
 export type DailyBarsPlan = "full" | "topUp" | "none";

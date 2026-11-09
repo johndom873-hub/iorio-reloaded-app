@@ -60,6 +60,30 @@
   color: var(--iorio-leaps-fg) !important;
 }
 
+/* Shortlist data-retry badges (DataRetryBadge): grey while retrying, red once no tries are left. Light: white text on
+   Tabler's grey and red (4.69:1 and 4.66:1, the fills the same against the white table). Dark: those fills reach only
+   2.6:1 against the table, so lighter fills with dark text. */
+:root {
+  --iorio-data-retry: #6c757d;
+  --iorio-data-retry-fg: #fff;
+  --iorio-data-retry-failed: #d63939;
+  --iorio-data-retry-failed-fg: #fff;
+}
+:root[data-bs-theme="dark"] {
+  --iorio-data-retry: #aab3bf;
+  --iorio-data-retry-fg: #1a2234;
+  --iorio-data-retry-failed: #f28b8b;
+  --iorio-data-retry-failed-fg: #1a2234;
+}
+.badge.badge-data-retry {
+  background-color: var(--iorio-data-retry) !important;
+  color: var(--iorio-data-retry-fg) !important;
+}
+.badge.badge-data-retry-failed {
+  background-color: var(--iorio-data-retry-failed) !important;
+  color: var(--iorio-data-retry-failed-fg) !important;
+}
+
 /* Text selection: Tabler's 10% primary tint is near-invisible (1.07:1 on dark inputs, 1.16:1 on white). Light uses
    the accessible blue at 25% (≈ the macOS highlight, 1.46:1 on white); dark uses the brand sky blue at 45%
    (≈2:1 on every dark surface, white text on it 5.8:1+). Text keeps its own colour. */
