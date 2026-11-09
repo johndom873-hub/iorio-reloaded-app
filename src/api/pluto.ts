@@ -603,6 +603,7 @@ export interface PlutoHowItWorks {
     /** A Call, Put or buyback goes this many cents past the mid, never past the bid or ask; a LEAPS at the mid. */
     optionCentsGivenUp: number;
     /** Follow the mid: a working Call on shares held, Put or buyback is checked every this many seconds and its limit moved, at most maxLimitChangesPerOrder times. */
+    followsTheMid: boolean;
     followTheMidCheckSeconds: number;
     maxLimitChangesPerOrder: number;
     firstPositionPct: number;

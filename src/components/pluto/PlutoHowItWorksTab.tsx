@@ -81,7 +81,14 @@ function VolFarmerV4Explanation({ values }: { values: PlutoHowItWorks }) {
             The v4 tickers share Pluto's book: its own share of the account, which grows or shrinks with Pluto's results and spends only its own cash. Each ticker's pot is its allocation of the book's value, raised by the excess allowance (<Value>{pct(shared.excessAllowancePct)}</Value> now), so the pots can add up to more than the book. The account is a cash account: a purchase or a Put uses only cash that has settled, so Pluto counts the smallest of what its book has uncommitted, its available cash and its settled cash left.
           </p>
           <p className="pm-how-text muted">
-            Pluto looks at every v4 ticker at every round, all day. A Call, Put or buyback is priced <Value>{v4.optionCentsGivenUp}</Value> {v4.optionCentsGivenUp === 1 ? "cent" : "cents"} past the mid, so it fills sooner, never past the bid or ask: a Call quoted {formatQuotePrice(example.saleBid)} / {formatQuotePrice(example.saleAsk)} is sold at {formatQuotePrice(example.saleLimit)}. A LEAPS and the shares go at the mid. While a Call on shares already held, a Put or a buyback waits to fill, Pluto checks the market every <Value>{v4.followTheMidCheckSeconds}</Value> seconds and moves the order's price with it, up to <Value>{v4.maxLimitChangesPerOrder}</Value> times. An order that still does not fill is planned again at a later round.
+            Pluto looks at every v4 ticker at every round, all day. A Call, Put or buyback is priced <Value>{v4.optionCentsGivenUp}</Value> {v4.optionCentsGivenUp === 1 ? "cent" : "cents"} past the mid, so it fills sooner, never past the bid or ask: a Call quoted {formatQuotePrice(example.saleBid)} / {formatQuotePrice(example.saleAsk)} is sold at {formatQuotePrice(example.saleLimit)}. A LEAPS and the shares go at the mid.{v4.followsTheMid ? (
+              <>
+                {" "}While a Call on shares already held, a Put or a buyback waits to fill, Pluto checks the market every <Value>{v4.followTheMidCheckSeconds}</Value> seconds and moves the order's price with it, up to <Value>{v4.maxLimitChangesPerOrder}</Value> times.
+              </>
+            ) : (
+              " A working order keeps the price it was sent at (moving it with the market is not switched on here yet)."
+            )}{" "}
+            An order that still does not fill is planned again at a later round.
           </p>
         </Card>
         <Card title="A worked example">
@@ -156,7 +163,7 @@ function VolFarmerV4Explanation({ values }: { values: PlutoHowItWorks }) {
             <li>The Safety Limits cap v4's orders and positions. While SPY is down <Value>{pct(safetyLimits.spyStressBreakerPct)}</Value> or more on the day, v4 opens nothing; a sale of a LEAPS or of shares still goes.</li>
             <li>Every order but a LEAPS is held to the ticker's pot; a LEAPS to Pluto's book value across every ticker. An order that adds no money at risk (a Call on shares already held, a Call roll) is held to neither.</li>
             <li>A purchase and a Put are no more than the free cash pays for: the smallest of what Pluto's book has uncommitted, its available cash and its settled cash left (its cash less what its open Puts hold, its orders working and the min cash reserve of its value). With no settled cash reported, nothing is bought, except on the paper account, which reports none and uses its total cash instead.</li>
-            <li>Pluto's daily-loss breaker watches its own book: its value now against last night's, less cash moved into it today.</li>
+            <li>Pluto's daily-loss breaker watches its own book: its value now against last night's value plus any cash moved into it since, so a book funded today is measured on its funding.</li>
             <li>The v4 tickers take turns at each round in alphabetical order, starting one ticker further each day. A LEAPS is bought or topped up after every ticker's other orders, with the free cash they left.</li>
           </ul>
         </div>
