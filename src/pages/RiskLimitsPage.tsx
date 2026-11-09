@@ -572,7 +572,7 @@ export function RiskLimitsPage() {
 
               {isAdmin ? (
                 <p className="text-secondary mb-1" style={{ fontSize: "0.85rem" }}>
-                  One set of limits for every strategy. Hover the help icon next to a field for details.
+                  These limits hold manual orders, the Manual book's. Pluto's orders are held to each ticker's pot, v4's own delta range and Pluto's own cash reserve (Pluto, Settings) instead of the order limits and the delta band; the limit-price check holds them too, and so does the unfilled-order cancel, except for Pluto's buybacks of Calls in the money. Hover the help icon next to a field for details.
                 </p>
               ) : (
                 <ViewOnlyNote className="mb-2">Only an admin can change these limits.</ViewOnlyNote>
@@ -654,7 +654,7 @@ export function RiskLimitsPage() {
 
               <SettingsSection
                 title="Delta band"
-                description="Applies to new orders (an order outside the band cannot be confirmed) and to the Recovery Path scan."
+                description="Applies to new manual orders (an order outside the band cannot be confirmed) and to the Recovery Path scan; Pluto's use v4's own delta range."
               >
                 <NumberField
                   label={fieldLabels.deltaTargetMin}

@@ -28,6 +28,8 @@ export interface PendingTransfer {
   amountDollars: number;
   at: string;
   description: string;
+  /** Recorded by an admin before IBKR's statement holds it; the statement's row takes its place when it comes. */
+  recordedBeforeStatement: boolean;
 }
 
 export type BooksState =

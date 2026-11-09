@@ -67,7 +67,7 @@ function PendingTransferRow({ transfer, books, onSplit }: { transfer: PendingTra
           <div>
             <div className="fw-bold">A {kind} is waiting to be split between the books</div>
             <div className="text-secondary" style={{ fontSize: "0.8rem" }}>
-              {transfer.description} on {formatDayMonthYear(easternIsoDate(transfer.at))}, from IBKR's statement. Until it is split, neither book can use it.
+              {transfer.recordedBeforeStatement ? `${transfer.description}.` : `${transfer.description} on ${formatDayMonthYear(easternIsoDate(transfer.at))}, from IBKR's statement.`} Until it is split, neither book can use it.
             </div>
           </div>
           <div className="fw-bold font-mono" style={{ fontSize: "1.25rem" }}>
