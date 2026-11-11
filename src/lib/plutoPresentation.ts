@@ -1,6 +1,6 @@
 import type { PlutoAction, PlutoActionContract, PlutoActionKind, PlutoActionOutcome, PlutoEvent, PlutoEventCategory, PlutoPass, PlutoReadinessResult, PlutoState, PlutoSystemCheck, PlutoWorkingOrder } from "../api/pluto";
 import { formatSettingDisplay, plutoParameterLabelByField } from "./plutoParameters";
-import { daysToExpiry, easternIsoDate, formatBrowserClockTime, formatCurrency, formatDayMonth, formatEasternTime, formatOptionContractLabel, formatOrderSize, formatRelativeAge, formatSignedPercentageValue, formatRelativeTime, formatDateTime, formatStrike, formatTransactionPrice, pluralize, pluralizeCount, todayInEasternIso } from "./formatters";
+import { daysToExpiry, easternIsoDate, formatCurrency, formatDayMonth, formatEasternTime, formatOptionContractLabel, formatOrderSize, formatRelativeAge, formatSignedPercentageValue, formatRelativeTime, formatEasternDateTime, formatStrike, formatTransactionPrice, pluralize, pluralizeCount, todayInEasternIso } from "./formatters";
 
 // Presentation rules for the Pluto screen (redesign approved 2026-10-06): one status at a time, plain-language
 // wording for orders, decisions and the activity feed. Pure functions so the components stay declarative.
@@ -57,7 +57,7 @@ function checksAreFromToday(state: PlutoState): boolean {
 }
 
 export function derivePlutoStatus(state: PlutoState, now: Date, crashLoopRestarts: number | null): PlutoStatus {
-  const when = (iso: string | null) => (iso ? formatRelativeTime(iso) ?? formatDateTime(iso) : "");
+  const when = (iso: string | null) => (iso ? formatRelativeTime(iso) ?? formatEasternDateTime(iso) : "");
   if (state.mode === "off") {
     const working = state.workingOrders.length;
     if (working > 0) {
@@ -65,7 +65,7 @@ export function derivePlutoStatus(state: PlutoState, now: Date, crashLoopRestart
       return { kind: "off", label: "Off", headline: `Pluto is off — ${working === 1 ? "1 order it placed is" : `${working} orders it placed are`} still working`, subline: `${describeWorkingOrderLine(first, state, now)}`, holdAlert: null };
     }
     const by = state.modeChangedBy ? ` by ${state.modeChangedBy}` : "";
-    return { kind: "off", label: "Off", headline: "Pluto is off — it isn't analysing or placing orders", subline: state.modeChangedAt ? `Turned off${by} · ${formatDateTime(state.modeChangedAt)}` : "Switch it on to let it analyse and trade the allowed tickers", holdAlert: null };
+    return { kind: "off", label: "Off", headline: "Pluto is off — it isn't analysing or placing orders", subline: state.modeChangedAt ? `Turned off${by} · ${formatEasternDateTime(state.modeChangedAt)}` : "Switch it on to let it analyse and trade the allowed tickers", holdAlert: null };
   }
   if (Object.keys(state.breakers).length > 0) {
     return { kind: "stopped", label: "Stopped", headline: "A safety breaker tripped — Pluto is stopped until someone resets it", subline: workingOrdersPhrase(state), holdAlert: null };
@@ -289,7 +289,7 @@ export function describeOutcome(action: PlutoAction, now: Date, state: Pick<Plut
     case "confirmed":
     case "order_built": {
       const cancelAt = state ? workingOrderCancelAt(action, state) : null;
-      return { tone: "info", label: `Working · ${formatAgeInWords(action.createdAt, now)}`, sub: cancelAt ? `Cancels at ${formatBrowserClockTime(cancelAt)} if unfilled` : null, linksToOrder: true };
+      return { tone: "info", label: `Working · ${formatAgeInWords(action.createdAt, now)}`, sub: cancelAt ? `Cancels at ${formatEasternTime(cancelAt)} if unfilled` : null, linksToOrder: true };
     }
     case "filled":
       return { tone: "ok", label: "Filled", sub: null, linksToOrder: true };
@@ -694,7 +694,7 @@ export function describeFeedEvent(event: PlutoEvent, context?: PlutoFeedContext)
     case "lines_changed":
       return { dot: "look", title: "IBKR market-data lines", detail: `${text(payload.held)} held`, sub: text(payload.detail) || text(payload.reason) || null };
     case "window_opened":
-      return { dot: "ctl", title: "Trading window opened", detail: payload.windowEndAt ? `until ${formatBrowserClockTime(text(payload.windowEndAt))}` : `until ${text(payload.windowEndEt)} ET`, sub: null };
+      return { dot: "ctl", title: "Trading window opened", detail: payload.windowEndAt ? `until ${formatEasternTime(text(payload.windowEndAt))}` : `until ${text(payload.windowEndEt)} ET`, sub: null };
     case "window_closed":
       return { dot: "ctl", title: "Trading window closed", detail: "stopped analysing new trades", sub: null };
     case "analysis_started": {

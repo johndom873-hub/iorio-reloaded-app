@@ -806,6 +806,7 @@
   color: var(--text-muted);
   flex-shrink: 0;
   font-size: 0.64rem;
+  white-space: nowrap;
 }
 .iorio-pulse-page .fill-desc {
   flex: 1;
@@ -859,6 +860,7 @@
   color: var(--text-muted);
   font-size: 0.6rem;
   flex-shrink: 0;
+  white-space: nowrap;
 }
 .iorio-pulse-page .event-text {
   color: var(--text-secondary);
@@ -1593,7 +1595,8 @@
 }
 .iorio-pulse-page.pulse-phone .fill-time,
 .iorio-pulse-page.pulse-phone .event-time {
-  width: 52px;
+  /* Fits "13:09:51 ET" (the feeds' ET times) on one line. */
+  width: 72px;
   font-size: 0.625rem;
 }
 .iorio-pulse-page.pulse-phone .event-dot {

@@ -26,7 +26,7 @@ import { ViewOnlyNote } from "../components/ViewOnlyNote";
 import { useIsAdmin } from "../hooks/useAuth";
 import { ConfirmModal } from "../components/ConfirmModal";
 import { openNotificationStream } from "../api/notifications";
-import { formatCurrency, formatDateTime, formatDayCount, formatDelta, formatInputNumber, formatMinutesOrNever, formatPercentage, formatPercentageValueTrimmed, formatRelativeTime } from "../lib/formatters";
+import { formatCurrency, formatDateTime, formatDayCount, formatEasternDateTime, formatDelta, formatInputNumber, formatMinutesOrNever, formatPercentage, formatPercentageValueTrimmed, formatRelativeTime } from "../lib/formatters";
 import { useExposureStream } from "../hooks/useExposureStream";
 import { useTickerModal } from "../hooks/useTickerModal";
 
@@ -180,13 +180,13 @@ function TradingHaltCard() {
             ) : halted ? (
               <div className="text-danger" style={{ fontSize: "0.8rem" }}>
                 Halted by <strong>{halt.setByDisplayName ?? "an operator"}</strong>
-                {halt.setAt ? ` ${formatRelativeTime(halt.setAt) ?? formatDateTime(halt.setAt)}` : ""}
+                {halt.setAt ? ` ${formatRelativeTime(halt.setAt) ?? formatEasternDateTime(halt.setAt)}` : ""}
                 {halt.reason ? ` — ${halt.reason}` : ""}. No order from any origin (screens, Pluto) reaches IBKR until it is lifted; cancels still work.
               </div>
             ) : (
               <div className="text-secondary" style={{ fontSize: "0.8rem" }}>
                 The kill switch. Halting stops every order from every origin at confirm and again inside the trading worker, immediately.
-                {halt.setAt && ` Last lifted by ${halt.setByDisplayName ?? "an operator"} ${formatRelativeTime(halt.setAt) ?? formatDateTime(halt.setAt)}.`}
+                {halt.setAt && ` Last lifted by ${halt.setByDisplayName ?? "an operator"} ${formatRelativeTime(halt.setAt) ?? formatEasternDateTime(halt.setAt)}.`}
               </div>
             )}
           </div>

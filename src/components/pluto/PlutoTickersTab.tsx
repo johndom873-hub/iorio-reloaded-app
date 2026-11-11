@@ -7,7 +7,7 @@ import { useIsAdmin } from "../../hooks/useAuth";
 import { ApiError } from "../../api/client";
 import { fetchPlutoTickerAllocations, fetchPlutoVolFarmerV4, savePlutoAllocations, updateShortlistBotEnabled, type PlutoSettings, type PlutoState, type PlutoTickerAllocation, type PlutoVolFarmerV4Ticker } from "../../api/pluto";
 import type { ShortlistRow, TickerBackfillRun } from "../../api/shortlist";
-import { formatBrowserDayMonth, formatCurrency, formatInputNumber, formatPercentageValueTrimmed, pluralize } from "../../lib/formatters";
+import { formatEasternDayMonth, formatCurrency, formatInputNumber, formatPercentageValueTrimmed, pluralize } from "../../lib/formatters";
 import { allocationDraftOf, allocationPercentText, buildPlutoAllocationView, plutoHoldingLabel, type PlutoAllocationDraft, type PlutoAllocationTicker, type PlutoHolding } from "../../lib/plutoAllocationEdit";
 import { ColumnVisibilityPopover } from "../DataTable/ColumnVisibilityPopover";
 import { useColumnVisibility } from "../DataTable/useColumnVisibility";
@@ -111,7 +111,7 @@ function plutoNow(row: ShortlistRow, state: PlutoState | null, volFarmerV4: Plut
 
 function changedBy(row: ShortlistRow): string | null {
   if (!row.botEnabledChangedAt) return null;
-  return `${row.botEnabledChangedBy ?? "—"} · ${formatBrowserDayMonth(row.botEnabledChangedAt)}`;
+  return `${row.botEnabledChangedBy ?? "—"} · ${formatEasternDayMonth(row.botEnabledChangedAt)}`;
 }
 
 export function PlutoTickersTab({ rows, loading, error, state, maxEnabled, isPhone, onOpenTicker, onToggled, onPrepRunChange, settings, onAllocationsSaved }: PlutoTickersTabProps) {

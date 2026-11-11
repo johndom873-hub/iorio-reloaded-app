@@ -1,5 +1,5 @@
 import type { PlutoVolFarmerV4Option, PlutoVolFarmerV4Ticker } from "../api/pluto";
-import { browserLocalIsoDate, daysToExpiry, formatBrowserClockTime, formatBrowserDayMonth, formatCurrency, formatOptionContractLabel, pluralize } from "./formatters";
+import { daysToExpiry, easternIsoDate, formatCurrency, formatEasternDayMonth, formatEasternTime, formatOptionContractLabel, pluralize } from "./formatters";
 
 // The Live tab's Vol Farmer v4 card (approved mockup, 2026-10-28): each v4 ticker's positions, LEAPS, working orders and
 // last round in plain words, and its warnings (Marcelo 2026-10-28) from the figures its last round read.
@@ -29,8 +29,8 @@ export function volFarmerV4LastRoundLines(ticker: PlutoVolFarmerV4Ticker): strin
 
 /** "Last order Nov 5 12:47 AM: Sell 10 × $46 Call · 4 Nov (0DTE), limit $0.27, filled at $0.37", in the viewer's clock (today: the time alone). */
 export function describeVolFarmerV4LastOrder(lastOrder: NonNullable<PlutoVolFarmerV4Ticker["lastOrder"]>): string {
-  const sentOnAnotherDay = browserLocalIsoDate(lastOrder.at) !== browserLocalIsoDate(new Date());
-  const when = `${sentOnAnotherDay ? `${formatBrowserDayMonth(lastOrder.at)} ` : ""}${formatBrowserClockTime(lastOrder.at)}`;
+  const sentOnAnotherDay = easternIsoDate(lastOrder.at) !== easternIsoDate(new Date());
+  const when = `${sentOnAnotherDay ? `${formatEasternDayMonth(lastOrder.at)} ` : ""}${formatEasternTime(lastOrder.at)}`;
   return `Last order ${when}: ${lastOrder.text}`;
 }
 

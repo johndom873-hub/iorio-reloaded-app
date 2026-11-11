@@ -18,7 +18,7 @@ import {
   formatCurrencyTrimmed,
   formatAsOfClose,
   formatDate,
-  formatDateTime,
+  formatEasternDateTime,
   formatDaysAgo,
   formatExpiryWithDte,
   formatNumber,
@@ -321,7 +321,7 @@ export function PositionCard({
             {totalAccountValue !== null && <> ({formatPercentageValue((Number(position.capitalAtRisk) / totalAccountValue) * 100, 1)})</>}
           </TooltipSpan>
         )}
-        <TooltipSpan className="small position-stat" text={formatDateTime(position.openedAt)}>
+        <TooltipSpan className="small position-stat" text={formatEasternDateTime(position.openedAt)}>
           <span className="position-stat-label">Opened:</span> {formatDaysAgo(daysAgo(position.openedAt))}
         </TooltipSpan>
       </div>

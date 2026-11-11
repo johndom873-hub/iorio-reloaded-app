@@ -23,7 +23,7 @@ import {
   type TickerFieldValues,
 } from "../../../api/backtestAnalysis";
 import { describeLabChangesSince, describeTickerValuesDifferingFromLab, mergeTickerOwnValues, tickerFieldValuesOfVolFarmerV4, tickerValueGroupsDiffering } from "../../../lib/analysisPresentation";
-import { formatBrowserClockTime, formatCurrency, formatDayMonth, formatDayMonthYear, formatNumber, joinWithAnd } from "../../../lib/formatters";
+import { browserLocalIsoDate, formatBrowserClockTime, formatBrowserDayMonth, formatCurrency, formatDayMonthYear, formatNumber, joinWithAnd } from "../../../lib/formatters";
 import { useTickerModal } from "../../../hooks/useTickerModal";
 import { TickerSuitabilityModal } from "../TickerSuitabilityModal";
 import { AnalysisTickerIdentity } from "./AnalysisTickerHeader";
@@ -278,7 +278,7 @@ export function TickerAnalysisModal({ symbol, onClose, onSuitabilitySaved }: Tic
       {stored && (
         <>
           <span>
-            Analysed {formatDayMonthYear((stored.finishedAt ?? stored.createdAt).slice(0, 10))}, {formatBrowserClockTime(stored.finishedAt ?? stored.createdAt)}
+            Analysed {formatDayMonthYear(browserLocalIsoDate(stored.finishedAt ?? stored.createdAt))}, {formatBrowserClockTime(stored.finishedAt ?? stored.createdAt)}
           </span>
           <span aria-hidden="true">·</span>
           <span>option data to {stored.optionLastDate ? formatDayMonthYear(stored.optionLastDate) : "—"}</span>
@@ -333,7 +333,7 @@ export function TickerAnalysisModal({ symbol, onClose, onSuitabilitySaved }: Tic
             ? "Computed with an older version of the analysis's formulas."
             : ownValuesChangedSinceStored && currentTickerValues
               ? `${symbol}'s own values changed after this analysis ran: ${describeTickerValuesDifferingFromLab(currentTickerValues, view.labTickerFieldValues) || "the lab's values"} now.${ranWithOlderFormulas ? " Its formulas are an older version too." : ""}`
-              : `The lab's v4 values changed on ${formatDayMonth(labSaved.slice(0, 10))} at ${formatBrowserClockTime(labSaved)}, after this analysis ran${labChanges && labChanges.length > 0 ? `: ${joinWithAnd(labChanges)}` : ""}.${ranWithOlderFormulas ? " Its formulas are an older version too." : ""}`}{" "}
+              : `The lab's v4 values changed on ${formatBrowserDayMonth(labSaved)} at ${formatBrowserClockTime(labSaved)}, after this analysis ran${labChanges && labChanges.length > 0 ? `: ${joinWithAnd(labChanges)}` : ""}.${ranWithOlderFormulas ? " Its formulas are an older version too." : ""}`}{" "}
           Everything below is from the values it ran with.
         </p>
       </AnalysisNote>,

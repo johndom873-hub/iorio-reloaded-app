@@ -2,7 +2,7 @@ import { useState } from "react";
 import { IconAlertTriangle, IconX } from "@tabler/icons-react";
 import type { AnalysisCorrelationRow, AnalysisFigures, AnalysisFileFigures } from "../../../api/backtestAnalysis";
 import { analysisSignedClass } from "../../../lib/analysisPresentation";
-import { formatCurrency, formatDayMonth, formatDayMonthYear, formatFileSize, formatNumber, formatPercentage, formatSignedPercentage, formatStrike } from "../../../lib/formatters";
+import { browserLocalIsoDate, formatCurrency, formatDayMonth, formatDayMonthYear, formatFileSize, formatNumber, formatPercentage, formatSignedPercentage, formatStrike } from "../../../lib/formatters";
 import { useTickerModal } from "../../../hooks/useTickerModal";
 import { ColumnVisibilityPopover } from "../../DataTable/ColumnVisibilityPopover";
 import { useColumnVisibility } from "../../DataTable/useColumnVisibility";
@@ -365,7 +365,7 @@ export function AnalysisDataQualityCard({ figures }: { figures: AnalysisFileFigu
             {formatNumber(quality.bars.count)}
             <span className="analysis-sub">
               {quality.bars.firstDate ? `${formatDayMonthYear(quality.bars.firstDate)} → ${formatDayMonthYear(quality.bars.lastDate!)}` : "none"}
-              {quality.barsFetchedAt ? ` · fetched ${formatDayMonthYear(quality.barsFetchedAt.slice(0, 10))}` : ""}
+              {quality.barsFetchedAt ? ` · fetched ${formatDayMonthYear(browserLocalIsoDate(quality.barsFetchedAt))}` : ""}
               {quality.bars.source === "database" ? " · from the app database" : ""}
             </span>
           </dd>

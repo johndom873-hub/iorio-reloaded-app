@@ -22,6 +22,7 @@ import { useMarketStatus } from "../../hooks/useMarketStatus";
 import { ApiError } from "../../api/client";
 import { fetchTickerChart, type ChartRange, type PriceBar, type TickerTechnicals } from "../../api/tickerDetail";
 import { extendedSessionPriceChange } from "../../lib/priceChange";
+import { easternIsoDate, easternMidnight } from "../../lib/formatters";
 import { formatSignedNumber, formatSignedPercentageValue, todayInEasternIso } from "../../lib/formatters";
 
 // Ported from menaris-admin-app's LwChart.js — same range set, bar
@@ -53,44 +54,48 @@ function fmtVol(v: number | null | undefined): string {
   return String(v);
 }
 
-function fmtLocal(utcSec: number, type: TickMarkType): string {
-  const d = new Date(utcSec * 1000);
+// Bar times (Marcelo 2026-11-11: trading times are ET): an intraday range's bars are real instants, labelled on the US/Eastern
+// clock (the open is 09:30, not 14:30 UTC or the viewer's time); a daily range's bars are dates stored at UTC midnight,
+// labelled in UTC so they keep their date.
+function barZone(range: ChartRange): "UTC" | "America/New_York" {
+  return dailyRanges.has(range) ? "UTC" : "America/New_York";
+}
+
+function formatBarPart(utcSec: number, zone: string, options: Intl.DateTimeFormatOptions): string {
+  return new Intl.DateTimeFormat("en", { ...options, timeZone: zone }).format(new Date(utcSec * 1000));
+}
+
+function fmtTick(utcSec: number, type: TickMarkType, zone: string): string {
   switch (type) {
-    case TickMarkType.Time: {
-      d.setUTCMinutes(Math.floor(d.getUTCMinutes() / 5) * 5, 0, 0);
-      return d.toLocaleTimeString("en", { hour: "2-digit", minute: "2-digit", hour12: false, timeZone: "UTC" });
-    }
+    case TickMarkType.Time:
+      // Offsets are whole hours, so rounding the minutes down to 5 is the same in every zone.
+      return formatBarPart(Math.floor(utcSec / 300) * 300, zone, { hour: "2-digit", minute: "2-digit", hourCycle: "h23" });
     case TickMarkType.TimeWithSeconds:
-      return d.toLocaleTimeString("en", {
-        hour: "2-digit",
-        minute: "2-digit",
-        second: "2-digit",
-        hour12: false,
-        timeZone: "UTC",
-      });
+      return formatBarPart(utcSec, zone, { hour: "2-digit", minute: "2-digit", second: "2-digit", hourCycle: "h23" });
     case TickMarkType.DayOfMonth:
-      return String(d.getUTCDate());
+      return formatBarPart(utcSec, zone, { day: "numeric" });
     case TickMarkType.Month:
-      return d.toLocaleString("en", { month: "short", timeZone: "UTC" });
+      return formatBarPart(utcSec, zone, { month: "short" });
     case TickMarkType.Year:
-      return String(d.getUTCFullYear());
+      return formatBarPart(utcSec, zone, { year: "numeric" });
     default:
       return "";
   }
 }
 
 function makeTickMarkFormatter(range: ChartRange): (time: Time, type: TickMarkType) => string {
+  const zone = barZone(range);
   if (range === "5D") {
     return (time, type) =>
-      type === TickMarkType.Time || type === TickMarkType.TimeWithSeconds ? "" : fmtLocal(time as number, type);
+      type === TickMarkType.Time || type === TickMarkType.TimeWithSeconds ? "" : fmtTick(time as number, type, zone);
   }
   if (range === "3M" || range === "6M" || dailyRanges.has(range)) {
     return (time, type) =>
       type === TickMarkType.DayOfMonth || type === TickMarkType.Time || type === TickMarkType.TimeWithSeconds
         ? ""
-        : fmtLocal(time as number, type);
+        : fmtTick(time as number, type, zone);
   }
-  return (time, type) => fmtLocal(time as number, type);
+  return (time, type) => fmtTick(time as number, type, zone);
 }
 
 function tickCharLen(range: ChartRange): number {
@@ -101,57 +106,54 @@ function tickCharLen(range: ChartRange): number {
   return 5;
 }
 
+/** The crosshair's label: "10 Nov '26" on a daily range, "10 Nov '26 09:30 ET" on an intraday one. */
 function makeTimeFormatter(range: ChartRange): (utcSec: number) => string {
+  const zone = barZone(range);
   return (utcSec) => {
-    const d = new Date(utcSec * 1000);
-    const day = d.getUTCDate();
-    const mon = d.toLocaleString("en", { month: "short", timeZone: "UTC" });
-    const yr = String(d.getUTCFullYear()).slice(2);
+    const day = formatBarPart(utcSec, zone, { day: "numeric" });
+    const mon = formatBarPart(utcSec, zone, { month: "short" });
+    const yr = formatBarPart(utcSec, zone, { year: "2-digit" });
     const datePart = `${day} ${mon} '${yr}`;
     if (dailyRanges.has(range)) return datePart;
-    const hh = String(d.getUTCHours()).padStart(2, "0");
-    const mm = String(d.getUTCMinutes()).padStart(2, "0");
-    return `${datePart} ${hh}:${mm}`;
+    return `${datePart} ${formatBarPart(utcSec, zone, { hour: "2-digit", minute: "2-digit", hourCycle: "h23" })} ET`;
   };
 }
 
 // LW Charts v5 draws a vertical grid line at every tick-mark position
 // regardless of the tickMarkFormatter's output — the only clean fix is to
-// disable built-in vertLines and draw our own at real calendar boundaries.
+// disable built-in vertLines and draw our own at real calendar boundaries:
+// ET days, Mondays and months on an intraday range, UTC ones on a daily range.
 function getGridBoundaries(fromSec: number, toSec: number, range: ChartRange): number[] {
   const boundaries: number[] = [];
   const fromDate = new Date(fromSec * 1000);
   const toDate = new Date(toSec * 1000);
 
   if (range === "1D") {
+    // Whole hours are whole hours in ET too.
     const d = new Date(Date.UTC(fromDate.getUTCFullYear(), fromDate.getUTCMonth(), fromDate.getUTCDate(), fromDate.getUTCHours()));
-    while (d.getTime() / 1000 <= toDate.getTime() / 1000) {
+    while (d.getTime() / 1000 <= toSec) {
       boundaries.push(d.getTime() / 1000);
       d.setUTCHours(d.getUTCHours() + 1);
     }
-  } else if (range === "5D") {
-    const d = new Date(Date.UTC(fromDate.getUTCFullYear(), fromDate.getUTCMonth(), fromDate.getUTCDate()));
-    while (d.getTime() / 1000 <= toDate.getTime() / 1000) {
-      boundaries.push(d.getTime() / 1000);
-      d.setUTCDate(d.getUTCDate() + 1);
+  } else if (range === "5D" || range === "1M" || range === "3M" || range === "6M") {
+    // Walk the ET calendar dates, keeping each day (5D), Monday (1M) or 1st of the month (3M, 6M) at its ET midnight.
+    const date = new Date(Date.parse(easternIsoDate(fromDate)));
+    const last = Date.parse(easternIsoDate(toDate));
+    while (date.getTime() <= last) {
+      const dateIso = date.toISOString().slice(0, 10);
+      const keep = range === "5D" || (range === "1M" ? date.getUTCDay() === 1 : date.getUTCDate() === 1);
+      if (keep) boundaries.push(easternMidnight(dateIso).getTime() / 1000);
+      date.setUTCDate(date.getUTCDate() + 1);
     }
-  } else if (range === "1M") {
-    const d = new Date(Date.UTC(fromDate.getUTCFullYear(), fromDate.getUTCMonth(), fromDate.getUTCDate()));
-    const day = d.getUTCDay();
-    d.setUTCDate(d.getUTCDate() - (day === 0 ? 6 : day - 1));
-    while (d.getTime() / 1000 <= toDate.getTime() / 1000) {
-      boundaries.push(d.getTime() / 1000);
-      d.setUTCDate(d.getUTCDate() + 7);
-    }
-  } else if (range === "3M" || range === "6M" || range === "1Y") {
+  } else if (range === "1Y") {
     const d = new Date(Date.UTC(fromDate.getUTCFullYear(), fromDate.getUTCMonth(), 1));
-    while (d.getTime() / 1000 <= toDate.getTime() / 1000) {
+    while (d.getTime() / 1000 <= toSec) {
       boundaries.push(d.getTime() / 1000);
       d.setUTCMonth(d.getUTCMonth() + 1);
     }
   } else {
     const d = new Date(Date.UTC(fromDate.getUTCFullYear(), 0, 1));
-    while (d.getTime() / 1000 <= toDate.getTime() / 1000) {
+    while (d.getTime() / 1000 <= toSec) {
       boundaries.push(d.getTime() / 1000);
       d.setUTCFullYear(d.getUTCFullYear() + 1);
     }

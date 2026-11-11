@@ -13,7 +13,7 @@ import { useTickerModal } from "../hooks/useTickerModal";
 import {
   formatCurrency,
   formatCurrencyTrimmed,
-  formatDateTime,
+  formatEasternDateTime,
   formatNumber,
   formatRelativeDate,
   formatTransactionPrice,
@@ -120,7 +120,7 @@ export function TradeBlotterPage() {
       render: (row) => {
         const timestamp = row.kind === "trade" ? row.executedAt : row.createdAt;
         return (
-          <TooltipSpan className="text-nowrap" text={formatDateTime(timestamp)}>
+          <TooltipSpan className="text-nowrap" text={formatEasternDateTime(timestamp)}>
             {formatRelativeDate(timestamp)}
           </TooltipSpan>
         );

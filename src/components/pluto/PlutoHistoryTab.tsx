@@ -2,7 +2,7 @@ import { useCallback, useMemo, useState } from "react";
 import { fetchPlutoOrdersPage, type PlutoAction, type PlutoHistoryFilters, type PlutoOrderOutcomeFilter, type PlutoScoreboard, type PlutoState } from "../../api/pluto";
 import { useCollapsibleCard } from "../../hooks/useCollapsibleCard";
 import { useDebouncedValue } from "../../hooks/useDebouncedValue";
-import { easternIsoDate, formatDate, formatDayMonthYear, formatNumber, formatSignedPnl } from "../../lib/formatters";
+import { easternIsoDate, easternMidnight, formatDayMonthYear, formatEasternDate, formatNumber, formatSignedPnl } from "../../lib/formatters";
 import { buildFeedContext, plutoEventCategoryOptions, plutoOrderColumns } from "../../lib/plutoPresentation";
 import { ColumnVisibilityPopover } from "../DataTable/ColumnVisibilityPopover";
 import { useColumnVisibility } from "../DataTable/useColumnVisibility";
@@ -36,7 +36,8 @@ interface PlutoHistoryTabProps {
 /** The period's start as an ISO time, taken when a page is fetched; null for all time. */
 function periodStartIso(period: Period, now: Date): string | null {
   if (period === "all") return null;
-  if (period === "today") return new Date(new Date(`${easternIsoDate(now)}T00:00:00`).getTime() - 12 * 3_600_000).toISOString();
+  // Today is the ET trading day, from midnight ET (Marcelo 2026-11-11), whatever the viewer's zone.
+  if (period === "today") return easternMidnight(easternIsoDate(now)).toISOString();
   return new Date(now.getTime() - (period === "7d" ? 7 : 30) * 86_400_000).toISOString();
 }
 
@@ -53,7 +54,7 @@ function TrackRecordCard({ scoreboard, error }: { scoreboard: PlutoScoreboard | 
       <ToggleHeader className={`pm-card-h${isOpen ? "" : " flat"}`} onToggle={() => setIsOpen(!isOpen)}>
         <h2 className="pm-card-t">Track record</h2>
         <div className="pm-card-meta">
-          {scoreboard?.since ? <span>Since Pluto started on {formatDate(scoreboard.since)}</span> : <span>No analyses yet</span>}
+          {scoreboard?.since ? <span>Since Pluto started on {formatEasternDate(scoreboard.since)}</span> : <span>No analyses yet</span>}
           <CollapseButton open={isOpen} onToggle={() => setIsOpen(!isOpen)} label="the track record" />
         </div>
       </ToggleHeader>

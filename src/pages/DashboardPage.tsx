@@ -36,7 +36,7 @@ import { AVAILABLE_CASH_PERCENT_BANDS, lowerIsWorseStatus, statusTextClass } fro
 import { fetchExposure, type ConcentrationRow, type ExposureData, type StrategyAllocationRow, type TopPositionRow } from "../api/riskLimits";
 import {
   formatCurrency,
-  formatDateTime,
+  formatEasternDateTime,
   formatExpiryWithDte,
   formatPercentage,
   formatPercentageValue,
@@ -432,7 +432,7 @@ function EventRow({ event, onSymbolClick }: { event: PositionEvent; onSymbolClic
 
   return (
     <tr>
-      <TooltipSpan as="td" className="text-nowrap" text={formatDateTime(event.eventAt)}>
+      <TooltipSpan as="td" className="text-nowrap" text={formatEasternDateTime(event.eventAt)}>
         {formatRelativeDate(event.eventAt)}
       </TooltipSpan>
       <td className="text-nowrap">{event.attributedTo ?? "—"}</td>
@@ -1199,7 +1199,9 @@ export function DashboardPage() {
               xaxis: {
                 type: "datetime",
                 tickAmount: Math.min(history.length - 1, 7),
-                labels: { datetimeUTC: false, format: "dd MMM" },
+                // Each x is a plain snapshot date, which ApexCharts reads as UTC midnight: labelled in UTC it stays that date in
+                // every viewer zone (in the browser's zone it was the day before west of UTC, e.g. Argentina).
+                labels: { datetimeUTC: true, format: "dd MMM" },
               },
               yaxis: { labels: { formatter: (value: number) => formatCurrency(value, 0) } },
               tooltip: {

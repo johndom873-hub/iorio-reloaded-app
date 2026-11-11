@@ -4,7 +4,7 @@ import { useNavigate } from "react-router-dom";
 import { errorMessage } from "../../api/client";
 import { backtestMaxSymbolsPerSession, deleteBacktestDataFile, resumeBacktestJob, startBacktestDownload, type BacktestDataFileSummary, type BacktestJobView, type BacktestTickerSuitability } from "../../api/backtest";
 import { fetchAnalysesForTable, rerunOutOfDateAnalyses, type AnalysesForTable, type AnalysisTableRow, type SuitabilityVerdict } from "../../api/backtestAnalysis";
-import { formatBrowserClockTime, formatCurrency, formatDayMonth, formatFileSize, formatNumber, formatPercentage, formatRatio } from "../../lib/formatters";
+import { formatBrowserClockTime, formatBrowserDayMonth, formatCurrency, formatFileSize, formatNumber, formatPercentage, formatRatio } from "../../lib/formatters";
 import { describeDataFileIssues, describeDetectedSplits, splitsNotAnalysedExplanation, suggestedSuitabilityLabel } from "../../lib/backtestPresentation";
 import { describeTickerValuesDifferingFromLab, mergeTickerOwnValues } from "../../lib/analysisPresentation";
 import { ConfirmModal } from "../ConfirmModal";
@@ -36,7 +36,7 @@ const analysisGroup = { label: "VF", className: "text-center", title: "Each tick
 const analysesPollMilliseconds = 15_000;
 
 const analysisRunning = (row: AnalysisTableRow | undefined) => row?.status === "queued" || row?.status === "running";
-const analysedAt = (iso: string) => `${formatDayMonth(iso.slice(0, 10))}, ${formatBrowserClockTime(iso)}`;
+const analysedAt = (iso: string) => `${formatBrowserDayMonth(iso)}, ${formatBrowserClockTime(iso)}`;
 /** The latest analysis's rule verdict; null when the ticker has none. */
 function ruleVerdictOf(row: AnalysisTableRow | undefined): SuitabilityVerdict | null {
   const figures = row?.tableFigures ?? null;

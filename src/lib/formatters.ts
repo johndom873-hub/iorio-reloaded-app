@@ -222,9 +222,14 @@ export function formatDate(dateInput: string | Date | null | undefined): string 
 // expiry's in the past (found 2026-08-28: every historical leg was
 // showing a stale/negative DTE relative to today instead of the DTE that
 // was actually true at the time).
+//
+// Counted in US/Eastern calendar days (Marcelo 2026-11-11: trading dates are ET): `asOf` is an ET date
+// ("YYYY-MM-DD"), or an instant (or now) taken as the ET date it falls on. Before, an instant was diffed against the
+// expiry's UTC midnight, a day short from 07:00 ET (08:00 in summer) on: at 10:00 ET on 10 Nov a 14 Nov expiry
+// counted 3 days, now 4.
 export function daysToExpiry(expiryIsoDate: string, asOf: string | Date = new Date()): number {
-  const asOfTime = typeof asOf === "string" ? new Date(asOf).getTime() : asOf.getTime();
-  return Math.round((new Date(expiryIsoDate).getTime() - asOfTime) / 86_400_000);
+  const asOfIsoDate = typeof asOf === "string" && plainIsoDatePattern.test(asOf) ? asOf : easternIsoDate(asOf);
+  return Math.round((Date.parse(expiryIsoDate.slice(0, 10)) - Date.parse(asOfIsoDate)) / 86_400_000);
 }
 
 // Today's calendar date in US/Eastern, as "YYYY-MM-DD" — the timezone
@@ -250,6 +255,15 @@ export function easternIsoDate(dateInput: string | Date): string {
   }).format(typeof dateInput === "string" ? new Date(dateInput) : dateInput);
 }
 
+/** The instant US/Eastern midnight starts an ET date ("YYYY-MM-DD"): 05:00 UTC in winter, 04:00 UTC in summer. */
+export function easternMidnight(dateIso: string): Date {
+  for (const offsetHours of [4, 5]) {
+    const candidate = new Date(Date.parse(dateIso) + offsetHours * 3_600_000);
+    if (easternIsoDate(candidate) === dateIso && easternMinutesOfDay(candidate.toISOString()) === 0) return candidate;
+  }
+  return new Date(Date.parse(dateIso) + 5 * 3_600_000);
+}
+
 /** Minutes since midnight on the US/Eastern clock for an instant, e.g. 10:06 ET = 606, regardless of the viewer's timezone. */
 export function easternMinutesOfDay(isoTimestamp: string): number {
   const parts = new Intl.DateTimeFormat("en-US", { timeZone: "America/New_York", hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).formatToParts(new Date(isoTimestamp));
@@ -264,9 +278,46 @@ export function hhmmMinutesBefore(hhmm: string, minutes: number): string {
   return `${String(Math.floor(total / 60)).padStart(2, "0")}:${String(total % 60).padStart(2, "0")}`;
 }
 
+/**
+ * A trading instant's US/Eastern date (Marcelo 2026-11-11: trades, orders, fills and Pluto's events are dated in ET,
+ * the market's time), e.g. "Nov 10, 2026" for a fill at 13:09 ET, which is 11 Nov 02:09 in Singapore. A plain
+ * "YYYY-MM-DD" is already a calendar date and is shown as it is.
+ */
+export function formatEasternDate(dateInput: string | Date | null | undefined): string {
+  if (!dateInput) return "—";
+  if (typeof dateInput === "string" && plainIsoDatePattern.test(dateInput)) return formatDate(dateInput);
+  const date = typeof dateInput === "string" ? new Date(dateInput) : dateInput;
+  if (Number.isNaN(date.getTime())) return "—";
+  return new Intl.DateTimeFormat("en-US", { timeZone: "America/New_York", year: "numeric", month: "short", day: "numeric" }).format(date);
+}
+
+/** A trading instant's US/Eastern date and time, labelled, e.g. "Nov 10, 2026, 13:09 ET" (see formatEasternDate). */
+export function formatEasternDateTime(dateInput: string | Date | null | undefined): string {
+  if (!dateInput) return "—";
+  const date = typeof dateInput === "string" ? new Date(dateInput) : dateInput;
+  if (Number.isNaN(date.getTime())) return "—";
+  const dateTime = new Intl.DateTimeFormat("en-US", { timeZone: "America/New_York", year: "numeric", month: "short", day: "numeric", hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).format(date);
+  return `${dateTime} ET`;
+}
+
+/** A trading instant's US/Eastern clock time to the second, labelled, e.g. "13:09:51 ET" (Pulse's feeds). */
+export function formatEasternTimeWithSeconds(dateInput: string | Date | number): string {
+  const date = typeof dateInput === "object" ? dateInput : new Date(dateInput);
+  const time = new Intl.DateTimeFormat("en-US", { timeZone: "America/New_York", hour: "2-digit", minute: "2-digit", second: "2-digit", hourCycle: "h23" }).format(date);
+  return `${time} ET`;
+}
+
+/** A trading feed's timestamp (Pulse's Trades and Latest Events): the ET clock time to the second under 24h old, "Xd ago" after, the narrowest unambiguous label for an older row. */
+export function formatEasternFeedTime(dateInput: string | Date | number): string {
+  const date = typeof dateInput === "object" ? dateInput : new Date(dateInput);
+  const ageInDays = Math.floor((Date.now() - date.getTime()) / 86_400_000);
+  if (ageInDays >= 1) return `${ageInDays}d ago`;
+  return formatEasternTimeWithSeconds(date);
+}
+
 /** Clock time in US/Eastern (market time) regardless of the viewer's timezone, e.g. "09:31 ET". */
-export function formatEasternTime(isoTimestamp: string): string {
-  const time = new Intl.DateTimeFormat("en-US", { timeZone: "America/New_York", hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).format(new Date(isoTimestamp));
+export function formatEasternTime(dateInput: string | Date): string {
+  const time = new Intl.DateTimeFormat("en-US", { timeZone: "America/New_York", hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).format(typeof dateInput === "string" ? new Date(dateInput) : dateInput);
   return `${time} ET`;
 }
 
@@ -298,6 +349,11 @@ export function browserUsesTwelveHourClock(): boolean {
 export function browserLocalIsoDate(dateInput: string | Date): string {
   const date = typeof dateInput === "string" ? new Date(dateInput) : dateInput;
   return new Intl.DateTimeFormat("en-CA", { year: "numeric", month: "2-digit", day: "2-digit" }).format(date);
+}
+
+/** The US/Eastern trading day an instant falls on, as a short day and month: "Nov 10" for 13:09 ET (11 Nov in Singapore). */
+export function formatEasternDayMonth(dateInput: string | Date): string {
+  return formatDayMonth(easternIsoDate(dateInput));
 }
 
 /** The viewer's own calendar day an instant falls on, as a short day and month: "Oct 6". */
@@ -420,9 +476,10 @@ export function formatDaysToExpiry(days: number): string {
 // date that's typically in the past (e.g. Positions' Opened column) —
 // mirrors daysToExpiry but the sign convention matches how people talk
 // about a past date ("2 days ago", not "-2 days").
+// US/Eastern calendar days between the instant's trading day and today's (Marcelo 2026-11-11), not elapsed hours: a
+// position opened at 09:45 ET is "today" until midnight ET, and one opened at 15:50 ET yesterday is "1d ago" at 09:31.
 export function daysAgo(dateInput: string | Date): number {
-  const date = typeof dateInput === "string" ? new Date(dateInput) : dateInput;
-  return Math.round((Date.now() - date.getTime()) / 86_400_000);
+  return Math.round((Date.parse(todayInEasternIso()) - Date.parse(easternIsoDate(dateInput))) / 86_400_000);
 }
 
 // Pairs with daysAgo for the relative label shown in place of a raw date
@@ -465,23 +522,6 @@ export function formatUtcClockTimeInBrowserTime(utcHour: number, utcMinute: numb
   const parts = new Intl.DateTimeFormat("en-US", { hour: "2-digit", minute: "2-digit", hourCycle: "h23", timeZoneName: "short" }).formatToParts(slot);
   const part = (type: string) => parts.find((entry) => entry.type === type)?.value ?? "";
   return `${part("hour")}:${part("minute")} ${part("timeZoneName")}`;
-}
-
-// 24-hour local time, e.g. "14:32:05" — matches the clock/event-log
-// convention already used across Iorio Pulse (PulsePage.tsx).
-export function formatLocalTime(dateInput: string | Date | number): string {
-  const date = typeof dateInput === "object" ? dateInput : new Date(dateInput);
-  return date.toLocaleTimeString("en-US", { hour12: false });
-}
-
-// Feed timestamp (Pulse Trades / Latest Events): the HH:MM:SS clock time for
-// anything under 24h old, "Xd ago" once it's a full day or more — a bare clock
-// time is ambiguous for older rows, and "Xd ago" is the narrowest unambiguous label.
-export function formatFeedTime(dateInput: string | Date | number): string {
-  const date = typeof dateInput === "object" ? dateInput : new Date(dateInput);
-  const ageInDays = Math.floor((Date.now() - date.getTime()) / 86_400_000);
-  if (ageInDays >= 1) return `${ageInDays}d ago`;
-  return formatLocalTime(date);
 }
 
 // 24-hour local time without seconds, e.g. "14:32" — used for chart x-axis

@@ -12,7 +12,7 @@ import { useTickerModal } from "../hooks/useTickerModal";
 import { useTickingNow } from "../hooks/useTickingNow";
 import {
   formatCurrency,
-  formatDateTime,
+  formatEasternDateTime,
   formatNumber,
   formatOrderLegDescription,
   formatRelativeAge,
@@ -72,7 +72,7 @@ export function TodaysOrdersCard({ book }: { book: BookSelection }) {
       key: "created",
       header: "Created",
       render: (row) => (
-        <TooltipSpan className="text-nowrap" text={formatDateTime(row.createdAt)}>
+        <TooltipSpan className="text-nowrap" text={formatEasternDateTime(row.createdAt)}>
           {formatRelativeAge(row.createdAt, now)}
         </TooltipSpan>
       ),
@@ -81,7 +81,7 @@ export function TodaysOrdersCard({ book }: { book: BookSelection }) {
       key: "updated",
       header: "Last update",
       render: (row) => (
-        <TooltipSpan className="text-nowrap" text={formatDateTime(row.updatedAt)}>
+        <TooltipSpan className="text-nowrap" text={formatEasternDateTime(row.updatedAt)}>
           {formatRelativeAge(row.updatedAt, now)}
         </TooltipSpan>
       ),

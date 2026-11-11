@@ -2,7 +2,7 @@ import { Fragment, useEffect, useState, type ReactNode } from "react";
 import { errorMessage } from "../../api/client";
 import { IconChevronDown, IconChevronUp } from "@tabler/icons-react";
 import { fetchPlutoVolFarmerV4, type PlutoVolFarmerV4ActionState, type PlutoVolFarmerV4Position, type PlutoVolFarmerV4Ticker } from "../../api/pluto";
-import { formatBrowserClockTime, formatBrowserDayMonth, formatCurrency, formatNumber, formatOptionContractLabel, daysToExpiry, pluralize, todayInEasternIso } from "../../lib/formatters";
+import { formatEasternDayMonth, formatEasternTime, formatCurrency, formatNumber, formatOptionContractLabel, daysToExpiry, pluralize, todayInEasternIso } from "../../lib/formatters";
 import { describeVolFarmerV4CancelledToday, describeVolFarmerV4LastOrder, describeVolFarmerV4LeapsHeld, describeVolFarmerV4Option, describeVolFarmerV4WorkingOrder, volFarmerV4LastRoundLines, volFarmerV4Warnings } from "../../lib/plutoVolFarmerV4Presentation";
 import { ColumnVisibilityPopover } from "../DataTable/ColumnVisibilityPopover";
 import { useColumnVisibility } from "../DataTable/useColumnVisibility";
@@ -140,7 +140,7 @@ function breakEvenCell(position: PlutoVolFarmerV4Position | null): ReactNode {
 
 function tickerSub(ticker: PlutoVolFarmerV4Ticker): string | null {
   if (ticker.waiting) return ticker.lastRoundAt === null ? "not looked at yet" : "waiting";
-  return ticker.adoptedAt ? `adopted ${formatBrowserDayMonth(ticker.adoptedAt)}` : null;
+  return ticker.adoptedAt ? `adopted ${formatEasternDayMonth(ticker.adoptedAt)}` : null;
 }
 
 export function PlutoVolFarmerV4Card({ lastPassAt, isPhone, onOpenTicker }: PlutoVolFarmerV4CardProps) {
@@ -282,7 +282,7 @@ export function PlutoVolFarmerV4Card({ lastPassAt, isPhone, onOpenTicker }: Plut
         <h2 className="pm-card-t">Vol Farmer v4</h2>
         <div className="pm-card-meta">
           {!isPhone && <span>Each ticker's two positions and LEAPS as v4 counts them, and what it does next</span>}
-          {lastRoundAt && <span>last round {formatBrowserClockTime(lastRoundAt)}</span>}
+          {lastRoundAt && <span>last round {formatEasternTime(lastRoundAt)}</span>}
           {!isPhone && <ColumnVisibilityPopover variant="toolbar" columns={columns.map((column) => ({ key: column.key, header: column.header }))} isColumnVisible={isColumnVisible} onToggleColumn={toggleColumn} />}
         </div>
       </div>

@@ -39,7 +39,7 @@ import {
   type GatewayHealth,
   type MarketSessionState,
 } from "../api/systemHealth";
-import { daysToExpiry, todayInEasternIso, formatSignedPnl, formatSignedPercentageValue, formatCompactDollars, formatDelta, formatDateTime, formatFeedTime, formatNumber, formatPercentageValue, formatRelativeDate, formatOptionContractShort, formatTransactionPrice, formatUtcClockTimeInBrowserTime, orderRequestStatusLabel } from "../lib/formatters";
+import { daysToExpiry, todayInEasternIso, formatSignedPnl, formatSignedPercentageValue, formatCompactDollars, formatDelta, formatDateTime, formatEasternFeedTime, formatEasternTimeWithSeconds, formatNumber, formatPercentageValue, formatRelativeDate, formatOptionContractShort, formatTransactionPrice, formatUtcClockTimeInBrowserTime, orderRequestStatusLabel } from "../lib/formatters";
 import { shortOptionAbsoluteDelta, ABSOLUTE_DELTA_HEADER } from "../lib/shortOptionAbsoluteDelta";
 import { positionExpiryDate, strategyAbbrev as positionStrategyAbbrev, strategyTooltip } from "../lib/positionPnl";
 import { FlashingNumber } from "../components/FlashingNumber";
@@ -568,7 +568,7 @@ export function PulsePage() {
 
   const appendEvent = useCallback((text: string, color: string, orderId?: string) => {
     eventIdRef.current += 1;
-    const item: EventItem = { id: eventIdRef.current, time: new Date().toLocaleTimeString("en-US", { hour12: false }), text, color, orderId };
+    const item: EventItem = { id: eventIdRef.current, time: formatEasternTimeWithSeconds(new Date()), text, color, orderId };
     setEvents((prev) => [item, ...(orderId ? prev.filter((event) => event.orderId !== orderId) : prev)].slice(0, EVENTS_LIMIT));
   }, []);
 
@@ -629,7 +629,7 @@ export function PulsePage() {
       .filter((item): item is { occurredAt: string; text: string; color: string; orderId?: string } => item !== null)
       .map((item) => {
         eventIdRef.current += 1;
-        return { id: eventIdRef.current, time: formatFeedTime(item.occurredAt), text: item.text, color: item.color, orderId: item.orderId };
+        return { id: eventIdRef.current, time: formatEasternFeedTime(item.occurredAt), text: item.text, color: item.color, orderId: item.orderId };
       });
   }, []);
 
@@ -1328,7 +1328,7 @@ export function PulsePage() {
   const tradesEmpty = <div className="panel-empty">No recent trades.</div>;
   const tradeRows = trades.map((trade) => (
     <div className="fill-row" key={trade.id}>
-      <span className="fill-time">{formatFeedTime(trade.executedAt)}</span>
+      <span className="fill-time">{formatEasternFeedTime(trade.executedAt)}</span>
       <span className="fill-desc">
         <b>{tradeSideAndQuantity(trade)}</b> {tradeDetailText(trade)}
       </span>
@@ -1392,7 +1392,7 @@ export function PulsePage() {
           trades={{
             latestSummary: latestTrade ? (
               <>
-                <span className="muted">{formatFeedTime(latestTrade.executedAt)}</span>
+                <span className="muted">{formatEasternFeedTime(latestTrade.executedAt)}</span>
                 <span style={{ color: "var(--text-primary)", fontWeight: 600 }}>{tradeSideAndQuantity(latestTrade)}</span>
                 <span>{tradeDetailText(latestTrade)}</span>
               </>

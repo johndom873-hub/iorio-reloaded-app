@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Link } from "react-router-dom";
 import type { AnalysisSessionRow } from "../../../api/backtestAnalysis";
 import { analysisSignedClass } from "../../../lib/analysisPresentation";
-import { formatDayMonthYear, formatPercentage, formatSignedPercentage } from "../../../lib/formatters";
+import { browserLocalIsoDate, formatDayMonthYear, formatPercentage, formatSignedPercentage } from "../../../lib/formatters";
 import { DataTable, type DataTableColumn } from "../../DataTable/DataTable";
 import { Spinner } from "../../Spinner";
 import { BacktestCardTitle } from "../backtestBits";
@@ -35,7 +35,7 @@ function sessionColumns(analysisSessionId: string | null): DataTableColumn<Analy
     { key: "cagr", header: "CAGR", align: "right", sortValue: (row) => row.cagr, render: (row) => <span className={analysisSignedClass(row.cagr)}>{formatPercentage(row.cagr)}</span> },
     { key: "maxDrawdown", header: "Max drawdown", align: "right", sortValue: (row) => row.maxDrawdown, render: (row) => formatPercentage(row.maxDrawdown) },
     { key: "totalReturn", header: "Total return", align: "right", sortValue: (row) => row.totalReturn, render: (row) => <span className={analysisSignedClass(row.totalReturn)}>{formatSignedPercentage(row.totalReturn, 0)}</span> },
-    { key: "created", header: "Created", sortValue: (row) => row.createdAt, cellClassName: "font-mono text-secondary text-nowrap", render: (row) => formatDayMonthYear(row.createdAt.slice(0, 10)) },
+    { key: "created", header: "Created", sortValue: (row) => row.createdAt, cellClassName: "font-mono text-secondary text-nowrap", render: (row) => formatDayMonthYear(browserLocalIsoDate(row.createdAt)) },
   ];
 }
 

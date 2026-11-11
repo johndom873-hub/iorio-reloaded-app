@@ -7,7 +7,7 @@ import { Spinner } from "./Spinner";
 import { fetchCycles, type Cycle, type UnrealizedPnlResult } from "../api/positions";
 import { liveCycleTimelineRows } from "../lib/cycleLivePnl";
 import { describeCycleEventLabel } from "../lib/positionPnl";
-import { daysToExpiry, easternIsoDate, formatCurrency, formatDate, formatExpiryDayMonthWithDte, formatNumber, formatSignedPnl, formatTransactionPrice, pnlTextClass, todayInEasternIso } from "../lib/formatters";
+import { daysToExpiry, easternIsoDate, formatCurrency, formatDate, formatEasternDate, formatEasternDateTime, formatExpiryDayMonthWithDte, formatNumber, formatSignedPnl, formatTransactionPrice, pnlTextClass, todayInEasternIso } from "../lib/formatters";
 import { TooltipSpan } from "./TooltipSpan";
 
 // Timeline columns; every data table gets the per-column show/hide gear (project rule), saved in localStorage.
@@ -113,7 +113,7 @@ export function CycleCard({ symbol, unrealizedPnlByPositionId = {} }: { symbol: 
             >
               {cycles!.map((option, index) => (
                 <option key={option.startAt} value={index}>
-                  {formatDate(option.startAt)} – {option.endAt ? formatDate(option.endAt) : "now"} ({option.status})
+                  {formatEasternDate(option.startAt)} – {option.endAt ? formatEasternDate(option.endAt) : "now"} ({option.status})
                 </option>
               ))}
             </select>
@@ -170,7 +170,7 @@ export function CycleCard({ symbol, unrealizedPnlByPositionId = {} }: { symbol: 
               <tbody>
                 {cycle.timeline.map((row, index) => (
                   <tr key={`${row.at ?? row.markDate ?? "now"}-${index}`}>
-                    {visible("date") && <td className="text-nowrap">{row.at ? formatDate(row.at) : row.markDate ? formatDate(row.markDate) : "Today"}</td>}
+                    {visible("date") && <td className="text-nowrap">{row.at ? <TooltipSpan text={formatEasternDateTime(row.at)}>{formatEasternDate(row.at)}</TooltipSpan> : row.markDate ? formatDate(row.markDate) : "Today"}</td>}
                     {visible("type") && (
                       <td>
                         <span className={`badge ${row.instrument === "stock" ? "bg-teal text-teal-fg" : "bg-pink text-pink-fg"}`} style={{ fontSize: "0.72rem" }}>
