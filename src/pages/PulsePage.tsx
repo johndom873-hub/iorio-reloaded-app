@@ -909,7 +909,9 @@ export function PulsePage() {
     </div>
   );
   const positionsEmpty = <div className="panel-empty">No open positions.</div>;
-  const positionRows = positions.map((position) => {
+  // Ticker A→Z, the Positions screen's default order; same-ticker rows keep the API's order there too.
+  const positionsByTicker = [...positions].sort((first, second) => first.symbol.localeCompare(second.symbol));
+  const positionRows = positionsByTicker.map((position) => {
     const expiryDate = positionExpiryDate(position);
     const dte = expiryDate ? daysToExpiry(expiryDate, todayInEasternIso()) : null;
     const capitalAtRisk = position.capitalAtRisk !== null ? Number(position.capitalAtRisk) : null;
