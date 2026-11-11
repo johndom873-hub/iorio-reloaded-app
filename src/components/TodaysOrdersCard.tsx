@@ -5,6 +5,8 @@ import { TooltipSpan } from "./TooltipSpan";
 import { ApiError } from "../api/client";
 import { openNotificationStream } from "../api/notifications";
 import { fetchTodaysOrders, type TodaysOrder } from "../api/positions";
+import { bookLabels, type BookSelection } from "../api/books";
+import { BookTag } from "./books/BookTag";
 import { useOrderCancellation } from "../hooks/useOrderCancellation";
 import { useTickerModal } from "../hooks/useTickerModal";
 import { useTickingNow } from "../hooks/useTickingNow";
@@ -35,7 +37,7 @@ function formatNetLimit(netLimitPrice: number): string {
  * Every order whose last status update is today (US/Eastern), plus any still-active one from an earlier day,
  * newest update first. Refetches on the worker's order and position pushes.
  */
-export function TodaysOrdersCard() {
+export function TodaysOrdersCard({ book }: { book: BookSelection }) {
   const [orders, setOrders] = useState<TodaysOrder[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -182,13 +184,14 @@ export function TodaysOrdersCard() {
         tableId="todays-orders"
         dense
         columns={columns}
-        rows={orders}
+        rows={book === "all" ? orders : orders.filter((order) => order.bookKey === book)}
         rowKey={(row) => row.id}
         loading={loading}
-        emptyMessage="No orders today."
+        emptyMessage={book === "all" ? "No orders today." : `No ${bookLabels[book]} orders today.`}
         toolbar={
           <h3 className="card-title mb-0 d-flex align-items-baseline gap-2" style={{ fontSize: "1rem" }}>
             Today's Orders
+            {book !== "all" && <BookTag label={`${bookLabels[book]} book`} />}
             <span className="text-secondary fw-normal d-none d-md-inline" style={{ fontSize: "0.8rem" }}>
               last update today (ET), plus any still active
             </span>

@@ -3,6 +3,8 @@ import { CollapsibleCard } from "./CollapsibleCard";
 import { CycleBucketBadge } from "./CycleBucketBadge";
 import { Spinner } from "./Spinner";
 import { fetchCycleScoreboard, type CycleBucketKey, type CycleScoreboard as CycleScoreboardData } from "../api/positions";
+import { bookLabels, type BookSelection } from "../api/books";
+import { BookTag } from "./books/BookTag";
 import { formatSignedPnl, pnlTextClass, showsAsZeroDollars } from "../lib/formatters";
 import { TooltipSpan } from "./TooltipSpan";
 
@@ -11,18 +13,27 @@ const bucketOrder: CycleBucketKey[] = ["csp", "unstructured", "cc", "hedge", "le
 // Fair strategy scoreboard (approved 2026-09-19): every wheel cycle attributed to CSP / Unstructured / CC / Hedge / LEAPS, a strategy at $0 left out. The
 // "Premium only" column is the old view where a put looks like free money; the fair view charges it for the
 // assignment (assignment-day close vs strike) and gives each strategy only what happened while it held the shares.
-export function CycleScoreboard() {
+export function CycleScoreboard({ book }: { book: BookSelection }) {
   const [data, setData] = useState<CycleScoreboardData | null>(null);
   const [failed, setFailed] = useState(false);
 
   useEffect(() => {
-    fetchCycleScoreboard().then(setData).catch(() => setFailed(true));
-  }, []);
+    setData(null);
+    setFailed(false);
+    let current = true;
+    fetchCycleScoreboard(book)
+      .then((result) => current && setData(result))
+      .catch(() => current && setFailed(true));
+    return () => {
+      current = false;
+    };
+  }, [book]);
 
   return (
     <CollapsibleCard
       className="mt-3 mb-3"
       title="Profit & Loss"
+      subtitle={book === "all" ? undefined : <BookTag label={`${bookLabels[book]} book`} />}
       storageKey="positions-cycle-scoreboard"
       defaultOpen={false}
     >

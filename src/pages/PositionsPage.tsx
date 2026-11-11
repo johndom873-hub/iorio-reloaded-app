@@ -56,6 +56,9 @@ import { FrozenTickerBadge } from "../components/FrozenTickerBadge";
 import { describeFrozenTicker, useFrozenTickers } from "../hooks/useFrozenTickers";
 import { PlutoManagedMark } from "../components/PlutoManagedMark";
 import { usePlutoEnabledSymbols } from "../hooks/usePlutoEnabledSymbols";
+import { useBookSelection } from "../hooks/useBookSelection";
+import { BookSwitch } from "../components/books/BookSwitch";
+import { bookLabels } from "../api/books";
 
 function structureSummary(position: Position): string {
   // An open position can carry closed legs from a past roll (they stay
@@ -95,6 +98,9 @@ export function PositionsPage() {
   const [closePosition, setClosePosition] = useState<Position | null>(null);
   const frozenTickers = useFrozenTickers();
   const plutoEnabledSymbols = usePlutoEnabledSymbols();
+  // The Dashboard's book switch, its choice shared with the Dashboard (Marcelo 2026-11-11): the table, its totals, Today's
+  // Orders and the Profit & Loss card follow it. Prices and P&L still stream for every position, so a switch is instant.
+  const [book, setBook] = useBookSelection();
   const loadPositions = useCallback(async () => {
     try {
       setError(null);
@@ -252,7 +258,9 @@ export function PositionsPage() {
     );
   }
 
-  const totals = computePositionTotals(positions, unrealizedPnlByPositionId, totalAccountValue);
+  const shownPositions = book === "all" ? positions : positions.filter((position) => position.bookKey === book);
+  // Exposure % stays a share of the whole account's value in every view (Marcelo 2026-11-11).
+  const totals = computePositionTotals(shownPositions, unrealizedPnlByPositionId, totalAccountValue);
   const totalPnlTitle = totals.positionsWithoutPnl > 0 ? `Excludes ${totals.positionsWithoutPnl} position(s) with no live price or snapshot` : undefined;
   const signedTotal = (value: number) => (
     <TooltipSpan className={`font-mono text-nowrap ${pnlTextClass(value)}`} text={totalPnlTitle}>
@@ -261,7 +269,7 @@ export function PositionsPage() {
   );
   // Cycle P&L is per symbol and repeats on every row of that symbol, so the total counts each symbol once.
   const cycleTotalsBySymbol = new Map<string, ReturnType<typeof resolveCyclePnl>>();
-  for (const position of positions) if (!cycleTotalsBySymbol.has(position.symbol)) cycleTotalsBySymbol.set(position.symbol, resolveCyclePnl(position));
+  for (const position of shownPositions) if (!cycleTotalsBySymbol.has(position.symbol)) cycleTotalsBySymbol.set(position.symbol, resolveCyclePnl(position));
   const cycleResults = [...cycleTotalsBySymbol.values()];
   const cycleTotal = cycleResults.reduce((sum, result) => sum + (result.state === "ready" ? result.value : 0), 0);
   const cycleSymbolsWithoutFigure = cycleResults.filter((result) => result.state === "unavailable").length;
@@ -270,7 +278,7 @@ export function PositionsPage() {
       ? `Each symbol counted once. Excludes ${cycleSymbolsWithoutFigure} symbol(s) with no cycle figure`
       : "Each symbol counted once";
   const footerCells: Record<string, ReactNode> = {
-    symbol: `Total (${positions.length})`,
+    symbol: `Total (${shownPositions.length})`,
     pnlPercent: totals.isLoading ? <Spinner size="sm" label="Loading" /> : totals.pnlPercent === null ? "—" : (
       <TooltipSpan className={`font-mono text-nowrap ${pnlTextClass(totals.pnlPercent)}`} text={totalPnlTitle}>
         {totals.pnlPercent > 0 ? "+" : ""}
@@ -624,24 +632,28 @@ export function PositionsPage() {
 
   return (
     <>
-      <PageHeader title="Positions" subtitle="Open positions across all strategies" />
+      <PageHeader
+        title="Positions"
+        subtitle={book === "all" ? "Open positions across all strategies" : `Open positions in the ${bookLabels[book]} book`}
+        actions={<BookSwitch selection={book} onChange={setBook} />}
+      />
 
       {error && <div className="alert alert-danger">{error}</div>}
 
       <DataTable
         tableId="positions"
         columns={columns}
-        rows={positions}
+        rows={shownPositions}
         rowKey={(row) => row.id}
         defaultSort={{ key: "symbol", direction: "asc" }}
         loading={loading}
         footerCells={footerCells}
-        emptyMessage="No open positions yet."
+        emptyMessage={book === "all" ? "No open positions yet." : `No open positions in the ${bookLabels[book]} book.`}
       />
 
-      <TodaysOrdersCard />
+      <TodaysOrdersCard book={book} />
 
-      <CycleScoreboard />
+      <CycleScoreboard book={book} />
 
       {closePosition && (
         <ClosePositionModal

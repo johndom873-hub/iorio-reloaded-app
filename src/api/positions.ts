@@ -1,4 +1,4 @@
-import type { BookKey } from "./books";
+import type { BookKey, BookSelection } from "./books";
 import { apiRequest, apiBaseUrl, apiStreamedRequest } from "./client";
 import { openMultiplexedStream } from "./streamMultiplexer";
 import { openDeferredEventSource } from "./tickerDetail";
@@ -297,6 +297,8 @@ export interface TodaysOrder {
   netLimitPrice: number;
   commission: number | null;
   legs: TodaysOrderLeg[];
+  /** The book of its ticker when the order was created (hedges always Manual's). */
+  bookKey: BookKey;
 }
 
 export function fetchTodaysOrders(): Promise<TodaysOrder[]> {
@@ -691,6 +693,7 @@ export interface CycleScoreboard {
   cyclesExcluded: { symbol: string; reason: string }[];
 }
 
-export function fetchCycleScoreboard(): Promise<CycleScoreboard> {
-  return apiRequest("/positions/cycles/scoreboard");
+/** Every cycle (All books), or one book's: each cycle in its ticker's book when it ended, its Hedge bucket always Manual's. */
+export function fetchCycleScoreboard(book: BookSelection = "all"): Promise<CycleScoreboard> {
+  return apiRequest(book === "all" ? "/positions/cycles/scoreboard" : `/positions/cycles/scoreboard?book=${book}`);
 }
