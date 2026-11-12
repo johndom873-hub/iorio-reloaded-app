@@ -158,7 +158,7 @@ export function CycleCard({ symbol, unrealizedPnlByPositionId = {} }: { symbol: 
                   {visible("strike") && <th className="text-end">{headerLabel("strike", "Strike", true)}</th>}
                   {visible("expiry") && <TooltipSpan as="th" className="text-end" text="Days to expiry counted from the row's date (US Eastern)">{headerLabel("expiry", "Expiry", true)}</TooltipSpan>}
                   {visible("stockPrice") && (
-                    <TooltipSpan as="th" className="text-end" text="What the shares behind this row were bought at (IBKR's fills; assigned shares at the strike). Rows marked close use the market close: the shares still held are valued at it">
+                    <TooltipSpan as="th" className="text-end" text="On an option row, the stock's price when it filled (in a backtest, at the look that placed it). On a share row, what the shares were bought or sold at (IBKR's fills; assigned shares at the strike). Rows marked close or live use the market price: the shares still held are valued at it">
                       {headerLabel("stockPrice", "Stock price", true)}
                     </TooltipSpan>
                   )}
@@ -170,7 +170,7 @@ export function CycleCard({ symbol, unrealizedPnlByPositionId = {} }: { symbol: 
               <tbody>
                 {cycle.timeline.map((row, index) => (
                   <tr key={`${row.at ?? row.markDate ?? "now"}-${index}`}>
-                    {visible("date") && <td className="text-nowrap">{row.at ? <TooltipSpan text={formatEasternDateTime(row.at)}>{formatEasternDate(row.at)}</TooltipSpan> : row.markDate ? formatDate(row.markDate) : "Today"}</td>}
+                    {visible("date") && <td className="text-nowrap">{row.at ? <TooltipSpan text={formatEasternDateTime(row.at)}>{formatEasternDate(row.at)}</TooltipSpan> : row.markDate ? <TooltipSpan text={`What is held now, valued at the ${formatDate(row.markDate)} close`}>Today</TooltipSpan> : "Today"}</td>}
                     {visible("type") && (
                       <td>
                         <span className={`badge ${row.instrument === "stock" ? "bg-teal text-teal-fg" : "bg-pink text-pink-fg"}`} style={{ fontSize: "0.72rem" }}>
@@ -184,7 +184,7 @@ export function CycleCard({ symbol, unrealizedPnlByPositionId = {} }: { symbol: 
                     {visible("strike") && <td className={`text-end font-mono ${row.strike === null ? "text-secondary" : ""}`}>{row.strike === null ? "—" : formatCurrency(row.strike, 2)}</td>}
                     {visible("expiry") && (
                       <td className={`text-end font-mono text-nowrap ${row.expiryDate === null ? "text-secondary" : ""}`}>
-                        {row.expiryDate === null ? "—" : formatExpiryDayMonthWithDte(row.expiryDate, daysToExpiry(row.expiryDate, row.at ? easternIsoDate(row.at) : (row.markDate ?? todayInEasternIso())))}
+                        {row.expiryDate === null ? "—" : formatExpiryDayMonthWithDte(row.expiryDate, daysToExpiry(row.expiryDate, row.at ? easternIsoDate(row.at) : todayInEasternIso()))}
                       </td>
                     )}
                     {visible("stockPrice") && (
