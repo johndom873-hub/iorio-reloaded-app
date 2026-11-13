@@ -28,6 +28,8 @@ import {
 import { fetchTopPremiums, type TopPremiums } from "../api/volatility";
 import { fetchTradeBlotter, type Trade } from "../api/tradeBlotter";
 import { openNotificationStream, fetchRecentNotifications, type AppNotification } from "../api/notifications";
+import { fetchPlutoState, type PlutoState } from "../api/pluto";
+import { agentNotRespondingAfterSeconds, derivePlutoStatus, type PlutoStatusKind } from "../lib/plutoPresentation";
 import type { JobRunStatus } from "../api/systemHealth";
 import {
   fetchPresence,
@@ -39,7 +41,7 @@ import {
   type GatewayHealth,
   type MarketSessionState,
 } from "../api/systemHealth";
-import { daysToExpiry, todayInEasternIso, formatSignedPnl, formatSignedPercentageValue, formatCompactDollars, formatDelta, formatDateTime, formatEasternFeedTime, formatEasternTimeWithSeconds, formatNumber, formatPercentageValue, formatRelativeDate, formatOptionContractShort, formatTransactionPrice, formatUtcClockTimeInBrowserTime, orderRequestStatusLabel } from "../lib/formatters";
+import { daysToExpiry, todayInEasternIso, formatSignedPnl, formatSignedPercentageValue, formatCompactDollars, formatDelta, formatDateTime, formatEasternFeedTime, formatEasternTimeWithSeconds, formatNumber, formatPercentageValue, formatRelativeDate, formatOptionContractShort, formatTransactionPrice, formatUtcClockTimeInBrowserTime, orderRequestStatusLabel, formatRelativeAge } from "../lib/formatters";
 import { shortOptionAbsoluteDelta, ABSOLUTE_DELTA_HEADER } from "../lib/shortOptionAbsoluteDelta";
 import { positionExpiryDate, strategyAbbrev as positionStrategyAbbrev, strategyTooltip } from "../lib/positionPnl";
 import { FlashingNumber } from "../components/FlashingNumber";
@@ -85,16 +87,25 @@ const ABSOLUTE_DELTA_REFERENCE_LINE = 0.5;
 // grace lets the last animation frame land before the dot is removed.
 const PULSE_DURATION_MS = 300;
 const PULSE_REMOVAL_GRACE_MS = 50;
-// Dot colour per silent-until-now line (see backend pulseEmitter.ts): plain
-// infrastructure traffic in the accent, Genosuke's own traffic in the muted
-// tone its Heroku-Genosuke line already uses.
-const PULSE_EDGE_COLORS = {
+// Dot colour per silent-until-now line (see backend pulseEmitter.ts). The backend also emits
+// Genosuke's lines, which are not on the map: those pulses have no colour here and are dropped.
+const PULSE_EDGE_COLORS: Partial<Record<Extract<AppNotification, { type: "pulse" }>["edgeId"], string>> = {
   "ibkr-gateway": "var(--accent-glow)",
   "heroku-browser": "var(--accent-glow)",
   "heroku-db": "var(--accent-glow)",
-  "genosuke-db": "var(--text-secondary)",
-  "genosuke-llm": "var(--text-secondary)",
-} as const;
+};
+// Pluto card (approved 2026-11-13): "Orders today" turns amber from this share of the daily order cap, red at the cap.
+const PLUTO_ORDERS_TODAY_AMBER_FROM_PERCENT = 80;
+// Pluto events that write or settle one of its orders; each lights the Pluto → Database line.
+const PLUTO_ORDER_EVENT_TYPES = new Set(["order_built", "order_confirmed", "order_repriced", "order_outcome"]);
+// The Pluto screen's status colours (PlutoPage.css .pm-state) on Pulse's tokens.
+const plutoStatusValueClass: Record<PlutoStatusKind, string> = { running: "ok", waiting: "info", held: "warn", paused: "warn", stopped: "err", offline: "err", off: "quiet" };
+const plutoStatusLedClass: Record<PlutoStatusKind, string> = { running: "", waiting: "", held: "led-amber", paused: "led-amber", stopped: "led-warn", offline: "led-warn", off: "led-off" };
+
+function plutoOrdersTodayClass(ordersToday: number, maxOrdersPerDay: number): string {
+  if (ordersToday >= maxOrdersPerDay) return "err";
+  return ordersToday * 100 >= maxOrdersPerDay * PLUTO_ORDERS_TODAY_AMBER_FROM_PERCENT ? "warn" : "";
+}
 // Green/amber/red cut-offs for the node stats (approved 2026-09-19). Each pair
 // is [greenBelow, amberUpTo]; anything above amberUpTo is red.
 const CONNECTIONS_USED_PERCENT_BANDS = [50, 80] as const;
@@ -177,8 +188,9 @@ function tradeDetailText(trade: Trade): string {
 // 2026-09-28): Database is the worst of its existing colour bands; Gateway
 // is red without a live IBKR connection and amber when unplanned drops or
 // in-flight orders reach their warn band; IBKR is red while account data is
-// failing; every other node is green once its health call has answered and
-// grey until then. Presence (Front End) arrives in the same poll as the web
+// failing; Pluto follows its status (amber held or paused, red stopped or not
+// responding, grey off); every other node is green once its health call has
+// answered and grey until then. Presence (Front End) arrives in the same poll as the web
 // dyno health, so it shares that flag.
 function phoneSystemLeds(input: {
   dbHealth: DbHealth | null;
@@ -187,6 +199,7 @@ function phoneSystemLeds(input: {
   availableCash: AvailableCash | null;
   accountDataError: string | null | undefined;
   genosukeHealth: GenosukeHealth | null;
+  plutoStatusKind: PlutoStatusKind | null;
   webDynoHealth: WebDynoHealth | null;
 }): PhoneSystemLed[] {
   const ledForStatus = (status: StatusClass): string => (status === "err" ? "led-warn" : status === "warn" ? "led-amber" : "");
@@ -216,7 +229,7 @@ function phoneSystemLeds(input: {
   const ibkrLed = input.accountDataError ? "led-warn" : answered(input.availableCash !== null);
   return [
     { nodeId: "db", label: "DB", ledClass: dbLed },
-    { nodeId: "genosuke", label: "Geno", ledClass: answered(input.genosukeHealth !== null) },
+    { nodeId: "pluto", label: "Pluto", ledClass: input.plutoStatusKind ? plutoStatusLedClass[input.plutoStatusKind] : "led-off" },
     { nodeId: "llm", label: "LLM", ledClass: answered(input.genosukeHealth !== null) },
     { nodeId: "ibkr", label: "IBKR", ledClass: ibkrLed },
     { nodeId: "gateway", label: "GW", ledClass: gatewayLed },
@@ -522,10 +535,19 @@ export function PulsePage() {
   const [webDynoHealth, setWebDynoHealth] = useState<WebDynoHealth | null>(null);
   const [gatewayHealth, setGatewayHealth] = useState<GatewayHealth | null>(null);
   const [presenceUsers, setPresenceUsers] = useState<PresenceUser[]>([]);
+  // Pluto's state as the Pluto screen reads it; heartbeatAt turns the heartbeat's age at fetch time into a time,
+  // so the card's "heartbeat 14s ago" keeps ageing between polls.
+  const [plutoSnapshot, setPlutoSnapshot] = useState<{ state: PlutoState; heartbeatAt: Date | null } | null>(null);
 
   useEffect(() => {
     let cancelled = false;
     function poll() {
+      fetchPlutoState()
+        .then((state) => {
+          if (cancelled) return;
+          setPlutoSnapshot({ state, heartbeatAt: state.agent ? new Date(Date.now() - state.agent.heartbeatAgeSeconds * 1000) : null });
+        })
+        .catch(() => {});
       fetchSystemHealthSummary()
         .then(({ db, genosuke, webDyno, gateway, presence }) => {
           if (cancelled) return;
@@ -556,7 +578,6 @@ export function PulsePage() {
   // --- Topology pulses + System Events, driven by real notifications ---
   const [pulses, setPulses] = useState<PulseEvent[]>([]);
   const [events, setEvents] = useState<EventItem[]>([]);
-  const [telegramFlash, setTelegramFlash] = useState(false);
   const eventIdRef = useRef(0);
 
   const firePulse = useCallback((edgeId: string, color: string, opts?: { reverse?: boolean; durationMs?: number }) => {
@@ -730,14 +751,13 @@ export function PulsePage() {
           refreshOrderEventsAwaitingFillPrices();
           break;
         }
-        case "genosuke_reply": {
-          firePulse("heroku-genosuke", "var(--text-secondary)");
-          setTelegramFlash(true);
-          window.setTimeout(() => setTelegramFlash(false), 900);
+        case "pluto_event": {
+          if (PLUTO_ORDER_EVENT_TYPES.has(notification.eventType)) firePulse("pluto-db", "var(--accent-glow)");
           break;
         }
         case "pulse": {
-          firePulse(notification.edgeId, PULSE_EDGE_COLORS[notification.edgeId]);
+          const color = PULSE_EDGE_COLORS[notification.edgeId];
+          if (color) firePulse(notification.edgeId, color);
           break;
         }
         case "presence": {
@@ -829,10 +849,14 @@ export function PulsePage() {
   // written a worker_health row recently, connected:false means it has but
   // reports no IBKR connection) or the live IBKR account-data round trip
   // (exposure.accountDataError, from GET /risk-limits/exposure) is failing.
-  // Database/Heroku/Genosuke aren't gated on — if the page loaded at all,
-  // those are already up.
+  // Database/Heroku aren't gated on — if the page loaded at all, those are
+  // already up.
   const databaseSizeUsedPercent = dbHealth ? (Number(dbHealth.databaseSizeBytes) / Number(dbHealth.maxDatabaseSizeBytes)) * 100 : 0;
   const attentionReasons = describeAttentionReasons(gatewayHealth, exposure?.accountDataError);
+  // Same status and wording as the Pluto screen; the crash-loop restart count is left to that screen ("too often").
+  const plutoState = plutoSnapshot?.state ?? null;
+  const plutoStatus = plutoState ? derivePlutoStatus(plutoState, new Date(), null) : null;
+  const plutoHeartbeatStale = plutoState !== null && (plutoState.agent === null || plutoState.agent.heartbeatAgeSeconds > agentNotRespondingAfterSeconds);
 
   // --- Shared render fragments. The phone layout (PulsePhoneLayout) and the
   // desktop tree below arrange the same tiles, rows and node cards, so each
@@ -1047,37 +1071,57 @@ export function PulsePage() {
         </div>
       </div>
     ),
-    genosuke: (
-      <div className="node grid-genosuke" data-node-id="genosuke">
+    pluto: (
+      <div className="node grid-pluto" data-node-id="pluto">
         <div className="node-header">
           <div className="node-icon">
-            <svg viewBox="0 0 24 24" fill="none" strokeWidth={1.7}>
-              <path d="M4 5h14v9H9l-4 3.5z" />
-              <path d="M17.5 3.5l0.55 1.3 1.3 0.55-1.3 0.55-0.55 1.3-0.55-1.3-1.3-0.55 1.3-0.55z" fill="currentColor" stroke="none" />
+            {/* Tabler's paw, the Pluto icon in the sidebar. */}
+            <svg viewBox="0 0 24 24" fill="none" strokeWidth={1.7} strokeLinecap="round" strokeLinejoin="round">
+              <path d="M14.7 13.5c-1.1 -2 -1.441 -2.5 -2.7 -2.5c-1.259 0 -1.736 .755 -2.836 2.747c-.942 1.703 -2.846 1.845 -3.321 3.291c-.097 .265 -.145 .677 -.143 .962c0 1.176 .787 2 1.8 2c1.259 0 3 -1 4.5 -1s3.241 1 4.5 1c1.013 0 1.8 -.823 1.8 -2c0 -.285 -.049 -.697 -.146 -.962c-.475 -1.451 -2.512 -1.835 -3.454 -3.538" />
+              <path d="M20.188 8.082a1.039 1.039 0 0 0 -.406 -.082h-.015c-.735 .012 -1.56 .75 -1.993 1.866c-.519 1.335 -.28 2.7 .538 3.052c.129 .055 .267 .082 .406 .082c.739 0 1.575 -.742 2.011 -1.866c.516 -1.335 .273 -2.7 -.54 -3.052l-.001 0" />
+              <path d="M9.474 9c.055 0 .109 0 .163 -.011c.944 -.128 1.533 -1.346 1.32 -2.722c-.203 -1.297 -1.047 -2.267 -1.932 -2.267c-.055 0 -.109 0 -.163 .011c-.944 .128 -1.533 1.346 -1.32 2.722c.204 1.293 1.048 2.267 1.933 2.267" />
+              <path d="M16.456 6.733c.214 -1.376 -.375 -2.594 -1.32 -2.722a1.164 1.164 0 0 0 -.162 -.011c-.885 0 -1.728 .97 -1.93 2.267c-.214 1.376 .375 2.594 1.32 2.722c.054 .007 .108 .011 .162 .011c.885 0 1.73 -.974 1.93 -2.267" />
+              <path d="M5.69 12.918c.816 -.352 1.054 -1.719 .536 -3.052c-.436 -1.124 -1.271 -1.866 -2.009 -1.866c-.14 0 -.277 .027 -.407 .082c-.816 .352 -1.054 1.719 -.536 3.052c.436 1.124 1.271 1.866 2.009 1.866c.14 0 .277 -.027 .407 -.082" />
             </svg>
           </div>
           <div>
-            <div className="node-title">Genosuke</div>
-            <div className="node-sub">Chat orchestrator</div>
+            <div className="node-title">Pluto</div>
+            <div className="node-sub">Trading agent</div>
           </div>
         </div>
         <div className="sub-row">
-          <span className="sub-name">Messages today</span>
-          <FlashingNumber value={genosukeHealth ? Number(genosukeHealth.messagesToday) : null} className="sub-value">
-            {genosukeHealth?.messagesToday ?? "—"}
+          <span className="sub-name">Status</span>
+          {plutoStatus ? (
+            <TooltipSpan className={`sub-value sub-value-shrinks ${plutoStatusValueClass[plutoStatus.kind]}`} text={plutoStatus.holdAlert ? `${plutoStatus.headline} — ${plutoStatus.holdAlert.title}` : plutoStatus.headline}>
+              {plutoStatus.label}
+            </TooltipSpan>
+          ) : (
+            <span className="sub-value">—</span>
+          )}
+        </div>
+        <div className="sub-row">
+          <span className="sub-name">Orders today</span>
+          <FlashingNumber value={plutoState?.counters.ordersToday ?? null} className="sub-value">
+            {plutoState ? (
+              <span className={`sub-value ${plutoOrdersTodayClass(plutoState.counters.ordersToday, plutoState.counters.maxOrdersPerDay)}`}>
+                {plutoState.counters.ordersToday} / {plutoState.counters.maxOrdersPerDay}
+              </span>
+            ) : (
+              "—"
+            )}
           </FlashingNumber>
         </div>
         <div className="sub-row">
-          <span className="sub-name">Chat sessions</span>
-          <FlashingNumber value={genosukeHealth ? Number(genosukeHealth.activeSessions) : null} className="sub-value ok">
-            {genosukeHealth ? `${genosukeHealth.activeSessions} active` : "—"}
+          <span className="sub-name">Working orders</span>
+          <FlashingNumber value={plutoState?.workingOrders.length ?? null} className="sub-value">
+            {plutoState ? plutoState.workingOrders.length : "—"}
           </FlashingNumber>
         </div>
-        <div className={`tg-tag${telegramFlash ? " flash" : ""}`}>
-          <svg viewBox="0 0 24 24" fill="none" strokeWidth={1.6}>
-            <path d="M21 4L3 11.5l6 2.2M21 4l-3.2 16-7.8-6.3M21 4L9.8 13.7" />
+        <div className={`node-footer${plutoHeartbeatStale ? " stale" : ""}`}>
+          <svg viewBox="0 0 24 24" fill="none" strokeWidth={1.6} strokeLinecap="round" strokeLinejoin="round">
+            <path d="M3 12h4l3 8l4 -16l3 8h4" />
           </svg>
-          outbound → Telegram
+          {!plutoSnapshot ? "heartbeat —" : plutoSnapshot.heartbeatAt ? `heartbeat ${formatRelativeAge(plutoSnapshot.heartbeatAt)}` : "no heartbeat yet"}
         </div>
       </div>
     ),
@@ -1406,7 +1450,7 @@ export function PulsePage() {
           }}
           events={{ latestTime: events[0]?.time ?? null, rows: eventRows, empty: eventsEmpty }}
           systems={{
-            leds: phoneSystemLeds({ dbHealth, databaseSizeUsedPercent, gatewayHealth, availableCash, accountDataError: exposure?.accountDataError, genosukeHealth, webDynoHealth }),
+            leds: phoneSystemLeds({ dbHealth, databaseSizeUsedPercent, gatewayHealth, availableCash, accountDataError: exposure?.accountDataError, genosukeHealth, plutoStatusKind: plutoStatus?.kind ?? null, webDynoHealth }),
             activeNodeIds: nodeIdsForActiveEdges(activeEdgeIds),
             cards: (
               <>
@@ -1415,7 +1459,7 @@ export function PulsePage() {
                 {nodes.gateway}
                 {nodes.db}
                 {nodes.heroku}
-                {nodes.genosuke}
+                {nodes.pluto}
                 {nodes.llm}
                 {nodes.frontend}
               </>
@@ -1490,7 +1534,7 @@ export function PulsePage() {
         <TopologyMap pulses={pulses} activeEdgeIds={activeEdgeIds}>
           {marketChip}
           {nodes.db}
-          {nodes.genosuke}
+          {nodes.pluto}
           {nodes.llm}
           <div className="charts-row">
             {pnlChartPanel}

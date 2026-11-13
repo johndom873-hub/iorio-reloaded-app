@@ -999,6 +999,19 @@
 .iorio-pulse-page .sub-value.err {
   color: var(--danger);
 }
+.iorio-pulse-page .sub-value.info {
+  color: var(--accent-glow);
+}
+.iorio-pulse-page .sub-value.quiet {
+  color: var(--text-secondary);
+}
+/* A value whose tooltip carries the full text: ellipsis instead of overflowing a narrow card (Pluto's
+   "Not responding" has under 1 px to spare on a phone). */
+.iorio-pulse-page .sub-value.sub-value-shrinks {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 
 .iorio-pulse-page .grid-market {
   grid-column: 1;
@@ -1008,7 +1021,7 @@
   grid-column: 2;
   grid-row: 3;
 }
-.iorio-pulse-page .grid-genosuke {
+.iorio-pulse-page .grid-pluto {
   grid-column: 3;
   grid-row: 1;
 }
@@ -1071,30 +1084,29 @@
   color: var(--text-muted);
 }
 
-.iorio-pulse-page .tg-tag {
+/* A node's footer line (Pluto's heartbeat): secondary, not muted, for 4.5:1 on the card. */
+.iorio-pulse-page .node-footer {
   margin-top: 0.32rem;
   padding-top: 0.3rem;
   border-top: 1px solid var(--border);
   font-family: var(--font-mono);
   font-size: 0.58rem;
-  color: var(--text-muted);
+  color: var(--text-secondary);
   display: flex;
   align-items: center;
   gap: 0.3rem;
-  transition: color 0.3s ease;
 }
-.iorio-pulse-page .tg-tag svg {
+.iorio-pulse-page .node-footer svg {
   width: 10px;
   height: 10px;
-  stroke: var(--text-muted);
-  transition: stroke 0.3s ease;
+  stroke: var(--text-secondary);
   flex-shrink: 0;
 }
-.iorio-pulse-page .tg-tag.flash {
-  color: var(--accent-glow);
+.iorio-pulse-page .node-footer.stale {
+  color: var(--danger);
 }
-.iorio-pulse-page .tg-tag.flash svg {
-  stroke: var(--accent-glow);
+.iorio-pulse-page .node-footer.stale svg {
+  stroke: var(--danger);
 }
 
 .iorio-pulse-page .avatar-row {
@@ -1715,7 +1727,7 @@
   padding: 0;
   font-size: 0.72rem;
 }
-.iorio-pulse-page.pulse-phone .phone-systems .tg-tag {
+.iorio-pulse-page.pulse-phone .phone-systems .node-footer {
   margin-top: 2px;
   padding-top: 4px;
 }

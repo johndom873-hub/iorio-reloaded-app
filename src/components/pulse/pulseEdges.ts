@@ -13,10 +13,9 @@ export const PULSE_EDGES: EdgeDef[] = [
   { id: "heroku-gateway", fromNodeId: "heroku", toNodeId: "gateway", weight: "spine" },
   { id: "heroku-browser", fromNodeId: "heroku", toNodeId: "frontend", weight: "spine" },
   { id: "gateway-db", fromNodeId: "gateway", toNodeId: "db", weight: "secondary" },
-  { id: "heroku-genosuke", fromNodeId: "heroku", toNodeId: "genosuke", weight: "secondary" },
-  { id: "genosuke-db", fromNodeId: "genosuke", toNodeId: "db", weight: "secondary" },
+  { id: "heroku-pluto", fromNodeId: "heroku", toNodeId: "pluto", weight: "secondary" },
+  { id: "pluto-db", fromNodeId: "pluto", toNodeId: "db", weight: "secondary" },
   { id: "heroku-db", fromNodeId: "heroku", toNodeId: "db", weight: "secondary" },
-  { id: "genosuke-llm", fromNodeId: "genosuke", toNodeId: "llm", weight: "secondary" },
 ];
 
 /** Both endpoints of every edge currently lit — the phone layout flashes those nodes' LEDs instead of drawing the edges. */
