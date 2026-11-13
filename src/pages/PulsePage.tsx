@@ -29,7 +29,7 @@ import { fetchTopPremiums, type TopPremiums } from "../api/volatility";
 import { fetchTradeBlotter, type Trade } from "../api/tradeBlotter";
 import { openNotificationStream, fetchRecentNotifications, type AppNotification } from "../api/notifications";
 import { fetchPlutoState, type PlutoState } from "../api/pluto";
-import { agentNotRespondingAfterSeconds, derivePlutoStatus, type PlutoStatusKind } from "../lib/plutoPresentation";
+import { agentNotRespondingAfterSeconds, derivePlutoStatus, humanizeKey, type PlutoStatus, type PlutoStatusKind } from "../lib/plutoPresentation";
 import type { JobRunStatus } from "../api/systemHealth";
 import {
   fetchPresence,
@@ -41,7 +41,7 @@ import {
   type GatewayHealth,
   type MarketSessionState,
 } from "../api/systemHealth";
-import { daysToExpiry, todayInEasternIso, formatSignedPnl, formatSignedPercentageValue, formatCompactDollars, formatDelta, formatDateTime, formatEasternFeedTime, formatEasternTimeWithSeconds, formatNumber, formatPercentageValue, formatRelativeDate, formatOptionContractShort, formatTransactionPrice, formatUtcClockTimeInBrowserTime, orderRequestStatusLabel, formatRelativeAge } from "../lib/formatters";
+import { daysToExpiry, todayInEasternIso, formatSignedPnl, formatSignedPercentageValue, formatCompactDollars, formatDelta, formatDateTime, formatEasternFeedTime, formatEasternTimeWithSeconds, formatNumber, formatPercentageValue, formatRelativeDate, formatOptionContractShort, formatTransactionPrice, formatUtcClockTimeInBrowserTime, orderRequestStatusLabel, formatRelativeAge, formatEasternTime } from "../lib/formatters";
 import { shortOptionAbsoluteDelta, ABSOLUTE_DELTA_HEADER } from "../lib/shortOptionAbsoluteDelta";
 import { positionExpiryDate, strategyAbbrev as positionStrategyAbbrev, strategyTooltip } from "../lib/positionPnl";
 import { FlashingNumber } from "../components/FlashingNumber";
@@ -274,6 +274,46 @@ function describeAttentionReasons(gatewayHealth: GatewayHealth | null, accountDa
     });
   }
   return reasons;
+}
+
+// Pluto's statuses that need a person (Marcelo 2026-11-13): not responding, stopped by a breaker, paused by
+// itself (crash loop, failed pre-open check) and held. Off, waiting, running and a pause someone chose do not.
+function describePlutoAttentionReasons(state: PlutoState | null, status: PlutoStatus | null, heartbeatAt: Date | null): AttentionReason[] {
+  if (!state || !status) return [];
+  if (status.kind === "offline") {
+    const working = state.workingOrders.length;
+    return [{
+      key: "pluto",
+      name: "Pluto not responding",
+      detail: `Its program hasn't checked in, so nothing is being analysed.${working === 0 ? "" : working === 1 ? " 1 of its orders is still working at IBKR." : ` ${working} of its orders are still working at IBKR.`}`,
+      meta: heartbeatAt ? `Last heartbeat ${formatRelativeAge(heartbeatAt)}` : "No heartbeat recorded",
+    }];
+  }
+  if (status.kind === "stopped") {
+    return [{
+      key: "pluto",
+      name: "Pluto stopped by a safety breaker",
+      detail: "It won't trade until the breaker is reset and Pluto resumed on the Pluto screen.",
+      meta: Object.entries(state.breakers).map(([name, trip]) => `${humanizeKey(name)} breaker · tripped ${formatEasternTime(trip.trippedAt)}`).join(" · "),
+    }];
+  }
+  if (status.kind === "paused" && (state.pauseReason === "crash_loop" || state.pauseReason === "readiness")) {
+    return [{
+      key: "pluto",
+      name: "Pluto paused itself",
+      detail: state.pauseReason === "crash_loop" ? "It restarted too often in the last hour. Check what went wrong, then resume." : "The 9:20 ET pre-open check failed. Fix what failed, then resume.",
+      meta: state.pausedAt ? `Paused ${formatEasternTime(state.pausedAt)}` : "Paused",
+    }];
+  }
+  if (status.kind === "held") {
+    return [{
+      key: "pluto",
+      name: "Pluto held",
+      detail: `${status.holdAlert?.title ?? "A check is blocking it"}. It starts again by itself once this clears.`,
+      meta: status.holdAlert?.text ?? "",
+    }];
+  }
+  return [];
 }
 
 // Touch taps also fire emulated mouseenter/focus before click, so on
@@ -848,15 +888,19 @@ export function PulsePage() {
   // node has no live connection (staleOrMissing means the worker hasn't
   // written a worker_health row recently, connected:false means it has but
   // reports no IBKR connection) or the live IBKR account-data round trip
-  // (exposure.accountDataError, from GET /risk-limits/exposure) is failing.
+  // (exposure.accountDataError, from GET /risk-limits/exposure) is failing,
+  // or Pluto needs a person (describePlutoAttentionReasons).
   // Database/Heroku aren't gated on — if the page loaded at all, those are
   // already up.
   const databaseSizeUsedPercent = dbHealth ? (Number(dbHealth.databaseSizeBytes) / Number(dbHealth.maxDatabaseSizeBytes)) * 100 : 0;
-  const attentionReasons = describeAttentionReasons(gatewayHealth, exposure?.accountDataError);
   // Same status and wording as the Pluto screen; the crash-loop restart count is left to that screen ("too often").
   const plutoState = plutoSnapshot?.state ?? null;
   const plutoStatus = plutoState ? derivePlutoStatus(plutoState, new Date(), null) : null;
   const plutoHeartbeatStale = plutoState !== null && (plutoState.agent === null || plutoState.agent.heartbeatAgeSeconds > agentNotRespondingAfterSeconds);
+  const attentionReasons = [
+    ...describeAttentionReasons(gatewayHealth, exposure?.accountDataError),
+    ...describePlutoAttentionReasons(plutoState, plutoStatus, plutoSnapshot?.heartbeatAt ?? null),
+  ];
 
   // --- Shared render fragments. The phone layout (PulsePhoneLayout) and the
   // desktop tree below arrange the same tiles, rows and node cards, so each
