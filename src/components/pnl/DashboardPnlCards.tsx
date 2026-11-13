@@ -29,7 +29,8 @@ function LoadState({ loading, error }: { loading: boolean; error: string | null 
 
 const periodRowLabels = {
   cash: ["Cash & other", "Interest, dividends, fees and their taxes"],
-  unexplained: ["Unexplained", "The book's P&L less everything above; for All books it includes IBKR's own valuation of the account against the books' prices"],
+  ibkrValuation: ["IBKR valuation", "The account's P&L less Pluto's and Manual's: IBKR's own marks and accrued interest against the books' snapshot prices"],
+  unexplained: ["Unexplained", "The book's P&L less everything above"],
 } as const;
 
 export function PnlByPeriodCard({ book }: { book: AnalysisBook }) {
@@ -54,7 +55,7 @@ export function PnlByPeriodCard({ book }: { book: AnalysisBook }) {
               {periods.rows.map((row) => (
                 <tr key={row.key}>
                   <td>
-                    {row.key === "cash" || row.key === "unexplained" ? (
+                    {row.key === "cash" || row.key === "ibkrValuation" || row.key === "unexplained" ? (
                       <TooltipSpan text={periodRowLabels[row.key][1]} className="dotted-underline-label">{periodRowLabels[row.key][0]}</TooltipSpan>
                     ) : (
                       <CycleBucketBadge bucket={row.key} />

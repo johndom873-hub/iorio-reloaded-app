@@ -306,11 +306,14 @@ export function overTimeSeries(nights: readonly NightFigures[], group: OverTimeG
 }
 
 export interface PeriodPnlRow {
-  key: CycleBucketKey | "cash" | "unexplained";
+  key: CycleBucketKey | "cash" | "ibkrValuation" | "unexplained";
   values: [number, number, number, number];
 }
 
-/** The Dashboard's P&L by Period (Day, WTD, MTD, YTD) from the nights since inception, by strategy, then Cash & other and Unexplained. */
+/**
+ * The Dashboard's P&L by Period (Day, WTD, MTD, YTD) from the nights since inception, by strategy, then Cash & other, IBKR's
+ * own valuation of the account (All books only: zero for Pluto and Manual, so the row is left out) and Unexplained.
+ */
 export function periodPnlRows(nights: readonly NightFigures[], lastNight: string): { rows: PeriodPnlRow[]; totals: [number, number, number, number] } {
   const lastDate = new Date(`${lastNight}T12:00:00Z`);
   const monday = new Date(lastDate.getTime() - ((lastDate.getUTCDay() + 6) % 7) * 86_400_000).toISOString().slice(0, 10);
@@ -328,7 +331,9 @@ export function periodPnlRows(nights: readonly NightFigures[], lastNight: string
   }
   const components = windows.map(sumComponents);
   rows.push({ key: "cash", values: components.map(cashTotal) as [number, number, number, number] });
-  rows.push({ key: "unexplained", values: components.map((component) => component.unexplained + component.ibkrValuation) as [number, number, number, number] });
+  const ibkrValuation = components.map((component) => component.ibkrValuation) as [number, number, number, number];
+  if (ibkrValuation.some((value) => Math.round(value) !== 0)) rows.push({ key: "ibkrValuation", values: ibkrValuation });
+  rows.push({ key: "unexplained", values: components.map((component) => component.unexplained) as [number, number, number, number] });
   return { rows, totals: components.map((component) => component.bookPnl) as [number, number, number, number] };
 }
 
