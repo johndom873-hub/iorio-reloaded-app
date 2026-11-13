@@ -60,8 +60,6 @@ export interface OrderCommissionPreview {
   /** "ibkr_what_if" is IBKR's min-max range for this order; "estimate" is the trailing-fills estimate used when IBKR could not answer. */
   source: "ibkr_what_if" | "estimate";
   estimateReason: string | null;
-  /** The estimate prices the option legs only. */
-  estimateExcludesStockLeg: boolean;
   warnThresholdPct: number;
 }
 

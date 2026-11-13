@@ -174,6 +174,8 @@ export interface OrderLeg {
   strike?: number;
   expiry?: string;
   right?: "C" | "P";
+  /** The position leg a closing leg closes (close and roll orders); absent on a leg that opens. */
+  positionLegId?: string;
 }
 
 /** What has filled of one order leg: the quantity, and its quantity-weighted average fill price (null with nothing filled). */
@@ -229,10 +231,11 @@ export interface LegCloseInput {
   quantity?: number;
 }
 
-export function buildCloseOrder(positionId: string, legs: LegCloseInput[], contractsToClose?: number): Promise<OrderRequest> {
+/** `keepShares`: a covered call's Call bought back alone, its shares kept (each leg then carries its own quantity, no contractsToClose). */
+export function buildCloseOrder(positionId: string, legs: LegCloseInput[], options: { contractsToClose?: number; keepShares?: boolean } = {}): Promise<OrderRequest> {
   return apiRequest<OrderRequest>(`/positions/${positionId}/close`, {
     method: "POST",
-    body: JSON.stringify(contractsToClose === undefined ? { legs } : { legs, contractsToClose }),
+    body: JSON.stringify({ legs, ...options }),
   });
 }
 

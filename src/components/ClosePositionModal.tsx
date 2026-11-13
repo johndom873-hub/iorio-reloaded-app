@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { Spinner } from "./Spinner";
 import { OrderReviewPanel } from "./OrderReviewPanel";
+import type { ClosingLegEntry } from "./ExpectedRealizedPnlCard";
 import { FillPriorityPicker } from "./FillPriorityPicker";
 import { DottedLabelTooltip } from "./HelpTooltip";
 import { ApiError } from "../api/client";
@@ -76,7 +77,7 @@ function CycleEstimateRow({ symbol, estimate, isAwaitingLive }: { symbol: string
       <div className="d-flex justify-content-between align-items-center gap-2">
         <DottedLabelTooltip
           label="Est. wheel cycle P&L if filled"
-          tooltipHtml={`Estimated profit and loss of ${symbol}'s whole wheel cycle if this close fills at the limit prices above: the live figure with the contracts and shares being closed valued at your limits instead of live prices, minus an estimate of this close's commissions based on recent fills. Anything left open keeps its live price. IBKR's exact commission appears on the review step.`}
+          tooltipHtml={`Estimated profit and loss of ${symbol}'s whole wheel cycle if this close fills at the limit prices above: the live figure with the contracts and shares being closed valued at your limits instead of live prices, minus an estimate of this close's commissions based on recent fills. Anything left open keeps its live price. IBKR's worst-case commission appears on the review step.`}
         />
         {estimate ? (
           <span className={`fw-bold font-mono ${pnlTextClass(estimate.estimatedCycleTotal)}`}>{formatSignedPnl(estimate.estimatedCycleTotal)}</span>
@@ -127,6 +128,8 @@ export function ClosePositionModal({ position, onClose, onClosed }: ClosePositio
   const optionLegs = openLegs.filter((leg) => leg.legType === "option");
   const stockLeg = openLegs.find((leg) => leg.legType === "stock");
   const optionLeg = !isUnstructured && optionLegs.length === 1 ? optionLegs[0] : undefined;
+  // A covered call's short Call can be bought back alone, its shares kept (the close route's keepShares).
+  const canKeepShares = position.strategyKey === "covered_call" && stockLeg !== undefined && optionLeg?.optionType === "call" && optionLeg.side === "short";
 
   // Defaults to the full quantity -- clicking "Close" on an ordinary
   // position should just work as a full close with no extra steps; reducing
@@ -136,6 +139,8 @@ export function ClosePositionModal({ position, onClose, onClosed }: ClosePositio
   const [stockLimitPriceDraft, setStockLimitPriceDraft] = useState("");
   const [optionLimitTouched, setOptionLimitTouched] = useState(false);
   const [stockLimitTouched, setStockLimitTouched] = useState(false);
+  const [keepSharesSelected, setKeepSharesSelected] = useState(false);
+  const keepShares = canKeepShares && keepSharesSelected;
 
   const [legDrafts, setLegDrafts] = useState<Record<string, UnstructuredLegDraft>>(() =>
     Object.fromEntries(
@@ -261,18 +266,20 @@ export function ClosePositionModal({ position, onClose, onClosed }: ClosePositio
 
   async function handleSubmitStructured() {
     if (!optionLeg || !validContracts || closeBlockedReason !== null) return;
-    if (!optionLimitPriceDraft || (stockLeg && !stockLimitPriceDraft)) {
+    if (!optionLimitPriceDraft || (stockLeg && !keepShares && !stockLimitPriceDraft)) {
       setError("A limit price is required for every leg.");
       return;
     }
     setSubmitting(true);
     setError(null);
     try {
-      const legs = [
-        { legId: optionLeg.id, limitPrice: Number(optionLimitPriceDraft) },
-        ...(stockLeg ? [{ legId: stockLeg.id, limitPrice: Number(stockLimitPriceDraft) }] : []),
-      ];
-      const order = await buildCloseOrder(position.id, legs, contractsToClose);
+      const order = keepShares
+        ? await buildCloseOrder(position.id, [{ legId: optionLeg.id, limitPrice: Number(optionLimitPriceDraft), quantity: contractsToClose }], { keepShares: true })
+        : await buildCloseOrder(
+            position.id,
+            [{ legId: optionLeg.id, limitPrice: Number(optionLimitPriceDraft) }, ...(stockLeg ? [{ legId: stockLeg.id, limitPrice: Number(stockLimitPriceDraft) }] : [])],
+            { contractsToClose },
+          );
       setPendingOrder(order);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Failed to build close order.");
@@ -320,7 +327,7 @@ export function ClosePositionModal({ position, onClose, onClosed }: ClosePositio
             limitPrice: parseLimitPriceDraft(optionLimitPriceDraft),
             liveMarkPrice: liveMarkPriceFor(optionLeg, legQuotes[optionLeg.id]),
           },
-          ...(stockLeg
+          ...(stockLeg && !keepShares
             ? [
                 {
                   legType: "stock" as const,
@@ -335,6 +342,8 @@ export function ClosePositionModal({ position, onClose, onClosed }: ClosePositio
         ]
       : null;
   const cycleEstimate = closingLegsForEstimate ? estimateCycleAfterClose(liveState?.cycleTotal ?? null, closingLegsForEstimate, liveState?.commissionRates) : null;
+
+  const closingLegEntries: ClosingLegEntry[] = openLegs.map((leg) => ({ positionLegId: leg.id, legType: leg.legType, side: leg.side, multiplier: leg.multiplier, entryPrice: Number(leg.entryPrice) }));
 
   const rightLabel = optionLeg?.optionType === "call" ? "C" : "P";
   const showForm = !pendingOrder && openLegs.length > 0 && (isUnstructured || optionLeg !== undefined);
@@ -382,7 +391,15 @@ export function ClosePositionModal({ position, onClose, onClosed }: ClosePositio
               )}
 
               {pendingOrder ? (
-                <OrderReviewPanel order={pendingOrder} onOrderChange={setPendingOrder} initialAdaptivePriority={adaptivePriority} onCancelled={onClose} onFilled={onClosed} />
+                <OrderReviewPanel
+                  order={pendingOrder}
+                  onOrderChange={setPendingOrder}
+                  initialAdaptivePriority={adaptivePriority}
+                  onCancelled={onClose}
+                  onFilled={onClosed}
+                  closingLegEntries={closingLegEntries}
+                  sharesKept={keepShares && stockLeg ? stockLeg.quantity : undefined}
+                />
               ) : openLegs.length === 0 ? (
                 <div className="alert alert-warning">This position has no open legs to close.</div>
               ) : isUnstructured ? (
@@ -476,9 +493,31 @@ export function ClosePositionModal({ position, onClose, onClosed }: ClosePositio
                     )}
                   </div>
 
+                  {canKeepShares && stockLeg && (
+                    <div className="mb-3">
+                      {/* Padding cancelled by an equal negative margin: a 44px tap target (ToggleSwitch's technique). */}
+                      <label className="form-check form-switch d-inline-flex align-items-center gap-2 mb-0" style={{ cursor: "pointer", padding: "0.75rem 0.375rem", margin: "-0.75rem -0.375rem" }}>
+                        <input
+                          type="checkbox"
+                          role="switch"
+                          className="form-check-input m-0"
+                          checked={keepSharesSelected}
+                          onChange={(event) => setKeepSharesSelected(event.target.checked)}
+                          disabled={submitting}
+                        />
+                        <span>Buy back the Call only, keep the {stockLeg.quantity} shares</span>
+                      </label>
+                      {keepShares && (
+                        <div className="text-secondary mt-1" style={{ fontSize: "0.8rem" }}>
+                          The shares stay in the account. After the next IBKR sync they show as their own stock position, ready for a new Call.
+                        </div>
+                      )}
+                    </div>
+                  )}
+
                   <div className="row g-3 mb-2">
                     <div className="col-6">
-                      <label className="form-label">Contracts to close</label>
+                      <label className="form-label">{keepShares ? "Contracts to buy back" : "Contracts to close"}</label>
                       <input
                         type="number"
                         min={1}
@@ -493,9 +532,9 @@ export function ClosePositionModal({ position, onClose, onClosed }: ClosePositio
                     {stockLeg && (
                       <div className="col-6">
                         <div className="text-secondary" style={{ fontSize: "0.8rem" }}>
-                          Shares to close (derived)
+                          {keepShares ? "Shares kept" : "Shares to close (derived)"}
                         </div>
-                        <div>{validContracts ? sharesToClose : "—"} sh</div>
+                        <div>{keepShares ? stockLeg.quantity : validContracts ? sharesToClose : "—"} sh</div>
                       </div>
                     )}
                   </div>
@@ -507,7 +546,9 @@ export function ClosePositionModal({ position, onClose, onClosed }: ClosePositio
                   )}
                   {validContracts && isPartialClose && (
                     <div className="alert alert-warning">
-                      This will leave {remainingContracts} contract{remainingContracts === 1 ? "" : "s"} ({remainingContracts * optionLeg.multiplier} sh) open — the position won't be fully closed.
+                      {keepShares
+                        ? `This leaves ${remainingContracts} contract${remainingContracts === 1 ? "" : "s"} open on the shares.`
+                        : `This will leave ${remainingContracts} contract${remainingContracts === 1 ? "" : "s"} (${remainingContracts * optionLeg.multiplier} sh) open — the position won't be fully closed.`}
                     </div>
                   )}
 
@@ -529,7 +570,7 @@ export function ClosePositionModal({ position, onClose, onClosed }: ClosePositio
                         <LiveMidQuote quote={legQuotes[optionLeg.id] ?? null} error={quoteErrorFor(optionLeg.id)} />
                       </div>
                     </div>
-                    {stockLeg && (
+                    {stockLeg && !keepShares && (
                       <div className="col-6">
                         <label className="form-label">Stock sell limit price</label>
                         <input
@@ -572,7 +613,7 @@ export function ClosePositionModal({ position, onClose, onClosed }: ClosePositio
                   disabled={submitting || closeBlockedReason !== null || (isUnstructured ? !unstructuredFormValid : !validContracts)}
                 >
                   {submitting && <Spinner size="sm" />}
-                  Review Close Order
+                  {keepShares ? "Review Buy-back Order" : "Review Close Order"}
                 </button>
               </div>
             )}

@@ -45,3 +45,36 @@ export function useOrderCommissionPreview(legs: CommissionPreviewLeg[] | null): 
 
   return state;
 }
+
+// One what-if per leg, each leg priced as an order of its own (approved 2026-11-13): IBKR answers one commission per
+// order, so a combo's figure can't be split between its legs. Asked once per set of legs (an order under review
+// doesn't change). Pass null for nothing to ask.
+export function useCommissionPreviewPerLeg(legs: CommissionPreviewLeg[] | null): OrderCommissionPreviewState[] {
+  const [states, setStates] = useState<OrderCommissionPreviewState[]>([]);
+  const latestLegsRef = useRef(legs);
+  latestLegsRef.current = legs;
+  const legsKey = legs === null ? null : JSON.stringify(legs);
+
+  useEffect(() => {
+    const legsToPreview = latestLegsRef.current;
+    if (legsToPreview === null) {
+      setStates([]);
+      return;
+    }
+    let cancelled = false;
+    setStates(legsToPreview.map(() => ({ preview: null, loading: true, failed: false })));
+    legsToPreview.forEach((leg, index) => {
+      const settle = (state: OrderCommissionPreviewState) => {
+        if (!cancelled) setStates((previous) => previous.map((existing, existingIndex) => (existingIndex === index ? state : existing)));
+      };
+      previewOrderCommission([leg])
+        .then((preview) => settle({ preview, loading: false, failed: false }))
+        .catch(() => settle({ preview: null, loading: false, failed: true }));
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [legsKey]);
+
+  return states;
+}

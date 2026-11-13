@@ -114,6 +114,12 @@ export function formatCurrencyTrimmed(amountInDollars: number | null | undefined
   return formatCurrency(amountInDollars, Number.isInteger(amountInDollars) ? 0 : decimalPlaces);
 }
 
+/** A per-share price with up to 4 decimals, at least 2: "$43.60", "$1.6273" (an entry price net of its commission). */
+export function formatPerSharePrice(amountInDollars: number | null | undefined): string {
+  if (amountInDollars === null || amountInDollars === undefined || Number.isNaN(amountInDollars)) return "—";
+  return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", minimumFractionDigits: 2, maximumFractionDigits: 4 }).format(amountInDollars);
+}
+
 // "$18.2k" style — for Iorio Pulse's Positions and Top Signals panels, whose
 // fixed 292px column width can't fit a full formatCurrency figure alongside
 // the other columns in the same row. Not used anywhere space isn't this tight.

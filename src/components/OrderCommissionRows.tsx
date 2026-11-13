@@ -47,7 +47,7 @@ export function OrderCommissionRows({ preview, loading, failed, expectedPremiumD
           </>
         }
         value={formatCurrency(commission, 2)}
-        title={isEstimate ? `IBKR did not return a figure (${preview.estimateReason ?? "no reason given"}). Estimated from your recent fills${preview.estimateExcludesStockLeg ? ", option legs only" : ""}.` : "IBKR's maximum commission for this order. The net premium and the warning use it."}
+        title={isEstimate ? `IBKR did not return a figure (${preview.estimateReason ?? "no reason given"}). Estimated from your recent fills.` : "IBKR's maximum commission for this order. The net premium and the warning use it."}
       />
       {!isEstimate && preview.commissionMinDollars !== null && (
         <Row label="IBKR range" value={`${formatCurrency(preview.commissionMinDollars, 2)} – ${formatCurrency(commission, 2)}`} />

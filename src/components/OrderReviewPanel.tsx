@@ -36,6 +36,7 @@ import {
 } from "../lib/formatters";
 import { computeAnnualizedYield, computeCapitalAtRiskFromOrderLegs, computeFrictionDollarsPerContract, computePayoff, orderLegsToPayoffInput } from "../lib/payoff";
 import { DottedLabelTooltip } from "./HelpTooltip";
+import { ExpectedRealizedPnlCard, type ClosingLegEntry } from "./ExpectedRealizedPnlCard";
 import { computeProbabilityOfProfit } from "../lib/probabilityOfProfit";
 import { computeLongCallProbabilityOfProfit } from "../lib/leapsValuation";
 import { flashClassName, useFlashOnChange } from "../hooks/useFlashOnChange";
@@ -77,6 +78,10 @@ interface OrderReviewPanelProps {
    * first tick (this seed has no compliance verdict of its own).
    */
   initialQuote?: OrderReviewQuoteSeed | null;
+  /** The position legs a close or roll closes: their entry prices drive the expected realised P&L card. */
+  closingLegEntries?: ClosingLegEntry[];
+  /** A covered call's Call bought back alone: the shares it keeps. */
+  sharesKept?: number;
 }
 
 const terminalStatuses = new Set(["filled", "partially_filled", "cancelled", "cancelled_partially_filled", "rejected", "error"]);
@@ -121,7 +126,7 @@ function statusLabel(status: OrderRequest["status"], cancellationReason: OrderRe
  * form only ever builds an OrderRequest (this component's `order` prop) —
  * nothing is sent to IBKR until the user clicks Confirm here.
  */
-export function OrderReviewPanel({ order: initialOrder, initialAdaptivePriority, onCancelled, onOrderChange, onFilled, liveSpotPrice, initialQuote }: OrderReviewPanelProps) {
+export function OrderReviewPanel({ order: initialOrder, initialAdaptivePriority, onCancelled, onOrderChange, onFilled, liveSpotPrice, initialQuote, closingLegEntries, sharesKept }: OrderReviewPanelProps) {
   const { jobs, startOrderJob } = useBackgroundJobs();
   // Once confirmed or cancel-requested, status polling is owned by
   // BackgroundJobsContext (startOrderJob below) rather than a local
@@ -409,6 +414,10 @@ export function OrderReviewPanel({ order: initialOrder, initialAdaptivePriority,
           </li>
         ))}
       </ul>
+
+      {closingLegEntries && closingLegEntries.length > 0 && (
+        <ExpectedRealizedPnlCard order={order} closingLegEntries={closingLegEntries} sharesKept={sharesKept} availableCashToTrade={availableCashToTrade} bookLabel={orderBook ? bookLabels[orderBook] : null} />
+      )}
 
       {isLeaps && payoff && leapsCost !== null && optionLeg?.strike !== undefined && (
         <div className="row g-3 font-mono" style={{ fontSize: "0.85rem" }}>

@@ -19,6 +19,7 @@ import { IvHistoryChart } from "./charts/IvHistoryChart";
 import { TickerPriceChart } from "./charts/TickerPriceChart";
 import { CollapsibleCard } from "./CollapsibleCard";
 import { OrderReviewPanel, type OrderReviewQuoteSeed } from "./OrderReviewPanel";
+import type { ClosingLegEntry } from "./ExpectedRealizedPnlCard";
 import { Spinner } from "./Spinner";
 import { TickerHeaderStrip } from "./TickerHeaderStrip";
 import { TickerPositionsCards } from "./TickerPositionsCards";
@@ -95,7 +96,8 @@ export function TickerModal({ symbol, initialRollLegId = null, focusPositionId =
   // The contract picked on the chain, and the held leg being rolled (roll mode: a chain click picks its replacement).
   const [pick, setPick] = useState<ChainContractRef | null>(null);
   const [rollModeLegId, setRollModeLegId] = useState<string | null>(initialRollLegId);
-  const [pendingOrder, setPendingOrder] = useState<{ order: OrderRequest; adaptivePriority: AdaptivePriority } | null>(null);
+  // closingLegEntries: a roll's held leg as it was when the roll was built, for the review step's realised P&L.
+  const [pendingOrder, setPendingOrder] = useState<{ order: OrderRequest; adaptivePriority: AdaptivePriority; closingLegEntries?: ClosingLegEntry[] } | null>(null);
   const [rollNotice, setRollNotice] = useState<string | null>(null);
 
   const tickerPositions = useTickerPositions(symbol);
@@ -534,6 +536,7 @@ export function TickerModal({ symbol, initialRollLegId = null, focusPositionId =
                           initialAdaptivePriority={pendingOrder.adaptivePriority}
                           liveSpotPrice={spotPrice}
                           initialQuote={quoteSeedOf(pickQuote)}
+                          closingLegEntries={pendingOrder.closingLegEntries}
                           onCancelled={clearSelection}
                           onFilled={() => {
                             clearSelection();
@@ -555,7 +558,13 @@ export function TickerModal({ symbol, initialRollLegId = null, focusPositionId =
                           notice={earningsNotice}
                           accessLevelRefusal={accessLevelRefusal}
                           onCancel={clearSelection}
-                          onSubmitted={(order, adaptivePriority) => setPendingOrder({ order, adaptivePriority })}
+                          onSubmitted={(order, adaptivePriority) =>
+                            setPendingOrder({
+                              order,
+                              adaptivePriority,
+                              closingLegEntries: [{ positionLegId: rollModeLeg.legId, legType: "option", side: "short", multiplier: rollModeLeg.multiplier, entryPrice: rollModeLeg.entryPrice }],
+                            })
+                          }
                         />
                       ) : pick && chainMode === "leaps" ? (
                         <LeapsOrderSetupForm

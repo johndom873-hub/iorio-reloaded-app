@@ -17,7 +17,9 @@ export interface OpenShortLeg {
   strike: number;
   right: "C" | "P";
   quantity: number;
-  /** Credit collected per share when the leg was opened. */
+  /** Shares per contract. */
+  multiplier: number;
+  /** Credit collected per share when the leg was opened, net of its opening commission. */
   entryPrice: number;
   entryAtIso: string;
 }
