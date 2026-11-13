@@ -478,8 +478,11 @@ export function formatDaysToExpiry(days: number): string {
 // about a past date ("2 days ago", not "-2 days").
 // US/Eastern calendar days between the instant's trading day and today's (Marcelo 2026-11-11), not elapsed hours: a
 // position opened at 09:45 ET is "today" until midnight ET, and one opened at 15:50 ET yesterday is "1d ago" at 09:31.
+// A plain "YYYY-MM-DD" (a trading date) is that ET date itself, as in daysToExpiry: read as an instant it is UTC
+// midnight, the evening before in ET, a day too many.
 export function daysAgo(dateInput: string | Date): number {
-  return Math.round((Date.parse(todayInEasternIso()) - Date.parse(easternIsoDate(dateInput))) / 86_400_000);
+  const isoDate = typeof dateInput === "string" && plainIsoDatePattern.test(dateInput) ? dateInput : easternIsoDate(dateInput);
+  return Math.round((Date.parse(todayInEasternIso()) - Date.parse(isoDate)) / 86_400_000);
 }
 
 // Pairs with daysAgo for the relative label shown in place of a raw date

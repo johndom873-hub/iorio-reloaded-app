@@ -17,9 +17,9 @@ import {
   type PricePerformanceRow,
   type ReferenceCloses,
 } from "../api/pricePerformance";
-import { formatCurrency, formatDate, formatEasternTime, formatNumber, formatPercentage, formatPercentageValue, pnlBadgeClass, todayInEasternIso } from "../lib/formatters";
+import { daysAgo, formatCurrency, formatDate, formatDaysAgo, formatEasternTime, formatNumber, formatPercentage, formatPercentageValue, formatSignedPercentageValue, pnlBadgeClass, todayInEasternIso } from "../lib/formatters";
 import { useMarketStatus } from "../hooks/useMarketStatus";
-import { percentChange } from "../lib/priceChange";
+import { drawdownFromPeak, percentChange } from "../lib/priceChange";
 import { useTickerModal } from "../hooks/useTickerModal";
 import { useTooltip } from "../hooks/useTooltip";
 import { TooltipSpan } from "../components/TooltipSpan";
@@ -104,6 +104,21 @@ type LiveConnection = "connecting" | "live" | "unavailable";
 function changeFor(row: PricePerformanceRow, livePrice: number | null | undefined, key: keyof ReferenceCloses, staticChange: number | null): number | null {
   if (livePrice === undefined || livePrice === null) return staticChange;
   return percentChange(livePrice, row.liveReferenceCloses[key]);
+}
+
+interface DrawdownFigures {
+  drawdown: number | null;
+  peakDate: string | null;
+  peakClose: number | null;
+  /** The live price is above the highest stored close: a new high, peak today. */
+  isLiveHigh: boolean;
+}
+
+// The Drawdown and its peak against the live price once one is known, else the server's last-close figures.
+function drawdownFor(row: PricePerformanceRow, livePrice: number | null | undefined): DrawdownFigures {
+  if (livePrice === undefined || livePrice === null || row.peakClose === null) return { drawdown: row.drawdown, peakDate: row.peakDate, peakClose: row.peakClose, isLiveHigh: false };
+  if (livePrice >= row.peakClose) return { drawdown: 0, peakDate: todayInEasternIso(), peakClose: livePrice, isLiveHigh: true };
+  return { drawdown: drawdownFromPeak(livePrice, row.peakClose), peakDate: row.peakDate, peakClose: row.peakClose, isLiveHigh: false };
 }
 
 export function PricePerformancePage() {
@@ -319,6 +334,31 @@ export function PricePerformancePage() {
       headerTitle: "vs. ~365 calendar days back — live once the price stream connects",
       align: "right",
       render: (row) => <ChangeBadge value={changeFor(row, livePrices[row.symbol], "close1yAgo", row.change1y)} />,
+    },
+    {
+      key: "drawdown",
+      header: "Drawdown",
+      headerTitle: "How far the price is below its highest daily close since 2006 (or the listing): peak $50.00, price $40.00 is -20.00%; 0.00% at a new high. Live once the price stream connects",
+      align: "right",
+      render: (row) => formatSignedPercentageValue(drawdownFor(row, livePrices[row.symbol]).drawdown, 2),
+    },
+    {
+      key: "peakAge",
+      header: "Peak",
+      headerTitle: "How long ago that highest daily close was",
+      align: "right",
+      render: (row) => {
+        const figures = drawdownFor(row, livePrices[row.symbol]);
+        if (figures.peakDate === null) return <span className="text-secondary">—</span>;
+        const tooltipText = figures.isLiveHigh
+          ? `The live price ${formatCurrency(figures.peakClose)} is above the highest close, ${formatCurrency(row.peakClose)} on ${formatDate(row.peakDate)}`
+          : `Peak close ${formatCurrency(figures.peakClose)} on ${formatDate(figures.peakDate)}`;
+        return (
+          <TooltipSpan className="text-nowrap" text={tooltipText}>
+            {formatDaysAgo(daysAgo(figures.peakDate))}
+          </TooltipSpan>
+        );
+      },
     },
     {
       key: "macdTrend",

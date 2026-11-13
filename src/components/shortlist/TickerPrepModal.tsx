@@ -22,7 +22,7 @@ interface TickerPrepModalProps {
 
 // Shown for the step that is running until the server sends its own message.
 const runningStepMessage: Record<BackfillStepKey, string> = {
-  history: "Fetching five years of daily prices…",
+  history: "Fetching daily prices back to 2006…",
   calendar: "Looking up upcoming events…",
   chain_warmup: "Checking which strikes exist…",
 };

@@ -11,6 +11,14 @@ export function percentChange(currentPrice: number, referenceClose: number | nul
   return ((currentPrice - referenceClose) / referenceClose) * 100;
 }
 
+// Drawdown (Marcelo 2026-11-13): how far a price is below the peak close, (price ÷ peak − 1) × 100, and 0 at or above
+// the peak. Peak $50.00, last close $40.00: −20%. The same rule as pricePerformanceSnapshot.ts's drawdownFromPeak, which
+// gives the last-close value; the page applies it to the live price. Null without a peak.
+export function drawdownFromPeak(price: number, peakClose: number | null): number | null {
+  if (peakClose === null || peakClose === 0) return null;
+  return price >= peakClose ? 0 : (price / peakClose - 1) * 100;
+}
+
 export interface ExtendedSessionPriceChange {
   sessionLabel: "Pre-market" | "After hours";
   livePrice: number;

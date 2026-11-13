@@ -38,6 +38,11 @@ export interface PricePerformanceRow {
   referenceCloses: ReferenceCloses;
   /** The closes a live price is measured against: 1D is the latest close itself; 1W / 1M / 3M / 1Y count back from meta.liveReferenceDate. */
   liveReferenceCloses: ReferenceCloses;
+  /** The highest daily close stored up to the latest one (back to 2006 or the listing); the most recent day on a tie. */
+  peakClose: number | null;
+  peakDate: string | null;
+  /** The latest close vs peakClose (drawdownFromPeak); the page recomputes it against the live price. */
+  drawdown: number | null;
   /** As of the last completed daily close — computed on the server from stored daily bars. */
   macdTrend: MacdSignal | null;
   maTrend: MaTrend | null;
