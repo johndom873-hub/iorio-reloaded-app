@@ -252,7 +252,9 @@ export interface OverTimePeriod {
 
 function overTimeDefinitions(group: OverTimeGroup): (OverTimeSeries & { value: (night: NightFigures) => number })[] {
   const cash = (night: NightFigures) => night.cash.dividends + night.cash.interest + night.cash.fees + night.cash.otherCash;
-  const unexplained = (night: NightFigures) => (night.unexplained ?? 0) + (night.ibkrValuationDifference ?? 0);
+  const unexplained = (night: NightFigures) => night.unexplained ?? 0;
+  // IBKR's own valuation of the account against the books' prices: All books only (zero, so left out, for Pluto and Manual).
+  const ibkrValuation = { key: "ibkrValuation", label: "IBKR valuation", colorVariable: "--iorio-pnl-ibkr-valuation", value: (night: NightFigures) => night.ibkrValuationDifference ?? 0 };
   if (group === "strategy") {
     return [
       ...analysisBuckets.map((bucket) => ({
@@ -262,6 +264,7 @@ function overTimeDefinitions(group: OverTimeGroup): (OverTimeSeries & { value: (
         value: (night: NightFigures) => (night.buckets ? night.buckets[bucket].total + night.buckets[bucket].flaggedChange : 0),
       })),
       { key: "cash", label: "Cash & other", colorVariable: "--iorio-pnl-cash", value: cash },
+      ibkrValuation,
       { key: "unexplained", label: "Unexplained", colorVariable: "--iorio-pnl-unexplained", value: unexplained },
     ];
   }
@@ -274,6 +277,7 @@ function overTimeDefinitions(group: OverTimeGroup): (OverTimeSeries & { value: (
     { key: "hedge", label: "Hedge", colorVariable: strategyColorVariable("hedge"), value: component("hedge") },
     { key: "commissions", label: "Commissions", colorVariable: "--iorio-pnl-commissions", value: component("commissions") },
     { key: "cash", label: "Cash & other", colorVariable: "--iorio-pnl-cash", value: (night) => cash(night) + component("flagged")(night) },
+    ibkrValuation,
     { key: "unexplained", label: "Unexplained", colorVariable: "--iorio-pnl-unexplained", value: unexplained },
   ];
 }
