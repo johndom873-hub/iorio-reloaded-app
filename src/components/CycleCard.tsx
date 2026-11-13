@@ -26,8 +26,8 @@ const timelineColumns = [
 ];
 
 // The symbol's wheel cycle (approved 2026-09-19): summary tiles + a dated timeline where every event is owned by
-// exactly one bucket (CSP / Unstructured / CC / Hedge). Open shares are marked at the latest daily close and open options
-// at the last nightly snapshot, each row dated by its mark; while live prices stream, "Today" rows add the move since
+// exactly one bucket (CSP / Unstructured / CC / Hedge). Open shares and options are marked at the last nightly snapshot
+// (17:30 ET, after-hours included, as the P&L Analyser), each row dated by its mark; while live prices stream, "Today" rows add the move since
 // then and the tiles and totals include it (liveCycleTimelineRows).
 export function CycleCard({ symbol, unrealizedPnlByPositionId = {} }: { symbol: string; unrealizedPnlByPositionId?: Record<string, UnrealizedPnlResult> }) {
   const [cycles, setCycles] = useState<Cycle[] | null>(null);
@@ -100,7 +100,7 @@ export function CycleCard({ symbol, unrealizedPnlByPositionId = {} }: { symbol: 
       {cycle && (
         <div className="d-flex flex-column gap-3">
           <p className="text-secondary mb-0" style={{ fontSize: "0.8rem" }}>
-            Every event since this symbol's cycle began, owned by one strategy. Shares are marked at the latest daily close and open options at the last nightly snapshot; while live prices stream, Today rows add the move since then.
+            Every event since this symbol's cycle began, owned by one strategy. Shares and open options are marked at the last nightly snapshot (17:30 ET, after-hours included); while live prices stream, Today rows add the move since then.
           </p>
           {cycles!.length > 1 && (
             <select
@@ -170,7 +170,7 @@ export function CycleCard({ symbol, unrealizedPnlByPositionId = {} }: { symbol: 
               <tbody>
                 {cycle.timeline.map((row, index) => (
                   <tr key={`${row.at ?? row.markDate ?? "now"}-${index}`}>
-                    {visible("date") && <td className="text-nowrap">{row.at ? <TooltipSpan text={formatEasternDateTime(row.at)}>{formatEasternDate(row.at)}</TooltipSpan> : row.markDate ? <TooltipSpan text={`What is held now, valued at the ${formatDate(row.markDate)} close`}>Today</TooltipSpan> : "Today"}</td>}
+                    {visible("date") && <td className="text-nowrap">{row.at ? <TooltipSpan text={formatEasternDateTime(row.at)}>{formatEasternDate(row.at)}</TooltipSpan> : row.markDate ? <TooltipSpan text={`What is held now, valued at the ${formatDate(row.markDate)} ${row.stockPriceSource === "snapshot" ? "nightly snapshot (17:30 ET)" : "close"}`}>Today</TooltipSpan> : "Today"}</td>}
                     {visible("type") && (
                       <td>
                         <span className={`badge ${row.instrument === "stock" ? "bg-teal text-teal-fg" : "bg-pink text-pink-fg"}`} style={{ fontSize: "0.72rem" }}>
@@ -191,10 +191,10 @@ export function CycleCard({ symbol, unrealizedPnlByPositionId = {} }: { symbol: 
                       <td className={`text-end font-mono text-nowrap ${row.stockPrice === null ? "text-secondary" : ""}`}>
                         {row.stockPrice === null
                           ? "—"
-                          : row.stockPriceSource === "close" || row.stockPriceSource === "live"
+                          : row.stockPriceSource === "close" || row.stockPriceSource === "snapshot" || row.stockPriceSource === "live"
                             ? formatCurrency(row.stockPrice)
                             : formatTransactionPrice(row.stockPrice, { withDollarSign: true })}
-                        {row.stockPrice !== null && (row.stockPriceSource === "close" || row.stockPriceSource === "live") && (
+                        {row.stockPrice !== null && (row.stockPriceSource === "close" || row.stockPriceSource === "snapshot" || row.stockPriceSource === "live") && (
                           <span className="text-secondary ms-1" style={{ fontSize: "0.72rem", fontFamily: "var(--tblr-font-sans-serif)" }}>
                             {row.stockPriceSource}
                           </span>

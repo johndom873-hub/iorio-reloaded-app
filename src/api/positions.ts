@@ -630,7 +630,7 @@ export interface CycleTimelineRow {
   /** The stock price that traded behind the row: a fill, what a Covered Call's shares were bought at, an assignment's strike; a mark row's market close. */
   stockPrice: number | null;
   /** "live": a Today row priced while prices stream (app side only). */
-  stockPriceSource?: "execution" | "close" | "live" | null;
+  stockPriceSource?: "execution" | "close" | "snapshot" | "live" | null;
   /** Commission IBKR charged on the row's executions; null when none applies or none is recorded. */
   commission?: number | null;
   /** Mark rows only: the trading date ("YYYY-MM-DD") the mark is priced at (the close for shares, the nightly snapshot for options). */
