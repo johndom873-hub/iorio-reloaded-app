@@ -4,7 +4,7 @@ import { DataTable, type DataTableColumn } from "../components/DataTable/DataTab
 import { Spinner } from "../components/Spinner";
 import { FlashingNumber } from "../components/FlashingNumber";
 import { ClosePositionModal } from "../components/ClosePositionModal";
-import { CycleScoreboard } from "../components/CycleScoreboard";
+import { PnlAnalyserCard } from "../components/pnl/PnlAnalyserCard";
 import { TodaysOrdersCard } from "../components/TodaysOrdersCard";
 import { NewPositionTag } from "../components/NewPositionTag";
 import { ApiError } from "../api/client";
@@ -653,7 +653,7 @@ export function PositionsPage() {
 
       <TodaysOrdersCard book={book} />
 
-      <CycleScoreboard book={book} />
+      <PnlAnalyserCard book={book} />
 
       {closePosition && (
         <ClosePositionModal

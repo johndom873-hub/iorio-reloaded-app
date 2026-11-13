@@ -3,9 +3,9 @@ import { PageHeader } from "../components/layout/PageHeader";
 import { StrategyBadge } from "../components/StrategyBadge";
 import type { PositionStrategyKey } from "../api/positions";
 import { Spinner } from "../components/Spinner";
-import { ApexChart, textColorByTheme } from "../components/charts/ApexChart";
+import { ApexChart } from "../components/charts/ApexChart";
 import { CollapsibleCard } from "../components/CollapsibleCard";
-import { DottedLabelTooltip, HelpTooltip } from "../components/HelpTooltip";
+import { HelpTooltip } from "../components/HelpTooltip";
 import { ClosePositionModal } from "../components/ClosePositionModal";
 import { TickColoredPrice } from "../components/TickColoredPrice";
 import { useTheme } from "../hooks/useTheme";
@@ -20,15 +20,10 @@ import {
   fetchDashboardEvents,
   fetchDashboardSummary,
   fetchPerformance,
-  fetchPeriodPnlByStrategy,
-  fetchPnlHistory,
   type AvailableCash,
   type DashboardSummary,
   type PerformanceSummary,
-  type PeriodPnlByStrategy,
-  type PnlHistoryPoint,
   type PositionEvent,
-  type StrategyPeriodPnlRow,
 } from "../api/dashboard";
 import { openStockPricesStream } from "../api/stockPrices";
 import { fetchPositions, fetchUnrealizedPnl, type Position, type UnrealizedPnlResult } from "../api/positions";
@@ -53,6 +48,8 @@ import { describeShareHandOverPositions, positionCloseReasonLabel, strategyColor
 import { useRefreshAfterTickerModal, useTickerModal } from "../hooks/useTickerModal";
 import { TooltipSpan } from "../components/TooltipSpan";
 import { PerformanceCard } from "../components/PerformanceCard";
+import { PnlByPeriodCard, StrategyOverTimeCard, YtdComponentsCard } from "../components/pnl/DashboardPnlCards";
+import { cssVariableColor } from "../lib/cssColors";
 import { ColumnVisibilityPopover } from "../components/DataTable/ColumnVisibilityPopover";
 import { useColumnVisibility } from "../components/DataTable/useColumnVisibility";
 
@@ -117,10 +114,6 @@ interface AllocationListProps {
   onTickerClick?: (ticker: { symbol: string; focusPositionId?: string }) => void;
 }
 
-// Strategy series colours follow the StrategyBadge palette (CC blue, CSP purple, N/S orange).
-function tablerColor(variableName: string): string {
-  return getComputedStyle(document.documentElement).getPropertyValue(variableName).trim();
-}
 
 // Assigns the fixed-order categorical palette to each real row (skipping
 // "Unallocated", which always gets the neutral gray, and a row with its own
@@ -320,36 +313,6 @@ const ALLOCATION_COLORS = {
   cash: "var(--tblr-gray-500)",
 } as const;
 
-const periodColumns: { key: keyof StrategyPeriodPnlRow; label: string }[] = [
-  { key: "day", label: "Day" },
-  { key: "week", label: "WTD" },
-  { key: "month", label: "MTD" },
-  { key: "year", label: "YTD" },
-];
-
-// Footnote for the Residual row on both P&L cards. Residual = the account's own P&L (change in net liquidation value)
-// minus the strategy rows, so it is a plug: it holds whatever the strategy cycles don't attribute. Interest and
-// dividends are deliberately not named: Flex shows none on this paper account (see PROGRESS.md, 2026-09-11 / 2026-09-21).
-const residualTooltipHtml =
-  "<strong>Residual</strong> = account P&amp;L (change in net liquidation value) minus the strategy rows." +
-  "<br/><br/>It holds what the strategy cycles don't attribute: commissions (cycles are gross) and timing differences " +
-  "between IBKR's account value and this platform's price marks, which are captured at slightly different moments." +
-  "<br/><br/>Positions open at the start of a period with no stored option mark are also left out of that period's strategy rows, " +
-  "so they land here too (affects Week and Month until the mark history builds up).";
-
-function PeriodPnlRow({ label, row, bold }: { label: ReactNode; row: StrategyPeriodPnlRow; bold?: boolean }) {
-  return (
-    <tr>
-      <td className={bold ? "fw-bold" : undefined}>{label}</td>
-      {periodColumns.map((column) => (
-        <td key={column.key} className={`text-end font-mono ${pnlTextClass(row[column.key])} ${bold ? "fw-bold" : ""}`}>
-          {formatSignedPnl(row[column.key], 0)}
-        </td>
-      ))}
-    </tr>
-  );
-}
-
 // Dark-safe badge classes only — the plain bg-*-lt variants (e.g.
 // bg-blue-lt) have no contrast override in theme.css and render nearly
 // invisible in dark mode; only success/danger/warning-yellow/azure/
@@ -483,18 +446,6 @@ function EventRow({ event, onSymbolClick }: { event: PositionEvent; onSymbolClic
   );
 }
 
-// ApexCharts insets a y-axis annotation by half a column on each side on a datetime bar chart while the gridlines run
-// edge to edge, so stretch the $0 line to the full plot width after every render/resize.
-// ApexCharts' TypeScript types don't expose the internal `w.globals` used here, hence the cast.
-function extendZeroLineToFullPlotWidth(chartContext: unknown) {
-  const { globals } = (chartContext as { w: { globals: { barPadForNumericAxis?: number; gridWidth: number; dom: { baseEl: Element } } } }).w;
-  const zeroLine = globals.dom.baseEl.querySelector(".apexcharts-yaxis-annotations line");
-  if (!zeroLine) return;
-  const inset = globals.barPadForNumericAxis ?? 0;
-  zeroLine.setAttribute("x1", String(-inset));
-  zeroLine.setAttribute("x2", String(globals.gridWidth + inset));
-}
-
 // The trailing actions column has no header, so it is never hideable (same as DataTable).
 const needsAttentionColumns = [
   { key: "ticker", header: "Ticker" },
@@ -505,7 +456,6 @@ const needsAttentionColumns = [
 ];
 
 export function DashboardPage() {
-  const { theme } = useTheme();
   // The book switch (Marcelo 2026-11-05; mockup https://claude.ai/artifact/BsfaHtEXioGY52rbmVBHLr): every figure follows it.
   const [book, setBook] = useBookSelection();
   const isAdmin = useIsAdmin();
@@ -523,9 +473,6 @@ export function DashboardPage() {
   const [performanceLoading, setPerformanceLoading] = useState(true);
   const [performanceError, setPerformanceError] = useState<string | null>(null);
 
-  const [history, setHistory] = useState<PnlHistoryPoint[]>([]);
-  const [historyLoading, setHistoryLoading] = useState(true);
-  const [historyError, setHistoryError] = useState<string | null>(null);
 
   // One fetch feeds both the allocation cards and the Portfolio tiles — see
   // portfolioFromExposure. Snapshot, not live (approved 2026-09-24) — Pulse
@@ -541,9 +488,6 @@ export function DashboardPage() {
   const [cashLoading, setCashLoading] = useState(true);
   const [cashError, setCashError] = useState<string | null>(null);
 
-  const [periodPnl, setPeriodPnl] = useState<PeriodPnlByStrategy | null>(null);
-  const [periodPnlLoading, setPeriodPnlLoading] = useState(true);
-  const [periodPnlError, setPeriodPnlError] = useState<string | null>(null);
 
   // One-shot mark-to-market of every open position (snapshot/fallback
   // prices, no stream) — Dashboard's tiles load once, unlike Pulse's live ones.
@@ -610,22 +554,6 @@ export function DashboardPage() {
       .catch((err) => setCashError(err instanceof ApiError ? err.message : "Failed to load available cash."))
       .finally(() => setCashLoading(false));
   }, []);
-
-  useEffect(() => {
-    setHistoryLoading(true);
-    fetchPnlHistory(90, book)
-      .then(setHistory)
-      .catch((err) => setHistoryError(err instanceof ApiError ? err.message : "Failed to load P&L history."))
-      .finally(() => setHistoryLoading(false));
-  }, [book]);
-
-  useEffect(() => {
-    setPeriodPnlLoading(true);
-    fetchPeriodPnlByStrategy(book)
-      .then(setPeriodPnl)
-      .catch((err) => setPeriodPnlError(err instanceof ApiError ? err.message : "Failed to load P&L by strategy."))
-      .finally(() => setPeriodPnlLoading(false));
-  }, [book]);
 
   useEffect(() => {
     setEventsLoading(true);
@@ -729,29 +657,6 @@ export function DashboardPage() {
 
   const sectorRows = (exposure?.concentrationBySector ?? []).filter((row: ConcentrationRow) => row.sector !== "Unallocated");
 
-  // P&L Over Time: a series per strategy in the strategy palette, then the Residual; a strategy at $0 every day is left out.
-  const historyStrategySeries: { strategyKey: PositionStrategyKey; name: string; valueOf: (point: PnlHistoryPoint) => number }[] = [
-    { strategyKey: "covered_call", name: "Covered Calls", valueOf: (point) => point.coveredCalls },
-    { strategyKey: "cash_secured_put", name: "Cash-Secured Puts", valueOf: (point) => point.cashSecuredPuts },
-    { strategyKey: "unstructured", name: "No Strategy", valueOf: (point) => point.unstructured },
-    { strategyKey: "hedge", name: "Hedges", valueOf: (point) => point.hedge },
-    { strategyKey: "leaps", name: "LEAPS", valueOf: (point) => point.leaps },
-  ];
-  const historySeries = [
-    ...historyStrategySeries
-      .filter((series) => history.some((point) => !showsAsZeroDollars(series.valueOf(point))))
-      .map((series) => ({
-        name: series.name,
-        color: tablerColor(strategyColorVariable(series.strategyKey)),
-        data: history.map((point) => ({ x: point.snapshotDate, y: series.valueOf(point) })),
-      })),
-    {
-      name: "Residual",
-      color: tablerColor("--tblr-secondary"),
-      data: history.map((point) => ({ x: point.snapshotDate, y: point.residual === null ? null : point.residual })),
-    },
-  ];
-
   return (
     <>
       <PageHeader
@@ -839,7 +744,7 @@ export function DashboardPage() {
         />
       </div>
 
-      <PerformanceCard performance={performance} loading={performanceLoading} />
+      <PerformanceCard book={book} performance={performance} loading={performanceLoading} />
 
       <CollapsibleCard title="Allocation" storageKey="portfolio" className="mb-3">
         {portfolioError && <div className="alert alert-danger mb-0">{portfolioError}</div>}
@@ -996,112 +901,10 @@ export function DashboardPage() {
 
       <div className="row g-3 mb-3">
         <div className="col-12 col-lg-8">
-          <CollapsibleCard title="P&L by Period" storageKey="pnl-by-period">
-            {periodPnlError && <div className="alert alert-danger mb-0">{periodPnlError}</div>}
-            {!periodPnlError && periodPnlLoading && <Spinner size="sm" label="Loading P&L" />}
-            {!periodPnlError && !periodPnlLoading && periodPnl && (
-              <div className="table-responsive table-flush">
-                <table className="table table-sm table-vcenter card-table mb-0">
-                  <thead className="table-light">
-                    <tr>
-                      <th>Strategy</th>
-                      {periodColumns.map((column) => (
-                        <th key={column.key} className="text-end">
-                          {column.label}
-                        </th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {(
-                      [
-                        ["covered_call", periodPnl.coveredCalls],
-                        ["cash_secured_put", periodPnl.cashSecuredPuts],
-                        ["unstructured", periodPnl.unstructured],
-                        ["hedge", periodPnl.hedge],
-                        ["leaps", periodPnl.leaps],
-                      ] as const
-                    )
-                      .filter(([, row]) => periodColumns.some((column) => !showsAsZeroDollars(row[column.key])))
-                      .map(([strategyKey, row]) => (
-                        <PeriodPnlRow key={strategyKey} label={<StrategyBadge strategyKey={strategyKey} />} row={row} />
-                      ))}
-                    <PeriodPnlRow label={<DottedLabelTooltip label="Residual" tooltipHtml={residualTooltipHtml} />} row={periodPnl.residual} />
-                    <PeriodPnlRow label="Total" row={periodPnl.total} bold />
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </CollapsibleCard>
+          <PnlByPeriodCard book={book} />
         </div>
         <div className="col-12 col-lg-4">
-          <CollapsibleCard title="P&L by Strategy (YTD)" storageKey="pnl-by-strategy">
-            {summaryLoading ? (
-              <Spinner size="sm" label="Loading breakdown" />
-            ) : !summary ? (
-              <div className="text-secondary">No data yet.</div>
-            ) : (
-              (() => {
-                // Every known strategy, missing ones at $0, so the Residual
-                // subtracts them all; a row at $0 is then left out (as in P&L by Period).
-                const knownRows = (["covered_call", "cash_secured_put", "unstructured", "hedge", "leaps"] as const).map((strategyKey) => {
-                  const found = summary.strategyBreakdown.find((row) => row.strategyKey === strategyKey);
-                  return {
-                    strategyKey,
-                    realizedPnl: found ? Number(found.realizedPnl) : 0,
-                    unrealizedPnl: found ? Number(found.unrealizedPnl) : 0,
-                  };
-                });
-                const knownRealizedTotal = knownRows.reduce((sum, row) => sum + row.realizedPnl, 0);
-                const knownUnrealizedTotal = knownRows.reduce((sum, row) => sum + row.unrealizedPnl, 0);
-                const residualRealized = summary.accountRealizedYtd - knownRealizedTotal;
-                const residualUnrealized = summary.accountUnrealizedYtd - knownUnrealizedTotal;
-
-                return (
-                  <div className="table-responsive table-flush">
-                    <table className="table table-sm table-vcenter card-table mb-0">
-                      <thead className="table-light">
-                        <tr>
-                          <th>Strategy</th>
-                          <th className="text-end">Realized</th>
-                          <th className="text-end">Unrealized</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {knownRows
-                          .filter((row) => !showsAsZeroDollars(row.realizedPnl) || !showsAsZeroDollars(row.unrealizedPnl))
-                          .map((row) => (
-                          <tr key={row.strategyKey}>
-                            <td><StrategyBadge strategyKey={row.strategyKey} /></td>
-                            <td className={`text-end font-mono ${pnlTextClass(row.realizedPnl)}`}>{formatSignedPnl(row.realizedPnl, 0)}</td>
-                            <td className={`text-end font-mono ${pnlTextClass(row.unrealizedPnl)}`}>{formatSignedPnl(row.unrealizedPnl, 0)}</td>
-                          </tr>
-                        ))}
-                        <tr>
-                          <td className="fw-bold"><DottedLabelTooltip label="Residual" tooltipHtml={residualTooltipHtml} /></td>
-                          <td className={`text-end font-mono fw-bold ${pnlTextClass(residualRealized)}`}>
-                            {formatSignedPnl(residualRealized, 0)}
-                          </td>
-                          <td className={`text-end font-mono fw-bold ${pnlTextClass(residualUnrealized)}`}>
-                            {formatSignedPnl(residualUnrealized, 0)}
-                          </td>
-                        </tr>
-                        <tr>
-                          <td className="fw-bold">Total</td>
-                          <td className={`text-end font-mono fw-bold ${pnlTextClass(summary.accountRealizedYtd)}`}>
-                            {formatSignedPnl(summary.accountRealizedYtd, 0)}
-                          </td>
-                          <td className={`text-end font-mono fw-bold ${pnlTextClass(summary.accountUnrealizedYtd)}`}>
-                            {formatSignedPnl(summary.accountUnrealizedYtd, 0)}
-                          </td>
-                        </tr>
-                      </tbody>
-                    </table>
-                  </div>
-                );
-              })()
-            )}
-          </CollapsibleCard>
+          <YtdComponentsCard book={book} />
         </div>
       </div>
 
@@ -1126,8 +929,8 @@ export function DashboardPage() {
                     label: strategyLabels[row.strategyKey] ?? row.strategyKey,
                     notionalValue: row.notionalValue,
                     isUnallocated: row.strategyKey === "unallocated",
-                    ...(row.strategyKey === "unallocated" ? {} : { color: tablerColor(strategyColorVariable(row.strategyKey)) }),
-                    ...(row.strategyKey === "leaps" ? { labelColor: tablerColor("--iorio-leaps-fg") } : {}),
+                    ...(row.strategyKey === "unallocated" ? {} : { color: cssVariableColor(strategyColorVariable(row.strategyKey)) }),
+                    ...(row.strategyKey === "leaps" ? { labelColor: cssVariableColor("--iorio-leaps-fg") } : {}),
                   }))}
               />
               <AllocationList
@@ -1173,51 +976,7 @@ export function DashboardPage() {
         )}
       </CollapsibleCard>
 
-      <CollapsibleCard title="P&L Over Time" storageKey="pnl-over-time" className="mb-3">
-        {historyError && <div className="alert alert-danger">{historyError}</div>}
-
-        {historyLoading ? (
-          <div className="d-flex justify-content-center py-3">
-            <Spinner label="Loading history" />
-          </div>
-        ) : history.length < 2 ? (
-          <div className="text-secondary">Not enough snapshot history yet to chart a trend.</div>
-        ) : (
-          <ApexChart
-            type="bar"
-            height={260}
-            series={historySeries.map(({ name, data }) => ({ name, data }))}
-            options={{
-              // Stacked columns rather than stacked areas: ApexCharts stacks positives up and negatives down
-              // for bars, but sums mixed-sign area series cumulatively, so the bands cross each other.
-              chart: { stacked: true, events: { mounted: extendZeroLineToFullPlotWidth, updated: extendZeroLineToFullPlotWidth } },
-              // A solid line at $0 so it is obvious which side of zero each column sits on.
-              annotations: { yaxis: [{ y: 0, borderColor: textColorByTheme[theme], borderWidth: 1.5, strokeDashArray: 0 }] },
-              plotOptions: { bar: { columnWidth: "70%" } },
-              fill: { opacity: 1 }, // ApexCharts' bar default is 0.85, which lets the dark card show through and mutes the colours
-              colors: historySeries.map((series) => series.color),
-              xaxis: {
-                type: "datetime",
-                tickAmount: Math.min(history.length - 1, 7),
-                // Each x is a plain snapshot date, which ApexCharts reads as UTC midnight: labelled in UTC it stays that date in
-                // every viewer zone (in the browser's zone it was the day before west of UTC, e.g. Argentina).
-                labels: { datetimeUTC: true, format: "dd MMM" },
-              },
-              yaxis: { labels: { formatter: (value: number) => formatCurrency(value, 0) } },
-              tooltip: {
-                shared: true,
-                intersect: false,
-                x: { format: "dd MMM yyyy" },
-                y: { formatter: (value: number) => formatSignedPnl(value, 0) },
-              },
-              dataLabels: { enabled: false },
-              stroke: { width: 0 },
-              legend: { position: "top" },
-              responsive: [{ breakpoint: 768, options: { legend: { position: "bottom" }, chart: { height: 220 } } }],
-            }}
-          />
-        )}
-      </CollapsibleCard>
+      <StrategyOverTimeCard book={book} />
 
       {closePosition && (
         <ClosePositionModal

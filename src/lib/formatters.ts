@@ -717,6 +717,11 @@ export function showsAsZeroDollars(amountInDollars: number, decimalPlaces = 0): 
   return Math.abs(amountInDollars) < 0.5 / 10 ** decimalPlaces;
 }
 
+/** The amount as a screen shows it at these decimal places: 0 when it shows as $0, so a few cents get neither a sign nor a P&L colour. */
+export function asShownDollars(amountInDollars: number, decimalPlaces = 0): number {
+  return showsAsZeroDollars(amountInDollars, decimalPlaces) ? 0 : amountInDollars;
+}
+
 /**
  * A per-share or per-contract transaction price (a fill, an average fill, a limit): two decimals, up to four when the
  * price has them ("1.20", "92.4325"); "$92.4325" with withDollarSign. A string is read as a number (Postgres numerics).

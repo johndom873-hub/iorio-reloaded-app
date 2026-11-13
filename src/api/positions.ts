@@ -1,4 +1,4 @@
-import type { BookKey, BookSelection } from "./books";
+import type { BookKey } from "./books";
 import { apiRequest, apiBaseUrl, apiStreamedRequest } from "./client";
 import { openMultiplexedStream } from "./streamMultiplexer";
 import { openDeferredEventSource } from "./tickerDetail";
@@ -689,14 +689,3 @@ export function fetchCycleMarks(): Promise<Record<string, OpenCycleMarks>> {
   return apiRequest("/positions/cycles/marks");
 }
 
-export interface CycleScoreboard {
-  buckets: Record<CycleBucketKey, CycleBucketResult & { returnOnCapital: number | null }>;
-  total: number;
-  cyclesIncluded: number;
-  cyclesExcluded: { symbol: string; reason: string }[];
-}
-
-/** Every cycle (All books), or one book's: each cycle in its ticker's book when it ended, its Hedge bucket always Manual's. */
-export function fetchCycleScoreboard(book: BookSelection = "all"): Promise<CycleScoreboard> {
-  return apiRequest(book === "all" ? "/positions/cycles/scoreboard" : `/positions/cycles/scoreboard?book=${book}`);
-}

@@ -15,6 +15,8 @@ interface CollapsibleCardProps {
   forceOpenSignal?: number;
   /** Shown in the header only while the card is collapsed (e.g. key figures), so they're visible without expanding. */
   collapsedSummary?: ReactNode;
+  /** Controls in the header (e.g. a period picker), shown while open; clicking them doesn't collapse the card. */
+  headerActions?: ReactNode;
   children: ReactNode;
 }
 
@@ -26,6 +28,7 @@ export function CollapsibleCard({
   className,
   forceOpenSignal,
   collapsedSummary,
+  headerActions,
   children,
 }: CollapsibleCardProps) {
   const [isOpen, setIsOpen] = useCollapsibleCard(storageKey, defaultOpen, forceOpenSignal);
@@ -33,7 +36,7 @@ export function CollapsibleCard({
   return (
     <div className={`card ${className ?? ""}`}>
       <div
-        className="card-header d-flex align-items-center justify-content-between"
+        className={`card-header d-flex align-items-center justify-content-between${headerActions ? " flex-wrap row-gap-2 card-header-with-actions" : ""}`}
         style={{ cursor: "pointer" }}
         onClick={() => setIsOpen((open) => !open)}
         role="button"
@@ -44,6 +47,11 @@ export function CollapsibleCard({
           {subtitle}
         </h3>
         {!isOpen && collapsedSummary && <div className="ms-auto me-3 d-flex flex-wrap justify-content-end column-gap-3 row-gap-1">{collapsedSummary}</div>}
+        {isOpen && headerActions && (
+          <div className="card-header-actions ms-auto me-3 d-flex flex-wrap justify-content-end align-items-center gap-2" onClick={(event) => event.stopPropagation()} style={{ cursor: "default" }}>
+            {headerActions}
+          </div>
+        )}
         <IconChevronDown
           size={18}
           className="text-secondary"

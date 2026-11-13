@@ -4,7 +4,7 @@ import type { ApexOptions, ApexYAxis } from "apexcharts";
 import { useTheme } from "../../hooks/useTheme";
 
 interface ApexChartProps {
-  type: "line" | "bar" | "area" | "candlestick" | "donut";
+  type: "line" | "bar" | "area" | "candlestick" | "donut" | "rangeBar";
   series: ApexOptions["series"];
   options?: ApexOptions;
   height?: number;

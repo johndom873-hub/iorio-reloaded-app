@@ -60,6 +60,130 @@
   color: var(--iorio-leaps-fg) !important;
 }
 
+/* No Strategy (N/S): Tabler's orange with dark text (4.96:1; white on it was 2.91:1), the same in both themes. */
+:root {
+  --iorio-no-strategy-fg: #1d2733;
+}
+.badge.bg-no-strategy {
+  background-color: var(--tblr-orange) !important;
+  color: var(--iorio-no-strategy-fg) !important;
+}
+
+/* P&L Analyser charts (mockup approved by Marcelo 2026-11-13). Books: Pluto indigo, Manual pink, All books grey and
+   dashed; Pluto and Manual differ about 3:1 in lightness as well as hue, and every line is at least 3:1 on the card
+   (light 10.4 / 3.4 / 4.8, dark 8.7 / 3.5 / 4.8). Pink means Manual only, so Unexplained is grey. Waterfall: green adds,
+   red takes away, the total in Pluto's indigo (each at least 4.4:1). Kept off the strategy palette (blue, purple,
+   orange, cyan, gold). */
+:root {
+  --iorio-book-pluto: #283593;
+  --iorio-book-manual: #f0508c;
+  --iorio-book-all: #6b7280;
+  --iorio-pnl-stock: #5c940d;
+  --iorio-pnl-commissions: #c92a2a;
+  --iorio-pnl-cash: #495057;
+  --iorio-pnl-unexplained: #868e96;
+  --iorio-pnl-adds: #2b8a3e;
+  --iorio-pnl-takes-away: #d63939;
+  --iorio-pnl-total: #283593;
+}
+:root[data-bs-theme="dark"] {
+  --iorio-book-pluto: #d0d8ff;
+  --iorio-book-manual: #e8508a;
+  --iorio-book-all: #9ca3af;
+  --iorio-pnl-stock: #94d82d;
+  --iorio-pnl-commissions: #ff8787;
+  --iorio-pnl-cash: #dee2e6;
+  --iorio-pnl-unexplained: #868e96;
+  --iorio-pnl-adds: #2fb344;
+  --iorio-pnl-takes-away: #ff6b6b;
+  --iorio-pnl-total: #d0d8ff;
+}
+
+/* P&L Analyser tables: a group's heading row (Returns, Risk…) and a ticker's opened cycles. */
+.pnl-section-row > td {
+  font-size: 0.72rem;
+  letter-spacing: 0.04em;
+  padding-top: 0.9rem;
+}
+.pnl-cycles-row > td {
+  background-color: var(--tblr-bg-surface-secondary);
+}
+/* A ticker row's show/hide-cycles chevron (like .backtest-cycle-toggle, inline instead of positioned). */
+.pnl-row-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.5rem;
+  height: 1.5rem;
+  padding: 0;
+  border: 0;
+  border-radius: var(--tblr-border-radius);
+  background: transparent;
+  color: var(--tblr-secondary-color);
+  vertical-align: middle;
+}
+.pnl-row-toggle:hover {
+  background-color: var(--tblr-border-color);
+  color: var(--tblr-body-color);
+}
+
+/* Phone: a card header's controls (the period picker) take a row of their own under the title, the period buttons share it,
+   and the analyser's four tabs fit one line. */
+@media (max-width: 575.98px) {
+  .card-header-with-actions > .card-title {
+    flex: 1 1 0;
+    min-width: 0;
+    flex-wrap: wrap;
+  }
+  .card-header-with-actions > .card-header-actions {
+    order: 3;
+    flex-basis: 100%;
+    margin: 0 !important;
+    justify-content: flex-start !important;
+  }
+  .card-header-actions > * {
+    flex: 1 1 auto;
+  }
+  .pnl-period-presets {
+    width: 100%;
+  }
+  .pnl-period-presets > .btn {
+    flex: 1 1 auto;
+    padding-inline: 0.35rem;
+    font-size: 0.8rem;
+  }
+  .pnl-analyser-tabs .nav-link {
+    padding-inline: 0.55rem;
+  }
+  /* A 44px tap area; the negative block margins keep the row from growing. */
+  .pnl-row-toggle {
+    width: 2.75rem;
+    height: 2.75rem;
+    margin-block: -0.625rem;
+  }
+  /* The P&L cards' buttons, tabs, switches and chart legend items are 44px tap targets. */
+  .pnl-card .btn,
+  .pnl-card .nav-tabs .nav-link,
+  .pnl-card .form-control {
+    min-height: 2.75rem;
+  }
+  .pnl-card .btn {
+    min-width: 2.75rem;
+  }
+  .pnl-card .form-check {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    min-height: 2.75rem;
+  }
+  .pnl-card .apexcharts-legend-series {
+    display: inline-flex !important;
+    align-items: center;
+    min-height: 2.75rem;
+    min-width: 2.75rem;
+  }
+}
+
 /* Shortlist data-retry badges (DataRetryBadge): grey while retrying, red once no tries are left. Light: white text on
    Tabler's grey and red (4.69:1 and 4.66:1, the fills the same against the white table). Dark: those fills reach only
    2.6:1 against the table, so lighter fills with dark text. */

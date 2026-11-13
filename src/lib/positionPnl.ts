@@ -1,4 +1,4 @@
-import type { Position, PositionStrategyKey, UnrealizedPnlResult } from "../api/positions";
+import type { CycleBucketKey, Position, PositionStrategyKey, UnrealizedPnlResult } from "../api/positions";
 import { easternIsoDate, todayInEasternIso } from "./formatters";
 import { humanizeKey } from "./plutoPresentation";
 
@@ -76,7 +76,13 @@ export function strategyBadgeClass(strategyKey: PositionStrategyKey): string {
   if (strategyKey === "cash_secured_put") return "bg-purple text-white";
   if (strategyKey === "hedge") return "bg-hedge";
   if (strategyKey === "leaps") return "bg-leaps";
-  return "bg-orange text-orange-fg";
+  return "bg-no-strategy";
+}
+
+/** A cycle bucket's strategy (the buckets are the strategies under short keys), for its badge, label and colour. */
+export function strategyKeyOfCycleBucket(bucket: CycleBucketKey): PositionStrategyKey {
+  const strategyKeyByBucket: Record<CycleBucketKey, PositionStrategyKey> = { csp: "cash_secured_put", unstructured: "unstructured", cc: "covered_call", hedge: "hedge", leaps: "leaps" };
+  return strategyKeyByBucket[bucket];
 }
 
 /** The same palette as the CSS variable holding each colour, for chart series ("--tblr-blue"). */

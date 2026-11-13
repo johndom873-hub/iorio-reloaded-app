@@ -104,6 +104,8 @@ interface DataTableProps<TRow> {
   defaultSort?: DataTableSort;
   /** Full-width rows drawn before and after a data row (they move with it when the rows are sorted). */
   extraRows?: (row: TRow) => { before?: DataTableExtraRow[]; after?: DataTableExtraRow[] } | null;
+  /** Inside another card (a tab of one): the same table without a card of its own around it. */
+  embedded?: boolean;
 }
 
 export function DataTable<TRow>({
@@ -125,6 +127,7 @@ export function DataTable<TRow>({
   maxVisibleRows,
   defaultSort,
   extraRows,
+  embedded = false,
 }: DataTableProps<TRow>) {
   const { isColumnVisible, toggleColumn } = useColumnVisibility(
     tableId,
@@ -182,7 +185,7 @@ export function DataTable<TRow>({
   const maxBodyHeight = maxVisibleRows ? `${(maxVisibleRows + 1) * rowHeightRem}rem` : undefined;
 
   return (
-    <div className="card">
+    <div className={embedded ? undefined : "card"}>
       {toolbar && (
         <div className="card-body d-flex align-items-center py-2 border-bottom justify-content-between gap-2 flex-wrap">
           {toolbar}

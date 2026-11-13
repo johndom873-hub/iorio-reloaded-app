@@ -8,46 +8,15 @@ export interface DashboardPeriods {
   year: string | null;
 }
 
-// Wider than screener.ts's StrategyKey ("covered_call" | "cash_secured_put"
-// only, matching that page's v1 scope) — the Dashboard also surfaces
-// "unstructured" positions, so this is deliberately string here.
-export interface StrategyPnlBreakdown {
-  strategyKey: string;
-  realizedPnl: number;
-  unrealizedPnl: number;
-}
-
 export interface DashboardSummary {
   asOf: string | null;
   netLiquidationValue: string | null;
-  // YTD account-level realized/unrealized (rescoped 2026-09-08 from
-  // all-time cumulative ledger figures — see strategyBreakdown, which is
-  // YTD-scoped the same way).
-  accountRealizedYtd: number;
-  accountUnrealizedYtd: number;
   dayPnlPercent: number | null;
   periods: DashboardPeriods;
-  strategyBreakdown: StrategyPnlBreakdown[];
 }
 
 export function fetchDashboardSummary(book: BookSelection = "all"): Promise<DashboardSummary> {
   return apiRequest<DashboardSummary>(`/dashboard/summary${bookQuery(book)}`);
-}
-
-export interface PnlHistoryPoint {
-  snapshotDate: string;
-  dailyPnl: string | null;
-  netLiquidationValue: string | null;
-  coveredCalls: number;
-  cashSecuredPuts: number;
-  unstructured: number;
-  hedge: number;
-  leaps: number;
-  residual: number | null;
-}
-
-export function fetchPnlHistory(days = 90, book: BookSelection = "all"): Promise<PnlHistoryPoint[]> {
-  return apiRequest<PnlHistoryPoint[]>(`/dashboard/history?days=${days}${bookQuery(book, "&")}`);
 }
 
 export interface Portfolio {
@@ -61,27 +30,6 @@ export interface Portfolio {
 
 export function fetchPortfolio(book: BookSelection = "all"): Promise<Portfolio> {
   return apiRequest<Portfolio>(`/dashboard/portfolio${bookQuery(book)}`);
-}
-
-export interface StrategyPeriodPnlRow {
-  day: number;
-  week: number;
-  month: number;
-  year: number;
-}
-
-export interface PeriodPnlByStrategy {
-  coveredCalls: StrategyPeriodPnlRow;
-  cashSecuredPuts: StrategyPeriodPnlRow;
-  unstructured: StrategyPeriodPnlRow;
-  hedge: StrategyPeriodPnlRow;
-  leaps: StrategyPeriodPnlRow;
-  residual: StrategyPeriodPnlRow;
-  total: StrategyPeriodPnlRow;
-}
-
-export function fetchPeriodPnlByStrategy(book: BookSelection = "all"): Promise<PeriodPnlByStrategy> {
-  return apiRequest<PeriodPnlByStrategy>(`/dashboard/period-pnl-by-strategy${bookQuery(book)}`);
 }
 
 export interface PositionEventLeg {
