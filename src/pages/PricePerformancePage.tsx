@@ -338,7 +338,7 @@ export function PricePerformancePage() {
     {
       key: "drawdown",
       header: "Drawdown",
-      headerTitle: "How far the price is below its highest daily close since 2006 (or the listing): peak $50.00, price $40.00 is -20.00%; 0.00% at a new high. Live once the price stream connects",
+      headerTitle: "How far the price is below its highest daily close since 2006, its listing or its change of business (a SPAC's merger, for example): peak $50.00, price $40.00 is -20.00%; 0.00% at a new high. Live once the price stream connects",
       align: "right",
       render: (row) => formatSignedPercentageValue(drawdownFor(row, livePrices[row.symbol]).drawdown, 2),
     },
