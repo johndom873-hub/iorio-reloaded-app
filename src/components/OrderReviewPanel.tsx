@@ -672,10 +672,10 @@ export function OrderReviewPanel({ order: initialOrder, initialAdaptivePriority,
             </div>
           )}
           <div className="d-flex gap-2">
-            <span ref={confirmWrapperTooltipRef} tabIndex={complianceBlockReason ? 0 : undefined} style={{ display: "inline-block", flex: 1 }}>
+            <span ref={confirmWrapperTooltipRef} tabIndex={complianceBlockReason ? 0 : undefined} style={{ display: "inline-block", flex: 1, minWidth: 0 }}>
               <button
                 type="button"
-                className="btn btn-primary w-100 d-inline-flex align-items-center justify-content-center gap-1"
+                className="btn btn-primary w-100 d-inline-flex align-items-center justify-content-center gap-1 text-wrap"
                 disabled={confirming || Boolean(complianceBlockReason)}
                 onClick={handleConfirm}
               >
@@ -683,7 +683,7 @@ export function OrderReviewPanel({ order: initialOrder, initialAdaptivePriority,
                 Confirm &amp; Submit to IBKR
               </button>
             </span>
-            <button type="button" className="btn btn-outline-secondary" disabled={cancelling || confirming} onClick={handleCancel}>
+            <button type="button" className="btn btn-outline-secondary flex-shrink-0 text-nowrap" disabled={cancelling || confirming} onClick={handleCancel}>
               {cancelling && <Spinner size="sm" />}
               Cancel
             </button>
