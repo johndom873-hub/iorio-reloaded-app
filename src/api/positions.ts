@@ -189,7 +189,17 @@ export type AdaptivePriority = "Urgent" | "Normal" | "Patient";
 export interface OrderRequest {
   id: string;
   requestType: string;
-  payload: { symbol: string; strategyKey: string; legs: OrderLeg[]; adaptivePriority?: AdaptivePriority };
+  payload: {
+    symbol: string;
+    strategyKey: string;
+    legs: OrderLeg[];
+    adaptivePriority?: AdaptivePriority;
+    /** Ticked at confirm: the API moves the limit with the mid while the order works. */
+    followTheMid?: true;
+    /** Every limit change sent to IBKR, oldest first; `refused` when IBKR kept the previous limit. */
+    limitPriceChanges?: { at: string; from: number; to: number; refused?: string }[];
+  };
+  plutoActionId?: string | null;
   relatedPositionId: string | null;
   status: OrderRequestStatus;
   ibkrOrderId: number | null;
@@ -258,10 +268,11 @@ export function buildRollOrder(positionId: string, input: RollOrderInput): Promi
   return apiRequest<OrderRequest>(`/positions/${positionId}/roll`, { method: "POST", body: JSON.stringify(input) });
 }
 
-export function confirmOrder(orderId: string, adaptivePriority?: AdaptivePriority): Promise<OrderRequest> {
+export function confirmOrder(orderId: string, adaptivePriority?: AdaptivePriority, followTheMid?: boolean): Promise<OrderRequest> {
+  const body = { ...(adaptivePriority ? { adaptivePriority } : {}), ...(followTheMid ? { followTheMid: true } : {}) };
   return apiRequest<OrderRequest>(`/positions/orders/${orderId}/confirm`, {
     method: "POST",
-    body: adaptivePriority ? JSON.stringify({ adaptivePriority }) : undefined,
+    body: Object.keys(body).length > 0 ? JSON.stringify(body) : undefined,
   });
 }
 

@@ -43,6 +43,7 @@ import { flashClassName, useFlashOnChange } from "../hooks/useFlashOnChange";
 import { useTooltip } from "../hooks/useTooltip";
 import { useTradingSessions } from "../hooks/useTradingSessions";
 import { sessionsHeldToExpiry } from "../lib/tradingSessions";
+import { canOrderFollowTheMid, describeFollowTheMid } from "../lib/orderFollowTheMidPresentation";
 
 interface OrderReviewPanelProps {
   order: OrderRequest;
@@ -153,6 +154,9 @@ export function OrderReviewPanel({ order: initialOrder, initialAdaptivePriority,
   // plain limit order at its net price.
   const [adaptivePriority, setAdaptivePriority] = useState<AdaptivePriority>(initialAdaptivePriority ?? "Normal");
   const isComboOrder = localOrder.payload.legs.length > 1;
+  // Follow the mid (Marcelo 2026-11-14): unticked on every order, sent with Confirm.
+  const canFollowTheMid = canOrderFollowTheMid(localOrder);
+  const [followTheMid, setFollowTheMid] = useState(false);
   const [cancelling, setCancelling] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [quote, setQuote] = useState<OrderLegQuote | null>(null);
@@ -345,6 +349,9 @@ export function OrderReviewPanel({ order: initialOrder, initialAdaptivePriority,
   const adaptivePrioritySelectTooltipRef = useTooltip<HTMLSelectElement>(
     "How aggressively IBKR works this order within your limit price. Urgent seeks the fastest fill; Patient waits longer for a better price. Never fills worse than the limit shown above.",
   );
+  const followTheMidTooltipRef = useTooltip<HTMLLabelElement>(
+    "While the order works, every 30 seconds its limit moves to the live mid, one cent towards the bid on a sale or the ask on a buy (the price Pluto uses). Up to 20 moves and no worst price: it can sell lower, or buy higher, than the limit shown above. Orders left unfilled are still cancelled after the Risk & Limits time.",
+  );
   const confirmWrapperTooltipRef = useTooltip<HTMLSpanElement>(complianceBlockReason);
   const complianceTextTooltipRef = useTooltip<HTMLDivElement>(complianceBlockReason);
 
@@ -353,7 +360,7 @@ export function OrderReviewPanel({ order: initialOrder, initialAdaptivePriority,
     setError(null);
     markOrderConfirmationSent(localOrder.id);
     try {
-      const confirmed = await confirmOrder(localOrder.id, isComboOrder ? undefined : adaptivePriority);
+      const confirmed = await confirmOrder(localOrder.id, isComboOrder ? undefined : adaptivePriority, canFollowTheMid && followTheMid);
       setLocalOrder(confirmed);
       startOrderJob(confirmed);
     } catch (err) {
@@ -611,6 +618,11 @@ export function OrderReviewPanel({ order: initialOrder, initialAdaptivePriority,
           {isWaiting && <Spinner size="sm" label="Waiting for IBKR" />}
         </div>
       )}
+      {!isPending && order.payload.followTheMid && (
+        <div className="text-secondary" style={{ fontSize: "0.8rem" }}>
+          {describeFollowTheMid(order, !isTerminal)}
+        </div>
+      )}
       {order.errorMessage && <div className="alert alert-danger mb-0">{order.errorMessage}</div>}
       {order.note && <div className="alert alert-info mb-0">{order.note}</div>}
       {order.calendarWarningEvents && order.calendarWarningEvents.length > 0 ? (
@@ -649,6 +661,14 @@ export function OrderReviewPanel({ order: initialOrder, initialAdaptivePriority,
                 <option value="Normal">Normal</option>
                 <option value="Patient">Patient</option>
               </select>
+            </div>
+          )}
+          {canFollowTheMid && (
+            <div className="d-flex justify-content-between align-items-center">
+              <label ref={followTheMidTooltipRef} htmlFor="follow-the-mid-checkbox" className="text-secondary mb-0" style={{ fontSize: "0.8rem" }}>
+                Follow the mid
+              </label>
+              <input id="follow-the-mid-checkbox" type="checkbox" className="form-check-input checkbox-visible-outline m-0" checked={followTheMid} onChange={(event) => setFollowTheMid(event.target.checked)} />
             </div>
           )}
           <div className="d-flex gap-2">

@@ -2325,10 +2325,12 @@
   cursor: pointer;
 }
 /* An unticked box's outline at 3:1 or more on a card: Tabler's default is a 10% tint in light and the page border colour in dark. */
-.backtest-checkbox-hit .form-check-input:not(:checked) {
+.backtest-checkbox-hit .form-check-input:not(:checked),
+.form-check-input.checkbox-visible-outline:not(:checked) {
   border-color: #6b7280;
 }
-:root[data-bs-theme="dark"] .backtest-checkbox-hit .form-check-input:not(:checked) {
+:root[data-bs-theme="dark"] .backtest-checkbox-hit .form-check-input:not(:checked),
+:root[data-bs-theme="dark"] .form-check-input.checkbox-visible-outline:not(:checked) {
   border-color: #9ca3af;
 }
 /* Session daily decisions: the morning's note wraps in its cell instead of widening the table. */
