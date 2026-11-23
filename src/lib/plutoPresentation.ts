@@ -453,6 +453,8 @@ export function describeTrigger(pass: Pick<PlutoPass, "trigger" | "triggerDetail
       return form === "short" ? `${list} cooldown ended` : `after the ${list} cooldown ended`;
     case "position_closed":
       return form === "short" ? "Position closed" : "after a position closed";
+    case "ledger_catch_up":
+      return form === "short" ? "Retry after a fill was recorded" : "after waiting for a fill to reach the account's positions";
     case "opening_analysis":
       if (detail.dataIncomplete === true) return form === "short" ? "Opening analysis · data incomplete" : "at the opening analysis, before today's data was complete";
       if (detail.afterLateSeed === true) return form === "short" ? "Opening analysis · data now complete" : "once today's data was complete, after an early opening analysis";

@@ -83,12 +83,15 @@ function VolFarmerV4Explanation({ values }: { values: PlutoHowItWorks }) {
           <p className="pm-how-text muted">
             Pluto looks at every v4 ticker at every round, all day. A Call, Put or buyback is priced <Value>{v4.optionCentsGivenUp}</Value> {v4.optionCentsGivenUp === 1 ? "cent" : "cents"} past the mid, so it fills sooner, never past the bid or ask: a Call quoted {formatQuotePrice(example.saleBid)} / {formatQuotePrice(example.saleAsk)} is sold at {formatQuotePrice(example.saleLimit)}. A LEAPS and the shares go at the mid.{v4.followsTheMid ? (
               <>
-                {" "}While a Call on shares already held, a Put or a buyback waits to fill, Pluto checks the market every <Value>{v4.followTheMidCheckSeconds}</Value> seconds and moves the order's price with it, up to <Value>{v4.maxLimitChangesPerOrder}</Value> times.
+                {" "}While a Call on shares already held, a Put, a buyback or a share order waits to fill, Pluto checks the market every <Value>{v4.followTheMidCheckSeconds}</Value> seconds and moves the order's price with it (a share order to the mid of the stock's quote), up to <Value>{v4.maxLimitChangesPerOrder}</Value> times.
               </>
             ) : (
               " A working order keeps the price it was sent at (moving it with the market is not switched on here yet)."
             )}{" "}
             An order that still does not fill is planned again at a later round.
+          </p>
+          <p className="pm-how-text muted">
+            Before a round sizes anything, Pluto checks its record of each ticker's shares and options against the account's positions. A fill takes a few seconds to reach the positions: until it does, the whole round waits (sizing on half-recorded figures could buy the same shares twice) and another runs <Value>{v4.ledgerCatchUpRetrySeconds}</Value> seconds later. A Call sold on shares already held never buys shares with it. If the two still disagree after <Value>{v4.ledgerMismatchHoldSeconds}</Value> seconds, for example after a trade made outside Pluto, that ticker is held and a person is told on Telegram; the other tickers go on.
           </p>
         </Card>
         <Card title="A worked example">
