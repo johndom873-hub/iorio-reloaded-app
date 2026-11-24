@@ -40,7 +40,6 @@ function VolFarmerV4Explanation({ values }: { values: PlutoHowItWorks }) {
   const riseLots = example.lots - example.lotsAfterRiseTrim;
   const buysBack = v4.callsInTheMoneyAtLastLook !== "assigned";
   const beforeWeekendsOnly = v4.callsInTheMoneyAtLastLook === "bought_back_before_weekends";
-  const buyBackMinutes = `${v4.buyBackMinutesBeforeWindowEnd} minutes`;
   // Always hold the stock (Marcelo 2026-11-03): Pluto's setting, and the tickers whose own value is the other one.
   const holdsByDefault = v4.alwaysHoldTheStock === "on";
   const otherwise = v4.alwaysHoldTheStockOtherwise;
@@ -58,7 +57,7 @@ function VolFarmerV4Explanation({ values }: { values: PlutoHowItWorks }) {
           </p>
           {buysBack && (
             <p className="pm-how-text">
-              {beforeWeekendsOnly ? "Before a weekend" : "Every day"}, a Call {sameDay ? null : "expiring that day "}still in the money in the last {buyBackMinutes} before the window closes is bought back a cent above the mid, and the shares are kept {beforeWeekendsOnly ? "over the weekend" : "overnight"} instead of being called away at the close and bought again {beforeWeekendsOnly ? "on Monday" : "the next day"}. A buyback that doesn't fill, or that the settled cash can't pay for, leaves the Call to be assigned as usual.
+              {beforeWeekendsOnly ? "Before a weekend" : "Every day"}, from {v4.buyBackMinutesBeforeWindowEnd} minutes before the window closes until a minute before the market does, a Call {sameDay ? null : "expiring that day "}that is in the money is bought back a cent above the mid, and the shares are kept {beforeWeekendsOnly ? "over the weekend" : "overnight"} instead of being called away at the close and bought again {beforeWeekendsOnly ? "on Monday" : "the next day"}. A buyback that doesn't fill, or that the settled cash can't pay for, is tried again while the Call is in the money; one still unfilled at the close leaves the Call to be assigned as usual.
             </p>
           )}
           <p className="pm-how-text">
@@ -83,7 +82,7 @@ function VolFarmerV4Explanation({ values }: { values: PlutoHowItWorks }) {
           <p className="pm-how-text muted">
             Pluto looks at every v4 ticker at every round, all day. A Call, Put or buyback is priced <Value>{v4.optionCentsGivenUp}</Value> {v4.optionCentsGivenUp === 1 ? "cent" : "cents"} past the mid, so it fills sooner, never past the bid or ask: a Call quoted {formatQuotePrice(example.saleBid)} / {formatQuotePrice(example.saleAsk)} is sold at {formatQuotePrice(example.saleLimit)}. A LEAPS and the shares go at the mid.{v4.followsTheMid ? (
               <>
-                {" "}While a Call on shares already held, a Put, a buyback or a share order waits to fill, Pluto checks the market every <Value>{v4.followTheMidCheckSeconds}</Value> seconds and moves the order's price with it (a share order to the mid of the stock's quote), up to <Value>{v4.maxLimitChangesPerOrder}</Value> times.
+                {" "}While a Call on shares already held, a Put, a buyback or a share order waits to fill, Pluto checks the market every <Value>{v4.followTheMidCheckSeconds}</Value> seconds and moves the order's price with it (a share order to the mid of the stock's quote), up to <Value>{v4.maxLimitChangesPerOrder}</Value> times{buysBack ? <>, a buyback up to <Value>{v4.buyBackMaxLimitChanges}</Value></> : null}.
               </>
             ) : (
               " A working order keeps the price it was sent at (moving it with the market is not switched on here yet)."
@@ -130,7 +129,7 @@ function VolFarmerV4Explanation({ values }: { values: PlutoHowItWorks }) {
             <li>
               {buysBack ? (
                 <>
-                  A Call {sameDay ? null : "expiring that day "}in the money in the last {buyBackMinutes} before the window closes (<Value>{v4.buyBackStartsEt}–{shared.windowEndEt}</Value>): bought back {beforeWeekendsOnly ? <>on the last session before a weekend (a Friday, or the Thursday before a Friday holiday), </> : null}a cent above the mid, the shares kept, if the settled cash left pays for it. One still unfilled at <Value>{v4.buyBackCancelledAtEt}</Value> is left to be assigned at the close; the <Value>{shared.unfilledOrderCancelMinutes}</Value>-minute cancel of unfilled orders does not apply to it. In those {buyBackMinutes} v4 places no other order for the ticker{beforeWeekendsOnly ? <>, so no new Call is sold on the shares it keeps. On other days, assigned at the close.</> : <>.</>}
+                  A Call {sameDay ? null : "expiring that day "}in the money between <Value>{v4.buyBackStartsEt}</Value> and <Value>{v4.buyBacksStopEt}</Value> ET (the window's last <Value>{v4.buyBackMinutesBeforeWindowEnd}</Value> minutes, then after it until a minute before the close): bought back {beforeWeekendsOnly ? <>on the last session before a weekend (a Friday, or the Thursday before a Friday holiday), </> : null}a cent above the mid, the shares kept, if the settled cash left pays for it. Pluto compares the stock with the strike as its price moves, at most every <Value>{v4.buyBackCheckSeconds}</Value> seconds, so a Call that comes into the money after the window is bought back too, and one whose buyback ended unfilled is tried again. A buyback working follows the mid up to <Value>{v4.buyBackMaxLimitChanges}</Value> times and stays at IBKR until the close; the <Value>{shared.unfilledOrderCancelMinutes}</Value>-minute cancel of unfilled orders does not apply to it. One still unfilled at the close leaves the Call to be assigned. From <Value>{v4.buyBackStartsEt}</Value> v4 places no other order for the ticker{beforeWeekendsOnly ? <>, so no new Call is sold on the shares it keeps. On other days, assigned at the close.</> : <>.</>}
                 </>
               ) : (
                 <>A Call in the money at the close is assigned: its shares are sold at the strike and bought again at the next round.</>

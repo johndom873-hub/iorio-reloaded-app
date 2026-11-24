@@ -285,7 +285,9 @@ export function PlutoStatusCard({ state, status, settings, now, isPhone, showKpi
   const ordersMax = state.counters.maxOrdersPerDay;
   const windowStartMs = new Date(session.windowStartAt).getTime();
   const windowEndMs = new Date(session.windowEndAt).getTime();
-  const windowSub = !session.isOpen ? "Market closed today" : now.getTime() < windowStartMs ? `Starts in ${formatHoursMinutesUntil(session.windowStartAt, now)} · market closes ${session.closeTimeEt}` : now.getTime() < windowEndMs ? `${formatHoursMinutesUntil(session.windowEndAt, now)} left · market closes ${session.closeTimeEt}` : `Closed for today · market closes ${session.closeTimeEt}`;
+  // After the window, v4 may still buy back Calls in the money until a minute before the close (Marcelo 2026-11-24).
+  const inBuyBackMinutes = session.buyBacksToday && now.getTime() >= windowEndMs && now.getTime() < new Date(session.buyBacksStopAt).getTime();
+  const windowSub = !session.isOpen ? "Market closed today" : now.getTime() < windowStartMs ? `Starts in ${formatHoursMinutesUntil(session.windowStartAt, now)} · market closes ${session.closeTimeEt}` : now.getTime() < windowEndMs ? `${formatHoursMinutesUntil(session.windowEndAt, now)} left · market closes ${session.closeTimeEt}` : inBuyBackMinutes ? `Buybacks only until ${session.buyBacksStopEt} · market closes ${session.closeTimeEt}` : `Closed for today · market closes ${session.closeTimeEt}`;
   const firstWorking = working[0] ?? null;
   const workingSub = firstWorking ? `${describeOrderLine(firstWorking, firstWorking.limitPrice)} · ${formatAgeInWords(firstWorking.createdAt, now)}${working.length > 1 ? ` · +${working.length - 1} more` : ""}` : "None at IBKR";
 
@@ -430,9 +432,10 @@ export function PlutoStatusCard({ state, status, settings, now, isPhone, showKpi
             <div className="pm-kpi">
               <div className="pm-kpi-l">Trading window</div>
               <div className="pm-kpi-v">
-                {session.windowStartEt}–{session.windowEndEt} <small>ET{isPhone ? ` · ${windowSub.split(" · ")[0]}` : ""}</small>
+                {session.windowStartEt}–{session.windowEndEt} <small>ET</small>
               </div>
-              {!isPhone && <div className="pm-kpi-s spaced">{windowSub}</div>}
+              {/* On a phone only the status, on a line of its own: inside the value (which never wraps) it ran past the screen's edge. */}
+              <div className="pm-kpi-s spaced">{isPhone ? windowSub.split(" · ")[0] : windowSub}</div>
             </div>
           </div>
         )}

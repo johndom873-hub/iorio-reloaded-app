@@ -623,7 +623,7 @@ export function RiskLimitsPage() {
                   readOnly={!isAdmin}
                   value={formState.orderUnfilledCancelMinutes}
                   step="1"
-                  help="Whole minutes, counted from when the order was sent to IBKR. 0 means never cancel (an unfilled order then lasts until the market close). The check runs every 30 seconds, so the cancel can come up to half a minute late. Covers every order sent to IBKR, including rolls and covered Calls that also buy the shares, except Pluto's buybacks of Calls in the money, which Pluto cancels 2 minutes before the close; a part-filled order has its unfilled rest cancelled."
+                  help="Whole minutes, counted from when the order was sent to IBKR. 0 means never cancel (an unfilled order then lasts until the market close). The check runs every 30 seconds, so the cancel can come up to half a minute late. Covers every order sent to IBKR, including rolls and covered Calls that also buy the shares, except Pluto's buybacks of Calls in the money, which stay working until the close; a part-filled order has its unfilled rest cancelled."
                   onChange={(value) => updateField("orderUnfilledCancelMinutes", value)}
                 />
               </SettingsSection>

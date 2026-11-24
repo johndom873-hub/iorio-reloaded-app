@@ -18,11 +18,15 @@ export interface PlutoSession {
   closeReadAt: string | null;
   windowStartEt: string;
   windowEndEt: string;
-  cancelByEt: string;
+  /** When v4 sends its last buyback of a Call in the money: a minute before the close (HH:MM ET, and the instant). */
+  buyBacksStopEt: string;
   /** Instants (ISO) of today's window and close, for countdowns in the viewer's clock. */
   windowStartAt: string;
   windowEndAt: string;
   closeAt: string;
+  buyBacksStopAt: string;
+  /** v4 buys back Calls in the money today (its setting and the weekend rule), from shortly before the window's end until buyBacksStopAt. */
+  buyBacksToday: boolean;
 }
 
 /** One of Pluto's orders IBKR may still be working (or still on its way there). */
@@ -635,10 +639,16 @@ export interface PlutoHowItWorks {
     alwaysHoldTheStock: PlutoSettings["volFarmerV4AlwaysHoldTheStock"];
     /** The enabled tickers whose own Always hold the stock is the other value, alphabetical. */
     alwaysHoldTheStockOtherwise: string[];
-    /** The buyback's minutes before the window's end, from buyBackStartsEt (HH:MM ET); one still working is cancelled at buyBackCancelledAtEt on a regular day. */
+    /**
+     * The buyback minutes (Marcelo 2026-11-24): from buyBackMinutesBeforeWindowEnd before the window's end (buyBackStartsEt)
+     * until buyBacksStopEt on a regular day; a ticker's stock is checked against its Call's strike at most every
+     * buyBackCheckSeconds, and a buyback working follows the mid up to buyBackMaxLimitChanges times, until the close.
+     */
     buyBackMinutesBeforeWindowEnd: number;
     buyBackStartsEt: string;
-    buyBackCancelledAtEt: string;
+    buyBacksStopEt: string;
+    buyBackCheckSeconds: number;
+    buyBackMaxLimitChanges: number;
     example: {
       /** Pluto's book value in the example: the pots' base. */
       plutoBookValue: number;
