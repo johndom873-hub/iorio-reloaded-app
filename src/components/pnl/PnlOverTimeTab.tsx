@@ -1,13 +1,15 @@
 import { useState } from "react";
 import type { AnalysisBook, PnlAnalysis } from "../../api/pnlAnalysis";
 import { formatDayMonth, formatSignedPnl, formatYearMonth, pnlTextClass, showsAsZeroDollars } from "../../lib/formatters";
-import { bookChoiceLabels, overTimeSeries, type OverTimeGranularity, type OverTimeGroup, type OverTimePeriod } from "../../lib/pnlAnalysisPresentation";
+import { bookChoiceLabels, liveNightOf, overTimeSeries, type OverTimeGranularity, type OverTimeGroup, type OverTimePeriod } from "../../lib/pnlAnalysisPresentation";
 import { DataTable, type DataTableColumn } from "../DataTable/DataTable";
 import { PnlOverTimeChart } from "./PnlOverTimeChart";
 
-function periodLabel(key: string, granularity: OverTimeGranularity): string {
+/** "23 Nov", "23 Nov (live)" for today's live night, "Week of 23 Nov", "Nov 2026". */
+function periodLabel(key: string, granularity: OverTimeGranularity, liveNight: string | null): string {
   if (granularity === "month") return formatYearMonth(key);
-  return granularity === "week" ? `Week of ${formatDayMonth(key)}` : formatDayMonth(key);
+  if (granularity === "week") return `Week of ${formatDayMonth(key)}`;
+  return key === liveNight ? `${formatDayMonth(key)} (live)` : formatDayMonth(key);
 }
 
 function ChoiceGroup<TValue extends string>({ label, choices, value, onChange }: { label: string; choices: [TValue, string][]; value: TValue; onChange: (value: TValue) => void }) {
@@ -33,12 +35,13 @@ export function PnlOverTimeTab({ analysis, book }: { analysis: PnlAnalysis; book
   const [group, setGroup] = useState<OverTimeGroup>("strategy");
   const [granularity, setGranularity] = useState<OverTimeGranularity>("week");
   const nights = analysis.books[book].nights;
+  const liveNight = liveNightOf(analysis);
   const { series, periods } = overTimeSeries(nights, group, granularity);
   const totalOf = (key: string) => periods.reduce((sum, period) => sum + period.values[key]!, 0);
   const bookTotal = periods.reduce((sum, period) => sum + period.bookPnl, 0);
 
   const columns: DataTableColumn<OverTimePeriod>[] = [
-    { key: "period", header: granularity === "day" ? "Night" : granularity === "week" ? "Week" : "Month", sortValue: (period) => period.key, freezeOnPhone: true, cellClassName: "text-nowrap", render: (period) => periodLabel(period.key, granularity) },
+    { key: "period", header: granularity === "day" ? "Night" : granularity === "week" ? "Week" : "Month", sortValue: (period) => period.key, freezeOnPhone: true, cellClassName: "text-nowrap", render: (period) => periodLabel(period.key, granularity, liveNight) },
     ...series.map((one): DataTableColumn<OverTimePeriod> => ({ key: one.key, header: one.label, align: "right", sortValue: (period) => period.values[one.key]!, render: (period) => <SignedCell value={period.values[one.key]!} blankWhenZero /> })),
     { key: "bookPnl", header: `${bookChoiceLabels[book]} P&L`, align: "right", sortValue: (period) => period.bookPnl, cellClassName: "fw-bold", render: (period) => <SignedCell value={period.bookPnl} /> },
   ];
@@ -50,7 +53,7 @@ export function PnlOverTimeTab({ analysis, book }: { analysis: PnlAnalysis; book
         <ChoiceGroup label="Group by" choices={[["strategy", "By strategy"], ["component", "By component"]]} value={group} onChange={setGroup} />
         <ChoiceGroup label="Bars per" choices={[["day", "Day"], ["week", "Week"], ["month", "Month"]]} value={granularity} onChange={setGranularity} />
       </div>
-      <PnlOverTimeChart nights={nights} group={group} granularity={granularity} />
+      <PnlOverTimeChart nights={nights} group={group} granularity={granularity} liveNight={liveNight} />
       <DataTable
         embedded
         tableId={`pnl-analysis-over-time-${group}`}

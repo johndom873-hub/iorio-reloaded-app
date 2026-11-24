@@ -122,7 +122,11 @@ export interface PnlAnalysis {
   range: { baselineNight: string; lastNight: string } | null;
   books: Record<AnalysisBook, BookAnalysis>;
   cyclesBySymbol: Record<string, { inRange: number; hasOpenCycle: boolean }>;
+  /** Today's live night when the range runs to today during the trading day; `unavailable` when IBKR's account value could not be read. */
+  live: LiveNightNote | null;
 }
+
+export type LiveNightNote = { state: "live"; night: string; capturedAt: string; legsAtLastClose: string[] } | { state: "unavailable"; night: string; reason: string };
 
 export interface TickerCycleRow extends BucketChange {
   cycleStartedAt: string;

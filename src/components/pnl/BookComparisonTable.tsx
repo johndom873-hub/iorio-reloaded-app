@@ -1,8 +1,8 @@
 import type { ReactNode } from "react";
 import type { AnalysisBook, BookRiskFigures, GatedFigure, GatedTradeFigure, PnlAnalysis, TradeStats } from "../../api/pnlAnalysis";
 import { useMediaQuery } from "../../hooks/useMediaQuery";
-import { formatDayMonth, formatPercentageValue, formatRatio, formatSignedPercentageValue, formatSignedPnl, pnlTextClass } from "../../lib/formatters";
-import { bookChoiceLabels, gatedNote } from "../../lib/pnlAnalysisPresentation";
+import { formatPercentageValue, formatRatio, formatSignedPercentageValue, formatSignedPnl, pnlTextClass } from "../../lib/formatters";
+import { analysisNightNote, bookChoiceLabels, gatedNote, liveNightOf } from "../../lib/pnlAnalysisPresentation";
 import { TooltipSpan } from "../TooltipSpan";
 
 const bookOrder: AnalysisBook[] = ["pluto", "manual", "all"];
@@ -16,7 +16,8 @@ interface Cell {
 interface MetricRow {
   label: string;
   hint: string;
-  cell: (risk: BookRiskFigures, trades: { csp: TradeStats; cc: TradeStats; both: TradeStats } | null) => Cell;
+  /** `liveNight`: today's live night when the analysis ends with one (its notes say "today (live)"). */
+  cell: (risk: BookRiskFigures, trades: { csp: TradeStats; cc: TradeStats; both: TradeStats } | null, liveNight: string | null) => Cell;
 }
 
 const noHistory: Cell = { text: "—", className: "text-secondary", note: "no nights" };
@@ -37,10 +38,10 @@ const riskRows: MetricRow[] = [
   {
     label: "Max drawdown",
     hint: "Deepest fall of the growth index below its running peak",
-    cell: (risk) => {
+    cell: (risk, _, liveNight) => {
       const drawdown = risk.maxDrawdown;
       if (drawdown.percent === 0) return { text: formatSignedPercentageValue(0, 2) };
-      const recovery = drawdown.recoveryNight ? `recovered ${formatDayMonth(drawdown.recoveryNight)}` : "not recovered";
+      const recovery = drawdown.recoveryNight ? `recovered ${analysisNightNote(drawdown.recoveryNight, liveNight)}` : "not recovered";
       return { text: formatSignedPercentageValue(drawdown.percent, 2), className: "text-danger", note: `${formatSignedPnl(drawdown.dollars, 0)} · ${drawdown.lengthDays} d · ${recovery}` };
     },
   },
@@ -51,9 +52,9 @@ const riskRows: MetricRow[] = [
   { label: "Excess Calmar", hint: "(CAGR − T-bill) ÷ |Max drawdown|, from 180 calendar days. Example: (18% − 4.05%) ÷ 6% = 2.33", cell: (risk) => gatedCell(risk.excessCalmar, (value) => formatRatio(value), "no drawdown") },
 ];
 const dayRows: MetricRow[] = [
-  { label: "Best day", hint: "Highest daily return in the period", cell: (risk) => (risk.bestDay ? { text: formatSignedPercentageValue(risk.bestDay.returnPercent, 2), className: pnlTextClass(risk.bestDay.returnPercent), note: formatDayMonth(risk.bestDay.night) } : noHistory) },
-  { label: "Worst day", hint: "Lowest daily return in the period", cell: (risk) => (risk.worstDay ? { text: formatSignedPercentageValue(risk.worstDay.returnPercent, 2), className: pnlTextClass(risk.worstDay.returnPercent), note: formatDayMonth(risk.worstDay.night) } : noHistory) },
-  { label: "Positive days", hint: "Share of nights with a positive return", cell: (risk) => ({ text: formatPercentageValue(risk.positiveDaysPercent, 0), note: `of ${risk.dailyReturnCount} nights` }) },
+  { label: "Best day", hint: "Highest daily return in the period", cell: (risk, _, liveNight) => (risk.bestDay ? { text: formatSignedPercentageValue(risk.bestDay.returnPercent, 2), className: pnlTextClass(risk.bestDay.returnPercent), note: analysisNightNote(risk.bestDay.night, liveNight) } : noHistory) },
+  { label: "Worst day", hint: "Lowest daily return in the period", cell: (risk, _, liveNight) => (risk.worstDay ? { text: formatSignedPercentageValue(risk.worstDay.returnPercent, 2), className: pnlTextClass(risk.worstDay.returnPercent), note: analysisNightNote(risk.worstDay.night, liveNight) } : noHistory) },
+  { label: "Positive days", hint: "Share of nights with a positive return", cell: (risk, _, liveNight) => ({ text: formatPercentageValue(risk.positiveDaysPercent, 0), note: `of ${risk.dailyReturnCount} nights${liveNight !== null && risk.lastNight === liveNight ? " incl. today" : ""}` }) },
 ];
 const tradeRows: MetricRow[] = [
   { label: "Win rate", hint: "Closed short options with a positive result ÷ all closed, from 10 closed; an assigned put is charged for its assignment", cell: (_, trades) => gatedCell(trades?.both.winRatePercent, (value) => formatPercentageValue(value, 0)) },
@@ -74,7 +75,7 @@ const compactGroups: { title: string; rows: MetricRow[] }[] = [{ title: "", rows
 
 function cellOf(analysis: PnlAnalysis, book: AnalysisBook, row: MetricRow): Cell {
   const bookAnalysis = analysis.books[book];
-  return bookAnalysis.risk ? row.cell(bookAnalysis.risk, bookAnalysis.tradeStats) : noHistory;
+  return bookAnalysis.risk ? row.cell(bookAnalysis.risk, bookAnalysis.tradeStats, liveNightOf(analysis)) : noHistory;
 }
 
 function CellContent({ cell }: { cell: Cell }) {

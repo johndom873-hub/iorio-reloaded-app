@@ -1,4 +1,5 @@
 import type { AnalysisBook, AnalysisDays, BookAnalysis, GatedFigure, GatedTradeFigure, NightFigures, PnlAnalysis } from "../api/pnlAnalysis";
+import { formatDayMonth, formatEasternTime } from "./formatters";
 import type { BookKey } from "../api/books";
 import type { CycleBucketKey } from "../api/positions";
 import { strategyAbbrev, strategyColorVariable, strategyKeyOfCycleBucket } from "./positionPnl";
@@ -6,6 +7,50 @@ import { strategyAbbrev, strategyColorVariable, strategyKeyOfCycleBucket } from 
 // The P&L Analyser's figures as the screens show them (mockup approved by Marcelo 2026-11-13): sums over the nights of a
 // range from GET /pnl-analysis, so every table and chart adds up to the book's P&L. Unexplained (and for All books IBKR's
 // own valuation) is its own line, never spread over the rest.
+
+/** The live night the analysis ends with (today, taken at load time), or null when it ends at a close. */
+export function liveNightOf(analysis: PnlAnalysis | null | undefined): string | null {
+  return analysis?.live?.state === "live" ? analysis.live.night : null;
+}
+
+/** A night as a figure's note names it: "today (live)" for the live night, else "20 Nov". */
+export function analysisNightNote(night: string, liveNight: string | null): string {
+  return night === liveNight ? "today (live)" : formatDayMonth(night);
+}
+
+/** When the live night was taken: "11:08 ET"; null when the analysis ends at a close. */
+export function liveTakenAt(analysis: PnlAnalysis | null | undefined): string | null {
+  return analysis?.live?.state === "live" ? formatEasternTime(analysis.live.capturedAt) : null;
+}
+
+/**
+ * The Positions card's as-of note (mockup approved 2026-11-24): "live as of 11:08 ET (today provisional)" with the legs
+ * valued at their last close, "as of the 20 Nov close · live figures unavailable: IBKR is not answering", or "as of the 20 Nov close".
+ */
+export function analysisAsOfNote(analysis: PnlAnalysis): { text: string; legsAtLastClose: string[] } | null {
+  const takenAt = liveTakenAt(analysis);
+  if (takenAt !== null && analysis.live?.state === "live") return { text: `live as of ${takenAt} (today provisional)`, legsAtLastClose: analysis.live.legsAtLastClose };
+  if (!analysis.lastNight) return null;
+  const close = `as of the ${formatDayMonth(analysis.lastNight)} close`;
+  return { text: analysis.live?.state === "unavailable" ? `${close} · live figures unavailable: ${analysis.live.reason}` : close, legsAtLastClose: [] };
+}
+
+/**
+ * The charts' Live band: a shaded span from `fromTime` to `toTime` (ms) with its label at the top, in `textColor` on
+ * `fillColor`. ApexCharts places the label at the span's start: `labelSide` "inside" runs it into the band (charts with room
+ * on the right), "before" ends it just left of the band (a band at the plot's right edge), never centred over the start,
+ * where it ran into the Books begin label.
+ */
+export function liveBandAnnotation(fromTime: number, toTime: number, label: string, textColor: string, fillColor: string, labelSide: "inside" | "before") {
+  return {
+    x: fromTime,
+    x2: toTime,
+    fillColor,
+    opacity: 1,
+    borderColor: "transparent",
+    label: { text: label, orientation: "horizontal" as const, position: "top" as const, textAnchor: labelSide === "inside" ? ("start" as const) : ("end" as const), offsetX: labelSide === "inside" ? 4 : -4, borderWidth: 0, offsetY: -2, style: { color: textColor, background: "transparent", fontSize: "0.72rem", fontWeight: 600 } },
+  };
+}
 
 /** The strategies in the order every table and chart lists them. */
 export const analysisBuckets: readonly CycleBucketKey[] = ["csp", "cc", "unstructured", "leaps", "hedge"];

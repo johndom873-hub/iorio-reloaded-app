@@ -2,10 +2,11 @@ import { useState } from "react";
 import type { AnalysisBook } from "../../api/pnlAnalysis";
 import { usePnlAnalysis } from "../../hooks/usePnlAnalysis";
 import { formatDayMonth } from "../../lib/formatters";
-import { bookChoiceLabels, sinceInceptionPeriod, type AnalysisPeriod } from "../../lib/pnlAnalysisPresentation";
+import { analysisAsOfNote, bookChoiceLabels, sinceInceptionPeriod, type AnalysisPeriod } from "../../lib/pnlAnalysisPresentation";
 import { BookTag } from "../books/BookTag";
 import { CollapsibleCard } from "../CollapsibleCard";
 import { Spinner } from "../Spinner";
+import { TooltipSpan } from "../TooltipSpan";
 import { AnalysisPeriodPicker } from "./AnalysisPeriodPicker";
 import { BookComparisonTable } from "./BookComparisonTable";
 import { BookGrowthCharts } from "./BookGrowthCharts";
@@ -18,14 +19,31 @@ const tabs: [AnalyserTab, string][] = [["overview", "Overview"], ["attribution",
 
 // The Positions page's Profit & Loss card (mockup approved by Marcelo 2026-11-13,
 // https://claude.ai/artifact/6ZZiYtrzrhgvS1Z3UFEFXT): every book's returns and risk side by side, where the P&L came from,
-// each ticker with its cycles, and the P&L over time. As of last night's close; the page's book switch picks the book of the
-// Attribution, By ticker and Over time tabs, while Overview always compares all three.
+// each ticker with its cycles, and the P&L over time. As of last night's close, or during the trading day with today's live
+// night taken at load time (mockup approved 2026-11-24, https://claude.ai/artifact/PQ7bxzCAoQ4m4bH1m6ixkJ); the page's book
+// switch picks the book of the Attribution, By ticker and Over time tabs, while Overview always compares all three.
 export function PnlAnalyserCard({ book }: { book: AnalysisBook }) {
   const [period, setPeriod] = useState<AnalysisPeriod>(sinceInceptionPeriod);
   const [tab, setTab] = useState<AnalyserTab>("overview");
   const { analysis, loading, error } = usePnlAnalysis(period.days);
   const notesBeyondTheBook = analysis && book !== "all" ? <BookTag label={`${bookChoiceLabels[book]} book`} /> : null;
-  const asOf = analysis?.lastNight ? <span className="text-secondary fw-normal" style={{ fontSize: "0.8rem" }}>as of the {formatDayMonth(analysis.lastNight)} close</span> : null;
+  const asOfNote = analysis ? analysisAsOfNote(analysis) : null;
+  const asOf = asOfNote ? (
+    <span className="text-secondary fw-normal" style={{ fontSize: "0.8rem" }}>
+      {asOfNote.text}
+      {asOfNote.legsAtLastClose.length > 0 && (
+        <>
+          {" · "}
+          {/* Opening the list must not collapse the card: the header is its toggle (as the header actions do). */}
+          <span onClick={(event) => event.stopPropagation()}>
+            <TooltipSpan text={asOfNote.legsAtLastClose.join("\n")} multiline className="dotted-underline-label">
+              {asOfNote.legsAtLastClose.length === 1 ? "1 leg" : `${asOfNote.legsAtLastClose.length} legs`} at last close
+            </TooltipSpan>
+          </span>
+        </>
+      )}
+    </span>
+  ) : null;
 
   return (
     <CollapsibleCard

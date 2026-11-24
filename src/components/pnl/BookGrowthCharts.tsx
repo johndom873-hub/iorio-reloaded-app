@@ -5,7 +5,7 @@ import { useMediaQuery } from "../../hooks/useMediaQuery";
 import { useTheme } from "../../hooks/useTheme";
 import { cssVariableColor } from "../../lib/cssColors";
 import { formatCurrency, formatDayMonth, formatSignedPercentageValue } from "../../lib/formatters";
-import { bookChoiceLabels, bookColorVariable, bookLinePoints, roundAxisBounds, separatedLabelOffsets } from "../../lib/pnlAnalysisPresentation";
+import { bookChoiceLabels, bookColorVariable, bookLinePoints, liveBandAnnotation, liveNightOf, liveTakenAt, roundAxisBounds, separatedLabelOffsets } from "../../lib/pnlAnalysisPresentation";
 
 const bookOrder: AnalysisBook[] = ["pluto", "manual", "all"];
 /** The plot's height inside the chart: the chart's less the x-axis labels and, on the growth chart, the legend. */
@@ -18,15 +18,22 @@ const endLabelCentring = 5;
 // books is dashed; each line carries its name and value at its end, in the body colour (Manual's pink is a line colour,
 // 3.4:1 as text), the labels kept apart when lines end close together; a book funded after its range began is flat until then.
 // When the range starts before the books, a dotted line marks the books' first night: before it only All books exists.
+// A range ending with today's live night shades its last segment, from the previous close to now (mockup approved 2026-11-24).
 export function BookGrowthCharts({ analysis, emphasisBook, growthHeight = 250, drawdownHeight = 190 }: { analysis: PnlAnalysis; emphasisBook?: AnalysisBook; growthHeight?: number; drawdownHeight?: number }) {
   const { theme } = useTheme();
   const isPhone = useMediaQuery("(max-width: 575.98px)");
   const booksBeginInRange = analysis.booksFirstNight !== null && analysis.range !== null && analysis.booksFirstNight > analysis.range.baselineNight;
+  const liveNight = liveNightOf(analysis);
+  const allNights = analysis.books.all.nights.map((night) => night.night);
+  const nightBeforeLive = liveNight === null ? null : (allNights[allNights.indexOf(liveNight) - 1] ?? analysis.range?.baselineNight ?? null);
+  // The drawdown chart's band has no label: its top is 0%, where a book at its peak runs, and the growth chart above names it.
+  const liveBand = (label: string) => (liveNight !== null && nightBeforeLive !== null ? liveBandAnnotation(Date.parse(`${nightBeforeLive}T00:00:00Z`), Date.parse(`${liveNight}T00:00:00Z`), label, textColorByTheme[theme], cssVariableColor("--iorio-pnl-live-band"), "inside") : null);
 
   const chartFor = (field: "growth" | "drawdown") => {
     const lines = bookOrder.map((book) => ({ book, points: bookLinePoints(analysis.books[book], field) })).filter((line) => line.points.length > 0);
     const formatValue = (value: number) => (field === "growth" ? formatCurrency(value, 2) : formatSignedPercentageValue(value, 2));
     const height = field === "growth" ? growthHeight : drawdownHeight;
+    const band = liveBand(field === "growth" ? `Live ${liveTakenAt(analysis)}` : "");
     const axis = roundAxisBounds(lines.flatMap((line) => line.points.map((point) => point.value)), field === "drawdown" ? 0 : undefined);
     const plotHeight = height - plotHeightAllowance[field];
     const ends = lines.map((line) => line.points.at(-1)!);
@@ -60,16 +67,20 @@ export function BookGrowthCharts({ analysis, emphasisBook, growthHeight = 250, d
       dataLabels: { enabled: false },
       annotations: {
         points: endLabels,
-        xaxis: booksBeginInRange
-          ? [
-              {
-                x: Date.parse(`${analysis.booksFirstNight}T00:00:00Z`),
-                borderColor: textColorByTheme[theme],
-                strokeDashArray: 3,
-                label: { text: field === "growth" ? `Books begin ${formatDayMonth(analysis.booksFirstNight!)}` : "", orientation: "horizontal", borderWidth: 0, style: { color: textColorByTheme[theme], background: "transparent", fontSize: "0.72rem" } },
-              },
-            ]
-          : [],
+        xaxis: [
+          ...(booksBeginInRange
+            ? [
+                {
+                  x: Date.parse(`${analysis.booksFirstNight}T00:00:00Z`),
+                  borderColor: textColorByTheme[theme],
+                  strokeDashArray: 3,
+                  // Ends at its line, so it never meets the Live band's label, which starts inside the band (always after the books began).
+                  label: { text: field === "growth" ? `Books begin ${formatDayMonth(analysis.booksFirstNight!)}` : "", orientation: "horizontal" as const, textAnchor: "end" as const, offsetX: -4, borderWidth: 0, style: { color: textColorByTheme[theme], background: "transparent", fontSize: "0.72rem" } },
+                },
+              ]
+            : []),
+          ...(band === null ? [] : [band]),
+        ],
       },
     };
     const series = lines.map((line) => ({ name: bookChoiceLabels[line.book], data: line.points.map((point) => ({ x: Date.parse(`${point.night}T00:00:00Z`), y: point.value })) }));

@@ -87,8 +87,11 @@
   --iorio-pnl-adds: #2b8a3e;
   --iorio-pnl-takes-away: #d63939;
   --iorio-pnl-total: #283593;
+  /* The P&L charts' Live band (mockup approved 2026-11-24): a tint behind the lines, never text. */
+  --iorio-pnl-live-band: rgba(32, 107, 196, 0.1);
 }
 :root[data-bs-theme="dark"] {
+  --iorio-pnl-live-band: rgba(110, 168, 254, 0.12);
   --iorio-book-pluto: #d0d8ff;
   --iorio-book-manual: #e8508a;
   --iorio-book-all: #9ca3af;

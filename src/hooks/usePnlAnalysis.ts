@@ -2,9 +2,10 @@ import { useEffect, useState } from "react";
 import { errorMessage } from "../api/client";
 import { fetchPnlAnalysis, type AnalysisDays, type PnlAnalysis } from "../api/pnlAnalysis";
 
-// The P&L Analyser's figures for a range. The figures change once a night, so a range already asked for in the last five
-// minutes is served from the same request: the Dashboard's four cards share one, and switching tabs or books asks nothing.
-const reuseForMs = 5 * 60_000;
+// The P&L Analyser's figures for a range. During the trading day they end with today's live night, taken when asked for, so
+// a range asked for in the last minute is served from the same request (Marcelo 2026-11-24): the Dashboard's four cards
+// share one, switching tabs or books asks nothing, and coming back after a minute or a page refresh gets fresh figures.
+const reuseForMs = 60_000;
 const requests = new Map<string, { at: number; promise: Promise<PnlAnalysis> }>();
 
 function requestFor(days: AnalysisDays): Promise<PnlAnalysis> {

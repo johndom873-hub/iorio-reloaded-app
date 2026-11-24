@@ -6,7 +6,7 @@ import type { PerformanceSummary } from "../api/dashboard";
 import type { AnalysisBook, BookRiskFigures, GatedFigure } from "../api/pnlAnalysis";
 import { usePnlAnalysis } from "../hooks/usePnlAnalysis";
 import { formatDayMonth, formatPercentageValue, formatRatio, formatSignedPercentageValue, formatSignedPnl, pnlTextClass } from "../lib/formatters";
-import { bookChoiceLabels, gatedNote, sinceInceptionPeriod, type AnalysisPeriod } from "../lib/pnlAnalysisPresentation";
+import { bookChoiceLabels, gatedNote, liveNightOf, liveTakenAt, sinceInceptionPeriod, type AnalysisPeriod } from "../lib/pnlAnalysisPresentation";
 import { AnalysisPeriodPicker } from "./pnl/AnalysisPeriodPicker";
 import { BookComparisonTable } from "./pnl/BookComparisonTable";
 import { BookGrowthCharts } from "./pnl/BookGrowthCharts";
@@ -81,7 +81,7 @@ export function PerformanceCard({ book, performance, loading }: PerformanceCardP
       subtitle={
         <span className="text-secondary fw-normal" style={{ fontSize: "0.75rem" }}>
           Time-weighted, net of deposits and withdrawals{book === "all" ? "" : ` · ${bookChoiceLabels[book]} book`}
-          {risk ? ` · ${formatDayMonth(risk.baselineNight)} close to ${formatDayMonth(risk.lastNight)}` : ""}
+          {risk ? ` · ${formatDayMonth(risk.baselineNight)} close to ${risk.lastNight === liveNightOf(analysis) ? `${liveTakenAt(analysis)} today (live)` : formatDayMonth(risk.lastNight)}` : ""}
         </span>
       }
       storageKey="performance"

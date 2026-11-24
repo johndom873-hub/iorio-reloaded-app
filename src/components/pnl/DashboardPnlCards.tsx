@@ -1,8 +1,8 @@
 import { useState, type ReactNode } from "react";
-import type { AnalysisBook } from "../../api/pnlAnalysis";
+import type { AnalysisBook, PnlAnalysis } from "../../api/pnlAnalysis";
 import { usePnlAnalysis } from "../../hooks/usePnlAnalysis";
 import { asShownDollars, formatSignedPnl, pnlTextClass, todayInEasternIso } from "../../lib/formatters";
-import { analysisDaysForPreset, bookChoiceLabels, periodPnlRows, sumComponents, waterfallSteps, type OverTimeGranularity } from "../../lib/pnlAnalysisPresentation";
+import { analysisDaysForPreset, bookChoiceLabels, liveNightOf, liveTakenAt, periodPnlRows, sumComponents, waterfallSteps, type OverTimeGranularity } from "../../lib/pnlAnalysisPresentation";
 import { BookTag } from "../books/BookTag";
 import { CollapsibleCard } from "../CollapsibleCard";
 import { CycleBucketBadge } from "../CycleBucketBadge";
@@ -17,8 +17,19 @@ import { PnlWaterfallChart } from "./PnlWaterfallChart";
 
 const sinceInception = { from: null, to: null };
 
-function bookTagFor(book: AnalysisBook): ReactNode {
-  return book === "all" ? undefined : <BookTag label={`${bookChoiceLabels[book]} book`} />;
+/** The book's tag and, when the figures end with today's live night, when it was taken: "live as of 11:08 ET" (mockup approved 2026-11-24). */
+function subtitleFor(book: AnalysisBook, analysis: PnlAnalysis | null): ReactNode {
+  const takenAt = liveTakenAt(analysis);
+  return (
+    <>
+      {book !== "all" && <BookTag label={`${bookChoiceLabels[book]} book`} />}
+      {takenAt !== null && (
+        <span className="text-secondary fw-normal text-nowrap" style={{ fontSize: "0.8rem" }}>
+          live as of {takenAt}
+        </span>
+      )}
+    </>
+  );
 }
 
 function LoadState({ loading, error }: { loading: boolean; error: string | null }) {
@@ -38,7 +49,7 @@ export function PnlByPeriodCard({ book }: { book: AnalysisBook }) {
   const nights = analysis?.books[book].nights ?? [];
   const periods = analysis?.lastNight ? periodPnlRows(nights, analysis.lastNight) : null;
   return (
-    <CollapsibleCard title="P&L by Period" subtitle={bookTagFor(book)} storageKey="pnl-by-period" className="pnl-card">
+    <CollapsibleCard title="P&L by Period" subtitle={subtitleFor(book, analysis)} storageKey="pnl-by-period" className="pnl-card">
       <LoadState loading={loading} error={error} />
       {!loading && periods && (
         <div className="table-responsive table-flush">
@@ -46,7 +57,7 @@ export function PnlByPeriodCard({ book }: { book: AnalysisBook }) {
             <thead className="table-light">
               <tr>
                 <th>Strategy</th>
-                {["Day", "WTD", "MTD", "YTD"].map((label) => (
+                {[liveNightOf(analysis) === null ? "Day" : "Today", "WTD", "MTD", "YTD"].map((label) => (
                   <th key={label} className="text-end">{label}</th>
                 ))}
               </tr>
@@ -87,7 +98,7 @@ export function YtdComponentsCard({ book }: { book: AnalysisBook }) {
   const nights = analysis?.books[book].nights ?? [];
   const components = sumComponents(nights);
   return (
-    <CollapsibleCard title="YTD P&L by component" subtitle={bookTagFor(book)} storageKey="pnl-by-strategy" className="pnl-card">
+    <CollapsibleCard title="YTD P&L by component" subtitle={subtitleFor(book, analysis)} storageKey="pnl-by-strategy" className="pnl-card">
       <LoadState loading={loading} error={error} />
       {!loading && analysis && (nights.length === 0 ? <div className="text-secondary">No nights this year yet.</div> : <PnlWaterfallChart steps={waterfallSteps(components)} total={components.bookPnl} orientation="horizontal" />)}
       {!loading && analysis && nights.length > 0 && <div className="text-secondary" style={{ fontSize: "0.72rem" }}>Green adds, red takes away; the last bar is the book's P&amp;L.</div>}
@@ -101,7 +112,7 @@ export function StrategyOverTimeCard({ book }: { book: AnalysisBook }) {
   return (
     <CollapsibleCard
       title="P&L by strategy over time"
-      subtitle={bookTagFor(book)}
+      subtitle={subtitleFor(book, analysis)}
       storageKey="pnl-over-time"
       className="mb-3 pnl-card"
       headerActions={
@@ -121,7 +132,7 @@ export function StrategyOverTimeCard({ book }: { book: AnalysisBook }) {
       }
     >
       <LoadState loading={loading} error={error} />
-      {!loading && analysis && <PnlOverTimeChart nights={analysis.books[book].nights} group="strategy" granularity={granularity} height={280} />}
+      {!loading && analysis && <PnlOverTimeChart nights={analysis.books[book].nights} group="strategy" granularity={granularity} height={280} liveNight={liveNightOf(analysis)} />}
       {!loading && analysis && (
         <div className="text-secondary" style={{ fontSize: "0.72rem" }}>
           Each bar's segments add up to the line, the book's P&amp;L from its nightly value: Unexplained is a segment of its own, so a gap in the attribution shows.
