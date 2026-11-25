@@ -616,6 +616,10 @@ export interface PlutoHowItWorks {
     ledgerCatchUpRetrySeconds: number;
     /** …and a ticker whose record and positions still disagree after this many seconds is held, a person told. */
     ledgerMismatchHoldSeconds: number;
+    /** A ticker switched on: its first look waits up to this many seconds for its live stock price… */
+    switchedOnQuoteWaitSeconds: number;
+    /** …and an order held back only for want of a live price is looked at once more this many seconds later. */
+    liveQuoteRetrySeconds: number;
     firstPositionPct: number;
     putsStartCallYieldPct: number;
     putMaxAbsDelta: number;

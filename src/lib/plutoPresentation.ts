@@ -455,6 +455,8 @@ export function describeTrigger(pass: Pick<PlutoPass, "trigger" | "triggerDetail
       return form === "short" ? "Position closed" : "after a position closed";
     case "ledger_catch_up":
       return form === "short" ? "Retry after a fill was recorded" : "after waiting for a fill to reach the account's positions";
+    case "live_quote_retry":
+      return form === "short" ? `Retry after no live quote${list ? ` · ${list}` : ""}` : `again after an order${list ? ` on ${list}` : ""} had no live quote`;
     case "buy_back_check":
       return form === "short" ? `${list ? `${list} ` : ""}stock at a Call's strike` : `after ${list || "the stock"} reached the strike of a Call expiring today`;
     case "opening_analysis":
