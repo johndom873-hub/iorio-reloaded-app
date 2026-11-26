@@ -1,11 +1,13 @@
 ---
-description: Review an iorio-reloaded-app screen/component for desktop and mobile UI/UX issues against this app's actual conventions. Usage: /ui-ux [ComponentName or file path]
+description: Review an iorio-reloaded-app screen/component for desktop and mobile UI/UX issues against this app's actual conventions. Usage: /ui-ux <ComponentName or file path>
+context: fork
+agent: ui-auditor
 ---
 
 You are performing a UI/UX review of the **iorio-reloaded-app** frontend (options trading platform; one user is a developer, the other is a non-developer business user).
 Stack: React + `@tabler/core` (CSS and JS) + ApexCharts (via a shared wrapper) + `lightweight-charts` (price/IV history) + Plotly (volatility surface only).
 
-Review the component or screen given in the argument (or the most recently discussed screen if no argument). Report every violation with file:line and the exact fix. At the end, mark each checklist item PASS or FAIL.
+Review the component or screen given in the argument. This runs in a separate agent that can't see the conversation, so with no argument, stop and say an argument is needed. Report every violation with file:line and the exact fix. At the end, mark each checklist item PASS or FAIL.
 
 This file is scoped to this project and reflects its shared components and past incidents. Where it conflicts with generic Bootstrap/Tabler assumptions, this file wins. The general rules in `~/.claude/CLAUDE.md`'s UI/UX Standards section (rem font sizes, semantic colours, `table-light` thead, badges, `btn-sm`, background cascade) also apply and are not repeated here.
 
@@ -16,7 +18,7 @@ This file is scoped to this project and reflects its shared components and past 
 A finding counts only if it was **seen on screen** in the relevant state. Code reading and DOM measurements are hypotheses to confirm visually, and source code is read afterwards to explain the cause. A measurement-only audit once missed overlapping column headers ("DESCRIPTVALUE") and over-reported "table too wide" findings that actually scrolled cleanly.
 
 1. Read the component(s) to learn what states exist (tabs, collapsibles, modals, empty/loading/error, live updates).
-2. Open the screen with the Playwright MCP against the local dev server (log in with the local dev credentials from memory). If a state can't be reached with local data, sync or mutate data to produce it (then restore it); don't skip the state.
+2. Open the screen with the Playwright MCP against the local dev server (log in with the local dev credentials in `~/.claude/projects/-Users-marcelo-Sites-iorio-reloaded-api/memory/reference_local_dev_login_credentials.md`). If a state can't be reached with local data, sync or mutate data to produce it (then restore it); don't skip the state.
 3. Screenshot at **1706px** (the user's main screen), **1440px** (the tight desktop case) and **390px** (phone), in **both themes** (localStorage key `iorio-theme`; confirm `data-bs-theme` on `<html>` changed). Wait ~350 ms after a theme toggle before measuring or capturing, or the transition gives false readings.
 4. In each viewport: scroll every overflowing container to at least three positions, open every collapsible/tab/modal/dropdown/tooltip, and screenshot each.
 5. Measure what a screenshot can't settle: text contrast via `getComputedStyle` (colours may come back as `color(srgb …)` fractions; parse those, don't eyeball), tap-target size and row heights via `getBoundingClientRect` at 390px.
