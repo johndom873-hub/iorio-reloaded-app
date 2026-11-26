@@ -1,5 +1,6 @@
 import { Fragment } from "react";
 import type { PnlAnalysis } from "../../api/pnlAnalysis";
+import { useScrolledToEnd } from "../../hooks/useScrolledToEnd";
 import { isBoolean, oneOf, useStoredState } from "../../hooks/useStoredState";
 import { analysisBooks, bookChoiceLabels, performanceByMonth, performanceComponents, performanceDays, performanceUnits, type PerformanceBreakdown, type PerformanceUnit } from "../../lib/pnlAnalysisPresentation";
 import { BookSwitch } from "../books/BookSwitch";
@@ -22,6 +23,7 @@ export function PerformanceByMonthTable({ analysis }: { analysis: PnlAnalysis })
   const [open, setOpen] = useStoredState("performance-by-month-breakdown-open", false, isBoolean);
   const { months, years } = performanceByMonth(performanceDays(analysis.books[book].nights));
   const yearRows = [...years.keys()].sort().reverse();
+  const scrollBox = useScrolledToEnd<HTMLDivElement>(`${book}|${unit}|${open}|${yearRows.length}`);
   const componentValue = (breakdown: PerformanceBreakdown | undefined, key: (typeof performanceComponents)[number]["key"]) => (breakdown === undefined ? undefined : unit === "percent" ? breakdown.points[key] : breakdown.dollars[key]);
 
   return (
@@ -40,7 +42,7 @@ export function PerformanceByMonthTable({ analysis }: { analysis: PnlAnalysis })
         <div className="text-secondary">The {bookChoiceLabels[book]} book has no sessions yet.</div>
       ) : (
         <>
-          <div className="table-responsive">
+          <div className="table-responsive" ref={scrollBox}>
             <table className="table table-sm table-vcenter mb-0 performance-grid" style={{ fontSize: "0.8rem" }}>
               <thead className="table-light">
                 <tr>

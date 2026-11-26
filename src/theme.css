@@ -1877,25 +1877,33 @@
   color: #500724;
 }
 
-/* Dashboard Performance grid: year labels stay visible while the 13 columns scroll sideways on a phone. */
+/* Dashboard Performance grid: year labels stay visible while the columns scroll sideways. A column fits a 9-character
+   figure ("-$123,456", "+10.30%") in the mono font at 0.8rem with 0.5rem padding (85.5px of 88px). The label column fits
+   "Call premiums" with its swatch and By month's indent: 9.5rem, 8.25rem on a phone. */
 .performance-grid {
+  --performance-grid-label-width: 9.5rem;
+  --performance-grid-column-width: 5.5rem;
   table-layout: fixed;
-  /* Label column (a year, or a breakdown row such as "Call premiums") + 12 months + Year column; 5rem fits "+10.30%" and
-     "-$54,004" in the mono font. */
-  min-width: calc(9.5rem + 13 * 5rem);
+  /* The label + 12 months + Year. */
+  min-width: calc(var(--performance-grid-label-width) + 13 * var(--performance-grid-column-width));
+}
+@media (max-width: 575.98px) {
+  .performance-grid {
+    --performance-grid-label-width: 8.25rem;
+  }
 }
 .performance-grid th:first-child {
-  width: 9.5rem;
+  width: var(--performance-grid-label-width);
 }
 .performance-grid th:not(:first-child) {
-  width: calc((100% - 9.5rem) / 13);
+  width: calc((100% - var(--performance-grid-label-width)) / 13);
 }
-/* By day: the label column + the last 15 sessions. */
+/* By day: the label + the last 15 sessions. */
 .performance-grid.performance-grid-days {
-  min-width: calc(9.5rem + 15 * 5rem);
+  min-width: calc(var(--performance-grid-label-width) + 15 * var(--performance-grid-column-width));
 }
 .performance-grid.performance-grid-days th:not(:first-child) {
-  width: calc((100% - 9.5rem) / 15);
+  width: calc((100% - var(--performance-grid-label-width)) / 15);
 }
 .performance-grid-day-heading > span {
   display: block;
@@ -1903,15 +1911,15 @@
   text-transform: none;
   letter-spacing: 0;
 }
-.performance-grid .performance-grid-total-row > * {
-  border-top: 1px solid var(--tblr-body-color);
-  font-weight: 700;
+/* The sticky label cell of a totals row keeps the row's own fill (the tbody rule above would paint it the card's). */
+.performance-grid .table-totals-row td:first-child {
+  background-color: var(--tblr-bg-surface-tertiary);
 }
 .performance-grid th,
 .performance-grid td {
   white-space: nowrap;
-  padding-left: 0.6rem;
-  padding-right: 0.6rem;
+  padding-left: 0.5rem;
+  padding-right: 0.5rem;
 }
 .performance-grid thead th {
   background-color: var(--tblr-bg-surface-secondary);

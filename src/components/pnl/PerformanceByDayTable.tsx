@@ -1,4 +1,5 @@
 import type { PnlAnalysis } from "../../api/pnlAnalysis";
+import { useScrolledToEnd } from "../../hooks/useScrolledToEnd";
 import { oneOf, useStoredState } from "../../hooks/useStoredState";
 import { formatDayMonth, formatWeekdayShort } from "../../lib/formatters";
 import { analysisBooks, bookChoiceLabels, liveNightOf, liveTakenAt, performanceComponents, performanceDays, performanceUnits } from "../../lib/pnlAnalysisPresentation";
@@ -16,6 +17,7 @@ export function PerformanceByDayTable({ analysis }: { analysis: PnlAnalysis }) {
   const [unit, setUnit] = useStoredState("performance-by-day-unit", "percent", oneOf(performanceUnits));
   const days = performanceDays(analysis.books[book].nights).slice(-sessionsShown);
   const liveNight = liveNightOf(analysis);
+  const scrollBox = useScrolledToEnd<HTMLDivElement>(`${book}|${unit}|${days.at(-1)?.night ?? ""}`);
 
   return (
     <>
@@ -33,7 +35,7 @@ export function PerformanceByDayTable({ analysis }: { analysis: PnlAnalysis }) {
         <div className="text-secondary">The {bookChoiceLabels[book]} book has no sessions yet.</div>
       ) : (
         <>
-          <div className="table-responsive">
+          <div className="table-responsive" ref={scrollBox}>
             <table className="table table-sm table-vcenter mb-0 performance-grid performance-grid-days" style={{ fontSize: "0.8rem" }}>
               <thead className="table-light">
                 <tr>
@@ -57,13 +59,15 @@ export function PerformanceByDayTable({ analysis }: { analysis: PnlAnalysis }) {
                     ))}
                   </tr>
                 ))}
-                <tr className="performance-grid-total-row">
-                  <th scope="row">Total</th>
+              </tbody>
+              <tfoot className="table-totals-row">
+                <tr>
+                  <td>Total</td>
                   {days.map((day) => (
-                    <PerformanceValueCell key={day.night} value={unit === "percent" ? day.returnPercent : day.pnl} unit={unit} className="fw-bold" />
+                    <PerformanceValueCell key={day.night} value={unit === "percent" ? day.returnPercent : day.pnl} unit={unit} />
                   ))}
                 </tr>
-              </tbody>
+              </tfoot>
             </table>
           </div>
           <div className="text-secondary mt-1" style={{ fontSize: "0.75rem" }}>
