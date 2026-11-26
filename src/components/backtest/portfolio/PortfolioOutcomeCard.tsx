@@ -60,7 +60,7 @@ function YearEndChart({ summary, accountDollars }: { summary: PortfolioProjectio
   // End labels, top to bottom, kept 13 apart when lines end close together.
   const labels = [
     { key: "p90", value: last.p90, text: `90th ${formatCompactDollarsTrimmed(last.p90)}`, className: "portfolio-chart-axis" },
-    { key: "p50", value: last.p50, text: `v4 ${formatCompactDollarsTrimmed(last.p50)}`, className: "portfolio-chart-axis portfolio-chart-strong" },
+    { key: "p50", value: last.p50, text: `VF ${formatCompactDollarsTrimmed(last.p50)}`, className: "portfolio-chart-axis portfolio-chart-strong" },
     { key: "p10", value: last.p10, text: `10th ${formatCompactDollarsTrimmed(last.p10)}`, className: "portfolio-chart-axis" },
     { key: "book", value: heldBook[years]!, text: `Book held ${formatCompactDollarsTrimmed(heldBook[years]!)}`, className: "portfolio-chart-axis portfolio-chart-strong" },
     ...(heldSpy ? [{ key: "spy", value: heldSpy[years]!, text: `SPY held ${formatCompactDollarsTrimmed(heldSpy[years]!)}`, className: "portfolio-chart-axis" }] : []),
@@ -69,7 +69,7 @@ function YearEndChart({ summary, accountDollars }: { summary: PortfolioProjectio
     .sort((a, b) => a.at - b.at);
   for (let index = 1; index < labels.length; index++) labels[index]!.at = Math.max(labels[index]!.at, labels[index - 1]!.at + 13);
   return (
-    <svg className="portfolio-chart" viewBox={`0 0 ${width} ${height}`} role="img" aria-label="The account at each year's end: v4's 10th to 90th percentile and median, and the medians of holding the book and SPY">
+    <svg className="portfolio-chart" viewBox={`0 0 ${width} ${height}`} role="img" aria-label="The account at each year's end: Vol Farmer's 10th to 90th percentile and median, and the medians of holding the book and SPY">
       {ticks.map((value) => (
         <g key={value}>
           <line className="portfolio-chart-grid" x1={left} x2={width - right} y1={y(value)} y2={y(value)} />
@@ -90,7 +90,7 @@ function YearEndChart({ summary, accountDollars }: { summary: PortfolioProjectio
       {points.map((point) => (
         <circle key={point.year} className="portfolio-chart-dot" cx={x(point.year)} cy={y(point.p50)} r={point.year === years ? 4 : 2.5}>
           <title>
-            {`${point.year === 0 ? "Today" : `Year ${point.year}`}: v4 median ${formatCompactDollarsTrimmed(point.p50)}, 10th–90th ${formatCompactDollarsTrimmed(point.p10)} to ${formatCompactDollarsTrimmed(point.p90)}; book held ${formatCompactDollarsTrimmed(heldBook[point.year]!)}${heldSpy ? `, SPY held ${formatCompactDollarsTrimmed(heldSpy[point.year]!)}` : ""}`}
+            {`${point.year === 0 ? "Today" : `Year ${point.year}`}: Vol Farmer median ${formatCompactDollarsTrimmed(point.p50)}, 10th–90th ${formatCompactDollarsTrimmed(point.p10)} to ${formatCompactDollarsTrimmed(point.p90)}; book held ${formatCompactDollarsTrimmed(heldBook[point.year]!)}${heldSpy ? `, SPY held ${formatCompactDollarsTrimmed(heldSpy[point.year]!)}` : ""}`}
           </title>
         </circle>
       ))}
@@ -127,7 +127,7 @@ function ComparisonTable({ summaries }: { summaries: DriftSummaries }) {
   const rows: ComparisonRow[] = driftOrder.flatMap((drift) => {
     const summary = summaries[drift];
     return [
-      { key: `${drift}-v4`, drift, label: "v4 on the book", figures: summary.v4, isV4: true },
+      { key: `${drift}-v4`, drift, label: "Vol Farmer on the book", figures: summary.v4, isV4: true },
       { key: `${drift}-book`, drift, label: "Holding the book's tickers", figures: summary.heldBook, isV4: false },
       ...(summary.heldSpy ? [{ key: `${drift}-spy`, drift, label: "Holding SPY", figures: summary.heldSpy, isV4: false }] : []),
     ];
@@ -139,7 +139,7 @@ function ComparisonTable({ summaries }: { summaries: DriftSummaries }) {
       rows={rows}
       rowKey={(row) => row.key}
       dense
-      toolbar={<BacktestCardTitle title="v4 against buy and hold" description="the same paths; holding: each ticker's allocation in shares at today's price, never traded, dividends kept as cash" />}
+      toolbar={<BacktestCardTitle title="Vol Farmer against buy and hold" description="the same paths; holding: each ticker's allocation in shares at today's price, never traded, dividends kept as cash" />}
       extraRows={(row) => (row.isV4 ? { before: [{ key: `${row.drift}-group`, className: "portfolio-table-group-row", content: `${driftLabels[row.drift]} drift` }] } : null)}
       afterTable={
         <div className="text-secondary px-3 py-2" style={{ fontSize: "0.8rem" }}>
@@ -258,10 +258,10 @@ export function PortfolioOutcomeCard({ summaries, horizonYears, accountDollars, 
             <YearEndChart summary={shown} accountDollars={accountDollars} />
             <div className="portfolio-chart-legend">
               <span>
-                <span className="portfolio-legend-band" aria-hidden="true" /> v4 10th–90th
+                <span className="portfolio-legend-band" aria-hidden="true" /> Vol Farmer 10th–90th
               </span>
               <span>
-                <span className="portfolio-legend-line portfolio-legend-v4" aria-hidden="true" /> v4 median
+                <span className="portfolio-legend-line portfolio-legend-v4" aria-hidden="true" /> Vol Farmer median
               </span>
               <span>
                 <span className="portfolio-legend-line portfolio-legend-held-book" aria-hidden="true" /> holding the book, median

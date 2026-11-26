@@ -618,7 +618,7 @@ export function NewBacktestSessionPage() {
       const symbol = symbols[0]!;
       const ownTexts = ownValuesTextByPath(tickerOwnValues, symbol);
       const filledIn = Object.entries(ownTexts).every(([path, text]) => valueByPath[path] === text);
-      ownValuesNote = filledIn ? `Vol Farmer v4 runs ${symbol}'s own values (${ownValuesDescription(symbol)}), filled in under Settings.` : `${symbol} has its own values (${ownValuesDescription(symbol)}); this session's Settings differ from them.`;
+      ownValuesNote = filledIn ? `Vol Farmer runs ${symbol}'s own values (${ownValuesDescription(symbol)}), filled in under Settings.` : `${symbol} has its own values (${ownValuesDescription(symbol)}); this session's Settings differ from them.`;
     }
   }
   const periodNote = periodMode === "years" && fromYear !== null && toYear !== null ? (fromYear === toYear ? `whole year ${fromYear}` : `whole years ${fromYear} to ${toYear}`) : "custom dates";

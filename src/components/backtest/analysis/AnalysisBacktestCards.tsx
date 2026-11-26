@@ -36,7 +36,7 @@ function AccountValueChart({ symbol, backtest }: { symbol: string; backtest: Ana
     const lineOf = (valueOf: (week: (typeof weeks)[number]) => number | null) => weeks.flatMap((week, index) => (valueOf(week) === null ? [] : [`${xOf(index).toFixed(1)},${valueYOf(valueOf(week)!).toFixed(1)}`])).join(" ");
     const last = weeks.at(-1)!;
     const ends = [
-      { label: `VF v4 ${formatThousands(last.account)}`, y: valueYOf(last.account) },
+      { label: `VF ${formatThousands(last.account)}`, y: valueYOf(last.account) },
       { label: `${symbol} ${formatThousands(last.hold)}`, y: valueYOf(last.hold) },
       ...(last.spy === null ? [] : [{ label: `SPY ${formatThousands(last.spy)}`, y: valueYOf(last.spy) }]),
     ].sort((a, b) => a.y - b.y);
@@ -66,7 +66,7 @@ function AccountValueChart({ symbol, backtest }: { symbol: string; backtest: Ana
           <svg width="18" height="4" aria-hidden="true">
             <line x1="0" x2="18" y1="2" y2="2" className="analysis-svg-line is-account" />
           </svg>
-          VF v4
+          VF
         </span>
         <span className="analysis-legend-item">
           <svg width="18" height="4" aria-hidden="true">
@@ -81,7 +81,7 @@ function AccountValueChart({ symbol, backtest }: { symbol: string; backtest: Ana
           Buy and hold · SPY
         </span>
       </div>
-      <svg viewBox="0 0 820 340" className="analysis-svg" role="img" aria-label={`Account value by week: VF v4 ends at ${formatThousands(backtest.metrics?.endValue ?? 0)}, ${symbol} held at ${formatThousands(backtest.buyAndHoldMetrics?.endValue ?? 0)}; with VF v4's drawdown from its last peak`} onMouseLeave={() => setHoverIndex(null)}>
+      <svg viewBox="0 0 820 340" className="analysis-svg" role="img" aria-label={`Account value by week: VF ends at ${formatThousands(backtest.metrics?.endValue ?? 0)}, ${symbol} held at ${formatThousands(backtest.buyAndHoldMetrics?.endValue ?? 0)}; with VF's drawdown from its last peak`} onMouseLeave={() => setHoverIndex(null)}>
         {chart.grid.map((line) => (
           <g key={line.label}>
             <line x1={56} x2={696} y1={line.y} y2={line.y} className="analysis-svg-grid" />
@@ -127,7 +127,7 @@ function AccountValueChart({ symbol, backtest }: { symbol: string; backtest: Ana
               {formatDayMonthYear(hover.week.date)}
             </text>
             <text x={hover.boxX + 10} y={50} className="analysis-svg-text is-body">
-              VF v4 {formatThousands(hover.week.account)}
+              VF {formatThousands(hover.week.account)}
             </text>
             <text x={hover.boxX + 10} y={64} className="analysis-svg-text is-body">
               {symbol} held {formatThousands(hover.week.hold)}
@@ -171,7 +171,7 @@ export function AnalysisBacktestCard({ symbol, backtest, steadyWeekliesFrom, isT
   const { isColumnVisible, toggleColumn } = useColumnVisibility("analysis-v4-backtest-metrics", metricColumns.map((column) => column.key));
   const metrics = backtest.metrics;
   const rows: { label: string; strong: boolean; metrics: BacktestMetrics | null; calmar: number | null }[] = [
-    { label: "VF v4", strong: true, metrics, calmar: backtest.excessCalmar.v4 },
+    { label: "VF", strong: true, metrics, calmar: backtest.excessCalmar.v4 },
     { label: `${symbol}, held`, strong: false, metrics: backtest.buyAndHoldMetrics, calmar: backtest.excessCalmar.hold },
     { label: "SPY, held", strong: false, metrics: backtest.spyMetrics, calmar: backtest.excessCalmar.spy },
   ];
@@ -192,7 +192,7 @@ export function AnalysisBacktestCard({ symbol, backtest, steadyWeekliesFrom, isT
   return (
     <AnalysisCard
       title="Backtest"
-      description={`Vol Farmer v4 at the lab's values${isTrial ? ", a trial" : ""} · ${formatCurrency(backtest.startingValue, 0)} (a ${formatCurrency(backtest.startingPotDollars, 0)} pot) · ${formatDayMonthYear(backtest.startDate)} → ${formatDayMonthYear(backtest.endDate)}, ${steadyWeekliesFrom ? "from the start of steady weeklies" : "from the file's first day (it never has steady weeklies)"} to the file's end. Marked every trading day at 10:00 ET; buy and hold for comparison only.`}
+      description={`Vol Farmer at the lab's values${isTrial ? ", a trial" : ""} · ${formatCurrency(backtest.startingValue, 0)} (a ${formatCurrency(backtest.startingPotDollars, 0)} pot) · ${formatDayMonthYear(backtest.startDate)} → ${formatDayMonthYear(backtest.endDate)}, ${steadyWeekliesFrom ? "from the start of steady weeklies" : "from the file's first day (it never has steady weeklies)"} to the file's end. Marked every trading day at 10:00 ET; buy and hold for comparison only.`}
       actions={
         <button type="button" className="btn btn-outline-secondary" onClick={onOpenSession}>
           Open the session
@@ -285,11 +285,11 @@ export function AnalysisBacktestCard({ symbol, backtest, steadyWeekliesFrom, isT
 const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 const yearColumns = (symbol: string) => [
   { key: "months", header: "Months" },
-  { key: "v4", header: "VF v4" },
+  { key: "v4", header: "VF" },
   { key: "hold", header: `${symbol} held` },
   { key: "spy", header: "SPY held" },
   { key: "tbills", header: "T-bills" },
-  { key: "v4Drawdown", header: "VF v4 Max drawdown" },
+  { key: "v4Drawdown", header: "VF Max drawdown" },
   { key: "holdDrawdown", header: `${symbol} Max drawdown` },
 ];
 
@@ -301,7 +301,7 @@ export function AnalysisMonthByMonthCard({ symbol, backtest }: { symbol: string;
   return (
     <AnalysisCard
       title="Month by month"
-      description={`VF v4's return each month, % of the account at the month's start; the year compounds its months. Shaded years: VF v4 against holding ${symbol}.`}
+      description={`VF's return each month, % of the account at the month's start; the year compounds its months. Shaded years: VF against holding ${symbol}.`}
       actions={<ColumnVisibilityPopover columns={columns} isColumnVisible={isColumnVisible} onToggleColumn={toggleColumn} variant="toolbar" />}
     >
       <div className="table-responsive">
@@ -387,7 +387,7 @@ export function AnalysisWheelCyclesCard({ symbol, backtest }: { symbol: string; 
   return (
     <AnalysisCard
       title="Wheel cycles"
-      description={`${formatNumber(closed)} closed cycles${open > 0 ? ` · ${formatNumber(open)} open` : ""}. A cycle runs from its first shares bought to the last called away; v4 buys them back at the next look, so most cycles are days long.`}
+      description={`${formatNumber(closed)} closed cycles${open > 0 ? ` · ${formatNumber(open)} open` : ""}. A cycle runs from its first shares bought to the last called away; Vol Farmer buys them back at the next look, so most cycles are days long.`}
       actions={<ColumnVisibilityPopover columns={columns} isColumnVisible={isColumnVisible} onToggleColumn={toggleColumn} variant="toolbar" />}
     >
       <div className="table-responsive analysis-scroll-table">

@@ -183,7 +183,7 @@ function describeSourceYears(years: AnalysisYearRow[]): string {
 }
 
 const callColumns = [
-  { key: "return", header: "VF v4 return" },
+  { key: "return", header: "VF return" },
   { key: "calls", header: "Calls sold" },
   { key: "yield", header: "Yield, median" },
   { key: "iv", header: "IV of the Calls sold" },

@@ -1296,10 +1296,10 @@ export function roundValueAxis(low: number, high: number, maxTicks: number): { m
 
 // ---- Decision maker (the stand-in rules, or the AI model through the Claude subscription) ----
 
-export const decisionMakerLabel: Record<BacktestDecisionMaker, string> = { rules: "Rules", llm: "The AI model", baseline: "CC + Put Ladder", steady_stake: "Steady Stake", vol_farmer: "Original Vol Farmer (retired)", vol_farmer_v2: "Vol Farmer v2", vol_farmer_v3: "Vol Farmer v3", vol_farmer_v4: "Vol Farmer v4" };
+export const decisionMakerLabel: Record<BacktestDecisionMaker, string> = { rules: "Rules", llm: "The AI model", baseline: "CC + Put Ladder", steady_stake: "Steady Stake", vol_farmer: "Original Vol Farmer (retired)", vol_farmer_v2: "Vol Farmer v2", vol_farmer_v3: "Vol Farmer v3", vol_farmer_v4: "Vol Farmer" };
 
 /** "decided by the rules", in a session's subtitle. */
-export const decidedByPhrase: Record<BacktestDecisionMaker, string> = { rules: "the rules", llm: "the AI model", baseline: "the CC + Put Ladder", steady_stake: "the Steady Stake", vol_farmer: "the original Vol Farmer", vol_farmer_v2: "Vol Farmer v2", vol_farmer_v3: "Vol Farmer v3", vol_farmer_v4: "Vol Farmer v4" };
+export const decidedByPhrase: Record<BacktestDecisionMaker, string> = { rules: "the rules", llm: "the AI model", baseline: "the CC + Put Ladder", steady_stake: "the Steady Stake", vol_farmer: "the original Vol Farmer", vol_farmer_v2: "Vol Farmer v2", vol_farmer_v3: "Vol Farmer v3", vol_farmer_v4: "Vol Farmer" };
 
 /** The decision makers a session can still run (the others retired: the rules and the AI model, the original Vol Farmer on 30 Oct 2026, the CC + Put Ladder, v2 and v3 on 2 Nov 2026). */
 export const decisionMakerCanRun = (decisionMaker: BacktestDecisionMaker): boolean => decisionMaker === "steady_stake" || decisionMaker === "vol_farmer_v4";

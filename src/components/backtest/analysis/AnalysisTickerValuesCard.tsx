@@ -180,7 +180,7 @@ export function AnalysisTickerValuesCard({ symbol, labValues, ownValues, shownTr
   return (
     <AnalysisCard
       title={`${symbol}'s values`}
-      description={`Vol Farmer v4, backtesting only: ${symbol}'s analysis and a backtest of ${symbol} alone. Every other value is the lab's.`}
+      description={`Vol Farmer, backtesting only: ${symbol}'s analysis and a backtest of ${symbol} alone. Every other value is the lab's.`}
       actions={
         <button type="button" className="btn btn-outline-secondary" disabled={atLab} onClick={() => setDraft(draftTextOf(labValues))}>
           Use the lab's values

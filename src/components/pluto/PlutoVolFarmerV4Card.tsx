@@ -13,7 +13,7 @@ import { TickerButton, WarningIcon } from "./plutoBits";
 // The Live tab's Vol Farmer v4 card (approved mockup https://claude.ai/artifact/QGwKxNa7orZFFjfeRBnhoU, 2026-10-28): each
 // v4 ticker's two positions and LEAPS as v4's memory counts them, its working orders and what its last round said, with
 // the warnings its last round's figures raise. Loaded again after every round. The Next action column (approved mockup,
-// 2026-11-05) says what v4 does next on the ticker and what stops it; "All actions" lists the six things v4 can do.
+// 2026-11-05) says what v4 does next on the ticker and what stops it; "All actions" lists the six things Vol Farmer can do.
 
 interface PlutoVolFarmerV4CardProps {
   /** Pluto's last round: the card loads again when it changes. */
@@ -164,7 +164,7 @@ export function PlutoVolFarmerV4Card({ lastPassAt, isPhone, onOpenTicker }: Plut
         setError(null);
       })
       .catch((err) => {
-        if (!cancelled) setError(errorMessage(err, "Could not load Vol Farmer v4's tickers."));
+        if (!cancelled) setError(errorMessage(err, "Could not load Vol Farmer's tickers."));
       });
     return () => {
       cancelled = true;
@@ -181,7 +181,7 @@ export function PlutoVolFarmerV4Card({ lastPassAt, isPhone, onOpenTicker }: Plut
 
   let body: ReactNode;
   if (error) body = <div className="alert alert-danger pm-error mb-0">{error}</div>;
-  else if (tickers === null) body = <div className="pm-empty"><Spinner size="sm" label="Loading Vol Farmer v4's tickers" /></div>;
+  else if (tickers === null) body = <div className="pm-empty"><Spinner size="sm" label="Loading Vol Farmer's tickers" /></div>;
   else if (isPhone) {
     body = (
       <ul className="pm-mlist pm-v4-mlist">
@@ -279,9 +279,9 @@ export function PlutoVolFarmerV4Card({ lastPassAt, isPhone, onOpenTicker }: Plut
   return (
     <section className="pm-card">
       <div className="pm-card-h">
-        <h2 className="pm-card-t">Vol Farmer v4</h2>
+        <h2 className="pm-card-t">Vol Farmer</h2>
         <div className="pm-card-meta">
-          {!isPhone && <span>Each ticker's two positions and LEAPS as v4 counts them, and what it does next</span>}
+          {!isPhone && <span>Each ticker's two positions and LEAPS as Vol Farmer counts them, and what it does next</span>}
           {lastRoundAt && <span>last round {formatEasternTime(lastRoundAt)}</span>}
           {!isPhone && <ColumnVisibilityPopover variant="toolbar" columns={columns.map((column) => ({ key: column.key, header: column.header }))} isColumnVisible={isColumnVisible} onToggleColumn={toggleColumn} />}
         </div>
@@ -303,7 +303,7 @@ export function PlutoVolFarmerV4Card({ lastPassAt, isPhone, onOpenTicker }: Plut
       )}
       {body}
       <div className="pm-card-foot">
-        B-E¹: the first position's break-even, what its shares cost less its Calls' premiums per share. B-E²: the second's, its assigned Puts' strike less its Puts' and Calls' premiums per share. Next action: what v4 does next on the ticker, when, and what stops it if something does. Last round: what the last round noted on the ticker (a quiet round says it planned nothing) and the last order Pluto sent on it. An order still working counts as planned until it is done. Warnings come from each ticker's last round.
+        B-E¹: the first position's break-even, what its shares cost less its Calls' premiums per share. B-E²: the second's, its assigned Puts' strike less its Puts' and Calls' premiums per share. Next action: what Vol Farmer does next on the ticker, when, and what stops it if something does. Last round: what the last round noted on the ticker (a quiet round says it planned nothing) and the last order Pluto sent on it. An order still working counts as planned until it is done. Warnings come from each ticker's last round.
       </div>
     </section>
   );

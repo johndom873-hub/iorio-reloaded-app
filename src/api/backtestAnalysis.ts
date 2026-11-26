@@ -13,7 +13,7 @@ export const analysisStepLabels: Record<AnalysisStep, string> = {
   calls: "Scanning the expiry days' Calls",
   earnings_correlation: "Earnings and correlations",
   saving: "Saving the figures",
-  backtest: "Running the Vol Farmer v4 backtest",
+  backtest: "Running the Vol Farmer backtest",
 };
 
 export type AnalysisReason = "manual" | "ticker_settings" | "global_settings" | "trial";

@@ -31,7 +31,7 @@ const optionsGroup = { label: "Options", className: "text-center", title: "Days 
 const spotGroup = { label: "Spot", className: "text-center", title: "IBKR daily spot prices of the stock, in the local database: the forecast and the settlement prices come from them" };
 
 /** The columns of each ticker's latest Vol Farmer v4 analysis (mockup approved 2026-11-01). */
-const analysisGroup = { label: "VF", className: "text-center", title: "Each ticker's latest analysis for Vol Farmer v4 at the lab's values; open it from the symbol" };
+const analysisGroup = { label: "VF", className: "text-center", title: "Each ticker's latest analysis for Vol Farmer at the lab's values; open it from the symbol" };
 /** While an analysis runs, the table's analyses are read again this often. */
 const analysesPollMilliseconds = 15_000;
 
@@ -257,7 +257,7 @@ export function BacktestDataFilesTable({ files, jobs, suitabilityBySymbol, onFil
       render: (file) => {
         const ownValuesText = analyses ? describeTickerValuesDifferingFromLab(mergeTickerOwnValues(analyses.labTickerFieldValues, analyses.tickerValuesBySymbol[file.symbol]?.values), analyses.labTickerFieldValues) : "";
         const symbolCell = file.firstDate ? (
-          <button type="button" className="btn btn-link p-0 text-decoration-none fw-bold iorio-symbol-link" title={`Analyse ${file.symbol} for Vol Farmer v4`} onClick={() => setAnalysedSymbol(file.symbol)}>
+          <button type="button" className="btn btn-link p-0 text-decoration-none fw-bold iorio-symbol-link" title={`Analyse ${file.symbol} for Vol Farmer`} onClick={() => setAnalysedSymbol(file.symbol)}>
             {file.symbol}
           </button>
         ) : (
@@ -277,7 +277,7 @@ export function BacktestDataFilesTable({ files, jobs, suitabilityBySymbol, onFil
     {
       key: "suitability",
       header: "Suitability",
-      headerTitle: "Whether the ticker suits Vol Farmer v4, as you mark it. While Pending, the latest analysis's rule suggests a flag beside it. Click a badge to mark it or edit its note.",
+      headerTitle: "Whether the ticker suits Vol Farmer, as you mark it. While Pending, the latest analysis's rule suggests a flag beside it. Click a badge to mark it or edit its note.",
       cellClassName: "text-nowrap",
       // The flag; while Pending, the rule's suggested flag beside it, and a spinner while an analysis runs.
       render: (file) => {
@@ -328,7 +328,7 @@ export function BacktestDataFilesTable({ files, jobs, suitabilityBySymbol, onFil
     {
       key: "excessCalmar",
       header: "Excess Calmar",
-      headerTitle: "VF v4's over the analysis backtest: (CAGR − the period's T-bill CAGR) ÷ |Max drawdown|",
+      headerTitle: "VF's over the analysis backtest: (CAGR − the period's T-bill CAGR) ÷ |Max drawdown|",
       group: analysisGroup,
       align: "right",
       render: (file) => formatRatio(analyses?.bySymbol[file.symbol]?.tableFigures?.v4ExcessCalmar),

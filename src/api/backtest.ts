@@ -559,7 +559,7 @@ export interface BacktestSettingChoice {
   unavailableReason?: string;
 }
 
-export type BacktestSettingGroup = "How the session runs" | "Looks and entries" | "Put ladder" | "Calls and Covered Calls" | "Contract choice" | "Entry filters" | "Exits" | "Hedge" | "Steady Stake" | "Original Vol Farmer (retired)" | "Vol Farmer v2" | "Vol Farmer v3" | "Vol Farmer v4";
+export type BacktestSettingGroup = "How the session runs" | "Looks and entries" | "Put ladder" | "Calls and Covered Calls" | "Contract choice" | "Entry filters" | "Exits" | "Hedge" | "Steady Stake" | "Original Vol Farmer (retired)" | "Vol Farmer v2" | "Vol Farmer v3" | "Vol Farmer";
 
 /** "every_session": rows every session reads; "baseline_wheel": rows the retired CC + Put Ladder read; the others: rows only that decision maker reads. */
 export type BacktestSettingSection = "every_session" | "baseline_wheel" | "steady_stake" | "vol_farmer" | "vol_farmer_v2" | "vol_farmer_v3" | "vol_farmer_v4";

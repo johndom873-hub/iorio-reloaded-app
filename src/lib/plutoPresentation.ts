@@ -112,7 +112,7 @@ export function derivePlutoStatus(state: PlutoState, now: Date, crashLoopRestart
   return {
     kind: "running",
     label: "Running",
-    headline: "Running Vol Farmer v4",
+    headline: "Running Vol Farmer",
     subline: `Analyses every new quote on the ${tickers} allowed ${tickers === 1 ? "ticker" : "tickers"} · last analysis ${state.lastPassAt ? formatRelativeAge(state.lastPassAt, now) : "not yet today"}`,
     holdAlert: null,
   };
@@ -177,7 +177,7 @@ export function orderedChecks(checks: Record<string, PlutoSystemCheck> | null): 
 }
 
 /** Each strategy's name on the screen, the retired CC + Put Ladder's still named in older events. */
-export const plutoStrategyLabels: Readonly<Record<string, string>> = { vol_farmer_v4: "Vol Farmer v4", cc_put_ladder: "CC + Put Ladder" };
+export const plutoStrategyLabels: Readonly<Record<string, string>> = { vol_farmer_v4: "Vol Farmer", cc_put_ladder: "CC + Put Ladder" };
 
 // ---------- Orders ----------
 
@@ -509,9 +509,9 @@ const gateLabels: Record<string, string> = {
   automatic_held_share_call: "Call on held shares (code)",
   live_quote: "Live quote",
   break_even: "Break-even",
-  vol_farmer_v4: "Vol Farmer v4",
-  vol_farmer_v4_rules: "v4's bid and spread",
-  vol_farmer_v4_delta: "v4's |delta|",
+  vol_farmer_v4: "Vol Farmer",
+  vol_farmer_v4_rules: "Vol Farmer's bid and spread",
+  vol_farmer_v4_delta: "Vol Farmer's |delta|",
   vol_farmer_v2: "Vol Farmer v2",
   vol_farmer_v2_rules: "v2's bid and spread",
   vol_farmer_v2_delta: "v2's |delta|",

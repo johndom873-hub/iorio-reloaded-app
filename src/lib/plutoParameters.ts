@@ -52,13 +52,13 @@ export const plutoParameterGroups: PlutoParameterGroup[] = [
   {
     key: "volFarmerV4",
     title: "Vol Farmer",
-    note: "Every Vol Farmer v4 ticker. Set from the lab's best run of 30 Oct 2026; never synced with the lab. The caps, cooldown and SPY stress breaker under Safety Limits count v4's orders too.",
+    note: "Every Vol Farmer ticker. Set from the lab's best run of 30 Oct 2026; never synced with the lab. The caps, cooldown and SPY stress breaker under Safety Limits count Vol Farmer's orders too.",
     summary: (settings) =>
       `First position ${settings.volFarmerV4FirstPositionPct}% ± ${settings.volFarmerV4RebalanceBandPct}%${settings.volFarmerV4TopUpCapPct > 0 ? `, top-ups up to ${settings.volFarmerV4TopUpCapPct}%` : ""} · ${settings.volFarmerV4OptionsExpiry === "today" ? "options expiring today" : "options on the next expiry"} · Calls' |delta| ${settings.volFarmerV4CallMinAbsDelta.toFixed(2)}–${settings.volFarmerV4CallMaxAbsDelta.toFixed(2)} · Puts under ${settings.volFarmerV4PutsStartCallYieldPct}% a year, |delta| ≤ ${settings.volFarmerV4PutMaxAbsDelta.toFixed(2)} · Step ${settings.volFarmerV4StepRule === "fixed" ? `${settings.volFarmerV4StepBelowFirstBreakEvenPct}% fixed` : "the implied move"} · ${settings.volFarmerV4AlwaysHoldTheStock === "off" ? "shares only with a Call · " : ""}LEAPS ${settings.volFarmerV4LeapsMinDte}+ DTE, |delta| ${settings.volFarmerV4LeapsAbsDelta.toFixed(2)}, ≤ ${settings.volFarmerV4LeapsMaxAllocationPct}% of the pot · spread ${settings.volFarmerV4MaxSpreadPctOfMid}%${volFarmerV4BuyBackSummary[settings.volFarmerV4CallsInTheMoneyAtLastLook] ?? ""}`,
     parameters: [
-      { field: "volFarmerV4CallMinAbsDelta", label: "Calls' |delta| range", unit: "min", kind: "number", step: "0.01", help: "Calls v4 may sell, by absolute delta, struck where Calls struck at least says." },
-      { field: "volFarmerV4CallMaxAbsDelta", label: "Calls' max |delta|", unit: "max", kind: "number", step: "0.01", help: "Highest absolute delta of a Call v4 may sell.", pairedWithPrevious: true },
-      { field: "volFarmerV4MaxSpreadPctOfMid", label: "Max spread", unit: "% of mid", kind: "number", step: "1", help: "Widest bid-ask spread, as a share of the mid, of every v4 order, the LEAPS' included." },
+      { field: "volFarmerV4CallMinAbsDelta", label: "Calls' |delta| range", unit: "min", kind: "number", step: "0.01", help: "Calls Vol Farmer may sell, by absolute delta, struck where Calls struck at least says." },
+      { field: "volFarmerV4CallMaxAbsDelta", label: "Calls' max |delta|", unit: "max", kind: "number", step: "0.01", help: "Highest absolute delta of a Call Vol Farmer may sell.", pairedWithPrevious: true },
+      { field: "volFarmerV4MaxSpreadPctOfMid", label: "Max spread", unit: "% of mid", kind: "number", step: "1", help: "Widest bid-ask spread, as a share of the mid, of every Vol Farmer order, the LEAPS' included." },
       { field: "volFarmerV4FirstPositionPct", label: "First position", unit: "% of the pot", kind: "number", step: "5", help: "The share of the ticker's pot the first position's shares are bought with, in whole lots, and its rebalancing target; the Puts sell on the rest (10 to 90)." },
       {
         field: "volFarmerV4RebalanceBandPct",
@@ -115,9 +115,9 @@ export const plutoParameterGroups: PlutoParameterGroup[] = [
         kind: "select",
         options: ["today", "next"],
         optionLabels: { today: "At today's close, on expiry days", next: "On the next expiry" },
-        help: "Today's close: sold only on the days an expiry ends at the close, so they cover no night; on other days v4 sells no option, and buys shares only with Always hold the stock on. Or the next expiry after today.",
+        help: "Today's close: sold only on the days an expiry ends at the close, so they cover no night; on other days Vol Farmer sells no option, and buys shares only with Always hold the stock on. Or the next expiry after today.",
       },
-      { field: "volFarmerV4OptionsMaxDaysToExpiry", label: "Next expiry within", unit: "days", kind: "integer", step: "1", help: "With the next expiry: the most calendar days it may be away for v4 to sell on it; further away, it only rebalances. 45: every next expiry (1 to 45)." },
+      { field: "volFarmerV4OptionsMaxDaysToExpiry", label: "Next expiry within", unit: "days", kind: "integer", step: "1", help: "With the next expiry: the most calendar days it may be away for Vol Farmer to sell on it; further away, it only rebalances. 45: every next expiry (1 to 45)." },
       {
         field: "volFarmerV4CallsInTheMoneyAtLastLook",
         label: "Calls in the money at the window's end",
@@ -143,7 +143,7 @@ export const plutoParameterGroups: PlutoParameterGroup[] = [
         optionLabels: { calls_yield_little: "When the Calls yield little", with_every_call: "With every Call" },
         help: "When the first position's best Call yields under Puts start under, or with every Call the first position sells, whatever it yields (the second position still holding no shares and no Put).",
       },
-      { field: "volFarmerV4PutsStartCallYieldPct", label: "Puts start under", unit: "% a year", kind: "number", step: "0.5", help: "When the first position needs a new Call and the best one pays under this, v4 sells Puts with the rest of the pot." },
+      { field: "volFarmerV4PutsStartCallYieldPct", label: "Puts start under", unit: "% a year", kind: "number", step: "0.5", help: "When the first position needs a new Call and the best one pays under this, Vol Farmer sells Puts with the rest of the pot." },
       { field: "volFarmerV4PutMaxAbsDelta", label: "Put |delta|", unit: "max", kind: "number", step: "0.01", help: "The Puts' highest absolute delta." },
       {
         field: "volFarmerV4PutStrikeCap",
@@ -188,7 +188,7 @@ export const plutoParameterGroups: PlutoParameterGroup[] = [
       { field: "safetyMaxOrdersPerTickerPerDay", label: "Orders per ticker per day", unit: "orders", kind: "integer", step: "1", help: "Every order Pluto sends on a ticker in a day counts, re-prices included." },
       { field: "safetyMaxOpenPositions", label: "Open positions, all tickers", unit: "positions", kind: "integer", step: "1", help: "Across every Pluto ticker: open positions plus working orders. Sales beyond it wait for a later look." },
       { field: "safetyMaxOrdersPerDay", label: "Orders per day, all tickers", unit: "orders", kind: "integer", step: "1", help: "Orders Pluto sends in a day across every ticker, counted as the per-ticker cap counts them. Sales beyond it wait." },
-      { field: "safetySpyStressBreakerPct", label: "SPY stress breaker", unit: "% drop", kind: "number", step: "0.1", help: "While SPY is down this much today, Vol Farmer v4 opens nothing; a sale of LEAPS or shares still goes. The daily-loss breaker is under Session & Breakers." },
+      { field: "safetySpyStressBreakerPct", label: "SPY stress breaker", unit: "% drop", kind: "number", step: "0.1", help: "While SPY is down this much today, Vol Farmer opens nothing; a sale of LEAPS or shares still goes. The daily-loss breaker is under Session & Breakers." },
       { field: "safetyTickerCooldownMinutes", label: "Ticker cooldown", unit: "min", kind: "integer", step: "1", help: "Minutes after a filled Pluto order before Pluto acts on that ticker again. 0 = no cooldown." },
     ],
   },
@@ -243,17 +243,17 @@ export function settingsInputValue(field: PlutoSettingsField, value: string): st
 
 /** Where a paired field's own label reads as half of a pair ("Days to expiry", "|Delta| range"), the audit names it alone. */
 const parameterAuditLabel: Partial<Record<PlutoSettingsField, string>> = {
-  volFarmerV4CallMinAbsDelta: "Vol Farmer v4 Calls' |delta| lower limit",
-  volFarmerV4CallMaxAbsDelta: "Vol Farmer v4 Calls' |delta| upper limit",
-  volFarmerV4MaxSpreadPctOfMid: "Vol Farmer v4 max spread",
-  volFarmerV4FirstPositionPct: "Vol Farmer v4 first position",
-  volFarmerV4PutsStartCallYieldPct: "Vol Farmer v4 Puts start under",
-  volFarmerV4PutMaxAbsDelta: "Vol Farmer v4 Put |delta|",
-  volFarmerV4StepRule: "Vol Farmer v4 Step rule",
-  volFarmerV4StepBelowFirstBreakEvenPct: "Vol Farmer v4 Step",
-  volFarmerV4LeapsMinDte: "Vol Farmer v4 LEAPS expiry from",
-  volFarmerV4LeapsAbsDelta: "Vol Farmer v4 LEAPS |delta|",
-  volFarmerV4LeapsMaxAllocationPct: "Vol Farmer v4 LEAPS cap",
+  volFarmerV4CallMinAbsDelta: "Vol Farmer Calls' |delta| lower limit",
+  volFarmerV4CallMaxAbsDelta: "Vol Farmer Calls' |delta| upper limit",
+  volFarmerV4MaxSpreadPctOfMid: "Vol Farmer max spread",
+  volFarmerV4FirstPositionPct: "Vol Farmer first position",
+  volFarmerV4PutsStartCallYieldPct: "Vol Farmer Puts start under",
+  volFarmerV4PutMaxAbsDelta: "Vol Farmer Put |delta|",
+  volFarmerV4StepRule: "Vol Farmer Step rule",
+  volFarmerV4StepBelowFirstBreakEvenPct: "Vol Farmer Step",
+  volFarmerV4LeapsMinDte: "Vol Farmer LEAPS expiry from",
+  volFarmerV4LeapsAbsDelta: "Vol Farmer LEAPS |delta|",
+  volFarmerV4LeapsMaxAllocationPct: "Vol Farmer LEAPS cap",
 };
 
 export const plutoParameterLabelByField: Record<string, string> = {

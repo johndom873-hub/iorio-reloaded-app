@@ -103,9 +103,9 @@ function plutoNow(row: ShortlistRow, state: PlutoState | null, volFarmerV4: Plut
   // A Vol Farmer v4 ticker: whether v4 adopted its holdings, or waits to (the last round says why).
   if (volFarmerV4?.waiting && volFarmerV4.lastRoundNotes.length > 0) {
     const why = volFarmerV4.lastRoundNotes[0]!;
-    return { tone: "neutral", label: why.startsWith("holds no shares yet") ? "v4 waits: Puts only" : "v4 waits", title: why };
+    return { tone: "neutral", label: why.startsWith("holds no shares yet") ? "Vol Farmer waits: Puts only" : "Vol Farmer waits", title: why };
   }
-  if (volFarmerV4?.adoptedAt && book) return { ...book, label: `v4 adopted · ${book.label}` };
+  if (volFarmerV4?.adoptedAt && book) return { ...book, label: `Vol Farmer adopted · ${book.label}` };
   return book;
 }
 
@@ -429,7 +429,7 @@ export function PlutoTickersTab({ rows, loading, error, state, maxEnabled, isPho
         <div className="pm-card-h">
           <div className="pm-min0">
             <h2 className="pm-card-t">Tickers Pluto may trade</h2>
-            {!isPhone && <div className="pm-card-meta pm-meta-top">{isAdmin ? "Every Shortlist ticker. Switch one on to let Pluto trade it; the same switch is in the Shortlist's Pluto column. Pluto runs Vol Farmer v4 on each." : "Every Shortlist ticker. Only an admin can switch Pluto on or off for a ticker. Pluto runs Vol Farmer v4 on each."}</div>}
+            {!isPhone && <div className="pm-card-meta pm-meta-top">{isAdmin ? "Every Shortlist ticker. Switch one on to let Pluto trade it; the same switch is in the Shortlist's Pluto column. Pluto runs Vol Farmer on each." : "Every Shortlist ticker. Only an admin can switch Pluto on or off for a ticker. Pluto runs Vol Farmer on each."}</div>}
           </div>
           {isPhone ? (
             <span className="pm-card-meta">

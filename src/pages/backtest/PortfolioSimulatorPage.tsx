@@ -449,7 +449,7 @@ export function PortfolioSimulatorPage() {
       <BacktestBackLink />
       <PageHeader
         title="Portfolio simulator"
-        subtitle="Choose Pluto's tickers and their allocations. The projection runs Vol Farmer v4's own steps, day by day, on simulated sessions after today, from today's prices, chains and expiry calendar."
+        subtitle="Choose Pluto's tickers and their allocations. The projection runs Vol Farmer's own steps, day by day, on simulated sessions after today, from today's prices, chains and expiry calendar."
         actions={
           <button type="button" className="btn btn-primary" disabled={edited.tickers.length === 0} onClick={backtestThisBook}>
             Backtest this book

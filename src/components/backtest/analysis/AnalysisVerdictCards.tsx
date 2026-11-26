@@ -61,7 +61,7 @@ export function AnalysisVerdictBand({ symbol, figures, backtest, potDollars, fir
   const callsPartInside = calls !== null && calls.cagrPart !== null && metrics !== null && metrics.cagr > 0 && calls.cagrPart <= metrics.cagr;
   const sharesPart = backtest.sources?.shares?.cagrPart ?? null;
   const rows: { label: string; className: string; strong: boolean; metrics: typeof metrics; calmar: number | null }[] = [
-    { label: "VF v4", className: "is-account", strong: true, metrics, calmar: backtest.excessCalmar.v4 },
+    { label: "VF", className: "is-account", strong: true, metrics, calmar: backtest.excessCalmar.v4 },
     { label: `${symbol}, held`, className: "is-hold", strong: false, metrics: hold, calmar: backtest.excessCalmar.hold },
     { label: "SPY, held", className: "is-spy", strong: false, metrics: spy, calmar: backtest.excessCalmar.spy },
   ];
@@ -71,7 +71,7 @@ export function AnalysisVerdictBand({ symbol, figures, backtest, potDollars, fir
         <section>
           <div className="analysis-eyebrow mb-2">The verdict</div>
           <div className="analysis-verdict">
-            <VerdictBadge suits={verdict.suits}>{verdict.suits ? "Suits v4" : "Doesn't suit v4"}</VerdictBadge>
+            <VerdictBadge suits={verdict.suits}>{verdict.suits ? "Suits Vol Farmer" : "Doesn't suit Vol Farmer"}</VerdictBadge>
             <p>
               Suggested flag <b>{verdict.suits ? "Suitable" : "Unsuitable"}</b>
               {verdict.suits && smallest !== null && (
@@ -103,7 +103,7 @@ export function AnalysisVerdictBand({ symbol, figures, backtest, potDollars, fir
           </p>
           <div className="analysis-summary-text">
             <p>
-              Vol Farmer v4 made {formatPercentage(metrics?.cagr)} a year on {symbol} from {formatDayMonthYear(backtest.startDate)} to {formatDayMonthYear(backtest.endDate)}, against {formatPercentage(hold?.cagr)} for holding the shares, with a Max drawdown of {formatPercentage(metrics?.maxDrawdown)} against {formatPercentage(hold?.maxDrawdown)}.
+              Vol Farmer made {formatPercentage(metrics?.cagr)} a year on {symbol} from {formatDayMonthYear(backtest.startDate)} to {formatDayMonthYear(backtest.endDate)}, against {formatPercentage(hold?.cagr)} for holding the shares, with a Max drawdown of {formatPercentage(metrics?.maxDrawdown)} against {formatPercentage(hold?.maxDrawdown)}.
               {calls && calls.cagrPart !== null && metrics && (callsPartInside ? <> The Calls made {formatCagrPoints(calls.cagrPart)} of the {formatCagrPoints(metrics.cagr)} points.</> : <> The Calls made {formatSignedCagrPoints(calls.cagrPart)} points of it, the shares {formatSignedCagrPoints(sharesPart)}.</>)} It sold a Call on {formatNumber(all.expiryDaysSold)} of {formatNumber(all.expiryDays)} expiry days, at a median {formatPercentage(all.callYieldMedian)} a year.
             </p>
             <p>{verdict.suits ? "It passes all four checks over the last 12, 6 and 3 months." : `It fails the rule: ${failed}.`}</p>
@@ -254,7 +254,7 @@ export function AnalysisRuleCard({ backtest, splits }: { backtest: AnalysisBackt
   const total = rows.length * windows.length;
   return (
     <AnalysisCard
-      title="Does it suit v4"
+      title="Does it suit Vol Farmer"
       description="The analysis backtest's last 12, 6 and 3 months. Suitable when all four checks pass in all three."
       actions={
         <VerdictBadge suits={verdict.suits}>

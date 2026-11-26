@@ -24,7 +24,7 @@ export function AnalysisCanTradeCard({ symbol, figures, backtest, effective }: {
   const activity = figures.optionActivity?.volume ?? null;
   const v4 = effective.v4;
   return (
-    <AnalysisCard title="Can v4 trade it" description="The option data at the 10:00 quote">
+    <AnalysisCard title="Can Vol Farmer trade it" description="The option data at the 10:00 quote">
       <div className="card-body">
         <dl className="analysis-stat-list analysis-stat-grid-2">
           <div>
@@ -46,7 +46,7 @@ export function AnalysisCanTradeCard({ symbol, figures, backtest, effective }: {
             </dd>
           </div>
           <div>
-            <dt>Expiry days with a Call v4 could sell</dt>
+            <dt>Expiry days with a Call Vol Farmer could sell</dt>
             <dd>
               {formatNumber(figures.sameDayCalls.daysWithCall)} of {formatNumber(figures.sameDayCalls.expiryDays)}{" "}
               <span className="analysis-plain">
@@ -75,7 +75,7 @@ export function AnalysisCanTradeCard({ symbol, figures, backtest, effective }: {
             <dd>
               {!backtest || backtest.leapsBought === 0 ? (
                 <>
-                  None bought <span className="analysis-plain">· v4 buys one only after a Put is assigned</span>
+                  None bought <span className="analysis-plain">· Vol Farmer buys one only after a Put is assigned</span>
                 </>
               ) : (
                 <>
@@ -139,7 +139,7 @@ export function AnalysisSizeCard({ figures, effective, onRunTrial, trialRunning,
               {largest.potDollars === null ? "—" : largest.potDollars > 0 ? `about ${formatPotDollars(largest.potDollars)}` : "$0"}{" "}
               <span className="analysis-plain">
                 · the lots the Calls' volume limit allows on 80% of the {formatNumber(largest.expiryDays)} expiry days
-                {figures.sameDayCalls.lastTwelveMonths.daysWithCall < largest.expiryDays ? `; a Call v4 could sell on ${formatNumber(figures.sameDayCalls.lastTwelveMonths.daysWithCall)} of them` : ""}
+                {figures.sameDayCalls.lastTwelveMonths.daysWithCall < largest.expiryDays ? `; a Call Vol Farmer could sell on ${formatNumber(figures.sameDayCalls.lastTwelveMonths.daysWithCall)} of them` : ""}
               </span>
             </dd>
           </div>
@@ -197,7 +197,7 @@ export function AnalysisTodayCard({ symbol, figures }: { symbol: string; figures
   const band = today.band;
   return (
     <AnalysisCard
-      title="If v4 started today"
+      title="If Vol Farmer started today"
       description={`${formatDayMonthYear(today.date)}, ${today.isExpiryDay ? "an expiry day" : "not an expiry day"} · ${symbol} ${formatCurrency(today.priceAsTraded)} at 10:00 · a ${formatCurrency(today.accountDollars, 0)} account, so a ${formatCurrency(today.potDollars, 0)} pot`}
     >
       <div className="card-body">
@@ -228,7 +228,7 @@ export function AnalysisTodayCard({ symbol, figures }: { symbol: string; figures
                 </>
               ) : (
                 <>
-                  None <span className="analysis-plain">· {today.isExpiryDay ? "no Call expiring today passes v4's rules" : "no expiry today"}</span>
+                  None <span className="analysis-plain">· {today.isExpiryDay ? "no Call expiring today passes Vol Farmer's rules" : "no expiry today"}</span>
                 </>
               )}
             </dd>

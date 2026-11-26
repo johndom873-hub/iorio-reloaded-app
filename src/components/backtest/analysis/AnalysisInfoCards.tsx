@@ -401,7 +401,7 @@ export function AnalysisDataQualityCard({ figures }: { figures: AnalysisFileFigu
                 {formatNumber(figures.sameDayCalls.expiryDays)}
                 <span className="analysis-sub">
                   {figures.sameDayCalls.daysWithoutPrice > 0 ? `${figures.sameDayCalls.daysWithoutPrice} without a 10:00 price · ` : ""}
-                  {formatNumber(figures.sameDayCalls.daysWithNoCall.length)} with no Call v4 could sell{figures.sameDayCalls.daysWithNoCall.length > 0 && figures.sameDayCalls.daysWithNoCall.length <= 3 ? `: ${figures.sameDayCalls.daysWithNoCall.map(formatDayMonthYear).join(", ")}` : ""}
+                  {formatNumber(figures.sameDayCalls.daysWithNoCall.length)} with no Call Vol Farmer could sell{figures.sameDayCalls.daysWithNoCall.length > 0 && figures.sameDayCalls.daysWithNoCall.length <= 3 ? `: ${figures.sameDayCalls.daysWithNoCall.map(formatDayMonthYear).join(", ")}` : ""}
                 </span>
               </dd>
             </>

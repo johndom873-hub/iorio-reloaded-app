@@ -18,7 +18,7 @@ const fallColumns = [
   { key: "daysDown", header: "Days down" },
   { key: "back", header: "Back" },
   { key: "daysBack", header: "Days back" },
-  { key: "v4", header: "VF v4 in it" },
+  { key: "v4", header: "VF in it" },
   { key: "topUps", header: "Its top-ups" },
 ];
 const rightAligned = new Set(["depth", "steps", "step", "daysDown", "daysBack", "v4", "topUps"]);
@@ -47,7 +47,7 @@ export function AnalysisFallsCard({ symbol, figures, backtest }: AnalysisFallsCa
   return (
     <AnalysisCard
       title="Falls and recoveries"
-      description={`Every fall of a Step or more from a peak close, ${firstBar ? formatDayMonthYear(firstBar) : "—"} → ${lastBar ? formatDayMonthYear(lastBar) : "—"} (the file's daily bars start in ${firstBar?.slice(0, 4) ?? "—"})${backtest ? "; the ones that reach into the backtest show what VF v4's account did" : ""}. Switch the price chart to All to see them.`}
+      description={`Every fall of a Step or more from a peak close, ${firstBar ? formatDayMonthYear(firstBar) : "—"} → ${lastBar ? formatDayMonthYear(lastBar) : "—"} (the file's daily bars start in ${firstBar?.slice(0, 4) ?? "—"})${backtest ? "; the ones that reach into the backtest show what VF's account did" : ""}. Switch the price chart to All to see them.`}
       actions={<ColumnVisibilityPopover columns={columns} isColumnVisible={isColumnVisible} onToggleColumn={toggleColumn} variant="toolbar" />}
     >
       <div className="card-body d-flex flex-column gap-3">
@@ -118,7 +118,7 @@ export function AnalysisFallsCard({ symbol, figures, backtest }: AnalysisFallsCa
         )}
         <div className="analysis-chart-caption m-0">
           A fall counts at the larger of the Step on the peak's day (IV × √(21 ÷ 252); before IV, 63-day realised volatility) and {symbol}'s median Step, {formatPercentage(medianStep)}.
-          {backtest && " VF v4 in it: its lowest 10:00 value from the peak (or the backtest's first day) to the stock's recovery ÷ its value on that first day, and when it got back."}
+          {backtest && " VF in it: its lowest 10:00 value from the peak (or the backtest's first day) to the stock's recovery ÷ its value on that first day, and when it got back."}
         </div>
       </div>
     </AnalysisCard>

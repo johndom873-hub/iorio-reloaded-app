@@ -12,18 +12,18 @@ export const backtestSettingSectionTitles: Record<BacktestSettingSection, string
   vol_farmer: "Used by the original Vol Farmer (retired)",
   vol_farmer_v2: "Used by Vol Farmer v2 and v3 (retired)",
   vol_farmer_v3: "Used by Vol Farmer v3 (retired)",
-  vol_farmer_v4: "Used by Vol Farmer v4",
+  vol_farmer_v4: "Used by Vol Farmer",
 };
 
 /** The note under a section's title; the rows every session reads open the table and have none. */
 export const backtestSettingSectionNotes: Record<BacktestSettingSection, string | null> = {
   every_session: null,
   baseline_wheel: "Used only by the CC + Put Ladder, retired on 2 Nov 2026: its past sessions read them.",
-  steady_stake: "Used only when the decision maker is the Steady Stake. None of these change a Vol Farmer v4 session.",
+  steady_stake: "Used only when the decision maker is the Steady Stake. None of these change a Vol Farmer session.",
   vol_farmer: "Used only by the original Vol Farmer, retired on 30 Oct 2026: its past sessions read them.",
   vol_farmer_v2: "Used only by Vol Farmer v2 and v3, retired on 2 Nov 2026: their past sessions read them.",
   vol_farmer_v3: "Used only by Vol Farmer v3, retired on 2 Nov 2026: its past sessions read them.",
-  vol_farmer_v4: "Used only when the decision maker is Vol Farmer v4. None of these change a Steady Stake session.",
+  vol_farmer_v4: "Used only when the decision maker is Vol Farmer. None of these change a Steady Stake session.",
 };
 
 /** The retired decision makers' sections (the original Vol Farmer 2026-10-30; the CC + Put Ladder, v2 and v3 2026-11-02): no setting there changes a session that can still run. */
@@ -214,7 +214,7 @@ export function backtestSettingGroupSummary(group: BacktestSettingGroup, text: (
     case "Vol Farmer v3":
       return volFarmerV3Summary(text, shown, "volFarmerV3");
     // v4 reads a copy of every value, under its own section: v2's summary, then v3's.
-    case "Vol Farmer v4":
+    case "Vol Farmer":
       return `${volFarmerV2Summary(text, shown, { calls: "volFarmerV4", own: "volFarmerV4" })} · ${volFarmerV3Summary(text, shown, "volFarmerV4")}`;
   }
 }

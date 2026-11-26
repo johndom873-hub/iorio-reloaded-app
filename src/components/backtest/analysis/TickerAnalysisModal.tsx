@@ -283,7 +283,7 @@ export function TickerAnalysisModal({ symbol, onClose, onSuitabilitySaved }: Tic
           <span aria-hidden="true">·</span>
           <span>option data to {stored.optionLastDate ? formatDayMonthYear(stored.optionLastDate) : "—"}</span>
           <span aria-hidden="true">·</span>
-          <span>{trial ? `a trial ${describeTrialRun(trial)}` : storedOwnValuesText ? `${symbol}'s own values: ${storedOwnValuesText}` : "the lab's Vol Farmer v4 values"}</span>
+          <span>{trial ? `a trial ${describeTrialRun(trial)}` : storedOwnValuesText ? `${symbol}'s own values: ${storedOwnValuesText}` : "the lab's Vol Farmer values"}</span>
         </>
       )}
       {savedRun ? (
@@ -333,7 +333,7 @@ export function TickerAnalysisModal({ symbol, onClose, onSuitabilitySaved }: Tic
             ? "Computed with an older version of the analysis's formulas."
             : ownValuesChangedSinceStored && currentTickerValues
               ? `${symbol}'s own values changed after this analysis ran: ${describeTickerValuesDifferingFromLab(currentTickerValues, view.labTickerFieldValues) || "the lab's values"} now.${ranWithOlderFormulas ? " Its formulas are an older version too." : ""}`
-              : `The lab's v4 values changed on ${formatBrowserDayMonth(labSaved)} at ${formatBrowserClockTime(labSaved)}, after this analysis ran${labChanges && labChanges.length > 0 ? `: ${joinWithAnd(labChanges)}` : ""}.${ranWithOlderFormulas ? " Its formulas are an older version too." : ""}`}{" "}
+              : `The lab's Vol Farmer values changed on ${formatBrowserDayMonth(labSaved)} at ${formatBrowserClockTime(labSaved)}, after this analysis ran${labChanges && labChanges.length > 0 ? `: ${joinWithAnd(labChanges)}` : ""}.${ranWithOlderFormulas ? " Its formulas are an older version too." : ""}`}{" "}
           Everything below is from the values it ran with.
         </p>
       </AnalysisNote>,
@@ -526,7 +526,7 @@ export function TickerAnalysisModal({ symbol, onClose, onSuitabilitySaved }: Tic
             }
           >
             <p>
-              <b>{symbol} hasn't been analysed yet.</b> The cards below come straight from the data file. The analysis adds the rest: whether it suits Vol Farmer v4 over the last 12, 6 and 3 months, a v4 backtest from the start of steady weeklies, the Calls v4 could sell on each expiry day, the pot that fits and what v4 would do today. It runs as a background job, so you can close this window.
+              <b>{symbol} hasn't been analysed yet.</b> The cards below come straight from the data file. The analysis adds the rest: whether it suits Vol Farmer over the last 12, 6 and 3 months, a Vol Farmer backtest from the start of steady weeklies, the Calls Vol Farmer could sell on each expiry day, the pot that fits and what Vol Farmer would do today. It runs as a background job, so you can close this window.
             </p>
           </AnalysisNote>
           {valuesCard}

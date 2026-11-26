@@ -54,7 +54,7 @@ export function volFarmerV4Warnings(ticker: PlutoVolFarmerV4Ticker): { symbol: s
   const warnings: { symbol: string; text: string }[] = [];
   const putsDollars = figures.putsDollars ?? figures.potDollars / 2;
   if (figures.committedDollars > figures.potDollars - putsDollars) {
-    warnings.push({ symbol: ticker.symbol, text: ` commits ${formatCurrency(figures.committedDollars, 0)} of its ${formatCurrency(figures.potDollars, 0)} pot: a v4 Put on the rest of the pot (${formatCurrency(putsDollars, 0)}) would be refused by the pot check.` });
+    warnings.push({ symbol: ticker.symbol, text: ` commits ${formatCurrency(figures.committedDollars, 0)} of its ${formatCurrency(figures.potDollars, 0)} pot: a Vol Farmer Put on the rest of the pot (${formatCurrency(putsDollars, 0)}) would be refused by the pot check.` });
   }
   const bothPositionsHoldShares = (ticker.first?.shares ?? 0) > 0 && (ticker.second?.shares ?? 0) > 0;
   const leapsComplete = ticker.leaps !== null && ticker.leaps.heldContracts >= ticker.leaps.intendedContracts;

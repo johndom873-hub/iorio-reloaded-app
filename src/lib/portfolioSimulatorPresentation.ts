@@ -116,8 +116,8 @@ export function writeLastOpenedPortfolioId(id: string | null): void {
 // ---- A ticker's fit (its latest analysis's verdict, worded as the Analyse window words it) ----
 
 export function fitLabel(verdict: string | null): string {
-  if (verdict === "suits") return "Suits v4";
-  if (verdict === "doesnt_suit") return "Doesn't suit v4";
+  if (verdict === "suits") return "Suits Vol Farmer";
+  if (verdict === "doesnt_suit") return "Doesn't suit Vol Farmer";
   return "Not analysed";
 }
 

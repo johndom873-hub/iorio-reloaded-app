@@ -99,7 +99,7 @@ export function TickerSuitabilityModal({ symbol, suitability, onSaved, onClose, 
                 className="form-control"
                 rows={6}
                 maxLength={noteMaxLength}
-                placeholder="Why this ticker suits Vol Farmer v4, or why it doesn't."
+                placeholder="Why this ticker suits Vol Farmer, or why it doesn't."
                 value={note}
                 onChange={(event) => setNote(event.target.value)}
                 disabled={saving !== null}
