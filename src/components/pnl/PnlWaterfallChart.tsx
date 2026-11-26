@@ -4,18 +4,17 @@ import { useTheme } from "../../hooks/useTheme";
 import { cssVariableColor } from "../../lib/cssColors";
 import { formatCompactDollars, formatCompactDollarsTrimmed, formatSignedPnl } from "../../lib/formatters";
 
-// The P&L as a waterfall from $0 (mockup approved 2026-11-13): each component a floating bar, green when it adds and red
-// when it takes away, and the last bar the book's P&L from its nightly value. Vertical on Positions, horizontal in the
+// The P&L by component (changed from a floating waterfall 2026-11-26): every bar starts at $0, green when it adds and
+// red when it takes away, and the last bar is the book's P&L from its nightly value. Vertical on Positions, horizontal in the
 // Dashboard's narrow column.
 export function PnlWaterfallChart({ steps, total, orientation, height }: { steps: { label: string; value: number }[]; total: number; orientation: "vertical" | "horizontal"; height?: number }) {
   useTheme(); // re-render on a theme change, so the colours read below follow it
   let running = 0;
   const spans = steps.map((step) => {
-    const from = running;
     running += step.value;
-    return { label: step.label, value: step.value, from, to: running, isTotal: false };
+    return { label: step.label, value: step.value, from: 0, to: step.value, runningTotal: running, isTotal: false };
   });
-  spans.push({ label: "P&L", value: total, from: 0, to: total, isTotal: true });
+  spans.push({ label: "P&L", value: total, from: 0, to: total, runningTotal: total, isTotal: true });
   const colorOf = (span: (typeof spans)[number]) => cssVariableColor(span.isTotal ? "--iorio-pnl-total" : span.value >= 0 ? "--iorio-pnl-adds" : "--iorio-pnl-takes-away");
   const horizontal = orientation === "horizontal";
   const options: ApexOptions = {
@@ -35,7 +34,7 @@ export function PnlWaterfallChart({ steps, total, orientation, height }: { steps
     tooltip: {
       custom: ({ dataPointIndex }) => {
         const span = spans[dataPointIndex]!;
-        return `<div class="px-2 py-1">${span.label}: <strong>${formatSignedPnl(span.value, 0)}</strong>${span.isTotal ? "" : `<br><span class="text-secondary">running total ${formatSignedPnl(span.to, 0)}</span>`}</div>`;
+        return `<div class="px-2 py-1">${span.label}: <strong>${formatSignedPnl(span.value, 0)}</strong>${span.isTotal ? "" : `<br><span class="text-secondary">running total ${formatSignedPnl(span.runningTotal, 0)}</span>`}</div>`;
       },
     },
     legend: { show: false },
