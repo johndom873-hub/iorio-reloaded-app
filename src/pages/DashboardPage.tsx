@@ -744,7 +744,7 @@ export function DashboardPage() {
         />
       </div>
 
-      <PerformanceCard book={book} performance={performance} loading={performanceLoading} />
+      <PerformanceCard book={book} />
 
       <CollapsibleCard title="Allocation" storageKey="portfolio" className="mb-3">
         {portfolioError && <div className="alert alert-danger mb-0">{portfolioError}</div>}

@@ -396,6 +396,13 @@ export function formatDayMonth(dateIso: string): string {
   return `${day} ${new Intl.DateTimeFormat("en-US", { month: "short" }).format(new Date(year, month - 1, day))}`;
 }
 
+/** A plain "YYYY-MM-DD" as its short weekday: "Fri". */
+export function formatWeekdayShort(dateIso: string): string {
+  if (!plainIsoDatePattern.test(dateIso)) return "—";
+  const [year, month, day] = dateIso.split("-").map(Number);
+  return new Intl.DateTimeFormat("en-US", { weekday: "short" }).format(new Date(year, month - 1, day));
+}
+
 /** The marker beside a figure taken from a session's close instead of a live quote: "as of 30 Oct close". */
 export function formatAsOfClose(dateIso: string): string {
   return `as of ${formatDayMonth(dateIso)} close`;
@@ -845,6 +852,14 @@ export function formatSignedPercentage(fractionOrNull: number | null | undefined
 export function formatPercentagePoints(fractionOrNull: number | null | undefined, decimalPlaces = 1): string {
   if (fractionOrNull === null || fractionOrNull === undefined || Number.isNaN(fractionOrNull)) return "—";
   return `${(fractionOrNull * 100).toFixed(decimalPlaces)} pts`;
+}
+
+/** A signed share of a return in percentage points (0-100 scale): 0.62 → "+0.62 pp", -1.5 → "-1.50 pp", 0 → "0.00 pp". */
+export function formatSignedPercentagePointsValue(pointsOrNull: number | null | undefined, decimalPlaces = 2): string {
+  if (pointsOrNull === null || pointsOrNull === undefined || Number.isNaN(pointsOrNull)) return "—";
+  const formatted = Math.abs(pointsOrNull).toFixed(decimalPlaces);
+  if (Number(formatted) === 0) return `${formatted} pp`;
+  return `${pointsOrNull > 0 ? "+" : "-"}${formatted} pp`;
 }
 
 /** 1 → "1st", 2 → "2nd", 3 → "3rd", 11 → "11th", 22 → "22nd", 78 → "78th". */

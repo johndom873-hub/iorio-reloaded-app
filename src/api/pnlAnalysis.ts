@@ -84,6 +84,8 @@ export interface BucketChange {
 export interface NightFigures {
   night: string;
   bookPnl: number | null;
+  /** The value the night's return is measured against (bookPnl ÷ returnBase = the night's return); null when the night has no return. */
+  returnBase: number | null;
   /** Null when the night's attribution was not computed. */
   buckets: Record<CycleBucketKey, BucketChange> | null;
   cash: Record<CashComponent, number>;

@@ -1487,6 +1487,21 @@
 .allocation-seg:hover::before {
   opacity: 0.22;
 }
+/* Pluto vs Manual's folded-out P&L and Return rows: a step smaller than the figure they split. */
+.pnl-breakdown-row > td {
+  font-size: 0.75rem;
+  padding-top: 0.2rem;
+  padding-bottom: 0.2rem;
+}
+/* Performance breakdown rows (Stock, Call premiums…): the component's colour square, as in the P&L charts. */
+.pnl-component-swatch {
+  display: inline-block;
+  width: 0.6rem;
+  height: 0.6rem;
+  border-radius: 2px;
+  margin-right: 0.45rem;
+  flex-shrink: 0;
+}
 .allocation-swatch {
   display: inline-block;
   width: 0.6rem;
@@ -1865,14 +1880,32 @@
 /* Dashboard Performance grid: year labels stay visible while the 13 columns scroll sideways on a phone. */
 .performance-grid {
   table-layout: fixed;
-  /* Year-label column + 12 months + Year column; 5rem fits "+10.30%" in the mono font. */
-  min-width: calc(4.5rem + 13 * 5rem);
+  /* Label column (a year, or a breakdown row such as "Call premiums") + 12 months + Year column; 5rem fits "+10.30%" and
+     "-$54,004" in the mono font. */
+  min-width: calc(9.5rem + 13 * 5rem);
 }
 .performance-grid th:first-child {
-  width: 4.5rem;
+  width: 9.5rem;
 }
 .performance-grid th:not(:first-child) {
-  width: calc((100% - 4.5rem) / 13);
+  width: calc((100% - 9.5rem) / 13);
+}
+/* By day: the label column + the last 15 sessions. */
+.performance-grid.performance-grid-days {
+  min-width: calc(9.5rem + 15 * 5rem);
+}
+.performance-grid.performance-grid-days th:not(:first-child) {
+  width: calc((100% - 9.5rem) / 15);
+}
+.performance-grid-day-heading > span {
+  display: block;
+  font-weight: 400;
+  text-transform: none;
+  letter-spacing: 0;
+}
+.performance-grid .performance-grid-total-row > * {
+  border-top: 1px solid var(--tblr-body-color);
+  font-weight: 700;
 }
 .performance-grid th,
 .performance-grid td {

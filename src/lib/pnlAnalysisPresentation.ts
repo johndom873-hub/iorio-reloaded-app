@@ -56,6 +56,7 @@ export function liveBandAnnotation(fromTime: number, toTime: number, label: stri
 export const analysisBuckets: readonly CycleBucketKey[] = ["csp", "cc", "unstructured", "leaps", "hedge"];
 
 export const bookChoiceLabels: Record<AnalysisBook, string> = { all: "All books", pluto: "Pluto", manual: "Manual" };
+export const analysisBooks: readonly AnalysisBook[] = ["all", "pluto", "manual"];
 
 /** Each book's chart colour (theme.css). All books is drawn dashed. */
 export const bookColorVariable: Record<AnalysisBook, string> = { pluto: "--iorio-book-pluto", manual: "--iorio-book-manual", all: "--iorio-book-all" };
@@ -387,14 +388,14 @@ export function periodPnlRows(nights: readonly NightFigures[], lastNight: string
 }
 
 /**
- * A book's line over every night of its range, starting at its baseline: a night without a return (the book held no money
- * yet) keeps the previous value, so a book funded later is flat until then rather than a straight line to its first return.
+ * A book's growth of $100 over every night of its range, starting at its baseline: a night without a return (the book held no
+ * money yet) keeps the previous value, so a book funded later is flat until then rather than a straight line to its first return.
  */
-export function bookLinePoints(bookAnalysis: BookAnalysis, field: "growth" | "drawdown"): { night: string; value: number }[] {
+export function bookLinePoints(bookAnalysis: BookAnalysis): { night: string; value: number }[] {
   const risk = bookAnalysis.risk;
   if (!risk) return [];
-  const byNight = new Map(risk.series.map((point) => [point.night, field === "growth" ? point.growthIndex * 100 : point.drawdownPercent]));
-  let value = field === "growth" ? 100 : 0;
+  const byNight = new Map(risk.series.map((point) => [point.night, point.growthIndex * 100]));
+  let value = 100;
   const points = [{ night: risk.baselineNight, value }];
   for (const night of bookAnalysis.nights) {
     value = byNight.get(night.night) ?? value;
@@ -414,14 +415,14 @@ export function gatedNote(figure: GatedFigure | GatedTradeFigure | null | undefi
 }
 
 /** A chart's y-axis bounds on a round step (0.5, 1, 5 or 10) around the values, so each value's place on the plot is known
- *  before the chart draws: [89.7, 109.6] → { min: 85, max: 110, step: 5 }. `ceiling` caps the top (a drawdown's 0). */
-export function roundAxisBounds(values: readonly number[], ceiling?: number): { min: number; max: number; step: number } {
+ *  before the chart draws: [89.7, 109.6] → { min: 85, max: 110, step: 5 }. */
+export function roundAxisBounds(values: readonly number[]): { min: number; max: number; step: number } {
   const low = Math.min(...values);
-  const high = ceiling ?? Math.max(...values);
+  const high = Math.max(...values);
   const range = high - low;
   const step = range > 20 ? 10 : range > 8 ? 5 : range > 3 ? 1 : 0.5;
   const min = Math.floor(low / step) * step;
-  const max = ceiling ?? Math.ceil(high / step) * step;
+  const max = Math.ceil(high / step) * step;
   return { min, max: max > min ? max : min + step, step };
 }
 
@@ -437,4 +438,97 @@ export function separatedLabelOffsets(pixelsFromTop: readonly number[], gap: num
     previous = placed;
   }
   return offsets;
+}
+
+// ---------- Performance breakdown (formulas approved by Marcelo 2026-11-26) ----------
+// The P&L and time-weighted Return split into Stock, Call premiums, Put premiums, LEAPS and Other, from the same components
+// as the Attribution tab (sumComponents). Stock includes dividends; Other is the rest of the night's P&L (hedges,
+// commissions, interest, fees, other cash, incomplete data, IBKR valuation, unexplained), so the five always add up. A night
+// whose attribution was not computed puts its whole P&L into Other.
+//   A night's component %: its dollars ÷ the night's return base (the previous night's value). Example: Stock −$9,732 on a
+//   base of $780,000 → −1.25%.
+//   A period's component points: Σ over its nights of the night's component % × the growth before that night, which adds up
+//   to the chained Return exactly. Example: +1.00% then −0.50% of which Stock −0.40% → Stock −0.40 × 1.01 = −0.404 pp,
+//   Return (1.01 × 0.995 − 1) = +0.495%.
+
+/** How the performance grids show a figure: % of the return or dollars. */
+export type PerformanceUnit = "percent" | "dollars";
+export const performanceUnits: readonly PerformanceUnit[] = ["percent", "dollars"];
+
+export type PerformanceComponentKey = "stock" | "calls" | "puts" | "leaps" | "other";
+
+export const performanceComponents: { key: PerformanceComponentKey; label: string; colorVariable: string; hint: string }[] = [
+  { key: "stock", label: "Stock", colorVariable: "--iorio-pnl-stock", hint: "Share price moves on shares held, assignment charges and dividends" },
+  { key: "calls", label: "Call premiums", colorVariable: strategyColorVariable("covered_call"), hint: "Calls sold: premium kept, buybacks and open calls at their mark, before commissions" },
+  { key: "puts", label: "Put premiums", colorVariable: strategyColorVariable("cash_secured_put"), hint: "Puts sold: premium kept, buybacks and open puts at their mark, before commissions" },
+  { key: "leaps", label: "LEAPS", colorVariable: strategyColorVariable("leaps"), hint: "Long-dated calls bought: price moves and sales" },
+  { key: "other", label: "Other", colorVariable: "--iorio-pnl-unexplained", hint: "Hedges, commissions, interest, fees, other cash, IBKR's valuation and the unexplained gap" },
+];
+
+export type PerformanceComponentValues = Record<PerformanceComponentKey, number>;
+
+/** A night's P&L by component (adds up to bookPnl); null when the night has no P&L. */
+export function nightPerformanceComponents(night: NightFigures): PerformanceComponentValues | null {
+  if (night.bookPnl === null) return null;
+  if (night.buckets === null) return { stock: 0, calls: 0, puts: 0, leaps: 0, other: night.bookPnl };
+  const components = sumComponents([night]);
+  const stock = components.stock + components.dividends;
+  return { stock, calls: components.callPremium, puts: components.putPremium, leaps: components.leaps, other: night.bookPnl - stock - components.callPremium - components.putPremium - components.leaps };
+}
+
+export interface PerformanceDay {
+  night: string;
+  pnl: number;
+  returnPercent: number;
+  dollars: PerformanceComponentValues;
+  percents: PerformanceComponentValues;
+}
+
+/** The nights that have a return, each with its components in dollars and in % of its return base. */
+export function performanceDays(nights: readonly NightFigures[]): PerformanceDay[] {
+  const days: PerformanceDay[] = [];
+  for (const night of nights) {
+    const dollars = nightPerformanceComponents(night);
+    if (dollars === null || night.returnBase === null || night.returnBase <= 0) continue;
+    const base = night.returnBase;
+    const percents = Object.fromEntries(performanceComponents.map(({ key }) => [key, (dollars[key] / base) * 100])) as PerformanceComponentValues;
+    days.push({ night: night.night, pnl: night.bookPnl!, returnPercent: (night.bookPnl! / base) * 100, dollars, percents });
+  }
+  return days;
+}
+
+export interface PerformanceBreakdown {
+  pnl: number;
+  returnPercent: number;
+  dollars: PerformanceComponentValues;
+  /** Percentage points of returnPercent; they add up to it. */
+  points: PerformanceComponentValues;
+}
+
+/** A run of days' P&L and chained Return with both split by component; null when there are no days. */
+export function performanceBreakdown(days: readonly PerformanceDay[]): PerformanceBreakdown | null {
+  if (days.length === 0) return null;
+  const dollars: PerformanceComponentValues = { stock: 0, calls: 0, puts: 0, leaps: 0, other: 0 };
+  const points: PerformanceComponentValues = { stock: 0, calls: 0, puts: 0, leaps: 0, other: 0 };
+  let growth = 1;
+  let pnl = 0;
+  for (const day of days) {
+    for (const { key } of performanceComponents) {
+      dollars[key] += day.dollars[key];
+      points[key] += day.percents[key] * growth;
+    }
+    pnl += day.pnl;
+    growth *= 1 + day.returnPercent / 100;
+  }
+  return { pnl, returnPercent: (growth - 1) * 100, dollars, points };
+}
+
+/** The days grouped by calendar month ("YYYY-MM") and by year ("YYYY"), each with its breakdown. */
+export function performanceByMonth(days: readonly PerformanceDay[]): { months: Map<string, PerformanceBreakdown>; years: Map<string, PerformanceBreakdown> } {
+  const group = (keyOf: (night: string) => string) => {
+    const grouped = new Map<string, PerformanceDay[]>();
+    for (const day of days) grouped.set(keyOf(day.night), [...(grouped.get(keyOf(day.night)) ?? []), day]);
+    return new Map([...grouped].map(([key, groupDays]) => [key, performanceBreakdown(groupDays)!]));
+  };
+  return { months: group((night) => night.slice(0, 7)), years: group((night) => night.slice(0, 4)) };
 }

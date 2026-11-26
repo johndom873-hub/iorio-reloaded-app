@@ -1,23 +1,29 @@
-import { useState } from "react";
 import { CollapsibleCard } from "./CollapsibleCard";
 import { Spinner } from "./Spinner";
 import { TooltipSpan } from "./TooltipSpan";
-import type { PerformanceSummary } from "../api/dashboard";
 import type { AnalysisBook, BookRiskFigures, GatedFigure } from "../api/pnlAnalysis";
 import { usePnlAnalysis } from "../hooks/usePnlAnalysis";
-import { formatDayMonth, formatPercentageValue, formatRatio, formatSignedPercentageValue, formatSignedPnl, pnlTextClass } from "../lib/formatters";
-import { bookChoiceLabels, gatedNote, liveNightOf, liveTakenAt, sinceInceptionPeriod, type AnalysisPeriod } from "../lib/pnlAnalysisPresentation";
+import { useStoredState } from "../hooks/useStoredState";
+import { formatDayMonth, formatPercentageValue, formatRatio, formatSignedPercentageValue, formatSignedPnl, pnlTextClass, todayInEasternIso } from "../lib/formatters";
+import { analysisDaysForPreset, analysisPresetLabels, bookChoiceLabels, gatedNote, liveNightOf, liveTakenAt, sinceInceptionPeriod, type AnalysisPeriod } from "../lib/pnlAnalysisPresentation";
 import { AnalysisPeriodPicker } from "./pnl/AnalysisPeriodPicker";
 import { BookComparisonTable } from "./pnl/BookComparisonTable";
-import { BookGrowthCharts } from "./pnl/BookGrowthCharts";
-
-const monthLabels = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+import { BookGrowthChart } from "./pnl/BookGrowthChart";
+import { PerformanceByDayTable } from "./pnl/PerformanceByDayTable";
+import { PerformanceByMonthTable } from "./pnl/PerformanceByMonthTable";
 
 interface PerformanceCardProps {
   book: AnalysisBook;
-  /** The monthly grid's figures (GET /dashboard/performance for the book). */
-  performance: PerformanceSummary | null;
-  loading: boolean;
+}
+
+const isoDatePattern = /^\d{4}-\d{2}-\d{2}$/;
+
+/** A remembered period: a preset, or a custom range of valid dates. */
+function isStoredPeriod(stored: unknown): stored is AnalysisPeriod {
+  if (typeof stored !== "object" || stored === null) return false;
+  const { preset, days } = stored as AnalysisPeriod;
+  if (preset in analysisPresetLabels) return true;
+  return preset === "custom" && typeof days === "object" && days !== null && typeof days.from === "string" && isoDatePattern.test(days.from) && (days.to === null || (typeof days.to === "string" && isoDatePattern.test(days.to)));
 }
 
 interface Headline {
@@ -51,29 +57,16 @@ function headlines(risk: BookRiskFigures): Headline[] {
   ];
 }
 
-// The Dashboard's Performance card (mockup approved by Marcelo 2026-11-13): the book's time-weighted return and risk over a
-// period, every book's growth and drawdown, Pluto vs Manual, and the monthly grid (formula in the API's
-// lib/performanceReturns.ts; the month tracking began shows "—", its first snapshot being the starting point).
-export function PerformanceCard({ book, performance, loading }: PerformanceCardProps) {
-  const [period, setPeriod] = useState<AnalysisPeriod>(sinceInceptionPeriod);
-  const [monthUnit, setMonthUnit] = useState<"percent" | "dollars">("percent");
+// The Dashboard's Performance card (mockup approved by Marcelo 2026-11-13, redesign 2026-11-26): the book's time-weighted
+// return and risk over a period, every book's growth, Pluto vs Manual with P&L and Return folding out by component, and the
+// By day and By month grids since inception (each with its own book switch). Its period, toggles and folds are remembered in
+// this browser; a remembered preset (MTD, QTD…) is recomputed for today.
+export function PerformanceCard({ book }: PerformanceCardProps) {
+  const [storedPeriod, setPeriod] = useStoredState<AnalysisPeriod>("performance-period", sinceInceptionPeriod, isStoredPeriod);
+  const period: AnalysisPeriod = storedPeriod.preset === "custom" ? storedPeriod : { preset: storedPeriod.preset, days: analysisDaysForPreset(storedPeriod.preset, todayInEasternIso()) };
   const { analysis, loading: analysisLoading, error } = usePnlAnalysis(period.days);
+  const { analysis: inceptionAnalysis, loading: inceptionLoading, error: inceptionError } = usePnlAnalysis(sinceInceptionPeriod.days);
   const risk = analysis?.books[book].risk ?? null;
-
-  const firstYear = performance?.trackingSince ? Number(performance.trackingSince.slice(0, 4)) : null;
-  const lastYear = performance?.asOf ? Number(performance.asOf.slice(0, 4)) : null;
-  const yearRows: number[] = [];
-  if (firstYear !== null && lastYear !== null) for (let year = lastYear; year >= firstYear; year--) yearRows.push(year);
-  const monthByKey = new Map((performance?.months ?? []).map((month) => [`${month.year}-${month.month}`, month]));
-  const yearByYear = new Map((performance?.years ?? []).map((year) => [year.year, year]));
-  const gridCell = (entry: { percent: number; profitDollars: number } | undefined, key: string, extraClassName = "") => {
-    const value = entry === undefined ? undefined : monthUnit === "percent" ? entry.percent : entry.profitDollars;
-    return (
-      <td key={key} className={`text-end font-mono ${value === undefined ? "text-secondary" : pnlTextClass(value)} ${extraClassName}`}>
-        {value === undefined ? "—" : monthUnit === "percent" ? formatSignedPercentageValue(value, 2) : formatSignedPnl(value, 0)}
-      </td>
-    );
-  };
 
   return (
     <CollapsibleCard
@@ -106,7 +99,7 @@ export function PerformanceCard({ book, performance, loading }: PerformanceCardP
           </div>
           <div className="row g-4">
             <div className="col-12 col-xl-7">
-              <BookGrowthCharts analysis={analysis} emphasisBook={book} growthHeight={230} drawdownHeight={170} />
+              <BookGrowthChart analysis={analysis} emphasisBook={book} growthHeight={320} />
             </div>
             <div className="col-12 col-xl-5">
               <div className="fw-semibold mb-1">Pluto vs Manual</div>
@@ -119,48 +112,13 @@ export function PerformanceCard({ book, performance, loading }: PerformanceCardP
         </>
       )}
 
-      <div className="d-flex justify-content-between align-items-center mt-3 mb-1">
-        <div className="fw-semibold">By month</div>
-        <div className="btn-group" role="group" aria-label="Show months as">
-          {(
-            [
-              ["percent", "%"],
-              ["dollars", "$"],
-            ] as const
-          ).map(([unit, label]) => (
-            <button key={unit} type="button" className={`btn btn-outline-secondary${monthUnit === unit ? " active" : ""}`} aria-pressed={monthUnit === unit} onClick={() => setMonthUnit(unit)}>
-              {label}
-            </button>
-          ))}
-        </div>
-      </div>
-      {loading && <Spinner size="sm" label="Loading the months" />}
-      {!loading && !performance?.trackingSince && <div className="text-secondary">No account snapshots yet.</div>}
-      {!loading && performance?.trackingSince && (
-        <div className="table-responsive">
-          <table className="table table-sm table-vcenter mb-0 performance-grid" style={{ fontSize: "0.8rem" }}>
-            <thead className="table-light">
-              <tr>
-                <th scope="col">
-                  <span className="visually-hidden">Calendar year</span>
-                </th>
-                {monthLabels.map((label) => (
-                  <th key={label} scope="col" className="text-end">{label}</th>
-                ))}
-                <th scope="col" className="text-end performance-grid-year-column">Year</th>
-              </tr>
-            </thead>
-            <tbody>
-              {yearRows.map((year) => (
-                <tr key={year}>
-                  <th scope="row" className="fw-semibold">{year}</th>
-                  {monthLabels.map((label, monthIndex) => gridCell(monthByKey.get(`${year}-${monthIndex + 1}`), label))}
-                  {gridCell(yearByYear.get(year), "year", "fw-bold performance-grid-year-column")}
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+      {inceptionError && !error && <div className="alert alert-danger">{inceptionError}</div>}
+      {inceptionLoading && <Spinner size="sm" label="Loading the days and months" />}
+      {!inceptionLoading && inceptionAnalysis && (
+        <>
+          <PerformanceByDayTable analysis={inceptionAnalysis} />
+          <PerformanceByMonthTable analysis={inceptionAnalysis} />
+        </>
       )}
     </CollapsibleCard>
   );

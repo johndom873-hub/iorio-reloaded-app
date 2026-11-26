@@ -9,7 +9,7 @@ import { Spinner } from "../Spinner";
 import { TooltipSpan } from "../TooltipSpan";
 import { AnalysisPeriodPicker } from "./AnalysisPeriodPicker";
 import { BookComparisonTable } from "./BookComparisonTable";
-import { BookGrowthCharts } from "./BookGrowthCharts";
+import { BookGrowthChart } from "./BookGrowthChart";
 import { PnlAttributionTab } from "./PnlAttributionTab";
 import { PnlOverTimeTab } from "./PnlOverTimeTab";
 import { PnlTickerTab } from "./PnlTickerTab";
@@ -87,7 +87,7 @@ export function PnlAnalyserCard({ book }: { book: AnalysisBook }) {
                 </div>
               </div>
               <div className="col-12 col-xl-7">
-                <BookGrowthCharts analysis={analysis} />
+                <BookGrowthChart analysis={analysis} />
               </div>
             </div>
           )}

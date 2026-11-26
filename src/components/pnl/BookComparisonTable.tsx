@@ -1,11 +1,14 @@
-import type { ReactNode } from "react";
+import { Fragment, type ReactNode } from "react";
 import type { AnalysisBook, BookRiskFigures, GatedFigure, GatedTradeFigure, PnlAnalysis, TradeStats } from "../../api/pnlAnalysis";
 import { useMediaQuery } from "../../hooks/useMediaQuery";
+import { useStoredState } from "../../hooks/useStoredState";
 import { formatPercentageValue, formatRatio, formatSignedPercentageValue, formatSignedPnl, pnlTextClass } from "../../lib/formatters";
-import { analysisNightNote, bookChoiceLabels, gatedNote, liveNightOf } from "../../lib/pnlAnalysisPresentation";
+import { analysisNightNote, bookChoiceLabels, gatedNote, liveNightOf, performanceBreakdown, performanceComponents, performanceDays, type PerformanceBreakdown } from "../../lib/pnlAnalysisPresentation";
 import { TooltipSpan } from "../TooltipSpan";
+import { BreakdownToggle, PerformanceComponentLabel, PerformanceValueCell } from "./performanceBreakdownBits";
 
-const bookOrder: AnalysisBook[] = ["pluto", "manual", "all"];
+// Positions compares all three books; the Dashboard only Pluto and Manual, its headline row being All books (Marcelo 2026-11-26).
+const bookOrderOf = { full: ["pluto", "manual", "all"], compact: ["pluto", "manual"] } as const satisfies Record<string, readonly AnalysisBook[]>;
 
 interface Cell {
   text: string;
@@ -16,6 +19,8 @@ interface Cell {
 interface MetricRow {
   label: string;
   hint: string;
+  /** P&L and Return fold out into Stock, Call premiums, Put premiums, LEAPS and Other: dollars, or points of the Return. */
+  breakdown?: "pnl" | "return";
   /** `liveNight`: today's live night when the analysis ends with one (its notes say "today (live)"). */
   cell: (risk: BookRiskFigures, trades: { csp: TradeStats; cc: TradeStats; both: TradeStats } | null, liveNight: string | null) => Cell;
 }
@@ -30,8 +35,8 @@ function gatedCell(figure: GatedFigure | GatedTradeFigure | null | undefined, fo
 // The figures of each book side by side (formulas approved 2026-11-13; a dotted label holds its formula). Ratios that lack
 // history say how much they have and need. The Dashboard shows the returns and risk rows only.
 const returnRows: MetricRow[] = [
-  { label: "P&L", hint: "Book value change less deposits and moves between books", cell: (risk) => ({ text: formatSignedPnl(risk.pnl, 0), className: pnlTextClass(risk.pnl) }) },
-  { label: "Return", hint: "Time-weighted: the nightly returns chained, (1 + r1)(1 + r2)… − 1", cell: (risk) => ({ text: formatSignedPercentageValue(risk.returnPercent, 2), className: pnlTextClass(risk.returnPercent) }) },
+  { label: "P&L", hint: "Book value change less deposits and moves between books", breakdown: "pnl", cell: (risk) => ({ text: formatSignedPnl(risk.pnl, 0), className: pnlTextClass(risk.pnl) }) },
+  { label: "Return", hint: "Time-weighted: the nightly returns chained, (1 + r1)(1 + r2)… − 1. Its breakdown is in percentage points (pp) that add up to it", breakdown: "return", cell: (risk) => ({ text: formatSignedPercentageValue(risk.returnPercent, 2), className: pnlTextClass(risk.returnPercent) }) },
   { label: "CAGR", hint: "(1 + Return) ^ (365 ÷ days) − 1, from 90 calendar days", cell: (risk) => gatedCell(risk.cagrPercent, (value) => formatSignedPercentageValue(value, 2)) },
 ];
 const riskRows: MetricRow[] = [
@@ -91,18 +96,48 @@ function CellContent({ cell }: { cell: Cell }) {
   );
 }
 
-function MetricLabel({ row }: { row: MetricRow }): ReactNode {
+interface BreakdownFolds {
+  pnl: boolean;
+  return: boolean;
+}
+
+function isBreakdownFolds(stored: unknown): stored is BreakdownFolds {
+  return typeof stored === "object" && stored !== null && typeof (stored as BreakdownFolds).pnl === "boolean" && typeof (stored as BreakdownFolds).return === "boolean";
+}
+
+function MetricLabel({ row, open, onToggle }: { row: MetricRow; open: boolean; onToggle: () => void }): ReactNode {
   return (
-    <TooltipSpan text={row.hint} className="dotted-underline-label">
-      {row.label}
-    </TooltipSpan>
+    <span className="text-nowrap">
+      {row.breakdown && <BreakdownToggle open={open} label={row.label} onToggle={onToggle} />}
+      <TooltipSpan text={row.hint} className="dotted-underline-label">
+        {row.label}
+      </TooltipSpan>
+    </span>
   );
 }
 
-/** Pluto, Manual and All books side by side; on a phone one block per book. */
+/** The folded-out rows under P&L or Return, one figure per book. */
+function breakdownRows(row: MetricRow, books: readonly AnalysisBook[], breakdowns: Record<AnalysisBook, PerformanceBreakdown | null>) {
+  return performanceComponents.map((component) => (
+    <tr key={`${row.label}-${component.key}`} className="pnl-breakdown-row">
+      <td className="ps-4"><PerformanceComponentLabel component={component} /></td>
+      {books.map((book) => {
+        const breakdown = breakdowns[book];
+        return <PerformanceValueCell key={book} value={breakdown === null ? undefined : row.breakdown === "pnl" ? breakdown.dollars[component.key] : breakdown.points[component.key]} unit={row.breakdown === "pnl" ? "dollars" : "points"} />;
+      })}
+    </tr>
+  ));
+}
+
+/** Pluto, Manual and (full only) All books side by side; on a phone one block per book. P&L and Return fold out by component. */
 export function BookComparisonTable({ analysis, variant, title }: { analysis: PnlAnalysis; variant: "full" | "compact"; title: string }) {
   const isPhone = useMediaQuery("(max-width: 575.98px)");
   const groups = variant === "full" ? fullGroups : compactGroups;
+  const bookOrder = bookOrderOf[variant];
+  const [folds, setFolds] = useStoredState<BreakdownFolds>("pnl-breakdown-open", { pnl: false, return: false }, isBreakdownFolds);
+  const toggle = (row: MetricRow) => row.breakdown && setFolds({ ...folds, [row.breakdown]: !folds[row.breakdown] });
+  const isOpen = (row: MetricRow) => row.breakdown !== undefined && folds[row.breakdown];
+  const breakdowns = Object.fromEntries((["pluto", "manual", "all"] as const).map((book) => [book, performanceBreakdown(performanceDays(analysis.books[book].nights))])) as Record<AnalysisBook, PerformanceBreakdown | null>;
 
   if (isPhone) {
     return (
@@ -116,10 +151,13 @@ export function BookComparisonTable({ analysis, variant, title }: { analysis: Pn
             <table className="table table-sm table-vcenter card-table mb-0">
               <tbody>
                 {groups.flatMap((group) => group.rows).map((row) => (
-                  <tr key={row.label}>
-                    <td><MetricLabel row={row} /></td>
-                    <td className="text-end"><CellContent cell={cellOf(analysis, book, row)} /></td>
-                  </tr>
+                  <Fragment key={row.label}>
+                    <tr>
+                      <td><MetricLabel row={row} open={isOpen(row)} onToggle={() => toggle(row)} /></td>
+                      <td className="text-end"><CellContent cell={cellOf(analysis, book, row)} /></td>
+                    </tr>
+                    {isOpen(row) && breakdownRows(row, [book], breakdowns)}
+                  </Fragment>
                 ))}
               </tbody>
             </table>
@@ -145,16 +183,19 @@ export function BookComparisonTable({ analysis, variant, title }: { analysis: Pn
           {groups.map((group) => [
             group.title ? (
               <tr key={`group-${group.title}`} className="pnl-section-row">
-                <td colSpan={4} className="text-secondary text-uppercase fw-semibold">{group.title}</td>
+                <td colSpan={1 + bookOrder.length} className="text-secondary text-uppercase fw-semibold">{group.title}</td>
               </tr>
             ) : null,
             ...group.rows.map((row) => (
-              <tr key={row.label}>
-                <td><MetricLabel row={row} /></td>
-                {bookOrder.map((book) => (
-                  <td key={book} className="text-end"><CellContent cell={cellOf(analysis, book, row)} /></td>
-                ))}
-              </tr>
+              <Fragment key={row.label}>
+                <tr>
+                  <td><MetricLabel row={row} open={isOpen(row)} onToggle={() => toggle(row)} /></td>
+                  {bookOrder.map((book) => (
+                    <td key={book} className="text-end"><CellContent cell={cellOf(analysis, book, row)} /></td>
+                  ))}
+                </tr>
+                {isOpen(row) && breakdownRows(row, bookOrder, breakdowns)}
+              </Fragment>
             )),
           ])}
         </tbody>
