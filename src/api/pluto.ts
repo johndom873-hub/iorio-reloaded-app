@@ -1,4 +1,4 @@
-import { apiRequest } from "./client";
+import { apiRequest, apiStreamedRequest } from "./client";
 
 // Pluto — the autonomous trading agent. Routes live in the API's routes/pluto.ts; every shape here
 // mirrors that file's serializers.
@@ -564,8 +564,9 @@ export function resumePluto(): Promise<PlutoStateCore> {
   return apiRequest<PlutoStateCore>("/pluto/resume", { method: "POST", body: JSON.stringify({}) });
 }
 
+/** Streamed: the reconciliation breaker first runs a health check with IBKR (10–40 s), refused (409) while it still finds a discrepancy. */
 export function resetPlutoBreaker(name: string): Promise<PlutoStateCore> {
-  return apiRequest<PlutoStateCore>(`/pluto/breakers/${encodeURIComponent(name)}/reset`, { method: "POST", body: JSON.stringify({}) });
+  return apiStreamedRequest<PlutoStateCore>(`/pluto/breakers/${encodeURIComponent(name)}/reset`, { method: "POST", body: JSON.stringify({}) });
 }
 
 export function updatePlutoStressOverride(enabled: boolean): Promise<PlutoStateCore> {

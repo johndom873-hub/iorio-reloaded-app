@@ -243,13 +243,36 @@ export function PlutoStatusCard({ state, status, settings, now, isPhone, showKpi
       />
     );
   } else if (pending?.kind === "reset") {
+    const checksFirst = pending.name === "reconciliation";
     modal = (
       <ConfirmModal
         title={`Reset the ${humanizeKey(pending.name).toLowerCase()} breaker?`}
         confirmLabel="Reset breaker"
         confirming={busy === "modal"}
-        message={<>Clears the trip and records who did it. Pluto stays paused until you press Resume; nothing is retried.</>}
-        onCancel={() => setPending(null)}
+        size={checksFirst ? "md" : undefined}
+        message={
+          <>
+            {checksFirst ? (
+              <>
+                <p>Iorio first compares the account's holdings at IBKR with its own records, which takes up to a minute. If they still differ, the breaker stays tripped and you see what differs.</p>
+                <p className="mb-0">If they match, this clears the trip and records who did it. Pluto stays paused until you press Resume; nothing is retried.</p>
+                {busy === "modal" && (
+                  <div className="d-inline-flex align-items-center gap-1 mt-3" role="status">
+                    <Spinner size="sm" />
+                    Checking with IBKR, up to a minute…
+                  </div>
+                )}
+              </>
+            ) : (
+              <>Clears the trip and records who did it. Pluto stays paused until you press Resume; nothing is retried.</>
+            )}
+            {error && <div className="alert alert-danger mt-3 mb-0" role="alert">{error}</div>}
+          </>
+        }
+        onCancel={() => {
+          setError(null);
+          setPending(null);
+        }}
         onConfirm={() => void run(() => resetPlutoBreaker(pending.name), "modal", "Could not reset the breaker.")}
       />
     );
@@ -322,7 +345,7 @@ export function PlutoStatusCard({ state, status, settings, now, isPhone, showKpi
             desktopActions
           )}
         </div>
-        {error && <div className="pm-cmd-error" role="alert">{error}</div>}
+        {error && pending?.kind !== "reset" && <div className="pm-cmd-error" role="alert">{error}</div>}
 
         {status.kind === "stopped" &&
           breakerNames.map((name) => (
@@ -334,7 +357,10 @@ export function PlutoStatusCard({ state, status, settings, now, isPhone, showKpi
                   <div className="pm-alert-text">{state.breakers[name]!.detail}</div>
                 </div>
                 <AdminOnlyGate locked={!isAdmin}>
-                  <button type="button" className="pm-btn danger" disabled={busy !== null || !isAdmin} title={isAdmin ? undefined : "Only an admin can reset a breaker."} onClick={() => setPending({ kind: "reset", name })}>
+                  <button type="button" className="pm-btn danger" disabled={busy !== null || !isAdmin} title={isAdmin ? undefined : "Only an admin can reset a breaker."} onClick={() => {
+                      setError(null);
+                      setPending({ kind: "reset", name });
+                    }}>
                     <ResetIcon />
                     Reset breaker
                   </button>

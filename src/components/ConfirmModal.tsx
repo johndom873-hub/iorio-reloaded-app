@@ -17,7 +17,8 @@ interface ConfirmModalProps {
   onSecondary?: () => void;
   /** The dialog's width: "lg" for a confirmation that shows a table (New session's Start session). Without it: small, or the
    *  default width when there is a second choice. */
-  size?: "sm" | "lg";
+  /** "md": Bootstrap's default width (500px), for a message too long for the default small dialog. */
+  size?: "sm" | "md" | "lg";
   /** Disables the confirm button (e.g. while what it confirms is still being worked out). */
   confirmDisabled?: boolean;
   /** Over another modal: the backdrop and dialog sit at 1100, above the first modal's 1050. */
@@ -49,7 +50,7 @@ export function ConfirmModal({ title, message, confirmLabel = "Confirm", cancelL
     <>
       <div className="modal-backdrop show" style={{ zIndex, backgroundColor: "rgba(0,0,0,0.5)", opacity: 1 }} />
       <div className="modal show d-block" style={{ zIndex }}>
-        <div className={`modal-dialog modal-dialog-centered modal-dialog-scrollable ${size ? `modal-${size}` : secondaryLabel ? "" : "modal-sm"}`}>
+        <div className={["modal-dialog modal-dialog-centered modal-dialog-scrollable", size === "md" ? null : size ? `modal-${size}` : secondaryLabel ? null : "modal-sm"].filter(Boolean).join(" ")}>
           <div className="modal-content">
             <div className="modal-header">
               <h5 className="modal-title">{title}</h5>
